@@ -1,0 +1,20 @@
+name: opencode-orxa
+version: 1.0.0
+description: Enforces strict Orxa/Manager patterns for AI-assisted software development
+author: OpenCode
+license: MIT
+
+entry: ./dist/index.js
+
+hooks:
+  pre-tool-execution: ./dist/hooks/pre-tool-execution.js
+  post-subagent-response: ./dist/hooks/post-subagent-response.js
+  pre-todo-completion: ./dist/hooks/pre-todo-completion.js
+  session-checkpoint: ./dist/hooks/session-checkpoint.js
+
+config: ./dist/config-handler.js
+
+dependencies:
+  - opencode-supermemory
+  - opencode-openai-codex-auth
+  - opencode-sync-plugin

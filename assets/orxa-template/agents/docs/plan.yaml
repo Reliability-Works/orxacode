@@ -1,0 +1,38 @@
+# PLAN - Planning Agent
+#
+# NOTE: This is a PRIMARY AGENT. Its configuration is managed in orxa.json, not this YAML file.
+# This file exists for documentation purposes only.
+#
+# To configure PLAN, edit ~/.config/opencode/orxa/orxa.json:
+#
+# {
+#   "plan": {
+#     "model": "opencode/kimi-k2.5",
+#     "allowedTools": ["read", "task", "todowrite", "todoread", "supermemory"],
+#     "blockedTools": ["grep", "glob", "bash", "skill"]
+#   }
+# }
+#
+# ROLE:
+# Specialized planning agent for complex multi-step tasks. The plan agent:
+# - Analyzes requirements and creates detailed work plans
+# - Breaks down complex tasks into manageable steps
+# - Identifies dependencies and potential risks
+# - Provides structured plans for ORXA to execute
+#
+# The plan agent does not execute work - it only creates plans that ORXA then orchestrates.
+
+name: plan
+description: |
+  Specialized planning agent for complex multi-step tasks. The plan agent:
+  - Analyzes requirements and creates detailed work plans
+  - Breaks down complex tasks into manageable steps
+  - Identifies dependencies and potential risks
+  - Provides structured plans for ORXA to execute
+  
+  The plan agent does not execute work - it only creates plans that ORXA then orchestrates.
+
+model: opencode/kimi-k2.5
+
+# NOTE: Tools are configured in orxa.json, not here
+# Primary agents use restricted tool sets and cannot use grep, glob, bash, or skill tools

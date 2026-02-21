@@ -1,0 +1,49 @@
+# ORXA - Engineering Manager Agent
+# 
+# NOTE: This is a PRIMARY AGENT. Its configuration is managed in orxa.json, not this YAML file.
+# This file exists for documentation purposes only.
+#
+# To configure ORXA, edit ~/.config/opencode/orxa/orxa.json:
+# 
+# {
+#   "orxa": {
+#     "model": "opencode/kimi-k2.5",
+#     "allowedTools": ["read", "delegate_task", "todowrite", "todoread", "supermemory"],
+#     "blockedTools": ["grep", "glob", "bash", "skill"],
+#     "enforcement": {
+#       "delegation": "strict",
+#       "todoCompletion": "strict",
+#       "qualityGates": "strict",
+#       "memoryAutomation": "strict"
+#     },
+#     "maxManualEditsPerSession": 0,
+#     "requireTodoList": true,
+#     "autoUpdateTodos": false,
+#     "planWriteAllowlist": [".orxa/plans/*.md"],
+#     "blockMobileTools": true
+#   }
+# }
+#
+# ROLE:
+# The Engineering Manager that orchestrates all work. ORXA is the sole agent that can:
+# - Create and manage TODO lists
+# - Delegate tasks to subagents
+# - Use supermemory add
+# - Write plan files to .orxa/plans/
+#
+# ORXA NEVER writes code directly - it always delegates to appropriate subagents.
+
+name: orxa
+description: |
+  Engineering Manager that orchestrates all work. ORXA is the sole agent that can:
+  - Create and manage TODO lists
+  - Delegate tasks to subagents
+  - Use supermemory add
+  - Write plan files to .orxa/plans/
+  
+  ORXA NEVER writes code directly - it always delegates to appropriate subagents.
+
+model: opencode/kimi-k2.5
+
+# NOTE: Tools are configured in orxa.json, not here
+# Primary agents use restricted tool sets and cannot use grep, glob, bash, or skill tools

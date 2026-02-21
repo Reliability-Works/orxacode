@@ -1,0 +1,181 @@
+{
+  "enabled_agents": [
+    "orxa",
+    "plan",
+    "strategist",
+    "reviewer",
+    "build",
+    "coder",
+    "frontend",
+    "architect",
+    "git",
+    "explorer",
+    "librarian",
+    "navigator",
+    "writer",
+    "multimodal",
+    "mobile-simulator"
+  ],
+  "disabled_agents": [],
+  "agent_overrides": {
+    "build": {
+      "model": "opencode/gpt-5.2-codex"
+    },
+    "architect": {
+      "model": "opencode/gpt-5.2-codex"
+    },
+    "frontend": {
+      "model": "opencode/gemini-3-pro"
+    },
+    "multimodal": {
+      "model": "opencode/gemini-3-pro"
+    }
+  },
+  "custom_agents": [],
+  "mcps": {
+    "enabled": [],
+    "disabled": [],
+    "config": {}
+  },
+  "toolAliases": {
+    "resolve": {
+      "apply_patch": "edit",
+      "write_to_file": "write",
+      "replace_file_content": "write",
+      "multi_replace_file_content": "write"
+    }
+  },
+  "orxa": {
+    "model": "opencode/kimi-k2.5",
+    "allowedTools": [
+      "read",
+      "task",
+      "todowrite",
+      "todoread",
+      "supermemory"
+    ],
+    "blockedTools": [
+      "grep",
+      "glob",
+      "bash",
+      "edit",
+      "write"
+    ],
+    "enforcement": {
+      "delegation": "strict",
+      "todoCompletion": "strict",
+      "qualityGates": "strict",
+      "memoryAutomation": "strict"
+    },
+    "maxManualEditsPerSession": 0,
+    "requireTodoList": true,
+    "autoUpdateTodos": false,
+    "planWriteAllowlist": [
+      ".orxa/**/*.md",
+      ".orxa/**/*.json"
+    ],
+    "blockMobileTools": true
+  },
+  "plan": {
+    "model": "opencode/kimi-k2.5",
+    "allowedTools": [
+      "read",
+      "task",
+      "todowrite",
+      "todoread",
+      "supermemory"
+    ],
+    "blockedTools": [
+      "grep",
+      "glob",
+      "bash",
+      "edit",
+      "write"
+    ]
+  },
+  "governance": {
+    "onlyOrxaCanDelegate": true,
+    "blockSupermemoryAddForSubagents": true,
+    "delegationTemplate": {
+      "required": true,
+      "requiredSections": [
+        "Task",
+        "Expected Outcome",
+        "Required Tools",
+        "Must Do",
+        "Must Not Do",
+        "Context"
+      ],
+      "maxImages": 10,
+      "requireSameSessionId": true,
+      "contextHygiene": {
+        "maxToolOutputChars": 4000
+      }
+    }
+  },
+  "subagents": {
+    "defaults": {
+      "timeout": 120000,
+      "maxRetries": 2
+    },
+    "overrides": {},
+    "custom": []
+  },
+  "memory": {
+    "autoExtract": true,
+    "extractPatterns": [
+      "bug.*fix",
+      "solution.*",
+      "decided.*",
+      "pattern.*",
+      "config.*"
+    ],
+    "requiredTypes": [
+      "error-solution",
+      "learned-pattern",
+      "project-config",
+      "architecture"
+    ],
+    "sessionCheckpointInterval": 20
+  },
+  "qualityGates": {
+    "requireLint": true,
+    "requireTypeCheck": true,
+    "requireTests": true,
+    "requireBuild": true,
+    "requireLspDiagnostics": true,
+    "customValidators": []
+  },
+  "escalation": {
+    "enabled": true,
+    "maxAttemptsPerAgent": 2,
+    "escalationMatrix": {
+      "coder": "build",
+      "build": "architect",
+      "explorer": "librarian"
+    },
+    "requireExplicitHandoff": true
+  },
+  "ui": {
+    "showDelegationWarnings": true,
+    "showTodoReminders": true,
+    "showMemoryConfirmations": true,
+    "verboseLogging": true,
+    "autoUpdateCheck": true
+  },
+  "perAgentRestrictions": {},
+  "orchestration": {
+    "enabled": true,
+    "max_parallel_workstreams": 5,
+    "queue_directory": "~/.orxa-queue",
+    "auto_merge": true,
+    "conflict_resolution_agent": "architect",
+    "worktree_prefix": "orxa",
+    "cleanup_worktrees": true,
+    "require_merge_approval": false,
+    "workstream_timeout_minutes": 120,
+    "retry_failed_workstreams": false,
+    "max_retries": 2,
+    "queue_poll_interval_ms": 5000
+  }
+}
