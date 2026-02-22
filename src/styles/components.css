@@ -86,7 +86,7 @@
 
 .todos-drawer {
   margin: 0 var(--space-4);
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--bg-raised);
   overflow: hidden;
@@ -112,11 +112,19 @@
 
 .todos-drawer-toggle small {
   color: var(--text-dim);
-  font-size: 0.76rem;
+  font-size: 0.68rem;
+  min-width: 14px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  border-radius: 4px 4px 0 0;
 }
 
 .todos-drawer-body {
-  border-top: 1px solid var(--border);
   padding: 10px 12px;
 }
 
@@ -439,12 +447,14 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-raised);
-  padding: 6px 12px;
-  font-size: 0.8rem;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .dashboard-models span small {
@@ -1202,10 +1212,18 @@
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
+  max-height: 380px;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-height 340ms ease, opacity 340ms ease, transform 340ms ease;
 }
 
 .terminal-panel.closed {
-  display: none;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(18px);
+  pointer-events: none;
 }
 
 .terminal-header {
@@ -1650,8 +1668,9 @@
   gap: var(--space-3);
 }
 
+/* Note: Keep gap consistent regardless of AGENTS.md presence to maintain layout stability */
 .project-agents-section.project-agents-empty {
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .project-agents-actions {
@@ -1691,6 +1710,12 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.titlebar-menu button,
+.title-overflow-menu button {
+  font-size: 0.8rem;
+  line-height: 1.2;
 }
 
 .skill-use-body {

@@ -169,8 +169,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
         </div>
       ) : null}
 
-      <div className="composer-divider" />
-
       <div className="composer-controls">
         <label className="agent-mode-toggle plan-toggle-inline">
           <input

@@ -292,6 +292,21 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeGitCheckoutBranch, async (_event, directory: unknown, branch: unknown) =>
     service.gitCheckoutBranch(assertString(directory, "directory"), assertString(branch, "branch")),
   );
+  ipcMain.handle(IPC.opencodeGitStageAll, async (_event, directory: unknown) =>
+    service.gitStageAll(assertString(directory, "directory")),
+  );
+  ipcMain.handle(IPC.opencodeGitRestoreAllUnstaged, async (_event, directory: unknown) =>
+    service.gitRestoreAllUnstaged(assertString(directory, "directory")),
+  );
+  ipcMain.handle(IPC.opencodeGitStagePath, async (_event, directory: unknown, filePath: unknown) =>
+    service.gitStagePath(assertString(directory, "directory"), assertString(filePath, "filePath")),
+  );
+  ipcMain.handle(IPC.opencodeGitRestorePath, async (_event, directory: unknown, filePath: unknown) =>
+    service.gitRestorePath(assertString(directory, "directory"), assertString(filePath, "filePath")),
+  );
+  ipcMain.handle(IPC.opencodeGitUnstagePath, async (_event, directory: unknown, filePath: unknown) =>
+    service.gitUnstagePath(assertString(directory, "directory"), assertString(filePath, "filePath")),
+  );
   ipcMain.handle(IPC.opencodeListSkills, async () => service.listSkills());
   ipcMain.handle(IPC.opencodeReadAgentsMd, async (_event, directory: unknown) =>
     service.readAgentsMd(assertString(directory, "directory")),
@@ -301,6 +316,9 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(IPC.opencodeListFiles, async (_event, directory: unknown, relativePath?: unknown) =>
     service.listFiles(assertString(directory, "directory"), typeof relativePath === "string" ? relativePath : undefined),
+  );
+  ipcMain.handle(IPC.opencodeCountProjectFiles, async (_event, directory: unknown) =>
+    service.countProjectFiles(assertString(directory, "directory")),
   );
   ipcMain.handle(IPC.opencodeReadProjectFile, async (_event, directory: unknown, relativePath: unknown) =>
     service.readProjectFile(assertString(directory, "directory"), assertString(relativePath, "relativePath")),

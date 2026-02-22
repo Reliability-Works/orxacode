@@ -194,6 +194,55 @@ export function useGitPanel(activeProjectDir: string | null) {
     [activeProjectDir],
   );
 
+  const stageAllChanges = useCallback(async () => {
+    if (!activeProjectDir) {
+      return;
+    }
+    await window.orxa.opencode.gitStageAll(activeProjectDir);
+    await loadGitDiff();
+  }, [activeProjectDir, loadGitDiff]);
+
+  const discardAllChanges = useCallback(async () => {
+    if (!activeProjectDir) {
+      return;
+    }
+    await window.orxa.opencode.gitRestoreAllUnstaged(activeProjectDir);
+    await loadGitDiff();
+  }, [activeProjectDir, loadGitDiff]);
+
+  const stageFile = useCallback(
+    async (filePath: string) => {
+      if (!activeProjectDir) {
+        return;
+      }
+      await window.orxa.opencode.gitStagePath(activeProjectDir, filePath);
+      await loadGitDiff();
+    },
+    [activeProjectDir, loadGitDiff],
+  );
+
+  const restoreFile = useCallback(
+    async (filePath: string) => {
+      if (!activeProjectDir) {
+        return;
+      }
+      await window.orxa.opencode.gitRestorePath(activeProjectDir, filePath);
+      await loadGitDiff();
+    },
+    [activeProjectDir, loadGitDiff],
+  );
+
+  const unstageFile = useCallback(
+    async (filePath: string) => {
+      if (!activeProjectDir) {
+        return;
+      }
+      await window.orxa.opencode.gitUnstagePath(activeProjectDir, filePath);
+      await loadGitDiff();
+    },
+    [activeProjectDir, loadGitDiff],
+  );
+
   useEffect(() => {
     if (!activeProjectDir) {
       setGitPanelTab("diff");
@@ -256,5 +305,10 @@ export function useGitPanel(activeProjectDir: string | null) {
     openBranchCreateModal,
     submitBranchCreate,
     loadCommitSummary,
+    stageAllChanges,
+    discardAllChanges,
+    stageFile,
+    restoreFile,
+    unstageFile,
   };
 }

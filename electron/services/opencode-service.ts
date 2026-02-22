@@ -50,6 +50,7 @@ import { ProfileStore } from "./profile-store";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const ORXA_PLUGIN_PACKAGE = "@reliabilityworks/opencode-orxa";
 const ORXA_PLUGIN_VERSION = "1.0.43";
+const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const DEFAULT_COMMIT_GUIDANCE = [
   "Write a high-quality conventional commit message.",
   "Use this format:",
@@ -807,7 +808,7 @@ export class OpencodeService {
       ptys,
     ] = await Promise.all([
       this.unwrap(client.path.get({ directory })),
-      this.unwrap(client.session.list({ directory, limit: 120 })).catch(() => []),
+      this.unwrap(client.session.list({ directory, roots: true, limit: 120 })).catch(() => []),
       this.unwrap(client.session.status({ directory })).catch(() => ({})),
       this.unwrap(client.provider.list({ directory })).catch(() => ({ all: [], connected: [], default: {} })),
       this.unwrap(client.app.agents({ directory })).catch(() => []),
@@ -1331,6 +1332,68 @@ export class OpencodeService {
     return this.gitBranches(repoRoot);
   }
 
+  async gitStageAll(directory: string): Promise<boolean> {
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      throw new Error("Not a git repository.");
+    }
+    await this.runCommand("git", ["-C", repoRoot, "add", "-A", "--", "."], repoRoot);
+    return true;
+  }
+
+  async gitRestoreAllUnstaged(directory: string): Promise<boolean> {
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      throw new Error("Not a git repository.");
+    }
+    await this.runCommand("git", ["-C", repoRoot, "restore", "--worktree", "--", "."], repoRoot);
+    return true;
+  }
+
+  async gitStagePath(directory: string, filePath: string): Promise<boolean> {
+    const targetPath = filePath.trim();
+    if (!targetPath) {
+      throw new Error("File path is required.");
+    }
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      throw new Error("Not a git repository.");
+    }
+    await this.runCommand("git", ["-C", repoRoot, "add", "--", targetPath], repoRoot);
+    return true;
+  }
+
+  async gitRestorePath(directory: string, filePath: string): Promise<boolean> {
+    const targetPath = filePath.trim();
+    if (!targetPath) {
+      throw new Error("File path is required.");
+    }
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      throw new Error("Not a git repository.");
+    }
+    await this.runCommand("git", ["-C", repoRoot, "restore", "--worktree", "--", targetPath], repoRoot);
+    return true;
+  }
+
+  async gitUnstagePath(directory: string, filePath: string): Promise<boolean> {
+    const targetPath = filePath.trim();
+    if (!targetPath) {
+      throw new Error("File path is required.");
+    }
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      throw new Error("Not a git repository.");
+    }
+    await this.runCommand("git", ["-C", repoRoot, "restore", "--staged", "--", targetPath], repoRoot);
+    return true;
+  }
+
   async listSkills(): Promise<SkillEntry[]> {
     const root = path.join(homedir(), ".config", "opencode", "skill");
     const rootInfo = await stat(root).catch(() => undefined);
@@ -1406,11 +1469,10 @@ export class OpencodeService {
       throw new Error("Directory not found");
     }
 
-    const skipDirs = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
     const entries = await readdir(resolved, { withFileTypes: true }).catch(() => []);
     return entries
       .filter((entry) => !entry.name.startsWith(".DS_Store"))
-      .filter((entry) => !(entry.isDirectory() && skipDirs.has(entry.name)))
+      .filter((entry) => !(entry.isDirectory() && PROJECT_FILE_SKIP_DIRS.has(entry.name)))
       .sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory()) {
           return -1;
@@ -1431,6 +1493,36 @@ export class OpencodeService {
           hasChildren: entry.isDirectory() ? true : undefined,
         };
       });
+  }
+
+  async countProjectFiles(directory: string): Promise<number> {
+    const root = path.resolve(directory);
+    const info = await stat(root).catch(() => undefined);
+    if (!info?.isDirectory()) {
+      throw new Error("Directory not found");
+    }
+
+    const countDirectory = async (directoryPath: string): Promise<number> => {
+      const entries = await readdir(directoryPath, { withFileTypes: true }).catch(() => []);
+      let total = 0;
+      for (const entry of entries) {
+        if (entry.name.startsWith(".DS_Store")) {
+          continue;
+        }
+        const absolutePath = path.join(directoryPath, entry.name);
+        if (entry.isDirectory()) {
+          if (PROJECT_FILE_SKIP_DIRS.has(entry.name)) {
+            continue;
+          }
+          total += await countDirectory(absolutePath);
+          continue;
+        }
+        total += 1;
+      }
+      return total;
+    };
+
+    return countDirectory(root);
   }
 
   async readProjectFile(directory: string, relativePath: string): Promise<ProjectFileDocument> {

@@ -11,8 +11,6 @@ type OpenTargetOption = {
 };
 
 type ContentTopBarProps = {
-  showProjectsPane: boolean;
-  setProjectsSidebarVisible: (visible: boolean) => void;
   showOperationsPane: boolean;
   setOperationsPaneVisible: (visible: boolean) => void;
   activeProjectDir: string | null;
@@ -33,8 +31,6 @@ type ContentTopBarProps = {
 };
 
 export function ContentTopBar({
-  showProjectsPane,
-  setProjectsSidebarVisible,
   showOperationsPane,
   setOperationsPaneVisible,
   activeProjectDir,
@@ -57,12 +53,6 @@ export function ContentTopBar({
 
   return (
     <div className="content-edge-controls">
-      <IconButton
-        icon="panelLeft"
-        label={showProjectsPane ? "Hide workspaces sidebar" : "Show workspaces sidebar"}
-        className={`titlebar-toggle titlebar-toggle-left ${showProjectsPane ? "active" : ""}`.trim()}
-        onClick={() => setProjectsSidebarVisible(!showProjectsPane)}
-      />
       <div className="content-edge-right-actions">
         <div className={`titlebar-split titlebar-open ${openMenuOpen ? "open" : ""}`.trim()}>
           <button
@@ -92,7 +82,7 @@ export function ContentTopBar({
             title="Open in options"
             disabled={!hasProjectContext}
           >
-            <ChevronsUpDown size={13} aria-hidden="true" />
+            <ChevronsUpDown size={12} aria-hidden="true" />
           </button>
           {openMenuOpen ? (
             <div className="titlebar-menu">
@@ -121,7 +111,7 @@ export function ContentTopBar({
             disabled={!hasProjectContext}
           >
             <span className="titlebar-action-logo">
-              <GitCommitHorizontal size={14} aria-hidden="true" />
+              <GitCommitHorizontal size={13} aria-hidden="true" />
             </span>
             <span>Commit</span>
           </button>
@@ -137,7 +127,7 @@ export function ContentTopBar({
             title="Commit options"
             disabled={!hasProjectContext}
           >
-            <ChevronsUpDown size={13} aria-hidden="true" />
+            <ChevronsUpDown size={12} aria-hidden="true" />
           </button>
           {commitMenuOpen ? (
             <div className="titlebar-menu">
@@ -161,13 +151,13 @@ export function ContentTopBar({
 
         <IconButton
           icon="terminal"
-          label={terminalOpen ? "Hide terminal" : "Show terminal"}
+          label="Toggle terminal"
           className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
           onClick={() => void toggleTerminal()}
         />
         <IconButton
           icon="panelRight"
-          label={showOperationsPane ? "Hide operations sidebar" : "Show operations sidebar"}
+          label="Toggle right sidebar"
           className={`titlebar-toggle titlebar-toggle-right ${showOperationsPane ? "active" : ""}`.trim()}
           onClick={() => setOperationsPaneVisible(!showOperationsPane)}
         />

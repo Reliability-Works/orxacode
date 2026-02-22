@@ -84,7 +84,8 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   return (
     <aside className="sidebar projects-pane">
-      <nav className="sidebar-mode-links" aria-label="Sidebar mode">
+      <div className="sidebar-inner">
+        <nav className="sidebar-mode-links" aria-label="Sidebar mode">
         <button
           type="button"
           className={sidebarMode === "jobs" ? "active" : ""}
@@ -309,6 +310,7 @@ export function WorkspaceSidebar({
       <div className="sidebar-footer-actions">
         <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
         <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
+      </div>
       </div>
     </aside>
   );

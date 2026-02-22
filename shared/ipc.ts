@@ -59,10 +59,16 @@ export const IPC = {
   opencodeGitCommit: "orxa:opencode:gitCommit",
   opencodeGitBranches: "orxa:opencode:gitBranches",
   opencodeGitCheckoutBranch: "orxa:opencode:gitCheckoutBranch",
+  opencodeGitStageAll: "orxa:opencode:gitStageAll",
+  opencodeGitRestoreAllUnstaged: "orxa:opencode:gitRestoreAllUnstaged",
+  opencodeGitStagePath: "orxa:opencode:gitStagePath",
+  opencodeGitRestorePath: "orxa:opencode:gitRestorePath",
+  opencodeGitUnstagePath: "orxa:opencode:gitUnstagePath",
   opencodeListSkills: "orxa:opencode:listSkills",
   opencodeReadAgentsMd: "orxa:opencode:readAgentsMd",
   opencodeWriteAgentsMd: "orxa:opencode:writeAgentsMd",
   opencodeListFiles: "orxa:opencode:listFiles",
+  opencodeCountProjectFiles: "orxa:opencode:countProjectFiles",
   opencodeReadProjectFile: "orxa:opencode:readProjectFile",
   orxaReadConfig: "orxa:orxa:readConfig",
   orxaWriteConfig: "orxa:orxa:writeConfig",
@@ -398,10 +404,16 @@ export interface OrxaBridge {
     gitCommit: (directory: string, request: GitCommitRequest) => Promise<GitCommitResult>;
     gitBranches: (directory: string) => Promise<GitBranchState>;
     gitCheckoutBranch: (directory: string, branch: string) => Promise<GitBranchState>;
+    gitStageAll: (directory: string) => Promise<boolean>;
+    gitRestoreAllUnstaged: (directory: string) => Promise<boolean>;
+    gitStagePath: (directory: string, filePath: string) => Promise<boolean>;
+    gitRestorePath: (directory: string, filePath: string) => Promise<boolean>;
+    gitUnstagePath: (directory: string, filePath: string) => Promise<boolean>;
     listSkills: () => Promise<SkillEntry[]>;
     readAgentsMd: (directory: string) => Promise<AgentsDocument>;
     writeAgentsMd: (directory: string, content: string) => Promise<AgentsDocument>;
     listFiles: (directory: string, relativePath?: string) => Promise<ProjectFileEntry[]>;
+    countProjectFiles: (directory: string) => Promise<number>;
     readProjectFile: (directory: string, relativePath: string) => Promise<ProjectFileDocument>;
     readOrxaConfig: () => Promise<RawConfigDocument>;
     writeOrxaConfig: (content: string) => Promise<RawConfigDocument>;

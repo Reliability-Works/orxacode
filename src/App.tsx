@@ -32,6 +32,7 @@ import type {
 } from "@shared/ipc";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { IconButton } from "./components/IconButton";
 import { ContentTopBar } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
@@ -372,6 +373,11 @@ export default function App() {
     loadGitLog,
     loadGitIssues,
     loadGitPrs,
+    stageAllChanges,
+    discardAllChanges,
+    stageFile,
+    restoreFile,
+    unstageFile,
     checkoutBranch,
     openBranchCreateModal,
     submitBranchCreate,
@@ -1252,6 +1258,9 @@ export default function App() {
   const currentSessionStatus = activeSessionID ? projectData?.sessionStatus[activeSessionID] : undefined;
   const isSessionBusy = currentSessionStatus?.type === "busy" || currentSessionStatus?.type === "retry";
   const showingProjectDashboard = Boolean(activeProjectDir && !activeSessionID);
+  const contentPaneTitle = showingProjectDashboard
+    ? activeProject?.name || activeProjectDir?.split("/").at(-1) || "No workspace selected"
+    : activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
@@ -1271,8 +1280,10 @@ export default function App() {
       ({
         "--left-pane-width": `${leftPaneWidth}px`,
         "--right-pane-width": `${rightPaneWidth}px`,
+        "--left-pane-visible": showProjectsPane ? 1 : 0,
+        "--right-pane-visible": showOperationsPane ? 1 : 0,
       }) as CSSProperties,
-    [leftPaneWidth, rightPaneWidth],
+    [leftPaneWidth, rightPaneWidth, showOperationsPane, showProjectsPane],
   );
 
   useEffect(() => {
@@ -1518,7 +1529,7 @@ export default function App() {
     <div className="app-shell">
       <div className="window-drag-region" />
       <div className={workspaceClassName} style={workspaceStyle}>
-        {showProjectsPane ? (
+        <div className={`workspace-left-pane ${showProjectsPane ? "open" : "collapsed"}`.trim()}>
           <WorkspaceSidebar
             sidebarMode={sidebarMode}
             setSidebarMode={setSidebarMode}
@@ -1552,21 +1563,26 @@ export default function App() {
             setProfileModalOpen={setProfileModalOpen}
             setSettingsOpen={setSettingsOpen}
           />
-        ) : null}
-        {showProjectsPane ? (
-          <button
-            type="button"
-            className="sidebar-resizer sidebar-resizer-left"
-            aria-label="Resize workspaces sidebar"
-            onMouseDown={(event) => startSidebarResize("left", event)}
+        </div>
+        {hasProjectContext ? (
+          <IconButton
+            icon="panelLeft"
+            label="Toggle left sidebar"
+            className={`workspace-left-toggle titlebar-toggle ${showProjectsPane ? "expanded" : "collapsed"}`.trim()}
+            onClick={() => setProjectsSidebarVisible(!showProjectsPane)}
           />
         ) : null}
+        <button
+          type="button"
+          className={`sidebar-resizer sidebar-resizer-left ${showProjectsPane ? "" : "is-collapsed"}`.trim()}
+          aria-label="Resize workspaces sidebar"
+          onMouseDown={(event) => startSidebarResize("left", event)}
+          disabled={!showProjectsPane}
+        />
 
-        <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"}`.trim()}>
+        <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"} ${showProjectsPane ? "" : "content-pane-left-collapsed"}`.trim()}>
           {hasProjectContext ? (
             <ContentTopBar
-              showProjectsPane={showProjectsPane}
-              setProjectsSidebarVisible={setProjectsSidebarVisible}
               showOperationsPane={showOperationsPane}
               setOperationsPaneVisible={(visible) =>
                 setAppPreferences((current) => ({
@@ -1617,14 +1633,14 @@ export default function App() {
             <>
               <div className="content-header">
                 <div className="content-title-row">
-                  <h2>{activeProject?.name || activeProjectDir?.split("/").at(-1) || "No workspace selected"}</h2>
+                  <h2 className="content-pane-title">{contentPaneTitle}</h2>
                   {!showingProjectDashboard ? (
                     <>
                       <button
                         type="button"
                         className="title-overflow-button"
                         aria-label="Session and workspace actions"
-                        title="Session and workspace actions"
+                        title="Session actions"
                         onClick={() => {
                           setTitleMenuOpen((value) => !value);
                           setOpenMenuOpen(false);
@@ -1846,33 +1862,39 @@ export default function App() {
             />
           )}
         </main>
-        {showOperationsPane ? (
+        {hasProjectContext ? (
           <button
             type="button"
-            className="sidebar-resizer sidebar-resizer-right"
-            aria-label="Resize operations sidebar"
-            onMouseDown={(event) => startSidebarResize("right", event)}
+            className={`sidebar-resizer sidebar-resizer-right ${showOperationsPane ? "" : "is-collapsed"}`.trim()}
+            aria-label="Operations sidebar spacer"
+            disabled
           />
         ) : null}
-
-        {showOperationsPane ? (
-          <OpsSidebar
-            opsPanelTab={opsPanelTab}
-            setOpsPanelTab={setOpsPanelTab}
-            gitPanelTab={gitPanelTab}
-            setGitPanelTab={setGitPanelTab}
-            gitPanelOutput={gitPanelOutput}
-            branchState={branchState}
-            branchQuery={branchQuery}
-            setBranchQuery={setBranchQuery}
-            activeProjectDir={activeProjectDir ?? null}
-            onLoadGitDiff={loadGitDiff}
-            onLoadGitLog={loadGitLog}
-            onLoadGitIssues={loadGitIssues}
-            onLoadGitPrs={loadGitPrs}
-            onAddToChatPath={appendPathToComposer}
-            onStatusChange={setStatusLine}
-          />
+        {hasProjectContext ? (
+          <div className={`workspace-right-pane ${showOperationsPane ? "open" : "collapsed"}`.trim()}>
+            <OpsSidebar
+              opsPanelTab={opsPanelTab}
+              setOpsPanelTab={setOpsPanelTab}
+              gitPanelTab={gitPanelTab}
+              setGitPanelTab={setGitPanelTab}
+              gitPanelOutput={gitPanelOutput}
+              branchState={branchState}
+              branchQuery={branchQuery}
+              setBranchQuery={setBranchQuery}
+              activeProjectDir={activeProjectDir ?? null}
+              onLoadGitDiff={loadGitDiff}
+              onLoadGitLog={loadGitLog}
+              onLoadGitIssues={loadGitIssues}
+              onLoadGitPrs={loadGitPrs}
+              onStageAllChanges={stageAllChanges}
+              onDiscardAllChanges={discardAllChanges}
+              onStageFile={stageFile}
+              onRestoreFile={restoreFile}
+              onUnstageFile={unstageFile}
+              onAddToChatPath={appendPathToComposer}
+              onStatusChange={setStatusLine}
+            />
+          </div>
         ) : null}
       </div>
 
