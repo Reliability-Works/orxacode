@@ -29,9 +29,9 @@ export function TerminalPanel({ directory, ptyID, open, onCreate }: Props) {
       lineHeight: 1.45,
       cursorBlink: true,
       theme: {
-        background: "#071018",
+        background: "#0d1117",
         foreground: "#d5e3f0",
-        cursor: "#7fd1ff",
+        cursor: "#ffffff",
         black: "#041018",
         red: "#ff6f91",
         green: "#70f1b6",
@@ -86,7 +86,7 @@ export function TerminalPanel({ directory, ptyID, open, onCreate }: Props) {
     }
 
     const terminal = terminalRef.current;
-    terminal.writeln("\u001b[36mConnecting terminal...\u001b[0m");
+    terminal.writeln("\u001b[37mConnecting terminal...\u001b[0m");
 
     void window.orxa.terminal.connect(directory, ptyID).then(() => {
       terminal.writeln("\u001b[32mTerminal connected\u001b[0m");

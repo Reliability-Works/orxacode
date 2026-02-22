@@ -1,25 +1,29 @@
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 :root {
-  --bg-app: hsl(220 8% 10%);
-  --bg-sidebar: hsl(220 8% 16%);
-  --bg-surface: hsl(220 8% 12%);
-  --bg-raised: hsl(220 10% 20%);
-  --bg-terminal: hsl(220 12% 8%);
-  --text-primary: hsl(220 20% 95%);
-  --text-main: hsl(220 20% 95%);
-  --text-muted: hsl(220 10% 70%);
-  --text-dim: hsl(220 10% 54%);
-  --accent: hsl(192 95% 66%);
-  --accent-strong: hsl(194 99% 56%);
+  --bg-app: hsl(220 8% 8%);
+  --bg-sidebar: hsl(220 8% 12%);
+  --bg-surface: hsl(220 8% 8%);
+  --bg-raised: hsl(220 10% 16%);
+  --bg-terminal: hsl(220 12% 6%);
+  --text-primary: hsl(220 20% 96%);
+  --text-main: hsl(220 20% 96%);
+  --text-muted: hsl(220 10% 65%);
+  --text-dim: hsl(220 10% 45%);
+  --accent: hsl(220 20% 80%);
+  --accent-strong: hsl(220 20% 100%);
   --success: hsl(151 72% 60%);
   --warning: hsl(43 95% 66%);
   --danger: hsl(347 89% 67%);
-  --border: hsl(213 28% 24%);
-  --shadow: 0 16px 45px hsl(217 63% 4% / 0.55);
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
+  --border: hsl(220 12% 20%);
+  --border-hover: hsl(220 12% 30%);
+  --border-active: hsl(220 15% 45%);
+  --bg-hover: hsl(220 10% 20% / 0.4);
+  --bg-active: hsl(220 10% 25% / 0.6);
+  --shadow: 0 16px 45px hsl(220 40% 2% / 0.55);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -42,13 +46,10 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(circle at 10% 8%, hsl(193 77% 21% / 0.25), transparent 32%),
-    radial-gradient(circle at 85% 16%, hsl(199 91% 21% / 0.2), transparent 36%),
-    linear-gradient(180deg, hsl(212 56% 7%), hsl(216 48% 6%));
+  background: var(--bg-app);
   color: var(--text-primary);
   font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -63,16 +64,16 @@ textarea {
 button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: linear-gradient(180deg, hsl(213 30% 21%), hsl(213 27% 16%));
+  background: var(--bg-raised);
   color: var(--text-primary);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition: all 120ms ease;
 }
 
 button:hover {
-  border-color: hsl(194 65% 53% / 0.55);
-  transform: translateY(-1px);
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
 }
 
 button:disabled {
@@ -97,8 +98,8 @@ button:disabled {
 
 button.danger,
 button[class*="danger"] {
-  border-color: hsl(347 76% 43%);
-  background: linear-gradient(180deg, hsl(347 57% 26%), hsl(347 60% 20%));
+  border-color: var(--danger);
+  background: var(--danger); color: #fff;
 }
 
 input,
@@ -106,7 +107,7 @@ select,
 textarea {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: hsl(212 30% 13%);
+  background: var(--bg-raised);
   padding: 10px 12px;
 }
 
@@ -116,6 +117,6 @@ textarea {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--border-active);
   outline-offset: 1px;
 }

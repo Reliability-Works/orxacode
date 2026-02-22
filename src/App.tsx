@@ -262,14 +262,6 @@ const JOB_TEMPLATES: JobTemplate[] = [
   },
 ];
 
-function truncateLabel(value: string, maxLength = 19) {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength).trimEnd()}...`;
-}
-
 function shouldAutoRenameSessionTitle(title: string | undefined) {
   if (!title) {
     return true;
@@ -518,7 +510,7 @@ export default function App() {
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const [leftPaneWidth, setLeftPaneWidth] = useState<number>(() => {
     const parsed = Number(window.localStorage.getItem(SIDEBAR_LEFT_WIDTH_KEY));
-    return Number.isFinite(parsed) && parsed >= 230 ? parsed : 300;
+    return Number.isFinite(parsed) && parsed >= 280 ? parsed : 300;
   });
   const [rightPaneWidth, setRightPaneWidth] = useState<number>(() => {
     const parsed = Number(window.localStorage.getItem(SIDEBAR_RIGHT_WIDTH_KEY));
@@ -584,7 +576,7 @@ export default function App() {
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
-  const [opsPanelTab, setOpsPanelTab] = useState<"operations" | "git" | "files">("operations");
+  const [opsPanelTab, setOpsPanelTab] = useState<"operations" | "git" | "files">("git");
   const [gitPanelTab, setGitPanelTab] = useState<"diff" | "log" | "issues" | "prs">("diff");
   const [gitPanelOutput, setGitPanelOutput] = useState("Select DIFF or LOG.");
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
@@ -620,8 +612,14 @@ export default function App() {
   const [branchQuery, setBranchQuery] = useState("");
   const [branchLoading, setBranchLoading] = useState(false);
   const [branchSwitching, setBranchSwitching] = useState(false);
+  const [branchCreateModalOpen, setBranchCreateModalOpen] = useState(false);
+  const [branchCreateName, setBranchCreateName] = useState("");
+  const [branchCreateError, setBranchCreateError] = useState<string | null>(null);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState("");
+  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const [dashboard, setDashboard] = useState<DashboardState>({
     loading: false,
@@ -770,6 +768,21 @@ export default function App() {
     }
     return branches.filter((branch) => branch.toLowerCase().includes(query));
   }, [branchQuery, branchState]);
+
+  const availableSlashCommands = useMemo(() => {
+    return projectData?.commands ?? [];
+  }, [projectData?.commands]);
+
+  const filteredSlashCommands = useMemo(() => {
+    const query = slashQuery.toLowerCase();
+    if (!query) {
+      return availableSlashCommands;
+    }
+    return availableSlashCommands.filter((cmd) =>
+      cmd.name.toLowerCase().includes(query) ||
+      (cmd.description?.toLowerCase().includes(query) ?? false)
+    );
+  }, [availableSlashCommands, slashQuery]);
   const selectedModelPayload = useMemo(() => {
     if (!selectedModel) {
       return undefined;
@@ -1376,7 +1389,13 @@ export default function App() {
       const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
       const sessions7d = sessionTimes.filter((time) => time >= sevenDaysAgo).length;
       const sessions30d = sessionTimes.filter((time) => time >= thirtyDaysAgo).length;
-      const topModels = [...modelUsage.entries()]
+      // Group models by trimmed name (without provider prefix)
+      const groupedModels = new Map<string, number>();
+      for (const [model, count] of modelUsage.entries()) {
+        const trimmed = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;
+        groupedModels.set(trimmed, (groupedModels.get(trimmed) ?? 0) + count);
+      }
+      const topModels = [...groupedModels.entries()]
         .map(([model, count]) => ({ model, count }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 6);
@@ -1487,10 +1506,18 @@ export default function App() {
         tokenOutput30d,
         tokenCacheRead30d,
         totalCost30d,
-        topModels: [...modelUsage.entries()]
-          .map(([model, count]) => ({ model, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 6),
+        topModels: (() => {
+          // Group models by trimmed name (without provider prefix)
+          const groupedModels = new Map<string, number>();
+          for (const [model, count] of modelUsage.entries()) {
+            const trimmed = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;
+            groupedModels.set(trimmed, (groupedModels.get(trimmed) ?? 0) + count);
+          }
+          return [...groupedModels.entries()]
+            .map(([model, count]) => ({ model, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 6);
+        })(),
         daySeries: buildDaySeries(tokenSeriesPoints),
         recentSessions,
       });
@@ -2182,6 +2209,9 @@ export default function App() {
     };
   }, [leftPaneWidth, rightPaneWidth]);
 
+  const MIN_LEFT_PANE_WIDTH = 280;
+  const MAX_LEFT_PANE_WIDTH = 520;
+
   useEffect(() => {
     const onMouseMove = (event: globalThis.MouseEvent) => {
       const state = resizeStateRef.current;
@@ -2189,7 +2219,7 @@ export default function App() {
         return;
       }
       if (state.side === "left") {
-        const next = Math.max(240, Math.min(520, state.startWidth + (event.clientX - state.startX)));
+        const next = Math.max(MIN_LEFT_PANE_WIDTH, Math.min(MAX_LEFT_PANE_WIDTH, state.startWidth + (event.clientX - state.startX)));
         setLeftPaneWidth(next);
         return;
       }
@@ -2222,6 +2252,71 @@ export default function App() {
       branchSearchInputRef.current?.focus();
     }, 0);
   }, [branchMenuOpen]);
+
+  const handleComposerChange = useCallback((value: string) => {
+    setComposer(value);
+
+    // Check for slash command trigger
+    const lines = value.split('\n');
+    const currentLine = lines[lines.length - 1];
+
+    if (currentLine.startsWith('/') && !currentLine.includes(' ')) {
+      const query = currentLine.slice(1);
+      setSlashQuery(query);
+      setSlashMenuOpen(true);
+      setSlashSelectedIndex(0);
+    } else {
+      // Use functional update to always get latest state
+      setSlashMenuOpen((open) => {
+        if (open) return false;
+        return open;
+      });
+    }
+  }, []);
+
+  const insertSlashCommand = useCallback((commandName: string) => {
+    setComposer((prev) => {
+      const lines = prev.split('\n');
+      lines[lines.length - 1] = `/${commandName} `;
+      return lines.join('\n');
+    });
+    setSlashMenuOpen(false);
+    setSlashQuery('');
+  }, []);
+
+  // Keep slash command list in a ref to avoid stale closures in key handlers
+  const filteredSlashCommandsRef = useRef(filteredSlashCommands);
+  useEffect(() => {
+    filteredSlashCommandsRef.current = filteredSlashCommands;
+  }, [filteredSlashCommands]);
+
+  const slashSelectedIndexRef = useRef(slashSelectedIndex);
+  useEffect(() => {
+    slashSelectedIndexRef.current = slashSelectedIndex;
+  }, [slashSelectedIndex]);
+
+  const handleSlashKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      const commands = filteredSlashCommandsRef.current;
+      setSlashSelectedIndex((current) =>
+        current < commands.length - 1 ? current + 1 : current
+      );
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setSlashSelectedIndex((current) => (current > 0 ? current - 1 : 0));
+    } else if (event.key === 'Enter' || event.key === 'Tab') {
+      event.preventDefault();
+      const commands = filteredSlashCommandsRef.current;
+      const selectedIdx = slashSelectedIndexRef.current;
+      const command = commands[selectedIdx];
+      if (command) {
+        insertSlashCommand(command.name);
+      }
+    } else if (event.key === 'Escape') {
+      setSlashMenuOpen(false);
+    }
+  }, [insertSlashCommand]);
 
   const togglePlanMode = useCallback(
     (enabled: boolean) => {
@@ -2569,21 +2664,30 @@ export default function App() {
     [activeProjectDir, branchState, gitPanelTab, loadGitDiff, loadGitIssues, loadGitLog, loadGitPrs, opsPanelTab],
   );
 
-  const createAndCheckoutBranch = useCallback(async () => {
+  const openBranchCreateModal = useCallback(() => {
+    const query = branchQuery.trim();
+    setBranchCreateName(query);
+    setBranchCreateError(null);
+    setBranchCreateModalOpen(true);
+    setBranchMenuOpen(false);
+  }, [branchQuery]);
+
+  const submitBranchCreate = useCallback(async () => {
+    const candidate = branchCreateName.trim();
+    if (!candidate) {
+      setBranchCreateError("Branch name is required");
+      return;
+    }
     const existing = new Set(branchState?.branches ?? []);
-    let candidate = branchQuery.trim();
-    if (!candidate) {
-      candidate = window.prompt("Create and checkout new branch", "")?.trim() ?? "";
-    }
-    if (!candidate) {
-      return;
-    }
     if (existing.has(candidate)) {
-      setStatusLine(`Branch "${candidate}" already exists`);
+      setBranchCreateError(`Branch "${candidate}" already exists`);
       return;
     }
+    setBranchCreateModalOpen(false);
+    setBranchCreateName("");
+    setBranchCreateError(null);
     await checkoutBranch(candidate);
-  }, [branchQuery, branchState?.branches, checkoutBranch]);
+  }, [branchCreateName, branchState?.branches, checkoutBranch]);
 
   const openDirectoryInTarget = useCallback(
     async (target: OpenTarget) => {
@@ -2900,7 +3004,7 @@ export default function App() {
                             <span className="project-row-arrow" aria-hidden="true">
                               {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </span>
-                            <span>{truncateLabel(projectLabel)}</span>
+                            <span className="project-label-text">{projectLabel}</span>
                           </button>
                           <button
                             type="button"
@@ -2933,7 +3037,7 @@ export default function App() {
                                   title={session.title || session.slug}
                                 >
                                   <span className={`session-status-indicator ${busy ? "busy" : "idle"}`} aria-hidden="true" />
-                                  <span>{truncateLabel(session.title || session.slug, 22)}</span>
+                                  <span>{session.title || session.slug}</span>
                                 </button>
                               );
                             })}
@@ -3255,17 +3359,30 @@ export default function App() {
                       <textarea
                         placeholder="Send message to Orxa"
                         value={composer}
-                        onChange={(event) => setComposer(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            if (isSessionBusy) {
-                              void abortActiveSession();
-                            } else {
-                              void sendPrompt();
+                      onChange={(event) => handleComposerChange(event.target.value)}
+                      onKeyDown={(event) => {
+                        // Handle slash command navigation first
+                        if (slashMenuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Tab' || event.key === 'Escape')) {
+                          handleSlashKeyDown(event);
+                          return;
+                        }
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          // If slash menu is open, select the current command
+                          if (slashMenuOpen) {
+                            const command = filteredSlashCommands[slashSelectedIndex];
+                            if (command) {
+                              insertSlashCommand(command.name);
                             }
+                            return;
                           }
-                        }}
+                          if (isSessionBusy) {
+                            void abortActiveSession();
+                          } else {
+                            void sendPrompt();
+                          }
+                        }
+                      }}
                       />
                       <div className="composer-input-actions">
                         <IconButton icon="image" label="Attach image" onClick={() => void pickImageAttachment()} />
@@ -3277,6 +3394,25 @@ export default function App() {
                         />
                       </div>
                     </div>
+
+                    {slashMenuOpen && filteredSlashCommands.length > 0 ? (
+                      <div className="slash-command-menu">
+                        <small>Commands</small>
+                        <div className="slash-command-list">
+                          {filteredSlashCommands.map((command, index) => (
+                            <button
+                              key={command.name}
+                              type="button"
+                              className={index === slashSelectedIndex ? "active" : ""}
+                              onClick={() => insertSlashCommand(command.name)}
+                            >
+                              <span className="slash-command-name">/{command.name}</span>
+                              <span className="slash-command-desc">{command.description}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     {composerAttachments.length > 0 ? (
                       <div className="composer-attachments">
@@ -3366,7 +3502,7 @@ export default function App() {
                               type="button"
                               className="composer-branch-create"
                               disabled={branchLoading || branchSwitching}
-                              onClick={() => void createAndCheckoutBranch()}
+                              onClick={() => void openBranchCreateModal()}
                             >
                               <Plus size={14} aria-hidden="true" />
                               Create and checkout new branch...
@@ -3482,12 +3618,6 @@ export default function App() {
                 label="Files"
                 className={`tab-icon ${opsPanelTab === "files" ? "active" : ""}`.trim()}
                 onClick={() => setOpsPanelTab("files")}
-              />
-              <IconButton
-                icon="ops"
-                label="Operations"
-                className={`tab-icon ${opsPanelTab === "operations" ? "active" : ""}`.trim()}
-                onClick={() => setOpsPanelTab("operations")}
               />
             </section>
 
@@ -3623,17 +3753,7 @@ export default function App() {
                   ))}
                 </section>
 
-                <section className="ops-section">
-                  <h3>Commands</h3>
-                  <ul className="command-list">
-                    {(projectData?.commands ?? []).map((command) => (
-                      <li key={command.name}>
-                        <strong>{command.name}</strong>
-                        <span>{command.description}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+
               </>
             ) : null}
           </aside>
@@ -3805,6 +3925,59 @@ export default function App() {
             </div>
             <div className="job-run-body">
               {jobRunViewerLoading ? <p className="dashboard-empty">Loading job output...</p> : <MessageFeed messages={jobRunViewerMessages} />}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {branchCreateModalOpen ? (
+        <div className="overlay" onClick={() => setBranchCreateModalOpen(false)}>
+          <section className="modal branch-create-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-header">
+              <h2>Create and checkout new branch</h2>
+              <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
+                X
+              </button>
+            </header>
+            <div className="branch-create-modal-body">
+              <label className="branch-create-field">
+                Branch name
+                <input
+                  type="text"
+                  value={branchCreateName}
+                  onChange={(event) => {
+                    setBranchCreateName(event.target.value);
+                    setBranchCreateError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void submitBranchCreate();
+                    }
+                    if (event.key === 'Escape') {
+                      setBranchCreateModalOpen(false);
+                    }
+                  }}
+                  placeholder="feature/my-new-branch"
+                  autoFocus
+                />
+              </label>
+              {branchCreateError ? (
+                <p className="branch-create-error">{branchCreateError}</p>
+              ) : null}
+              <div className="branch-create-actions">
+                <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!branchCreateName.trim() || branchSwitching}
+                  onClick={() => void submitBranchCreate()}
+                >
+                  {branchSwitching ? 'Creating...' : 'Create and checkout'}
+                </button>
+              </div>
             </div>
           </section>
         </div>

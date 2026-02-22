@@ -183,27 +183,6 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title">
-          <h2>Templates</h2>
-        </div>
-        <div className="jobs-template-grid">
-          {templates.map((template) => (
-            <article key={template.id} className="jobs-template-card">
-              <header>
-                <span className="jobs-template-icon">{templateIcon(template.icon)}</span>
-                <strong>{template.title}</strong>
-              </header>
-              <p>{template.description}</p>
-              <small>{scheduleSummary(template.schedule)}</small>
-              <button type="button" onClick={() => onUseTemplate(template)}>
-                Use template
-              </button>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="jobs-section">
-        <div className="jobs-section-title">
           <h2>Configured jobs</h2>
         </div>
         <div className="jobs-config-grid">
@@ -237,6 +216,27 @@ export function JobsBoard({
               <span>No jobs yet. Create one from a template or start from scratch.</span>
             </div>
           ) : null}
+        </div>
+      </section>
+
+      <section className="jobs-section">
+        <div className="jobs-section-title">
+          <h2>Templates</h2>
+        </div>
+        <div className="jobs-template-grid">
+          {templates.map((template) => (
+            <article key={template.id} className="jobs-template-card">
+              <header>
+                <span className="jobs-template-icon">{templateIcon(template.icon)}</span>
+                <strong>{template.title}</strong>
+              </header>
+              <p>{template.description}</p>
+              <small>{scheduleSummary(template.schedule)}</small>
+              <button type="button" onClick={() => onUseTemplate(template)}>
+                Use template
+              </button>
+            </article>
+          ))}
         </div>
       </section>
     </section>
