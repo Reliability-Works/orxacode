@@ -167,18 +167,6 @@
   color: var(--text-dim);
 }
 
-.part-reasoning {
-  color: var(--warning);
-}
-
-.part-tool-title {
-  font-size: 0.76rem;
-  margin-bottom: 8px;
-  display: flex;
-  justify-content: space-between;
-  color: var(--text-muted);
-}
-
 .part-file {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -283,11 +271,6 @@
   width: 100%;
 }
 
-.project-session-list-view {
-  display: grid;
-  gap: var(--space-2);
-}
-
 .project-session-row {
   width: 100%;
   text-align: left;
@@ -344,11 +327,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.project-sessions-more-button {
-  justify-self: start;
-  margin-top: 4px;
 }
 
 .session-list-modal {
@@ -717,6 +695,61 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+.confirm-dialog {
+  width: min(460px, 92vw);
+}
+
+.confirm-dialog-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.confirm-dialog-body p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.text-input-dialog {
+  width: min(460px, 92vw);
+}
+
+.text-input-dialog-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.text-input-dialog-field {
+  display: grid;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+
+.text-input-dialog-field input {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.text-input-dialog-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+.text-input-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 
 .profile-layout {

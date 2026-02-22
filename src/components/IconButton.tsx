@@ -7,7 +7,6 @@ type IconName =
   | "refresh"
   | "folderPlus"
   | "plus"
-  | "sync"
   | "send"
   | "image"
   | "search"
@@ -15,7 +14,6 @@ type IconName =
   | "stop"
   | "git"
   | "files"
-  | "ops"
   | "diff"
   | "log"
   | "issues"
@@ -76,15 +74,6 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
           <path d="M5 12h14" />
         </svg>
       );
-    case "sync":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-          <path d="M3 12a9 9 0 0 1 15.5-6.2" />
-          <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-          <path d="M18.5 2.8v4.5H14" />
-          <path d="M5.5 21.2v-4.5H10" />
-        </svg>
-      );
     case "send":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -138,14 +127,6 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
           <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 18 20H6A2.5 2.5 0 0 1 3.5 17.5z" />
-        </svg>
-      );
-    case "ops":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-          <path d="M4 7h16" />
-          <path d="M4 12h16" />
-          <path d="M4 17h16" />
         </svg>
       );
     case "diff":

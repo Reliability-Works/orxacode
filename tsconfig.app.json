@@ -8,6 +8,7 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
+      "~/*": ["src/*"],
       "@/*": ["src/*"],
       "@shared": ["shared/ipc.ts"],
       "@shared/*": ["shared/*"]

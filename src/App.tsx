@@ -8,49 +8,51 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import type { Part, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { parse as parseJsonc } from "jsonc-parser";
 import {
   Archive,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ChevronsUpDown,
   Copy,
   Ellipsis,
   Fingerprint,
-  GitBranch,
   GitCommitHorizontal,
-  Plus,
   Pin,
   PinOff,
   Pencil,
-  Search as SearchIcon,
   Send,
   Upload,
 } from "lucide-react";
 import type {
   AgentsDocument,
-  GitBranchState,
   ProjectListItem,
-  ProjectBootstrap,
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeState,
   SkillEntry,
   SessionMessageBundle,
 } from "@shared/ipc";
-import { IconButton } from "./components/IconButton";
+import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { ContentTopBar } from "./components/ContentTopBar";
+import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
-import { ProfileModal } from "./components/ProfileModal";
+import { OpsSidebar } from "./components/OpsSidebar";
 import { ProjectDashboard } from "./components/ProjectDashboard";
-import { ProjectFilesPanel } from "./components/ProjectFilesPanel";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
-import { JobEditorModal, JobsBoard, type JobRecord, type JobRunRecord, type JobTemplate } from "./components/JobsBoard";
+import { JobsBoard } from "./components/JobsBoard";
+import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { ConfirmDialog, type ConfirmDialogProps } from "./components/ConfirmDialog";
+import { TextInputDialog, type TextInputDialogProps } from "./components/TextInputDialog";
+import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
+import { useComposerState } from "./hooks/useComposerState";
+import { useDashboards } from "./hooks/useDashboards";
+import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
+import { usePersistedState } from "./hooks/usePersistedState";
+import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import { findFallbackModel, listAgentOptions, listModelOptions, listModelOptionsFromConfig, type ModelOption } from "./lib/models";
+import { opencodeClient } from "./lib/services/opencodeClient";
+import type { AppPreferences } from "~/types/app";
 import antigravityLogo from "./assets/app-icons/antigravity.png";
 import cursorLogo from "./assets/app-icons/cursor.png";
 import finderLogo from "./assets/app-icons/finder.png";
@@ -64,17 +66,7 @@ const INITIAL_RUNTIME: RuntimeState = {
   managedServer: false,
 };
 
-type AppPreferences = {
-  showOperationsPane: boolean;
-  autoOpenTerminalOnCreate: boolean;
-  confirmDangerousActions: boolean;
-  commitGuidancePrompt: string;
-};
-
-type CommitNextStep = "commit" | "commit_and_push" | "commit_and_create_pr";
-
 type OpenTarget = "cursor" | "antigravity" | "finder" | "terminal" | "ghostty" | "xcode" | "zed";
-type SidebarMode = "projects" | "jobs" | "skills";
 
 const DEFAULT_COMMIT_GUIDANCE_PROMPT = [
   "Write a high-quality conventional commit message.",
@@ -94,92 +86,9 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
-const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 const OPEN_TARGET_KEY = "orxa:openTarget:v1";
-const JOBS_KEY = "orxa:jobs:v1";
-const JOB_RUNS_KEY = "orxa:jobRuns:v1";
 const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
-
-type ComposerAttachment = {
-  url: string;
-  filename: string;
-  mime: string;
-  path: string;
-};
-
-type DashboardState = {
-  loading: boolean;
-  updatedAt?: number;
-  error?: string;
-  recentSessions: Array<{
-    id: string;
-    title: string;
-    project: string;
-    updatedAt: number;
-  }>;
-  sessions7d: number;
-  sessions30d: number;
-  projects: number;
-  providersConnected: number;
-  topModels: Array<{
-    model: string;
-    count: number;
-  }>;
-  tokenInput30d: number;
-  tokenOutput30d: number;
-  tokenCacheRead30d: number;
-  totalCost30d: number;
-  daySeries: Array<{
-    label: string;
-    count: number;
-  }>;
-};
-
-type ProjectDashboardState = {
-  loading: boolean;
-  updatedAt?: number;
-  error?: string;
-  sessions7d: number;
-  sessions30d: number;
-  sessionCount: number;
-  tokenInput30d: number;
-  tokenOutput30d: number;
-  tokenCacheRead30d: number;
-  totalCost30d: number;
-  topModels: Array<{
-    model: string;
-    count: number;
-  }>;
-  daySeries: Array<{
-    label: string;
-    count: number;
-  }>;
-  recentSessions: Array<{
-    id: string;
-    title: string;
-    updatedAt: number;
-    status: string;
-  }>;
-};
-
-type ContextMenuState =
-  | {
-      kind: "project";
-      x: number;
-      y: number;
-      directory: string;
-      label: string;
-    }
-  | {
-      kind: "session";
-      x: number;
-      y: number;
-      directory: string;
-      sessionID: string;
-      title: string;
-    }
-  | null;
 
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
@@ -196,6 +105,10 @@ type OpenTargetOption = {
   logo: string;
 };
 
+type TextInputDialogState = Omit<TextInputDialogProps, "isOpen" | "onCancel">;
+
+type ConfirmDialogRequest = Omit<ConfirmDialogProps, "isOpen" | "onConfirm" | "onCancel">;
+
 const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "cursor", label: "Cursor", logo: cursorLogo },
   { id: "antigravity", label: "Antigravity", logo: antigravityLogo },
@@ -204,62 +117,6 @@ const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "ghostty", label: "Ghostty", logo: ghosttyLogo },
   { id: "xcode", label: "Xcode", logo: xcodeLogo },
   { id: "zed", label: "Zed", logo: zedLogo },
-];
-
-const JOB_TEMPLATES: JobTemplate[] = [
-  {
-    id: "weekly-release-notes",
-    title: "Weekly release notes",
-    description: "Draft weekly release notes from merged PRs and include links.",
-    prompt:
-      "Draft weekly release notes from merged PRs (include links when available). Scope only the last 7 days and group by feature, fix, and infra.",
-    icon: "book",
-    schedule: { type: "daily", time: "09:00", days: [5] },
-  },
-  {
-    id: "scan-bugs",
-    title: "Scan recent commits for bugs",
-    description: "Review recent commits and flag likely regressions with severity.",
-    prompt:
-      "Scan commits from the last 24h and list likely bugs, impact, and minimal fixes. Prioritize risky changes and include file references.",
-    icon: "bug",
-    schedule: { type: "daily", time: "10:00", days: [1, 2, 3, 4, 5] },
-  },
-  {
-    id: "security-audit",
-    title: "Security scan findings",
-    description: "Run a lightweight security review and summarize findings.",
-    prompt:
-      "Perform a focused security scan of recent changes and dependencies. Report exploitable paths, confidence, and remediation steps.",
-    icon: "shield",
-    schedule: { type: "daily", time: "11:00", days: [1, 3, 5] },
-  },
-  {
-    id: "ci-failures",
-    title: "CI failure triage",
-    description: "Summarize flaky failures and propose top fixes.",
-    prompt: "Summarize CI failures in the last 24h, cluster root causes, and suggest top 3 fixes with owner recommendations.",
-    icon: "activity",
-    schedule: { type: "daily", time: "09:30", days: [1, 2, 3, 4, 5] },
-  },
-  {
-    id: "dependency-drift",
-    title: "Dependency drift check",
-    description: "Detect outdated dependencies and safe upgrade paths.",
-    prompt:
-      "Scan dependencies for security and compatibility drift; propose minimal safe updates and rollout order.",
-    icon: "package",
-    schedule: { type: "interval", intervalMinutes: 1440 },
-  },
-  {
-    id: "pr-quality",
-    title: "PR quality digest",
-    description: "Summarize recent PR quality trends and risks.",
-    prompt:
-      "Analyze merged PRs in the last week and summarize quality trends, hotspots, and high-risk areas for next sprint planning.",
-    icon: "sparkles",
-    schedule: { type: "daily", time: "16:00", days: [5] },
-  },
 ];
 
 function shouldAutoRenameSessionTitle(title: string | undefined) {
@@ -279,127 +136,6 @@ function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
     return "New session";
   }
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
-}
-
-function clampContextMenuPosition(x: number, y: number) {
-  const menuWidth = 240;
-  const menuHeight = 220;
-  const padding = 8;
-  return {
-    x: Math.max(padding, Math.min(x, window.innerWidth - menuWidth - padding)),
-    y: Math.max(padding, Math.min(y, window.innerHeight - menuHeight - padding)),
-  };
-}
-
-function buildDaySeries(points: Array<{ timestamp: number; value: number }>) {
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const slots = Array.from({ length: 7 }, (_, reverseIndex) => {
-    const index = 6 - reverseIndex;
-    const start = now - (index + 1) * MS_PER_DAY;
-    const end = start + MS_PER_DAY;
-    return {
-      start,
-      end,
-      label: new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
-      count: 0,
-    };
-  });
-
-  for (const point of points) {
-    const slot = slots.find((item) => point.timestamp >= item.start && point.timestamp < item.end);
-    if (slot) {
-      slot.count += point.value;
-    }
-  }
-
-  return slots.map((item) => ({ label: item.label, count: item.count }));
-}
-
-function summarizeStepFinishParts(parts: Part[]) {
-  let tokenInput = 0;
-  let tokenOutput = 0;
-  let tokenCacheRead = 0;
-  let cost = 0;
-  let count = 0;
-  let totalTokens = 0;
-
-  for (const part of parts) {
-    if (part.type !== "step-finish") {
-      continue;
-    }
-    tokenInput += part.tokens.input ?? 0;
-    tokenOutput += part.tokens.output ?? 0;
-    tokenCacheRead += part.tokens.cache.read ?? 0;
-    totalTokens += (part.tokens.input ?? 0) + (part.tokens.output ?? 0);
-    cost += part.cost ?? 0;
-    count += 1;
-  }
-
-  return {
-    tokenInput,
-    tokenOutput,
-    tokenCacheRead,
-    totalTokens,
-    cost,
-    count,
-  };
-}
-
-function minutesSinceMidnight(timestamp: number) {
-  const date = new Date(timestamp);
-  return date.getHours() * 60 + date.getMinutes();
-}
-
-function parseTimeToMinutes(value: string) {
-  const [hoursRaw, minutesRaw] = value.split(":");
-  const hours = Number.parseInt(hoursRaw ?? "", 10);
-  const minutes = Number.parseInt(minutesRaw ?? "", 10);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return 0;
-  }
-  return Math.max(0, Math.min(23, hours)) * 60 + Math.max(0, Math.min(59, minutes));
-}
-
-function isSameCalendarDay(left: number, right: number) {
-  const a = new Date(left);
-  const b = new Date(right);
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function isJobDueNow(job: JobRecord, now: number) {
-  if (!job.enabled) {
-    return false;
-  }
-
-  if (job.schedule.type === "interval") {
-    const intervalMs = Math.max(5, job.schedule.intervalMinutes) * 60_000;
-    if (!job.lastRunAt) {
-      return now - job.createdAt >= intervalMs;
-    }
-    return now - job.lastRunAt >= intervalMs;
-  }
-
-  const today = new Date(now).getDay();
-  if (!job.schedule.days.includes(today)) {
-    return false;
-  }
-
-  const targetMinutes = parseTimeToMinutes(job.schedule.time);
-  const nowMinutes = minutesSinceMidnight(now);
-  if (nowMinutes < targetMinutes) {
-    return false;
-  }
-
-  if (!job.lastRunAt) {
-    return true;
-  }
-
-  if (!isSameCalendarDay(job.lastRunAt, now)) {
-    return true;
-  }
-
-  return minutesSinceMidnight(job.lastRunAt) < targetMinutes;
 }
 
 function parseTodoItemsFromValue(value: unknown): OrxaTodoItem[] {
@@ -468,186 +204,134 @@ function extractOrxaTodos(messages: SessionMessageBundle[]) {
 }
 
 export default function App() {
-  const [appPreferences, setAppPreferences] = useState<AppPreferences>(() => {
-    try {
-      const raw = window.localStorage.getItem(APP_PREFERENCES_KEY);
-      if (!raw) {
-        return DEFAULT_APP_PREFERENCES;
-      }
+  const [appPreferences, setAppPreferences] = usePersistedState<AppPreferences>(APP_PREFERENCES_KEY, DEFAULT_APP_PREFERENCES, {
+    deserialize: (raw) => {
       const parsed = JSON.parse(raw) as Partial<AppPreferences>;
       return {
         ...DEFAULT_APP_PREFERENCES,
         ...parsed,
       };
-    } catch {
-      return DEFAULT_APP_PREFERENCES;
-    }
+    },
   });
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
-  const [sidebarMode, setSidebarMode] = useState<SidebarMode>("projects");
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [activeProjectDir, setActiveProjectDir] = useState<string | undefined>();
-  const [projectData, setProjectData] = useState<ProjectBootstrap | null>(null);
-  const [activeSessionID, setActiveSessionID] = useState<string | undefined>();
-  const [messages, setMessages] = useState<SessionMessageBundle[]>([]);
-  const [composer, setComposer] = useState("");
-  const [composerAttachments, setComposerAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | undefined>();
-  const [selectedModel, setSelectedModel] = useState<string | undefined>();
-  const [selectedVariant, setSelectedVariant] = useState<string | undefined>();
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalPtyID, setTerminalPtyID] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
   const [, setStatusLine] = useState<string>("Ready");
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
+  const projectLastOpenedRef = useRef<Record<string, number>>({});
+  const projectLastUpdatedRef = useRef<Record<string, number>>({});
+  const {
+    sidebarMode,
+    setSidebarMode,
+    activeProjectDir,
+    setActiveProjectDir,
+    projectData,
+    setProjectData,
+    activeSessionID,
+    setActiveSessionID,
+    messages,
+    setMessages,
+    contextMenu,
+    setContextMenu,
+    pinnedSessions,
+    collapsedProjects,
+    setCollapsedProjects,
+    refreshProject,
+    selectProject,
+    openWorkspaceDashboard,
+    refreshMessages,
+    selectSession: openSession,
+    createSession: createWorkspaceSession,
+    queueRefresh,
+    startResponsePolling,
+    stopResponsePolling,
+    togglePinSession,
+    openProjectContextMenu,
+    openSessionContextMenu,
+  } = useWorkspaceState({
+    setStatusLine,
+    terminalPtyID,
+    setTerminalOpen,
+    setTerminalPtyID,
+    messageCacheRef,
+    projectLastOpenedRef,
+    projectLastUpdatedRef,
+  });
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [projectSortOpen, setProjectSortOpen] = useState(false);
   const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("updated");
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
-  const [leftPaneWidth, setLeftPaneWidth] = useState<number>(() => {
-    const parsed = Number(window.localStorage.getItem(SIDEBAR_LEFT_WIDTH_KEY));
-    return Number.isFinite(parsed) && parsed >= 280 ? parsed : 300;
+  const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
+    deserialize: (raw) => {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 280 ? parsed : 300;
+    },
+    serialize: (value) => String(Math.round(value)),
   });
-  const [rightPaneWidth, setRightPaneWidth] = useState<number>(() => {
-    const parsed = Number(window.localStorage.getItem(SIDEBAR_RIGHT_WIDTH_KEY));
-    return Number.isFinite(parsed) && parsed >= 280 ? parsed : 340;
+  const [rightPaneWidth, setRightPaneWidth] = usePersistedState<number>(SIDEBAR_RIGHT_WIDTH_KEY, 340, {
+    deserialize: (raw) => {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 280 ? parsed : 340;
+    },
+    serialize: (value) => String(Math.round(value)),
   });
-  const [jobs, setJobs] = useState<JobRecord[]>(() => {
-    try {
-      const raw = window.localStorage.getItem(JOBS_KEY);
-      if (!raw) {
-        return [];
-      }
-      const parsed = JSON.parse(raw) as JobRecord[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-  const [jobRuns, setJobRuns] = useState<JobRunRecord[]>(() => {
-    try {
-      const raw = window.localStorage.getItem(JOB_RUNS_KEY);
-      if (!raw) {
-        return [];
-      }
-      const parsed = JSON.parse(raw) as JobRunRecord[];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-  const [jobRunViewer, setJobRunViewer] = useState<JobRunRecord | null>(null);
-  const [jobRunViewerMessages, setJobRunViewerMessages] = useState<SessionMessageBundle[]>([]);
-  const [jobRunViewerLoading, setJobRunViewerLoading] = useState(false);
-  const [jobModalOpen, setJobModalOpen] = useState(false);
-  const [jobDraft, setJobDraft] = useState<JobRecord>({
-    id: "",
-    name: "",
-    projectDir: "",
-    prompt: "",
-    schedule: { type: "daily", time: "09:00", days: [1, 2, 3, 4, 5] },
-    enabled: true,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+  const {
+    jobs,
+    jobTemplates,
+    jobEditorOpen,
+    jobDraft,
+    jobRuns,
+    unreadJobRunsCount,
+    jobRunViewer,
+    jobRunViewerMessages,
+    jobRunViewerLoading,
+    openJobEditor,
+    closeJobEditor,
+    updateJobEditor,
+    saveJobEditor,
+    removeJob,
+    toggleJobEnabled,
+    markAllJobRunsRead,
+    openJobRunViewer,
+    closeJobRunViewer,
+  } = useJobsScheduler({
+    activeProjectDir,
+    onStatus: setStatusLine,
   });
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | undefined>();
   const [skillUseModal, setSkillUseModal] = useState<{ skill: SkillEntry; projectDir: string } | null>(null);
-  const [pinnedSessions, setPinnedSessions] = useState<Record<string, string[]>>(() => {
-    try {
-      const raw = window.localStorage.getItem(PINNED_SESSIONS_KEY);
-      if (!raw) {
-        return {};
-      }
-      const parsed = JSON.parse(raw) as Record<string, string[]>;
-      if (!parsed || typeof parsed !== "object") {
-        return {};
-      }
-      return parsed;
-    } catch {
-      return {};
-    }
-  });
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
-  const [opsPanelTab, setOpsPanelTab] = useState<"operations" | "git" | "files">("git");
-  const [gitPanelTab, setGitPanelTab] = useState<"diff" | "log" | "issues" | "prs">("diff");
-  const [gitPanelOutput, setGitPanelOutput] = useState("Select DIFF or LOG.");
+  const [opsPanelTab, setOpsPanelTab] = useState<"git" | "files">("git");
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
-  const [preferredOpenTarget, setPreferredOpenTarget] = useState<OpenTarget>(() => {
-    try {
-      const raw = window.localStorage.getItem(OPEN_TARGET_KEY);
+  const [preferredOpenTarget, setPreferredOpenTarget] = usePersistedState<OpenTarget>(OPEN_TARGET_KEY, "finder", {
+    deserialize: (raw) => {
       const available = new Set<OpenTarget>(OPEN_TARGETS.map((target) => target.id));
-      if (raw && available.has(raw as OpenTarget)) {
-        return raw as OpenTarget;
-      }
-    } catch {
-      // no-op
-    }
-    return "finder";
+      return available.has(raw as OpenTarget) ? (raw as OpenTarget) : "finder";
+    },
+    serialize: (value) => value,
   });
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
-  const [commitModalOpen, setCommitModalOpen] = useState(false);
-  const [commitIncludeUnstaged, setCommitIncludeUnstaged] = useState(true);
-  const [commitMessageDraft, setCommitMessageDraft] = useState("");
-  const [commitNextStep, setCommitNextStep] = useState<CommitNextStep>("commit");
-  const [commitSummary, setCommitSummary] = useState<{
-    branch: string;
-    filesChanged: number;
-    insertions: number;
-    deletions: number;
-    repoRoot: string;
-  } | null>(null);
-  const [commitSummaryLoading, setCommitSummaryLoading] = useState(false);
-  const [commitSubmitting, setCommitSubmitting] = useState(false);
-  const [branchState, setBranchState] = useState<GitBranchState | null>(null);
-  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
-  const [branchQuery, setBranchQuery] = useState("");
-  const [branchLoading, setBranchLoading] = useState(false);
-  const [branchSwitching, setBranchSwitching] = useState(false);
-  const [branchCreateModalOpen, setBranchCreateModalOpen] = useState(false);
-  const [branchCreateName, setBranchCreateName] = useState("");
-  const [branchCreateError, setBranchCreateError] = useState<string | null>(null);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
-  const [slashQuery, setSlashQuery] = useState("");
-  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
-  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
-  const [dashboard, setDashboard] = useState<DashboardState>({
-    loading: false,
-    recentSessions: [],
-    sessions7d: 0,
-    sessions30d: 0,
-    projects: 0,
-    providersConnected: 0,
-    topModels: [],
-    tokenInput30d: 0,
-    tokenOutput30d: 0,
-    tokenCacheRead30d: 0,
-    totalCost30d: 0,
-    daySeries: buildDaySeries([]),
-  });
-  const [projectDashboard, setProjectDashboard] = useState<ProjectDashboardState>({
-    loading: false,
-    sessions7d: 0,
-    sessions30d: 0,
-    sessionCount: 0,
-    tokenInput30d: 0,
-    tokenOutput30d: 0,
-    tokenCacheRead30d: 0,
-    totalCost30d: 0,
-    topModels: [],
-    daySeries: buildDaySeries([]),
-    recentSessions: [],
-  });
+  const [textInputDialog, setTextInputDialog] = useState<TextInputDialogState | null>(null);
+  const { dashboard, projectDashboard, refreshDashboard, refreshProjectDashboard } = useDashboards(
+    projects,
+    activeProjectDir ?? null,
+    projectData,
+  );
   const [agentsDocument, setAgentsDocument] = useState<AgentsDocument | null>(null);
   const [agentsDraft, setAgentsDraft] = useState("");
   const [agentsLoading, setAgentsLoading] = useState(false);
@@ -655,18 +339,69 @@ export default function App() {
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showOperationsPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
+  const {
+    branchState,
+    gitPanelTab,
+    setGitPanelTab,
+    gitPanelOutput,
+    commitModalOpen,
+    setCommitModalOpen,
+    commitIncludeUnstaged,
+    setCommitIncludeUnstaged,
+    commitMessageDraft,
+    setCommitMessageDraft,
+    commitNextStep,
+    setCommitNextStep,
+    commitSummary,
+    commitSummaryLoading,
+    commitSubmitting,
+    setCommitSubmitting,
+    branchMenuOpen,
+    setBranchMenuOpen,
+    branchQuery,
+    setBranchQuery,
+    branchLoading,
+    branchSwitching,
+    branchCreateModalOpen,
+    setBranchCreateModalOpen,
+    branchCreateName,
+    setBranchCreateName,
+    branchCreateError,
+    setBranchCreateError,
+    loadGitDiff,
+    loadGitLog,
+    loadGitIssues,
+    loadGitPrs,
+    checkoutBranch,
+    openBranchCreateModal,
+    submitBranchCreate,
+  } = useGitPanel(activeProjectDir ?? null);
 
-  const refreshTimer = useRef<number | undefined>(undefined);
-  const responsePollTimer = useRef<number | undefined>(undefined);
   const resizeStateRef = useRef<null | { side: "left" | "right"; startX: number; startWidth: number }>(null);
-  const activeProjectDirRef = useRef<string | undefined>(undefined);
   const projectSearchInputRef = useRef<HTMLInputElement | null>(null);
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAutoCreateTried = useRef(false);
-  const runningJobIDsRef = useRef<Set<string>>(new Set());
-  const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
-  const projectLastOpenedRef = useRef<Record<string, number>>({});
-  const projectLastUpdatedRef = useRef<Record<string, number>>({});
+
+  const sessions = useMemo(() => {
+    if (!projectData) {
+      return [];
+    }
+    const pinned = new Set(pinnedSessions[projectData.directory] ?? []);
+    return [...projectData.sessions]
+      .filter((item) => !item.time.archived)
+      .sort((a, b) => {
+        const aPinned = pinned.has(a.id) ? 1 : 0;
+        const bPinned = pinned.has(b.id) ? 1 : 0;
+        if (aPinned !== bPinned) {
+          return bPinned - aPinned;
+        }
+        return b.time.updated - a.time.updated;
+      });
+  }, [pinnedSessions, projectData]);
+
+  const availableSlashCommands = useMemo(() => {
+    return projectData?.commands ?? [];
+  }, [projectData?.commands]);
 
   const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
   const serverModelOptions = useMemo(
@@ -716,43 +451,6 @@ export default function App() {
     }
     return modelOptions;
   }, [modelOptions, orxaModels.orxa, orxaModels.plan, selectedAgent]);
-  const modelSelectOptions = useMemo(() => {
-    const items = [...modelOptionsForAgent];
-    const extras = [preferredAgentModel, selectedModel].filter((value): value is string => Boolean(value));
-    for (const key of extras) {
-      if (items.some((item) => item.key === key)) {
-        continue;
-      }
-      const [providerID, ...modelParts] = key.split("/");
-      const modelID = modelParts.join("/");
-      if (!providerID || !modelID) {
-        continue;
-      }
-      items.unshift({
-        key,
-        providerID,
-        modelID,
-        providerName: providerID,
-        modelName: modelID,
-        variants: [],
-      });
-    }
-    return items;
-  }, [modelOptionsForAgent, preferredAgentModel, selectedModel]);
-  const variantOptions = useMemo(() => {
-    const model = modelSelectOptions.find((item) => item.key === selectedModel);
-    return model?.variants ?? [];
-  }, [selectedModel, modelSelectOptions]);
-  const modelDisplayValue = useMemo(() => {
-    const selected = modelSelectOptions.find((item) => item.key === selectedModel);
-    if (selected) {
-      return `${selected.providerName}/${selected.modelName}`;
-    }
-    return "Model";
-  }, [modelSelectOptions, selectedModel]);
-  const variantDisplayValue = selectedVariant && selectedVariant.trim().length > 0 ? selectedVariant : "(default)";
-  const modelSelectWidthCh = useMemo(() => Math.max(18, Math.min(44, modelDisplayValue.length + 4)), [modelDisplayValue]);
-  const variantSelectWidthCh = useMemo(() => Math.max(12, Math.min(24, variantDisplayValue.length + 4)), [variantDisplayValue]);
   const branchDisplayValue = useMemo(() => {
     if (branchLoading) {
       return "Loading branch...";
@@ -768,32 +466,6 @@ export default function App() {
     }
     return branches.filter((branch) => branch.toLowerCase().includes(query));
   }, [branchQuery, branchState]);
-
-  const availableSlashCommands = useMemo(() => {
-    return projectData?.commands ?? [];
-  }, [projectData?.commands]);
-
-  const filteredSlashCommands = useMemo(() => {
-    const query = slashQuery.toLowerCase();
-    if (!query) {
-      return availableSlashCommands;
-    }
-    return availableSlashCommands.filter((cmd) =>
-      cmd.name.toLowerCase().includes(query) ||
-      (cmd.description?.toLowerCase().includes(query) ?? false)
-    );
-  }, [availableSlashCommands, slashQuery]);
-  const selectedModelPayload = useMemo(() => {
-    if (!selectedModel) {
-      return undefined;
-    }
-    const [providerID, ...modelParts] = selectedModel.split("/");
-    const modelID = modelParts.join("/");
-    if (!providerID || !modelID) {
-      return undefined;
-    }
-    return { providerID, modelID };
-  }, [selectedModel]);
 
   const refreshProfiles = useCallback(async () => {
     const [nextRuntime, nextProfiles] = await Promise.all([window.orxa.runtime.getState(), window.orxa.runtime.listProfiles()]);
@@ -854,231 +526,76 @@ export default function App() {
     }
   }, [activeProjectDir]);
 
-  const refreshProject = useCallback(
-    async (directory: string) => {
-      try {
-        const data = await window.orxa.opencode.refreshProject(directory);
-        setProjectData(data);
-        const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
-        projectLastUpdatedRef.current[directory] = lastUpdated;
+  const {
+    composer,
+    setComposer,
+    composerAttachments,
+    selectedModel,
+    setSelectedModel,
+    selectedVariant,
+    setSelectedVariant,
+    selectedModelPayload,
+    slashMenuOpen,
+    filteredSlashCommands,
+    slashSelectedIndex,
+    handleComposerChange,
+    insertSlashCommand,
+    handleSlashKeyDown,
+    pickImageAttachment,
+    removeAttachment,
+    sendPrompt,
+    abortActiveSession,
+  } = useComposerState(activeProjectDir ?? null, activeSessionID ?? null, {
+    availableSlashCommands,
+    refreshMessages,
+    refreshProject,
+    sessions,
+    selectedAgent,
+    serverAgentNames,
+    setStatusLine,
+    shouldAutoRenameSessionTitle,
+    deriveSessionTitleFromPrompt,
+    startResponsePolling,
+    stopResponsePolling,
+  });
 
-        const sortedSessions = [...data.sessions].sort((a, b) => b.time.updated - a.time.updated);
-        let nextSessionID = activeSessionID;
-        if (nextSessionID && !sortedSessions.some((item) => item.id === nextSessionID)) {
-          nextSessionID = undefined;
-          setActiveSessionID(undefined);
-          setMessages([]);
-        }
-
-        if (!terminalPtyID || !data.ptys.some((item) => item.id === terminalPtyID)) {
-          setTerminalPtyID(data.ptys[0]?.id);
-        }
-
-        if (nextSessionID) {
-          const cacheKey = `${directory}:${nextSessionID}`;
-          const cached = messageCacheRef.current[cacheKey];
-          if (cached) {
-            setMessages(cached);
-          }
-          const latest = await window.orxa.opencode.loadMessages(directory, nextSessionID).catch(() => undefined);
-          if (latest) {
-            messageCacheRef.current[cacheKey] = latest;
-            setMessages(latest);
-          }
-        }
-
-        return data;
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-        throw error;
+  const modelSelectOptions = useMemo(() => {
+    const items = [...modelOptionsForAgent];
+    const extras = [preferredAgentModel, selectedModel].filter((value): value is string => Boolean(value));
+    for (const key of extras) {
+      if (items.some((item) => item.key === key)) {
+        continue;
       }
-    },
-    [activeSessionID, terminalPtyID],
-  );
-
-  const selectProject = useCallback(
-    async (directory: string) => {
-      try {
-        setStatusLine(`Loading workspace ${directory}`);
-        setProjectData(null);
-        setMessages([]);
-        setActiveSessionID(undefined);
-        setTerminalPtyID(undefined);
-        setActiveProjectDir(directory);
-        setSidebarMode("projects");
-        setCollapsedProjects((current) => ({ ...current, [directory]: false }));
-        const data = await window.orxa.opencode.selectProject(directory);
-        setProjectData(data);
-        const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
-        projectLastUpdatedRef.current[directory] = lastUpdated;
-        projectLastOpenedRef.current[directory] = Date.now();
-
-        setTerminalPtyID(data.ptys[0]?.id);
-        setActiveSessionID(undefined);
-        setMessages([]);
-        setStatusLine(`Loaded ${directory}`);
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
+      const [providerID, ...modelParts] = key.split("/");
+      const modelID = modelParts.join("/");
+      if (!providerID || !modelID) {
+        continue;
       }
-    },
-    [],
-  );
-
-  const openWorkspaceDashboard = useCallback(() => {
-    setSidebarMode("projects");
-    setActiveProjectDir(undefined);
-    setProjectData(null);
-    setActiveSessionID(undefined);
-    setMessages([]);
-    setTerminalOpen(false);
-    setTerminalPtyID(undefined);
-    setStatusLine("Workspace dashboard");
-  }, []);
-
-  const refreshMessages = useCallback(async () => {
-    if (!activeProjectDir || !activeSessionID) {
-      setMessages([]);
-      return;
+      items.unshift({
+        key,
+        providerID,
+        modelID,
+        providerName: providerID,
+        modelName: modelID,
+        variants: [],
+      });
     }
-
-    try {
-      const cacheKey = `${activeProjectDir}:${activeSessionID}`;
-      const cached = messageCacheRef.current[cacheKey];
-      if (cached) {
-        setMessages(cached);
-      } else {
-        setMessages([]);
-      }
-      const items = await window.orxa.opencode.loadMessages(activeProjectDir, activeSessionID);
-      messageCacheRef.current[cacheKey] = items;
-      setMessages(items);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
+    return items;
+  }, [modelOptionsForAgent, preferredAgentModel, selectedModel]);
+  const variantOptions = useMemo(() => {
+    const model = modelSelectOptions.find((item) => item.key === selectedModel);
+    return model?.variants ?? [];
+  }, [selectedModel, modelSelectOptions]);
+  const modelDisplayValue = useMemo(() => {
+    const selected = modelSelectOptions.find((item) => item.key === selectedModel);
+    if (selected) {
+      return `${selected.providerName}/${selected.modelName}`;
     }
-  }, [activeProjectDir, activeSessionID]);
-
-  const openSession = useCallback(
-    (sessionID: string) => {
-      if (!activeProjectDir) {
-        return;
-      }
-      setActiveSessionID(sessionID);
-      const cacheKey = `${activeProjectDir}:${sessionID}`;
-      const cached = messageCacheRef.current[cacheKey];
-      setMessages(cached ?? []);
-      void window.orxa.opencode
-        .loadMessages(activeProjectDir, sessionID)
-        .then((items) => {
-          messageCacheRef.current[cacheKey] = items;
-          setMessages(items);
-        })
-        .catch(() => undefined);
-    },
-    [activeProjectDir],
-  );
-
-  const queueRefresh = useCallback(
-    (reason: string) => {
-      if (!activeProjectDir) {
-        return;
-      }
-
-      if (refreshTimer.current) {
-        window.clearTimeout(refreshTimer.current);
-      }
-      refreshTimer.current = window.setTimeout(() => {
-        void refreshProject(activeProjectDir)
-          .then(() => {
-            void refreshMessages();
-            setStatusLine(reason);
-          })
-          .catch(() => undefined);
-      }, 180);
-    },
-    [activeProjectDir, refreshProject, refreshMessages],
-  );
-
-  useEffect(() => {
-    activeProjectDirRef.current = activeProjectDir;
-  }, [activeProjectDir]);
-
-  const stopResponsePolling = useCallback(() => {
-    if (responsePollTimer.current) {
-      window.clearTimeout(responsePollTimer.current);
-      responsePollTimer.current = undefined;
-    }
-  }, []);
-
-  const startResponsePolling = useCallback(
-    (directory: string, sessionID: string) => {
-      stopResponsePolling();
-      const startedAt = Date.now();
-      const tick = () => {
-        if (activeProjectDirRef.current !== directory) {
-          stopResponsePolling();
-          return;
-        }
-
-        void refreshProject(directory)
-          .then((next) => {
-            void refreshMessages();
-            const status = next.sessionStatus[sessionID];
-            const done = status?.type === "idle";
-            const timedOut = Date.now() - startedAt > 120_000;
-            if (done || timedOut) {
-              stopResponsePolling();
-              return;
-            }
-            responsePollTimer.current = window.setTimeout(tick, 900);
-          })
-          .catch(() => {
-            const timedOut = Date.now() - startedAt > 30_000;
-            if (timedOut) {
-              stopResponsePolling();
-              return;
-            }
-            responsePollTimer.current = window.setTimeout(tick, 1300);
-          });
-      };
-
-      responsePollTimer.current = window.setTimeout(tick, 900);
-    },
-    [refreshMessages, refreshProject, stopResponsePolling],
-  );
-
-  useEffect(() => {
-    return () => {
-      stopResponsePolling();
-    };
-  }, [stopResponsePolling]);
-
-  useEffect(() => {
-    window.localStorage.setItem(APP_PREFERENCES_KEY, JSON.stringify(appPreferences));
-  }, [appPreferences]);
-
-  useEffect(() => {
-    window.localStorage.setItem(PINNED_SESSIONS_KEY, JSON.stringify(pinnedSessions));
-  }, [pinnedSessions]);
-
-  useEffect(() => {
-    window.localStorage.setItem(OPEN_TARGET_KEY, preferredOpenTarget);
-  }, [preferredOpenTarget]);
-
-  useEffect(() => {
-    window.localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
-  }, [jobs]);
-
-  useEffect(() => {
-    window.localStorage.setItem(JOB_RUNS_KEY, JSON.stringify(jobRuns.slice(0, 300)));
-  }, [jobRuns]);
-
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_LEFT_WIDTH_KEY, String(Math.round(leftPaneWidth)));
-  }, [leftPaneWidth]);
-
-  useEffect(() => {
-    window.localStorage.setItem(SIDEBAR_RIGHT_WIDTH_KEY, String(Math.round(rightPaneWidth)));
-  }, [rightPaneWidth]);
+    return "Model";
+  }, [modelSelectOptions, selectedModel]);
+  const variantDisplayValue = selectedVariant && selectedVariant.trim().length > 0 ? selectedVariant : "(default)";
+  const modelSelectWidthCh = useMemo(() => Math.max(18, Math.min(44, modelDisplayValue.length + 4)), [modelDisplayValue]);
+  const variantSelectWidthCh = useMemo(() => Math.max(12, Math.min(24, variantDisplayValue.length + 4)), [variantDisplayValue]);
 
   useEffect(() => {
     void refreshProfiles()
@@ -1199,22 +716,6 @@ export default function App() {
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
-  const sessions = useMemo(() => {
-    if (!projectData) {
-      return [];
-    }
-    const pinned = new Set(pinnedSessions[projectData.directory] ?? []);
-    return [...projectData.sessions]
-      .filter((item) => !item.time.archived)
-      .sort((a, b) => {
-        const aPinned = pinned.has(a.id) ? 1 : 0;
-        const bPinned = pinned.has(b.id) ? 1 : 0;
-        if (aPinned !== bPinned) {
-          return bPinned - aPinned;
-        }
-        return b.time.updated - a.time.updated;
-      });
-  }, [pinnedSessions, projectData]);
   const filteredProjects = useMemo(() => {
     const query = projectSearchQuery.trim().toLowerCase();
     const filtered = projects.filter((project) => {
@@ -1258,277 +759,6 @@ export default function App() {
     },
     [projectData],
   );
-
-  const refreshDashboard = useCallback(async () => {
-    setDashboard((current) => ({ ...current, loading: true, error: undefined, projects: projects.length }));
-    if (projects.length === 0) {
-      setDashboard({
-        loading: false,
-        updatedAt: Date.now(),
-        recentSessions: [],
-        sessions7d: 0,
-        sessions30d: 0,
-        projects: 0,
-        providersConnected: 0,
-        topModels: [],
-        tokenInput30d: 0,
-        tokenOutput30d: 0,
-        tokenCacheRead30d: 0,
-        totalCost30d: 0,
-        daySeries: buildDaySeries([]),
-      });
-      return;
-    }
-
-    try {
-      const snapshots = await Promise.all(
-        projects.map(async (project) => {
-          try {
-            const data = await window.orxa.opencode.refreshProject(project.worktree);
-            return { project, data };
-          } catch {
-            return { project, data: undefined };
-          }
-        }),
-      );
-
-      const sessionTimes: number[] = [];
-      const tokenSeriesPoints: Array<{ timestamp: number; value: number }> = [];
-      const recentSessions: DashboardState["recentSessions"] = [];
-      const connectedProviders = new Set<string>();
-      const modelUsage = new Map<string, number>();
-      const telemetryCandidates: Array<{ directory: string; sessionID: string; updatedAt: number }> = [];
-      const now = Date.now();
-      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-      let tokenInput30d = 0;
-      let tokenOutput30d = 0;
-      let tokenCacheRead30d = 0;
-      let totalCost30d = 0;
-
-      for (const snapshot of snapshots) {
-        const data = snapshot.data;
-        if (!data) {
-          continue;
-        }
-        const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
-        projectLastUpdatedRef.current[snapshot.project.worktree] = lastUpdated;
-
-        for (const provider of data.providers.connected) {
-          connectedProviders.add(provider);
-        }
-
-        const modelHints = [data.config.model, data.config.small_model].filter((item): item is string => Boolean(item));
-        for (const modelHint of modelHints) {
-          modelUsage.set(modelHint, (modelUsage.get(modelHint) ?? 0) + 1);
-        }
-
-        for (const session of data.sessions) {
-          sessionTimes.push(session.time.updated);
-          if (session.time.updated >= thirtyDaysAgo) {
-            telemetryCandidates.push({
-              directory: data.directory,
-              sessionID: session.id,
-              updatedAt: session.time.updated,
-            });
-          }
-          recentSessions.push({
-            id: `${snapshot.project.id}:${session.id}`,
-            title: session.title || session.slug,
-            project: snapshot.project.name || snapshot.project.worktree.split("/").at(-1) || snapshot.project.worktree,
-            updatedAt: session.time.updated,
-          });
-        }
-      }
-
-      for (const model of [orxaModels.orxa, orxaModels.plan].filter((item): item is string => Boolean(item))) {
-        modelUsage.set(model, (modelUsage.get(model) ?? 0) + 1);
-      }
-
-      const recentTelemetrySessions = telemetryCandidates
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 60);
-
-      if (recentTelemetrySessions.length > 0) {
-        const telemetryMessages = await Promise.all(
-          recentTelemetrySessions.map(async (candidate) => {
-            try {
-              const payload = await window.orxa.opencode.loadMessages(candidate.directory, candidate.sessionID);
-              return payload;
-            } catch {
-              return [];
-            }
-          }),
-        );
-
-        for (let index = 0; index < telemetryMessages.length; index += 1) {
-          const sessionMessages = telemetryMessages[index] ?? [];
-          const fallbackTimestamp = recentTelemetrySessions[index]?.updatedAt ?? now;
-          for (const message of sessionMessages) {
-            const info = message.info as { role?: string; providerID?: string; modelID?: string };
-            if (info.role === "assistant" && info.providerID && info.modelID) {
-              const modelKey = `${info.providerID}/${info.modelID}`;
-              modelUsage.set(modelKey, (modelUsage.get(modelKey) ?? 0) + 1);
-            }
-            const summary = summarizeStepFinishParts(message.parts);
-            tokenInput30d += summary.tokenInput;
-            tokenOutput30d += summary.tokenOutput;
-            tokenCacheRead30d += summary.tokenCacheRead;
-            totalCost30d += summary.cost;
-            if (summary.totalTokens > 0) {
-              const created = (message.info as { time?: { created?: number } }).time?.created;
-              tokenSeriesPoints.push({
-                timestamp: typeof created === "number" ? created : fallbackTimestamp,
-                value: summary.totalTokens,
-              });
-            }
-          }
-        }
-      }
-
-      recentSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-      const sessions7d = sessionTimes.filter((time) => time >= sevenDaysAgo).length;
-      const sessions30d = sessionTimes.filter((time) => time >= thirtyDaysAgo).length;
-      // Group models by trimmed name (without provider prefix)
-      const groupedModels = new Map<string, number>();
-      for (const [model, count] of modelUsage.entries()) {
-        const trimmed = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;
-        groupedModels.set(trimmed, (groupedModels.get(trimmed) ?? 0) + count);
-      }
-      const topModels = [...groupedModels.entries()]
-        .map(([model, count]) => ({ model, count }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 6);
-
-      setDashboard({
-        loading: false,
-        updatedAt: now,
-        recentSessions,
-        sessions7d,
-        sessions30d,
-        projects: projects.length,
-        providersConnected: connectedProviders.size,
-        topModels,
-        tokenInput30d,
-        tokenOutput30d,
-        tokenCacheRead30d,
-        totalCost30d,
-        daySeries: buildDaySeries(tokenSeriesPoints),
-      });
-    } catch (error) {
-      setDashboard((current) => ({
-        ...current,
-        loading: false,
-        updatedAt: Date.now(),
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
-  }, [orxaModels.orxa, orxaModels.plan, projects]);
-
-  const refreshProjectDashboard = useCallback(async () => {
-    if (!activeProjectDir || !projectData) {
-      setProjectDashboard({
-        loading: false,
-        sessions7d: 0,
-        sessions30d: 0,
-        sessionCount: 0,
-        tokenInput30d: 0,
-        tokenOutput30d: 0,
-        tokenCacheRead30d: 0,
-        totalCost30d: 0,
-        topModels: [],
-        daySeries: buildDaySeries([]),
-        recentSessions: [],
-      });
-      return;
-    }
-
-    setProjectDashboard((current) => ({ ...current, loading: true, error: undefined }));
-
-    try {
-      const sessionsAll = [...projectData.sessions]
-        .filter((item) => !item.time.archived)
-        .sort((a, b) => b.time.updated - a.time.updated);
-      const now = Date.now();
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-      const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-
-      const recentSessions = sessionsAll.slice(0, 4).map((session) => ({
-        id: session.id,
-        title: session.title || session.slug,
-        updatedAt: session.time.updated,
-        status: projectData.sessionStatus[session.id]?.type ?? "idle",
-      }));
-
-      const telemetryCandidates = sessionsAll
-        .filter((session) => session.time.updated >= thirtyDaysAgo)
-        .slice(0, 40);
-
-      let tokenInput30d = 0;
-      let tokenOutput30d = 0;
-      let tokenCacheRead30d = 0;
-      let totalCost30d = 0;
-      const modelUsage = new Map<string, number>();
-      const tokenSeriesPoints: Array<{ timestamp: number; value: number }> = [];
-
-      for (const session of telemetryCandidates) {
-        const payload = await window.orxa.opencode.loadMessages(activeProjectDir, session.id).catch(() => []);
-        if (payload.length > 0) {
-          messageCacheRef.current[`${activeProjectDir}:${session.id}`] = payload;
-        }
-        for (const message of payload) {
-          const info = message.info as { role?: string; providerID?: string; modelID?: string; time?: { created?: number } };
-          if (info.role === "assistant" && info.providerID && info.modelID) {
-            const key = `${info.providerID}/${info.modelID}`;
-            modelUsage.set(key, (modelUsage.get(key) ?? 0) + 1);
-          }
-          const summary = summarizeStepFinishParts(message.parts);
-          tokenInput30d += summary.tokenInput;
-          tokenOutput30d += summary.tokenOutput;
-          tokenCacheRead30d += summary.tokenCacheRead;
-          totalCost30d += summary.cost;
-          if (summary.totalTokens > 0) {
-            tokenSeriesPoints.push({
-              timestamp: typeof info.time?.created === "number" ? info.time.created : session.time.updated,
-              value: summary.totalTokens,
-            });
-          }
-        }
-      }
-
-      setProjectDashboard({
-        loading: false,
-        updatedAt: now,
-        sessions7d: sessionsAll.filter((item) => item.time.updated >= sevenDaysAgo).length,
-        sessions30d: sessionsAll.filter((item) => item.time.updated >= thirtyDaysAgo).length,
-        sessionCount: sessionsAll.length,
-        tokenInput30d,
-        tokenOutput30d,
-        tokenCacheRead30d,
-        totalCost30d,
-        topModels: (() => {
-          // Group models by trimmed name (without provider prefix)
-          const groupedModels = new Map<string, number>();
-          for (const [model, count] of modelUsage.entries()) {
-            const trimmed = model.includes("/") ? model.slice(model.indexOf("/") + 1) : model;
-            groupedModels.set(trimmed, (groupedModels.get(trimmed) ?? 0) + count);
-          }
-          return [...groupedModels.entries()]
-            .map(([model, count]) => ({ model, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 6);
-        })(),
-        daySeries: buildDaySeries(tokenSeriesPoints),
-        recentSessions,
-      });
-    } catch (error) {
-      setProjectDashboard((current) => ({
-        ...current,
-        loading: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
-  }, [activeProjectDir, projectData]);
 
   const refreshAgentsDocument = useCallback(
     async (directory?: string) => {
@@ -1625,60 +855,25 @@ export default function App() {
     setAgentsDraft("");
   }, [activeProjectDir, activeSessionID]);
 
-  const createSession = useCallback(async (directory?: string, initialPrompt?: string) => {
-    const targetDirectory = directory ?? activeProjectDir;
-    if (!targetDirectory) {
-      return;
-    }
-
-    const firstPrompt = initialPrompt?.trim() ?? "";
-    const title = firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : "New session";
-
-    try {
-      if (activeProjectDir !== targetDirectory) {
-        await selectProject(targetDirectory);
-      }
-      const createdSession = await window.orxa.opencode.createSession(targetDirectory, title);
-      const next = await refreshProject(targetDirectory);
-      const sorted = [...next.sessions].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
-      const nextSessionID = createdSession.id || sorted[0]?.id;
-      setActiveSessionID(nextSessionID);
-      setActiveProjectDir(targetDirectory);
-      if (nextSessionID && firstPrompt.length > 0) {
-        const supportsSelectedAgent = selectedAgent ? serverAgentNames.has(selectedAgent) : false;
-        await window.orxa.opencode.sendPrompt({
-          directory: targetDirectory,
-          sessionID: nextSessionID,
-          text: firstPrompt,
-          agent: supportsSelectedAgent ? selectedAgent : undefined,
-          model: selectedModelPayload,
-          variant: selectedVariant,
-        });
-        startResponsePolling(targetDirectory, nextSessionID);
-        setStatusLine("Session started");
-      } else {
-        setStatusLine("Session created");
-      }
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, [
-    activeProjectDir,
-    refreshProject,
-    selectProject,
-    selectedAgent,
-    selectedModelPayload,
-    selectedVariant,
-    serverAgentNames,
-    startResponsePolling,
-  ]);
+  const createSession = useCallback(
+    async (directory?: string, initialPrompt?: string) => {
+      await createWorkspaceSession(directory, initialPrompt, {
+        selectedAgent,
+        selectedModelPayload,
+        selectedVariant,
+        serverAgentNames,
+      });
+    },
+    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
+  );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
     try {
-      const directory = await window.orxa.opencode.addProjectDirectory();
-      if (!directory) {
+      const result = await opencodeClient.addProjectDirectory();
+      if (!result) {
         return undefined;
       }
+      const directory = result.directory;
       await bootstrap();
       if (options?.select !== false) {
         await selectProject(directory);
@@ -1711,70 +906,6 @@ export default function App() {
     void loadSkills();
   }, [loadSkills, sidebarMode]);
 
-  const openNewJobModal = useCallback(
-    (template?: JobTemplate) => {
-      setJobDraft({
-        id: "",
-        name: template?.title ?? "",
-        projectDir: activeProjectDir ?? "",
-        prompt: template?.prompt ?? "",
-        schedule: template?.schedule ?? { type: "daily", time: "09:00", days: [1, 2, 3, 4, 5] },
-        enabled: true,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      setJobModalOpen(true);
-    },
-    [activeProjectDir],
-  );
-
-  const updateJobDraft = useCallback((next: JobRecord) => {
-    setJobDraft(next);
-  }, []);
-
-  const saveJobDraft = useCallback(() => {
-    if (!jobDraft.name.trim() || !jobDraft.projectDir.trim() || !jobDraft.prompt.trim()) {
-      setStatusLine("Name, workspace, and prompt are required");
-      return;
-    }
-    const now = Date.now();
-    setJobs((current) => [
-      {
-        ...jobDraft,
-        id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
-        name: jobDraft.name.trim(),
-        projectDir: jobDraft.projectDir.trim(),
-        prompt: jobDraft.prompt.trim(),
-        createdAt: now,
-        updatedAt: now,
-      },
-      ...current,
-    ]);
-    setJobModalOpen(false);
-    setStatusLine("Job created");
-  }, [jobDraft]);
-
-  const removeJob = useCallback((jobID: string) => {
-    setJobs((current) => current.filter((job) => job.id !== jobID));
-    setJobRuns((current) => current.filter((run) => run.jobID !== jobID));
-    setStatusLine("Job deleted");
-  }, []);
-
-  const toggleJobEnabled = useCallback((jobID: string, enabled: boolean) => {
-    setJobs((current) =>
-      current.map((job) =>
-        job.id === jobID
-          ? {
-              ...job,
-              enabled,
-              updatedAt: Date.now(),
-            }
-          : job,
-      ),
-    );
-    setStatusLine(enabled ? "Job resumed" : "Job paused");
-  }, []);
-
   const openSkillUseModal = useCallback(
     (skill: SkillEntry) => {
       setSkillUseModal({
@@ -1803,18 +934,18 @@ export default function App() {
       ].join("\n");
 
       await selectProject(targetProjectDir);
-      const latest = await window.orxa.opencode.refreshProject(targetProjectDir);
+      const latest = await opencodeClient.refreshProject(targetProjectDir);
       setProjectData(latest);
       const session = [...latest.sessions]
         .filter((item) => !item.time.archived)
         .sort((left, right) => right.time.updated - left.time.updated)[0];
       if (session) {
         setActiveSessionID(session.id);
-        const msgs = await window.orxa.opencode.loadMessages(targetProjectDir, session.id).catch(() => []);
+        const msgs = await opencodeClient.loadMessages(targetProjectDir, session.id).catch(() => []);
         messageCacheRef.current[`${targetProjectDir}:${session.id}`] = msgs;
         setMessages(msgs);
       } else {
-        const created = await window.orxa.opencode.createSession(targetProjectDir, `Skill: ${skill.name}`);
+        const created = await opencodeClient.createSession(targetProjectDir, `Skill: ${skill.name}`);
         setActiveSessionID(created.id);
         setMessages([]);
       }
@@ -1825,161 +956,6 @@ export default function App() {
     },
     [projects, selectProject],
   );
-
-  const runScheduledJob = useCallback(async (job: JobRecord) => {
-    if (!job.enabled || runningJobIDsRef.current.has(job.id)) {
-      return;
-    }
-    runningJobIDsRef.current.add(job.id);
-    const runID = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      const created = await window.orxa.opencode.createSession(job.projectDir, `Job: ${job.name}`);
-      setJobRuns((current) => [
-        {
-          id: runID,
-          jobID: job.id,
-          jobName: job.name,
-          projectDir: job.projectDir,
-          sessionID: created.id,
-          createdAt: Date.now(),
-          status: "running",
-          unread: false,
-        },
-        ...current,
-      ]);
-      await window.orxa.opencode.sendPrompt({
-        directory: job.projectDir,
-        sessionID: created.id,
-        text: job.prompt,
-        agent: "orxa",
-      });
-      setJobs((current) =>
-        current.map((item) =>
-          item.id === job.id
-            ? {
-              ...item,
-              lastRunAt: Date.now(),
-              updatedAt: Date.now(),
-            }
-          : item,
-        ),
-      );
-
-      const startedAt = Date.now();
-      let runCompleted = false;
-      while (Date.now() - startedAt < 180_000) {
-        const snapshot = await window.orxa.opencode.refreshProject(job.projectDir);
-        const status = snapshot.sessionStatus[created.id]?.type ?? "idle";
-        if (status === "idle") {
-          runCompleted = true;
-          break;
-        }
-        await new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 1200);
-        });
-      }
-
-      if (!runCompleted) {
-        throw new Error("Timed out waiting for job output");
-      }
-
-      setJobRuns((current) =>
-        current.map((run) =>
-          run.id === runID
-            ? {
-                ...run,
-                status: "completed",
-                completedAt: Date.now(),
-                unread: true,
-              }
-            : run,
-        ),
-      );
-      setStatusLine(`Job completed: ${job.name}`);
-    } catch (error) {
-      setJobRuns((current) =>
-        current.map((run) =>
-          run.id === runID
-            ? {
-                ...run,
-                status: "failed",
-                unread: true,
-                completedAt: Date.now(),
-                error: error instanceof Error ? error.message : String(error),
-              }
-            : run,
-        ),
-      );
-      setStatusLine(error instanceof Error ? `Job failed (${job.name}): ${error.message}` : `Job failed (${job.name})`);
-    } finally {
-      runningJobIDsRef.current.delete(job.id);
-    }
-  }, []);
-
-  const markAllJobRunsRead = useCallback(() => {
-    setJobRuns((current) =>
-      current.map((run) =>
-        run.unread
-          ? {
-              ...run,
-              unread: false,
-            }
-          : run,
-      ),
-    );
-  }, []);
-
-  const openJobRunViewer = useCallback(
-    async (runID: string) => {
-      const run = jobRuns.find((item) => item.id === runID);
-      if (!run) {
-        return;
-      }
-      setJobRunViewer(run);
-      setJobRunViewerLoading(true);
-      setJobRunViewerMessages([]);
-      setJobRuns((current) =>
-        current.map((item) =>
-          item.id === runID
-            ? {
-                ...item,
-                unread: false,
-              }
-            : item,
-        ),
-      );
-      try {
-        const messagesForRun = await window.orxa.opencode.loadMessages(run.projectDir, run.sessionID);
-        setJobRunViewerMessages(messagesForRun);
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      } finally {
-        setJobRunViewerLoading(false);
-      }
-    },
-    [jobRuns],
-  );
-
-  useEffect(() => {
-    if (jobs.length === 0) {
-      return;
-    }
-
-    const tick = () => {
-      const now = Date.now();
-      for (const job of jobs) {
-        if (isJobDueNow(job, now)) {
-          void runScheduledJob(job);
-        }
-      }
-    };
-
-    tick();
-    const timer = window.setInterval(tick, 30_000);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [jobs, runScheduledJob]);
 
   useEffect(() => {
     if (!projectSearchOpen) {
@@ -1992,13 +968,36 @@ export default function App() {
     setAllSessionsModalOpen(false);
   }, [activeProjectDir]);
 
+  const requestConfirmation = useCallback((request: ConfirmDialogRequest) => {
+    return new Promise<boolean>((resolve) => {
+      setConfirmDialogRequest(request);
+      confirmDialogResolverRef.current = resolve;
+    });
+  }, []);
+
+  const confirmDialogResolverRef = useRef<((value: boolean) => void) | null>(null);
+
+  const closeConfirmDialog = useCallback((confirmed: boolean) => {
+    const resolver = confirmDialogResolverRef.current;
+    confirmDialogResolverRef.current = null;
+    setConfirmDialogRequest(null);
+    resolver?.(confirmed);
+  }, []);
+
   const removeProjectDirectory = useCallback(
     async (directory: string, label: string) => {
       try {
-        if (!window.confirm(`Remove "${label}" from OrxaCode workspace list?`)) {
+        const confirmed = await requestConfirmation({
+          title: "Remove workspace",
+          message: `Remove "${label}" from OrxaCode workspace list?`,
+          confirmLabel: "Remove",
+          cancelLabel: "Cancel",
+          variant: "danger",
+        });
+        if (!confirmed) {
           return;
         }
-        await window.orxa.opencode.removeProjectDirectory(directory);
+        await opencodeClient.removeProjectDirectory(directory);
         if (activeProjectDir === directory) {
           setActiveProjectDir(undefined);
           setProjectData(null);
@@ -2013,22 +1012,36 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeProjectDir, bootstrap],
+    [activeProjectDir, bootstrap, requestConfirmation],
   );
 
   const renameSession = useCallback(
-    async (directory: string, sessionID: string, currentTitle: string) => {
-      const nextTitle = window.prompt("Rename session", currentTitle)?.trim();
-      if (!nextTitle || nextTitle === currentTitle) {
-        return;
-      }
-      try {
-        await window.orxa.opencode.renameSession(directory, sessionID, nextTitle);
-        await refreshProject(directory);
-        setStatusLine("Session renamed");
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      }
+    (directory: string, sessionID: string, currentTitle: string) => {
+      setTextInputDialog({
+        title: "Rename session",
+        defaultValue: currentTitle,
+        placeholder: "Session title",
+        confirmLabel: "Rename",
+        validate: (value) => {
+          if (!value.trim()) {
+            return "Session title is required";
+          }
+          return null;
+        },
+        onConfirm: async (value) => {
+          const nextTitle = value.trim();
+          if (nextTitle === currentTitle) {
+            return;
+          }
+          try {
+            await window.orxa.opencode.renameSession(directory, sessionID, nextTitle);
+            await refreshProject(directory);
+            setStatusLine("Session renamed");
+          } catch (error) {
+            setStatusLine(error instanceof Error ? error.message : String(error));
+          }
+        },
+      });
     },
     [refreshProject],
   );
@@ -2068,88 +1081,44 @@ export default function App() {
     }
   }, []);
 
-  const togglePinSession = useCallback((directory: string, sessionID: string) => {
-    setPinnedSessions((current) => {
-      const existing = new Set(current[directory] ?? []);
-      if (existing.has(sessionID)) {
-        existing.delete(sessionID);
-      } else {
-        existing.add(sessionID);
-      }
-      return {
-        ...current,
-        [directory]: [...existing],
-      };
-    });
-  }, []);
-
   const createWorktreeSession = useCallback(
-    async (directory: string, sessionID: string, currentTitle: string) => {
+    (directory: string, sessionID: string, currentTitle: string) => {
       const suggested = currentTitle
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 32);
-      const nameInput = window.prompt("New worktree name", suggested || "feature")?.trim();
-      if (nameInput === "") {
-        return;
-      }
+      setTextInputDialog({
+        title: "New worktree name",
+        defaultValue: suggested || "feature",
+        placeholder: "feature/my-worktree",
+        confirmLabel: "Create",
+        validate: (value) => {
+          if (!value.trim()) {
+            return "Worktree name is required";
+          }
+          return null;
+        },
+        onConfirm: async (value) => {
+          const nameInput = value.trim();
+          if (!nameInput) {
+            return;
+          }
 
-      try {
-        const result = await window.orxa.opencode.createWorktreeSession(directory, sessionID, nameInput || undefined);
-        await bootstrap();
-        await selectProject(result.worktree.directory);
-        setActiveSessionID(result.session.id);
-        setStatusLine(`Worktree session created: ${result.worktree.name}`);
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      }
+          try {
+            const result = await window.orxa.opencode.createWorktreeSession(directory, sessionID, nameInput || undefined);
+            await bootstrap();
+            await selectProject(result.worktree.directory);
+            setActiveSessionID(result.session.id);
+            setStatusLine(`Worktree session created: ${result.worktree.name}`);
+          } catch (error) {
+            setStatusLine(error instanceof Error ? error.message : String(error));
+          }
+        },
+      });
     },
     [bootstrap, selectProject],
   );
-
-  const openProjectContextMenu = useCallback((event: ReactMouseEvent, directory: string, label: string) => {
-    event.preventDefault();
-    const point = clampContextMenuPosition(event.clientX, event.clientY);
-    setContextMenu({
-      kind: "project",
-      x: point.x,
-      y: point.y,
-      directory,
-      label,
-    });
-  }, []);
-
-  const openSessionContextMenu = useCallback((event: ReactMouseEvent, directory: string, sessionID: string, title: string) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const point = clampContextMenuPosition(event.clientX, event.clientY);
-    setContextMenu({
-      kind: "session",
-      x: point.x,
-      y: point.y,
-      directory,
-      sessionID,
-      title,
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!contextMenu) {
-      return;
-    }
-
-    const close = () => setContextMenu(null);
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        close();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [contextMenu]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -2253,71 +1222,6 @@ export default function App() {
     }, 0);
   }, [branchMenuOpen]);
 
-  const handleComposerChange = useCallback((value: string) => {
-    setComposer(value);
-
-    // Check for slash command trigger
-    const lines = value.split('\n');
-    const currentLine = lines[lines.length - 1];
-
-    if (currentLine.startsWith('/') && !currentLine.includes(' ')) {
-      const query = currentLine.slice(1);
-      setSlashQuery(query);
-      setSlashMenuOpen(true);
-      setSlashSelectedIndex(0);
-    } else {
-      // Use functional update to always get latest state
-      setSlashMenuOpen((open) => {
-        if (open) return false;
-        return open;
-      });
-    }
-  }, []);
-
-  const insertSlashCommand = useCallback((commandName: string) => {
-    setComposer((prev) => {
-      const lines = prev.split('\n');
-      lines[lines.length - 1] = `/${commandName} `;
-      return lines.join('\n');
-    });
-    setSlashMenuOpen(false);
-    setSlashQuery('');
-  }, []);
-
-  // Keep slash command list in a ref to avoid stale closures in key handlers
-  const filteredSlashCommandsRef = useRef(filteredSlashCommands);
-  useEffect(() => {
-    filteredSlashCommandsRef.current = filteredSlashCommands;
-  }, [filteredSlashCommands]);
-
-  const slashSelectedIndexRef = useRef(slashSelectedIndex);
-  useEffect(() => {
-    slashSelectedIndexRef.current = slashSelectedIndex;
-  }, [slashSelectedIndex]);
-
-  const handleSlashKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      const commands = filteredSlashCommandsRef.current;
-      setSlashSelectedIndex((current) =>
-        current < commands.length - 1 ? current + 1 : current
-      );
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setSlashSelectedIndex((current) => (current > 0 ? current - 1 : 0));
-    } else if (event.key === 'Enter' || event.key === 'Tab') {
-      event.preventDefault();
-      const commands = filteredSlashCommandsRef.current;
-      const selectedIdx = slashSelectedIndexRef.current;
-      const command = commands[selectedIdx];
-      if (command) {
-        insertSlashCommand(command.name);
-      }
-    } else if (event.key === 'Escape') {
-      setSlashMenuOpen(false);
-    }
-  }, [insertSlashCommand]);
-
   const togglePlanMode = useCallback(
     (enabled: boolean) => {
       if (enabled) {
@@ -2341,92 +1245,6 @@ export default function App() {
     [agentOptions, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan],
   );
 
-  const pickImageAttachment = useCallback(async () => {
-    try {
-      const selection = await window.orxa.opencode.pickImage();
-      if (!selection) {
-        return;
-      }
-      setComposerAttachments((current) => {
-        if (current.some((item) => item.url === selection.url)) {
-          return current;
-        }
-        return [...current, selection];
-      });
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, []);
-
-  const removeAttachment = useCallback((url: string) => {
-    setComposerAttachments((current) => current.filter((item) => item.url !== url));
-  }, []);
-
-  const sendPrompt = useCallback(async () => {
-    if (!activeProjectDir || !activeSessionID) {
-      setStatusLine("Select a workspace and session first");
-      return;
-    }
-
-    const text = composer.trim();
-    if (!text && composerAttachments.length === 0) {
-      return;
-    }
-
-    const supportsSelectedAgent = selectedAgent ? serverAgentNames.has(selectedAgent) : false;
-    const activeSession = sessions.find((item) => item.id === activeSessionID);
-    const shouldAutoTitle = text.length > 0 && shouldAutoRenameSessionTitle(activeSession?.title);
-
-    try {
-      stopResponsePolling();
-      if (shouldAutoTitle) {
-        const generatedTitle = deriveSessionTitleFromPrompt(text);
-        await window.orxa.opencode.renameSession(activeProjectDir, activeSessionID, generatedTitle);
-      }
-
-      await window.orxa.opencode.sendPrompt({
-        directory: activeProjectDir,
-        sessionID: activeSessionID,
-        text,
-        attachments: composerAttachments.map((attachment) => ({
-          url: attachment.url,
-          mime: attachment.mime,
-          filename: attachment.filename,
-        })),
-        agent: supportsSelectedAgent ? selectedAgent : undefined,
-        model: selectedModelPayload,
-        variant: selectedVariant,
-      });
-
-      setComposer("");
-      setComposerAttachments([]);
-      setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
-      window.setTimeout(() => {
-        void refreshMessages();
-      }, 240);
-      startResponsePolling(activeProjectDir, activeSessionID);
-      if (shouldAutoTitle) {
-        void refreshProject(activeProjectDir).catch(() => undefined);
-      }
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, [
-    activeProjectDir,
-    activeSessionID,
-    composerAttachments,
-    composer,
-    refreshMessages,
-    selectedAgent,
-    selectedModelPayload,
-    selectedVariant,
-    sessions,
-    serverAgentNames,
-    refreshProject,
-    startResponsePolling,
-    stopResponsePolling,
-  ]);
-
   const activeSession = useMemo(
     () => sessions.find((item) => item.id === activeSessionID),
     [activeSessionID, sessions],
@@ -2438,11 +1256,8 @@ export default function App() {
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
   const orxaTodos = useMemo(() => extractOrxaTodos(messages), [messages]);
-  const unreadJobRunsCount = useMemo(
-    () => jobRuns.filter((run) => run.unread && run.status !== "running").length,
-    [jobRuns],
-  );
   const pendingPermission = useMemo(() => (projectData?.permissions ?? [])[0], [projectData?.permissions]);
+  const pendingQuestion = useMemo(() => (projectData?.questions ?? [])[0] ?? null, [projectData?.questions]);
   const workspaceClassName = [
     "workspace",
     showOperationsPane ? "" : "workspace-no-ops",
@@ -2463,21 +1278,6 @@ export default function App() {
   useEffect(() => {
     setTodosOpen(false);
   }, [activeSessionID]);
-
-  const abortActiveSession = useCallback(async () => {
-    if (!activeProjectDir || !activeSessionID) {
-      return;
-    }
-    try {
-      await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID);
-      setStatusLine("Stopped");
-      stopResponsePolling();
-      void refreshProject(activeProjectDir).catch(() => undefined);
-      void refreshMessages().catch(() => undefined);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir, activeSessionID, refreshMessages, refreshProject, stopResponsePolling]);
 
   const createTerminal = useCallback(async (openAfterCreate = appPreferences.autoOpenTerminalOnCreate) => {
     if (!activeProjectDir) {
@@ -2515,8 +1315,17 @@ export default function App() {
       if (!activeProjectDir || !pendingPermission) {
         return;
       }
-      if (reply === "reject" && appPreferences.confirmDangerousActions && !window.confirm("Reject this permission request?")) {
-        return;
+      if (reply === "reject" && appPreferences.confirmDangerousActions) {
+        const confirmed = await requestConfirmation({
+          title: "Reject permission request",
+          message: "Reject this permission request?",
+          confirmLabel: "Reject",
+          cancelLabel: "Cancel",
+          variant: "danger",
+        });
+        if (!confirmed) {
+          return;
+        }
       }
       try {
         setPermissionDecisionPending(reply);
@@ -2529,8 +1338,54 @@ export default function App() {
         setPermissionDecisionPending(null);
       }
     },
-    [activeProjectDir, appPreferences.confirmDangerousActions, pendingPermission, refreshProject],
+    [activeProjectDir, appPreferences.confirmDangerousActions, pendingPermission, refreshProject, requestConfirmation],
   );
+
+  const replyPendingQuestion = useCallback(
+    async (answer: string) => {
+      if (!activeProjectDir || !pendingQuestion) {
+        return;
+      }
+      const trimmed = answer.trim();
+      if (!trimmed) {
+        return;
+      }
+      try {
+        const answers = [[trimmed]] as unknown as Parameters<typeof window.orxa.opencode.replyQuestion>[2];
+        await window.orxa.opencode.replyQuestion(activeProjectDir, pendingQuestion.id, answers);
+        await refreshProject(activeProjectDir);
+        setStatusLine("Question answered");
+      } catch (error) {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [activeProjectDir, pendingQuestion, refreshProject],
+  );
+
+  const rejectPendingQuestion = useCallback(async () => {
+    if (!activeProjectDir || !pendingQuestion) {
+      return;
+    }
+    if (appPreferences.confirmDangerousActions) {
+      const confirmed = await requestConfirmation({
+        title: "Reject question request",
+        message: "Reject this question request?",
+        confirmLabel: "Reject",
+        cancelLabel: "Cancel",
+        variant: "danger",
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+    try {
+      await window.orxa.opencode.rejectQuestion(activeProjectDir, pendingQuestion.id);
+      await refreshProject(activeProjectDir);
+      setStatusLine("Question rejected");
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeProjectDir, appPreferences.confirmDangerousActions, pendingQuestion, refreshProject, requestConfirmation]);
 
   useEffect(() => {
     if (!terminalOpen || !activeProjectDir) {
@@ -2551,144 +1406,6 @@ export default function App() {
     void createTerminal(true);
   }, [activeProjectDir, createTerminal, terminalOpen, terminalPtyID]);
 
-  const loadGitDiff = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setOpsPanelTab("git");
-    setGitPanelTab("diff");
-    setGitPanelOutput("Loading diff...");
-    try {
-      const output = await window.orxa.opencode.gitDiff(activeProjectDir);
-      setGitPanelOutput(output);
-    } catch (error) {
-      setGitPanelOutput(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir]);
-
-  const loadGitLog = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setOpsPanelTab("git");
-    setGitPanelTab("log");
-    setGitPanelOutput("Loading log...");
-    try {
-      const output = await window.orxa.opencode.gitLog(activeProjectDir);
-      setGitPanelOutput(output);
-    } catch (error) {
-      setGitPanelOutput(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir]);
-
-  const loadGitIssues = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setOpsPanelTab("git");
-    setGitPanelTab("issues");
-    setGitPanelOutput("Loading issues...");
-    try {
-      const output = await window.orxa.opencode.gitIssues(activeProjectDir);
-      setGitPanelOutput(output);
-    } catch (error) {
-      setGitPanelOutput(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir]);
-
-  const loadGitPrs = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setOpsPanelTab("git");
-    setGitPanelTab("prs");
-    setGitPanelOutput("Loading pull requests...");
-    try {
-      const output = await window.orxa.opencode.gitPrs(activeProjectDir);
-      setGitPanelOutput(output);
-    } catch (error) {
-      setGitPanelOutput(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir]);
-
-  const refreshBranchState = useCallback(async () => {
-    if (!activeProjectDir) {
-      setBranchState(null);
-      return;
-    }
-    try {
-      setBranchLoading(true);
-      const next = await window.orxa.opencode.gitBranches(activeProjectDir);
-      setBranchState(next);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBranchLoading(false);
-    }
-  }, [activeProjectDir]);
-
-  const checkoutBranch = useCallback(
-    async (nextBranchInput: string) => {
-      if (!activeProjectDir) {
-        return;
-      }
-      const nextBranch = nextBranchInput.trim();
-      if (!nextBranch || nextBranch === branchState?.current) {
-        setBranchMenuOpen(false);
-        return;
-      }
-      try {
-        setBranchSwitching(true);
-        const next = await window.orxa.opencode.gitCheckoutBranch(activeProjectDir, nextBranch);
-        setBranchState(next);
-        setBranchQuery("");
-        setBranchMenuOpen(false);
-        setStatusLine(`Checked out ${next.current}`);
-        if (opsPanelTab === "git") {
-          if (gitPanelTab === "diff") {
-            await loadGitDiff();
-          } else if (gitPanelTab === "log") {
-            await loadGitLog();
-          } else if (gitPanelTab === "issues") {
-            await loadGitIssues();
-          } else {
-            await loadGitPrs();
-          }
-        }
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      } finally {
-        setBranchSwitching(false);
-      }
-    },
-    [activeProjectDir, branchState, gitPanelTab, loadGitDiff, loadGitIssues, loadGitLog, loadGitPrs, opsPanelTab],
-  );
-
-  const openBranchCreateModal = useCallback(() => {
-    const query = branchQuery.trim();
-    setBranchCreateName(query);
-    setBranchCreateError(null);
-    setBranchCreateModalOpen(true);
-    setBranchMenuOpen(false);
-  }, [branchQuery]);
-
-  const submitBranchCreate = useCallback(async () => {
-    const candidate = branchCreateName.trim();
-    if (!candidate) {
-      setBranchCreateError("Branch name is required");
-      return;
-    }
-    const existing = new Set(branchState?.branches ?? []);
-    if (existing.has(candidate)) {
-      setBranchCreateError(`Branch "${candidate}" already exists`);
-      return;
-    }
-    setBranchCreateModalOpen(false);
-    setBranchCreateName("");
-    setBranchCreateError(null);
-    await checkoutBranch(candidate);
-  }, [branchCreateName, branchState?.branches, checkoutBranch]);
-
   const openDirectoryInTarget = useCallback(
     async (target: OpenTarget) => {
       if (!activeProjectDir) {
@@ -2702,24 +1419,6 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       } finally {
         setOpenMenuOpen(false);
-      }
-    },
-    [activeProjectDir],
-  );
-
-  const loadCommitSummary = useCallback(
-    async (includeUnstaged: boolean) => {
-      if (!activeProjectDir) {
-        return;
-      }
-      try {
-        setCommitSummaryLoading(true);
-        const summary = await window.orxa.opencode.gitCommitSummary(activeProjectDir, includeUnstaged);
-        setCommitSummary(summary);
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      } finally {
-        setCommitSummaryLoading(false);
       }
     },
     [activeProjectDir],
@@ -2782,18 +1481,10 @@ export default function App() {
 
   useEffect(() => {
     if (!activeProjectDir) {
-      setOpsPanelTab("operations");
-      setGitPanelOutput("Select DIFF or LOG.");
+      setOpsPanelTab("git");
       return;
     }
   }, [activeProjectDir]);
-
-  useEffect(() => {
-    if (!commitModalOpen || !activeProjectDir) {
-      return;
-    }
-    void loadCommitSummary(commitIncludeUnstaged);
-  }, [activeProjectDir, commitIncludeUnstaged, commitModalOpen, loadCommitSummary]);
 
   useEffect(() => {
     if (!activeProjectDir || opsPanelTab !== "git") {
@@ -2814,14 +1505,6 @@ export default function App() {
     void loadGitPrs();
   }, [activeProjectDir, gitPanelTab, loadGitDiff, loadGitIssues, loadGitLog, loadGitPrs, opsPanelTab]);
 
-  useEffect(() => {
-    if (!activeProjectDir) {
-      setBranchState(null);
-      return;
-    }
-    void refreshBranchState();
-  }, [activeProjectDir, refreshBranchState]);
-
   const openTargets = OPEN_TARGETS;
   const activeOpenTarget = openTargets.find((target) => target.id === preferredOpenTarget) ?? openTargets[2]!;
 
@@ -2836,234 +1519,39 @@ export default function App() {
       <div className="window-drag-region" />
       <div className={workspaceClassName} style={workspaceStyle}>
         {showProjectsPane ? (
-          <aside className="sidebar projects-pane">
-            <nav className="sidebar-mode-links" aria-label="Sidebar mode">
-              <button
-                type="button"
-                className={sidebarMode === "jobs" ? "active" : ""}
-                onClick={() => setSidebarMode("jobs")}
-              >
-                Jobs
-                {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
-              </button>
-              <button
-                type="button"
-                className={sidebarMode === "skills" ? "active" : ""}
-                onClick={() => setSidebarMode("skills")}
-              >
-                Skills
-              </button>
-            </nav>
-            <div className="pane-header">
-              <h2>
-                <button
-                  type="button"
-                  className={`pane-heading-link ${sidebarMode === "projects" ? "active" : ""}`.trim()}
-                  onClick={openWorkspaceDashboard}
-                >
-                  Workspaces
-                </button>
-              </h2>
-              <div className="pane-header-actions">
-                {sidebarMode === "projects" ? (
-                  <>
-                    <IconButton
-                      icon="search"
-                      className="pane-action-icon"
-                      label={projectSearchOpen ? "Close search" : "Search workspaces"}
-                      onClick={() => {
-                        setProjectSearchOpen((value) => !value);
-                        setProjectSortOpen(false);
-                      }}
-                    />
-                    <IconButton
-                      icon="sort"
-                      className="pane-action-icon"
-                      label={projectSortOpen ? "Close sort options" : "Sort workspaces"}
-                      onClick={() => {
-                        setProjectSortOpen((value) => !value);
-                        setProjectSearchOpen(false);
-                      }}
-                    />
-                    <IconButton icon="folderPlus" className="pane-action-icon" label="Add workspace folder" onClick={() => void addProjectDirectory()} />
-                  </>
-                ) : null}
-                {sidebarMode === "jobs" ? (
-                  <IconButton icon="plus" className="pane-action-icon" label="New job" onClick={() => openNewJobModal()} />
-                ) : null}
-                {sidebarMode === "skills" ? (
-                  <IconButton icon="refresh" className="pane-action-icon" label="Refresh skills" onClick={() => void loadSkills()} />
-                ) : null}
-              </div>
-            </div>
-            {sidebarMode === "projects" ? (
-              <>
-                {projectSortOpen ? (
-                  <div className="project-sort-popover">
-                    <button
-                      type="button"
-                      className={projectSortMode === "updated" ? "active" : ""}
-                      onClick={() => {
-                        setProjectSortMode("updated");
-                        setProjectSortOpen(false);
-                      }}
-                    >
-                      Last updated
-                    </button>
-                    <button
-                      type="button"
-                      className={projectSortMode === "recent" ? "active" : ""}
-                      onClick={() => {
-                        setProjectSortMode("recent");
-                        setProjectSortOpen(false);
-                      }}
-                    >
-                      Most recent
-                    </button>
-                    <button
-                      type="button"
-                      className={projectSortMode === "alpha-asc" ? "active" : ""}
-                      onClick={() => {
-                        setProjectSortMode("alpha-asc");
-                        setProjectSortOpen(false);
-                      }}
-                    >
-                      Alphabetical (A-Z)
-                    </button>
-                    <button
-                      type="button"
-                      className={projectSortMode === "alpha-desc" ? "active" : ""}
-                      onClick={() => {
-                        setProjectSortMode("alpha-desc");
-                        setProjectSortOpen(false);
-                      }}
-                    >
-                      Alphabetical (Z-A)
-                    </button>
-                  </div>
-                ) : null}
-                {projectSearchOpen ? (
-                  <div className="project-search-popover">
-                    <input
-                      ref={projectSearchInputRef}
-                      placeholder="Search workspaces..."
-                      value={projectSearchQuery}
-                      onChange={(event) => setProjectSearchQuery(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          setProjectSearchOpen(false);
-                          setProjectSearchQuery("");
-                        }
-                      }}
-                    />
-                    <div className="project-search-results">
-                      {filteredProjects.map((project) => (
-                        <button
-                          key={`search-${project.id}`}
-                          type="button"
-                          onClick={() => {
-                            void selectProject(project.worktree);
-                            setProjectSearchOpen(false);
-                          }}
-                          title={project.name || project.worktree.split("/").at(-1) || project.worktree}
-                        >
-                          {project.name || project.worktree.split("/").at(-1) || project.worktree}
-                        </button>
-                      ))}
-                      {filteredProjects.length === 0 ? <p>No matching workspaces</p> : null}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="project-list">
-                  {filteredProjects.map((project) => {
-                    const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
-                    const isActiveProject = project.worktree === activeProjectDir;
-                    const isExpanded = isActiveProject && !collapsedProjects[project.worktree];
-                    return (
-                      <article
-                        key={project.id}
-                        className={`project-item ${isActiveProject ? "active" : ""}`.trim()}
-                        onContextMenu={(event) => openProjectContextMenu(event, project.worktree, projectLabel)}
-                      >
-                        <div className="project-item-header">
-                          <button
-                            type="button"
-                            className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
-                            onClick={() => {
-                              if (isActiveProject) {
-                                setCollapsedProjects((current) => ({
-                                  ...current,
-                                  [project.worktree]: !current[project.worktree],
-                                }));
-                                return;
-                              }
-                              void selectProject(project.worktree);
-                            }}
-                            title={projectLabel}
-                          >
-                            <span className="project-row-arrow" aria-hidden="true">
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </span>
-                            <span className="project-label-text">{projectLabel}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="project-add-session"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void createSession(project.worktree);
-                            }}
-                            aria-label={`Create session for ${projectLabel}`}
-                            title="New session"
-                          >
-                            +
-                          </button>
-                        </div>
-                        {isExpanded ? (
-                          <div className="project-session-list">
-                            {sessions.length === 0 ? <p>No sessions yet</p> : null}
-                            {sessions.slice(0, 4).map((session) => {
-                              const status = getSessionStatusType(session.id, project.worktree);
-                              const busy = status === "busy" || status === "retry";
-                              return (
-                                <button
-                                  type="button"
-                                  key={session.id}
-                                  className={session.id === activeSessionID ? "active" : ""}
-                                  onClick={() => openSession(session.id)}
-                                  onContextMenu={(event) =>
-                                    openSessionContextMenu(event, project.worktree, session.id, session.title || session.slug)
-                                  }
-                                  title={session.title || session.slug}
-                                >
-                                  <span className={`session-status-indicator ${busy ? "busy" : "idle"}`} aria-hidden="true" />
-                                  <span>{session.title || session.slug}</span>
-                                </button>
-                              );
-                            })}
-                            {sessions.length > 4 ? (
-                              <button type="button" className="project-sessions-more" onClick={() => setAllSessionsModalOpen(true)}>
-                                View all
-                              </button>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </article>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <div className="sidebar-mode-placeholder">
-                {sidebarMode === "jobs" ? "Scheduled automations run from the Jobs page." : "Skill cards are available in the Skills page."}
-              </div>
-            )}
-
-            <div className="sidebar-footer-actions">
-              <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
-              <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
-            </div>
-          </aside>
+          <WorkspaceSidebar
+            sidebarMode={sidebarMode}
+            setSidebarMode={setSidebarMode}
+            unreadJobRunsCount={unreadJobRunsCount}
+            openWorkspaceDashboard={openWorkspaceDashboard}
+            projectSearchOpen={projectSearchOpen}
+            setProjectSearchOpen={setProjectSearchOpen}
+            projectSortOpen={projectSortOpen}
+            setProjectSortOpen={setProjectSortOpen}
+            projectSortMode={projectSortMode}
+            setProjectSortMode={setProjectSortMode}
+            projectSearchInputRef={projectSearchInputRef}
+            projectSearchQuery={projectSearchQuery}
+            setProjectSearchQuery={setProjectSearchQuery}
+            filteredProjects={filteredProjects}
+            activeProjectDir={activeProjectDir}
+            collapsedProjects={collapsedProjects}
+            setCollapsedProjects={setCollapsedProjects}
+            sessions={sessions}
+            activeSessionID={activeSessionID ?? undefined}
+            setAllSessionsModalOpen={setAllSessionsModalOpen}
+            getSessionStatusType={getSessionStatusType}
+            selectProject={selectProject}
+            createSession={createSession}
+            openSession={openSession}
+            openProjectContextMenu={openProjectContextMenu}
+            openSessionContextMenu={openSessionContextMenu}
+            addProjectDirectory={() => addProjectDirectory()}
+            openJobEditor={() => openJobEditor()}
+            loadSkills={loadSkills}
+            setProfileModalOpen={setProfileModalOpen}
+            setSettingsOpen={setSettingsOpen}
+          />
         ) : null}
         {showProjectsPane ? (
           <button
@@ -3076,134 +1564,42 @@ export default function App() {
 
         <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"}`.trim()}>
           {hasProjectContext ? (
-            <div className="content-edge-controls">
-              <IconButton
-                icon="panelLeft"
-                label={showProjectsPane ? "Hide workspaces sidebar" : "Show workspaces sidebar"}
-                className={`titlebar-toggle titlebar-toggle-left ${showProjectsPane ? "active" : ""}`.trim()}
-                onClick={() => setProjectsSidebarVisible((value) => !value)}
-              />
-              <div className="content-edge-right-actions">
-                <div className={`titlebar-split titlebar-open ${openMenuOpen ? "open" : ""}`.trim()}>
-                  <button
-                    type="button"
-                    className="titlebar-action"
-                    onClick={() => {
-                      void openDirectoryInTarget(preferredOpenTarget);
-                      setCommitMenuOpen(false);
-                      setTitleMenuOpen(false);
-                    }}
-                  >
-                    <span className="titlebar-action-logo titlebar-action-logo-app">
-                      <img src={activeOpenTarget.logo} alt="" aria-hidden="true" />
-                    </span>
-                    <span>{activeOpenTarget.label}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="titlebar-action-arrow"
-                    onClick={() => {
-                      setOpenMenuOpen((value) => !value);
-                      setCommitMenuOpen(false);
-                      setTitleMenuOpen(false);
-                    }}
-                    aria-label="Open in options"
-                    title="Open in options"
-                  >
-                    <ChevronsUpDown size={13} aria-hidden="true" />
-                  </button>
-                  {openMenuOpen ? (
-                    <div className="titlebar-menu">
-                      <small>Open in</small>
-                      {openTargets.map((target) => (
-                        <button key={target.id} type="button" onClick={() => void openDirectoryInTarget(target.id)}>
-                          <span className="menu-item-logo menu-item-logo-app">
-                            <img src={target.logo} alt="" aria-hidden="true" />
-                          </span>
-                          <span>{target.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className={`titlebar-split titlebar-commit ${commitMenuOpen ? "open" : ""}`.trim()}>
-                  <button
-                    type="button"
-                    className="titlebar-action"
-                    onClick={() => {
-                      openCommitModal();
-                      setOpenMenuOpen(false);
-                      setTitleMenuOpen(false);
-                    }}
-                  >
-                    <span className="titlebar-action-logo">
-                      <GitCommitHorizontal size={14} aria-hidden="true" />
-                    </span>
-                    <span>Commit</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="titlebar-action-arrow"
-                    onClick={() => {
-                      setCommitMenuOpen((value) => !value);
-                      setOpenMenuOpen(false);
-                      setTitleMenuOpen(false);
-                    }}
-                    aria-label="Commit options"
-                    title="Commit options"
-                  >
-                    <ChevronsUpDown size={13} aria-hidden="true" />
-                  </button>
-                  {commitMenuOpen ? (
-                    <div className="titlebar-menu">
-                      <small>Next step</small>
-                      {commitNextStepOptions.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => {
-                            setCommitNextStep(option.id);
-                            openCommitModal(option.id);
-                          }}
-                        >
-                          <span className="menu-item-logo">{option.icon}</span>
-                          <span>{option.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                <IconButton
-                  icon="terminal"
-                  label={terminalOpen ? "Hide terminal" : "Show terminal"}
-                  className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
-                  onClick={() => void toggleTerminal()}
-                />
-                <IconButton
-                  icon="panelRight"
-                  label={showOperationsPane ? "Hide operations sidebar" : "Show operations sidebar"}
-                  className={`titlebar-toggle titlebar-toggle-right ${showOperationsPane ? "active" : ""}`.trim()}
-                  onClick={() =>
-                    setAppPreferences((current) => ({
-                      ...current,
-                      showOperationsPane: !current.showOperationsPane,
-                    }))
-                  }
-                />
-              </div>
-            </div>
+            <ContentTopBar
+              showProjectsPane={showProjectsPane}
+              setProjectsSidebarVisible={setProjectsSidebarVisible}
+              showOperationsPane={showOperationsPane}
+              setOperationsPaneVisible={(visible) =>
+                setAppPreferences((current) => ({
+                  ...current,
+                  showOperationsPane: visible,
+                }))
+              }
+              activeProjectDir={activeProjectDir ?? null}
+              projectData={projectData}
+              terminalOpen={terminalOpen}
+              toggleTerminal={toggleTerminal}
+              openMenuOpen={openMenuOpen}
+              setOpenMenuOpen={setOpenMenuOpen}
+              commitMenuOpen={commitMenuOpen}
+              setCommitMenuOpen={setCommitMenuOpen}
+              setTitleMenuOpen={setTitleMenuOpen}
+              activeOpenTarget={activeOpenTarget}
+              openTargets={openTargets}
+              openDirectoryInTarget={openDirectoryInTarget}
+              openCommitModal={openCommitModal}
+              commitNextStepOptions={commitNextStepOptions}
+              setCommitNextStep={setCommitNextStep}
+            />
           ) : null}
           {sidebarMode === "jobs" ? (
             <JobsBoard
-              templates={JOB_TEMPLATES}
+              templates={jobTemplates}
               jobs={jobs}
               runs={jobRuns}
               unreadRuns={unreadJobRunsCount}
               projects={projects}
-              onNewJob={() => openNewJobModal()}
-              onUseTemplate={(template) => openNewJobModal(template)}
+              onNewJob={() => openJobEditor()}
+              onUseTemplate={(template) => openJobEditor(template)}
               onDeleteJob={removeJob}
               onToggleEnabled={toggleJobEnabled}
               onOpenRun={(runID) => void openJobRunViewer(runID)}
@@ -3354,191 +1750,47 @@ export default function App() {
                     </section>
                   ) : null}
 
-                  <section className="composer-zone">
-                    <div className="composer-input-wrap">
-                      <textarea
-                        placeholder="Send message to Orxa"
-                        value={composer}
-                      onChange={(event) => handleComposerChange(event.target.value)}
-                      onKeyDown={(event) => {
-                        // Handle slash command navigation first
-                        if (slashMenuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Tab' || event.key === 'Escape')) {
-                          handleSlashKeyDown(event);
-                          return;
-                        }
-                        if (event.key === "Enter" && !event.shiftKey) {
-                          event.preventDefault();
-                          // If slash menu is open, select the current command
-                          if (slashMenuOpen) {
-                            const command = filteredSlashCommands[slashSelectedIndex];
-                            if (command) {
-                              insertSlashCommand(command.name);
-                            }
-                            return;
-                          }
-                          if (isSessionBusy) {
-                            void abortActiveSession();
-                          } else {
-                            void sendPrompt();
-                          }
-                        }
-                      }}
-                      />
-                      <div className="composer-input-actions">
-                        <IconButton icon="image" label="Attach image" onClick={() => void pickImageAttachment()} />
-                        <IconButton
-                          icon={isSessionBusy ? "stop" : "send"}
-                          label={isSessionBusy ? "Stop" : "Send prompt"}
-                          onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
-                          disabled={!activeSessionID}
-                        />
-                      </div>
-                    </div>
-
-                    {slashMenuOpen && filteredSlashCommands.length > 0 ? (
-                      <div className="slash-command-menu">
-                        <small>Commands</small>
-                        <div className="slash-command-list">
-                          {filteredSlashCommands.map((command, index) => (
-                            <button
-                              key={command.name}
-                              type="button"
-                              className={index === slashSelectedIndex ? "active" : ""}
-                              onClick={() => insertSlashCommand(command.name)}
-                            >
-                              <span className="slash-command-name">/{command.name}</span>
-                              <span className="slash-command-desc">{command.description}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {composerAttachments.length > 0 ? (
-                      <div className="composer-attachments">
-                        {composerAttachments.map((attachment) => (
-                          <button
-                            key={attachment.url}
-                            type="button"
-                            className="attachment-chip"
-                            onClick={() => removeAttachment(attachment.url)}
-                            title={`Remove ${attachment.filename}`}
-                          >
-                            {attachment.filename}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    <div className="composer-divider" />
-
-                    <div className="composer-controls">
-                      <label className="agent-mode-toggle plan-toggle-inline">
-                        <input
-                          type="checkbox"
-                          checked={isPlanMode}
-                          disabled={!hasPlanAgent}
-                          onChange={(event) => togglePlanMode(event.target.checked)}
-                        />
-                        Plan mode
-                      </label>
-                      <div className={`composer-branch-wrap ${branchMenuOpen ? "open" : ""}`.trim()}>
-                        <button
-                          type="button"
-                          className="composer-branch-control"
-                          style={{ width: `${branchControlWidthCh}ch` }}
-                          disabled={branchLoading || branchSwitching || !activeProjectDir}
-                          onClick={() => {
-                            setBranchMenuOpen((value) => {
-                              const next = !value;
-                              if (next) {
-                                setBranchQuery("");
-                              }
-                              return next;
-                            });
-                          }}
-                          title={branchState?.current || "Branch"}
-                        >
-                          <span className="composer-branch-leading">
-                            <GitBranch size={14} aria-hidden="true" />
-                            <span className="composer-branch-label">{branchDisplayValue}</span>
-                          </span>
-                          <ChevronDown size={13} aria-hidden="true" />
-                        </button>
-                        {branchMenuOpen ? (
-                          <div className="composer-branch-menu">
-                            <div className="composer-branch-search">
-                              <SearchIcon size={13} aria-hidden="true" />
-                              <input
-                                ref={branchSearchInputRef}
-                                value={branchQuery}
-                                onChange={(event) => setBranchQuery(event.target.value)}
-                                placeholder="Search branches"
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    void checkoutBranch(branchQuery);
-                                  }
-                                }}
-                              />
-                            </div>
-                            <small>Branches</small>
-                            <div className="composer-branch-list">
-                              {filteredBranches.length === 0 ? (
-                                <p>No branches found</p>
-                              ) : (
-                                filteredBranches.map((branch) => (
-                                  <button key={branch} type="button" onClick={() => void checkoutBranch(branch)}>
-                                    <span className="composer-branch-item-main">
-                                      <GitBranch size={13} aria-hidden="true" />
-                                      <span>{branch}</span>
-                                    </span>
-                                    {branch === branchState?.current ? <Check size={13} aria-hidden="true" /> : null}
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              className="composer-branch-create"
-                              disabled={branchLoading || branchSwitching}
-                              onClick={() => void openBranchCreateModal()}
-                            >
-                              <Plus size={14} aria-hidden="true" />
-                              Create and checkout new branch...
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                      <select
-                        className="composer-select composer-model-select"
-                        aria-label="Model"
-                        value={selectedModel ?? ""}
-                        style={{ width: `${modelSelectWidthCh}ch` }}
-                        onChange={(event) => setSelectedModel(event.target.value || undefined)}
-                      >
-                        {modelSelectOptions.map((model) => (
-                          <option key={model.key} value={model.key}>
-                            {model.providerName}/{model.modelName}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className="composer-select composer-variant-select"
-                        aria-label="Variant"
-                        value={selectedVariant ?? ""}
-                        style={{ width: `${variantSelectWidthCh}ch` }}
-                        onChange={(event) => setSelectedVariant(event.target.value || undefined)}
-                      >
-                        <option value="">(default)</option>
-                        {variantOptions.map((variant) => (
-                          <option key={variant} value={variant}>
-                            {variant}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </section>
+                  <ComposerPanel
+                    composer={composer}
+                    setComposer={handleComposerChange}
+                    composerAttachments={composerAttachments}
+                    removeAttachment={removeAttachment}
+                    slashMenuOpen={slashMenuOpen}
+                    filteredSlashCommands={filteredSlashCommands}
+                    slashSelectedIndex={slashSelectedIndex}
+                    insertSlashCommand={insertSlashCommand}
+                    handleSlashKeyDown={handleSlashKeyDown}
+                    sendPrompt={sendPrompt}
+                    abortActiveSession={abortActiveSession}
+                    isSessionBusy={isSessionBusy}
+                    pickImageAttachment={pickImageAttachment}
+                    hasActiveSession={Boolean(activeSessionID)}
+                    isPlanMode={isPlanMode}
+                    hasPlanAgent={hasPlanAgent}
+                    togglePlanMode={togglePlanMode}
+                    branchMenuOpen={branchMenuOpen}
+                    setBranchMenuOpen={setBranchMenuOpen}
+                    branchControlWidthCh={branchControlWidthCh}
+                    branchLoading={branchLoading}
+                    branchSwitching={branchSwitching}
+                    hasActiveProject={Boolean(activeProjectDir)}
+                    branchCurrent={branchState?.current}
+                    branchDisplayValue={branchDisplayValue}
+                    branchSearchInputRef={branchSearchInputRef}
+                    branchQuery={branchQuery}
+                    setBranchQuery={setBranchQuery}
+                    checkoutBranch={checkoutBranch}
+                    filteredBranches={filteredBranches}
+                    openBranchCreateModal={openBranchCreateModal}
+                    modelSelectOptions={modelSelectOptions}
+                    selectedModel={selectedModel}
+                    setSelectedModel={setSelectedModel}
+                    modelSelectWidthCh={modelSelectWidthCh}
+                    selectedVariant={selectedVariant}
+                    setSelectedVariant={setSelectedVariant}
+                    variantOptions={variantOptions}
+                    variantSelectWidthCh={variantSelectWidthCh}
+                  />
 
                   <TerminalPanel
                     directory={activeProjectDir}
@@ -3604,159 +1856,23 @@ export default function App() {
         ) : null}
 
         {showOperationsPane ? (
-          <aside className="sidebar ops-pane">
-            <div className="pane-header pane-header-empty" aria-hidden="true" />
-            <section className="ops-toolbar">
-              <IconButton
-                icon="git"
-                label="Git"
-                className={`tab-icon ${opsPanelTab === "git" ? "active" : ""}`.trim()}
-                onClick={() => setOpsPanelTab("git")}
-              />
-              <IconButton
-                icon="files"
-                label="Files"
-                className={`tab-icon ${opsPanelTab === "files" ? "active" : ""}`.trim()}
-                onClick={() => setOpsPanelTab("files")}
-              />
-            </section>
-
-            {opsPanelTab === "git" ? (
-              <section className="ops-section ops-section-fill">
-                <h3>Git</h3>
-                <div className="ops-icon-row ops-icon-tabs">
-                  <IconButton
-                    icon="diff"
-                    label="Diff"
-                    className={gitPanelTab === "diff" ? "active" : ""}
-                    onClick={() => void loadGitDiff()}
-                  />
-                  <IconButton
-                    icon="log"
-                    label="Log"
-                    className={gitPanelTab === "log" ? "active" : ""}
-                    onClick={() => void loadGitLog()}
-                  />
-                  <IconButton
-                    icon="issues"
-                    label="Issues"
-                    className={gitPanelTab === "issues" ? "active" : ""}
-                    onClick={() => void loadGitIssues()}
-                  />
-                  <IconButton
-                    icon="pulls"
-                    label="Pull requests"
-                    className={gitPanelTab === "prs" ? "active" : ""}
-                    onClick={() => void loadGitPrs()}
-                  />
-                </div>
-                <pre className="ops-console">{gitPanelOutput}</pre>
-              </section>
-            ) : null}
-
-            {opsPanelTab === "files" ? (
-              <ProjectFilesPanel
-                directory={activeProjectDir ?? ""}
-                onAddToChatPath={appendPathToComposer}
-                onStatus={(message) => setStatusLine(message)}
-              />
-            ) : null}
-
-            {opsPanelTab === "operations" ? (
-              <>
-                <section className="ops-section">
-                  <h3>Pending Permissions</h3>
-                  {(projectData?.permissions ?? []).length === 0 ? <p>None</p> : null}
-                  {(projectData?.permissions ?? []).map((permission) => (
-                    <article key={permission.id} className="ops-card">
-                      <div>{permission.permission}</div>
-                      <small>{permission.patterns.join(", ")}</small>
-                      <div className="ops-card-actions">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            activeProjectDir &&
-                            void window.orxa.opencode.replyPermission(activeProjectDir, permission.id, "once").then(() => queueRefresh("Permission replied"))
-                          }
-                        >
-                          Once
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            activeProjectDir &&
-                            void window.orxa.opencode.replyPermission(activeProjectDir, permission.id, "always").then(() => queueRefresh("Permission replied"))
-                          }
-                        >
-                          Always
-                        </button>
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => {
-                            if (!activeProjectDir) {
-                              return;
-                            }
-                            if (appPreferences.confirmDangerousActions && !window.confirm("Reject this permission request?")) {
-                              return;
-                            }
-                            void window.orxa.opencode.replyPermission(activeProjectDir, permission.id, "reject").then(() => queueRefresh("Permission rejected"));
-                          }}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </section>
-
-                <section className="ops-section">
-                  <h3>Pending Questions</h3>
-                  {(projectData?.questions ?? []).length === 0 ? <p>None</p> : null}
-                  {(projectData?.questions ?? []).map((question) => (
-                    <article key={question.id} className="ops-card">
-                      <div>{question.questions[0]?.header ?? "Question"}</div>
-                      <small>{question.questions[0]?.question ?? ""}</small>
-                      <div className="ops-card-actions">
-                        {(question.questions[0]?.options ?? []).slice(0, 3).map((option) => (
-                          <button
-                            key={option.label}
-                            type="button"
-                            onClick={() => {
-                              if (!activeProjectDir) {
-                                return;
-                              }
-                              const answers: QuestionAnswer[] = [[option.label]];
-                              void window.orxa.opencode.replyQuestion(activeProjectDir, question.id, answers).then(() => queueRefresh("Question replied"));
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => {
-                            if (!activeProjectDir) {
-                              return;
-                            }
-                            if (appPreferences.confirmDangerousActions && !window.confirm("Reject this question request?")) {
-                              return;
-                            }
-                            void window.orxa.opencode.rejectQuestion(activeProjectDir, question.id).then(() => queueRefresh("Question rejected"));
-                          }}
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </section>
-
-
-              </>
-            ) : null}
-          </aside>
+          <OpsSidebar
+            opsPanelTab={opsPanelTab}
+            setOpsPanelTab={setOpsPanelTab}
+            gitPanelTab={gitPanelTab}
+            setGitPanelTab={setGitPanelTab}
+            gitPanelOutput={gitPanelOutput}
+            branchState={branchState}
+            branchQuery={branchQuery}
+            setBranchQuery={setBranchQuery}
+            activeProjectDir={activeProjectDir ?? null}
+            onLoadGitDiff={loadGitDiff}
+            onLoadGitLog={loadGitLog}
+            onLoadGitIssues={loadGitIssues}
+            onLoadGitPrs={loadGitPrs}
+            onAddToChatPath={appendPathToComposer}
+            onStatusChange={setStatusLine}
+          />
         ) : null}
       </div>
 
@@ -3829,330 +1945,112 @@ export default function App() {
         </div>
       ) : null}
 
-      {pendingPermission && activeProjectDir ? (
-        <div className="overlay permission-overlay">
-          <section className="modal permission-modal">
-            <header className="modal-header">
-              <h2>Permission Request</h2>
-            </header>
-            <div className="permission-modal-body">
-              <p className="permission-title">{pendingPermission.permission}</p>
-              <p className="permission-description">OpenCode is requesting edit access for the selected project.</p>
-              <div className="permission-patterns">
-                {(pendingPermission.patterns ?? []).map((pattern) => (
-                  <code key={pattern}>{pattern}</code>
-                ))}
-              </div>
-              <div className="permission-actions">
-                <button
-                  type="button"
-                  disabled={permissionDecisionPending !== null}
-                  onClick={() => void replyPendingPermission("once")}
-                >
-                  Allow once
-                </button>
-                <button
-                  type="button"
-                  disabled={permissionDecisionPending !== null}
-                  onClick={() => void replyPendingPermission("always")}
-                >
-                  Allow session
-                </button>
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={permissionDecisionPending !== null}
-                  onClick={() => void replyPendingPermission("reject")}
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {allSessionsModalOpen && activeProjectDir ? (
-        <div className="overlay" onClick={() => setAllSessionsModalOpen(false)}>
-          <div className="modal session-list-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h2>All Sessions</h2>
-              <button type="button" onClick={() => setAllSessionsModalOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="session-list-modal-body">
-              {sessions.map((session) => {
-                const status = getSessionStatusType(session.id, activeProjectDir);
-                const busy = status === "busy" || status === "retry";
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    className={`project-session-row session-modal-row ${session.id === activeSessionID ? "active" : ""}`.trim()}
-                    onClick={() => {
-                      openSession(session.id);
-                      setAllSessionsModalOpen(false);
-                    }}
-                    title={session.title || session.slug}
-                  >
-                    <span className={`session-status-indicator ${busy ? "busy" : "idle"}`} aria-hidden="true" />
-                    <strong>{session.title || session.slug}</strong>
-                    <span>{status}</span>
-                    <small>{new Date(session.time.updated).toLocaleString()}</small>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {jobRunViewer ? (
-        <div className="overlay" onClick={() => setJobRunViewer(null)}>
-          <section className="modal job-run-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="modal-header">
-              <h2>{jobRunViewer.jobName}</h2>
-              <button type="button" onClick={() => setJobRunViewer(null)}>
-                X
-              </button>
-            </header>
-            <div className="job-run-meta">
-              <span>{projects.find((project) => project.worktree === jobRunViewer.projectDir)?.name || jobRunViewer.projectDir.split("/").at(-1) || jobRunViewer.projectDir}</span>
-              <small>
-                Session {jobRunViewer.sessionID}
-              </small>
-            </div>
-            <div className="job-run-body">
-              {jobRunViewerLoading ? <p className="dashboard-empty">Loading job output...</p> : <MessageFeed messages={jobRunViewerMessages} />}
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {branchCreateModalOpen ? (
-        <div className="overlay" onClick={() => setBranchCreateModalOpen(false)}>
-          <section className="modal branch-create-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="modal-header">
-              <h2>Create and checkout new branch</h2>
-              <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
-                X
-              </button>
-            </header>
-            <div className="branch-create-modal-body">
-              <label className="branch-create-field">
-                Branch name
-                <input
-                  type="text"
-                  value={branchCreateName}
-                  onChange={(event) => {
-                    setBranchCreateName(event.target.value);
-                    setBranchCreateError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      void submitBranchCreate();
-                    }
-                    if (event.key === 'Escape') {
-                      setBranchCreateModalOpen(false);
-                    }
-                  }}
-                  placeholder="feature/my-new-branch"
-                  autoFocus
-                />
-              </label>
-              {branchCreateError ? (
-                <p className="branch-create-error">{branchCreateError}</p>
-              ) : null}
-              <div className="branch-create-actions">
-                <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!branchCreateName.trim() || branchSwitching}
-                  onClick={() => void submitBranchCreate()}
-                >
-                  {branchSwitching ? 'Creating...' : 'Create and checkout'}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {commitModalOpen && activeProjectDir ? (
-        <div className="overlay" onClick={() => setCommitModalOpen(false)}>
-          <section className="modal commit-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="modal-header">
-              <h2>Commit your changes</h2>
-              <button type="button" onClick={() => setCommitModalOpen(false)}>
-                X
-              </button>
-            </header>
-            <div className="commit-modal-body">
-              <div className="commit-summary-grid">
-                <div>
-                  <small>Branch</small>
-                  <strong>{commitSummary?.branch ?? "..."}</strong>
-                </div>
-                <div>
-                  <small>Changes</small>
-                  <strong>
-                    {commitSummaryLoading
-                      ? "Loading..."
-                      : `${commitSummary?.filesChanged ?? 0} files   +${commitSummary?.insertions ?? 0}  -${commitSummary?.deletions ?? 0}`}
-                  </strong>
-                </div>
-              </div>
-
-              <label className="commit-include-toggle">
-                <input
-                  type="checkbox"
-                  checked={commitIncludeUnstaged}
-                  onChange={(event) => setCommitIncludeUnstaged(event.target.checked)}
-                />
-                Include unstaged changes
-              </label>
-
-              <label className="commit-message-field">
-                Commit message
-                <textarea
-                  rows={4}
-                  value={commitMessageDraft}
-                  placeholder="Leave blank to autogenerate a commit message"
-                  onChange={(event) => setCommitMessageDraft(event.target.value)}
-                />
-              </label>
-
-              <section className="commit-next-steps">
-                <small>Next steps</small>
-                {commitNextStepOptions.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={commitNextStep === option.id ? "active" : ""}
-                    onClick={() => setCommitNextStep(option.id)}
-                  >
-                    <span className="menu-item-logo">{option.icon}</span>
-                    <span>{option.label}</span>
-                    <span>{commitNextStep === option.id ? "✓" : ""}</span>
-                  </button>
-                ))}
-              </section>
-
-              <button
-                type="button"
-                className="commit-continue"
-                disabled={commitSubmitting || commitSummaryLoading}
-                onClick={() => void submitCommit()}
-              >
-                {commitSubmitting ? "Committing..." : "Continue"}
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      <JobEditorModal
-        open={jobModalOpen}
-        draft={jobDraft}
-        projects={projects}
-        onClose={() => setJobModalOpen(false)}
-        onChange={updateJobDraft}
-        onSave={saveJobDraft}
-        onAddProject={() => addProjectDirectory({ select: false })}
+      <ConfirmDialog
+        isOpen={Boolean(confirmDialogRequest)}
+        title={confirmDialogRequest?.title ?? "Confirm"}
+        message={confirmDialogRequest?.message ?? "Are you sure?"}
+        confirmLabel={confirmDialogRequest?.confirmLabel}
+        cancelLabel={confirmDialogRequest?.cancelLabel}
+        variant={confirmDialogRequest?.variant}
+        onConfirm={() => closeConfirmDialog(true)}
+        onCancel={() => closeConfirmDialog(false)}
       />
 
-      {skillUseModal ? (
-        <div className="overlay" onClick={() => setSkillUseModal(null)}>
-          <section className="modal skill-use-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="modal-header">
-              <h2>Use Skill</h2>
-              <button type="button" onClick={() => setSkillUseModal(null)}>
-                X
-              </button>
-            </header>
-            <div className="skill-use-body">
-              <strong>{skillUseModal.skill.name}</strong>
-              <p>{skillUseModal.skill.description}</p>
-              <label>
-                Workspace
-                <div className="skill-use-project-row">
-                  <select
-                    value={skillUseModal.projectDir}
-                    onChange={(event) => setSkillUseModal((current) => (current ? { ...current, projectDir: event.target.value } : current))}
-                  >
-                      <option value="">Choose a workspace</option>
-                    {projects.map((project) => (
-                      <option key={`skill-use-${project.id}`} value={project.worktree}>
-                        {project.name || project.worktree.split("/").at(-1) || project.worktree}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void addProjectDirectory({ select: false }).then((directory) => {
-                        if (!directory) {
-                          return;
-                        }
-                        setSkillUseModal((current) => (current ? { ...current, projectDir: directory } : current));
-                      })
-                    }
-                  >
-                    Add workspace
-                  </button>
-                </div>
-              </label>
-              <footer className="skill-use-actions">
-                <button type="button" onClick={() => setSkillUseModal(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!skillUseModal.projectDir}
-                  onClick={() => void applySkillToProject(skillUseModal.skill, skillUseModal.projectDir)}
-                >
-                  Prepare prompt
-                </button>
-              </footer>
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <TextInputDialog
+        isOpen={Boolean(textInputDialog)}
+        title={textInputDialog?.title ?? ""}
+        placeholder={textInputDialog?.placeholder}
+        defaultValue={textInputDialog?.defaultValue}
+        confirmLabel={textInputDialog?.confirmLabel}
+        cancelLabel={textInputDialog?.cancelLabel}
+        validate={textInputDialog?.validate}
+        onConfirm={(value) => {
+          const dialog = textInputDialog;
+          if (!dialog) {
+            return;
+          }
+          setTextInputDialog(null);
+          void Promise.resolve(dialog.onConfirm(value));
+        }}
+        onCancel={() => setTextInputDialog(null)}
+      />
 
-      <ProfileModal
-        open={profileModalOpen}
+      <GlobalModalsHost
+        activeProjectDir={activeProjectDir}
+        permissionRequest={pendingPermission ?? null}
+        permissionDecisionPending={permissionDecisionPending}
+        replyPermission={replyPendingPermission}
+        questionRequest={pendingQuestion}
+        replyQuestion={replyPendingQuestion}
+        rejectQuestion={rejectPendingQuestion}
+        allSessionsModalOpen={allSessionsModalOpen}
+        setAllSessionsModalOpen={setAllSessionsModalOpen}
+        sessions={sessions}
+        getSessionStatusType={getSessionStatusType}
+        activeSessionID={activeSessionID}
+        openSession={openSession}
+        jobRunViewer={jobRunViewer}
+        closeJobRunViewer={closeJobRunViewer}
+        projects={projects}
+        jobRunViewerLoading={jobRunViewerLoading}
+        jobRunViewerMessages={jobRunViewerMessages}
+        branchCreateModalOpen={branchCreateModalOpen}
+        setBranchCreateModalOpen={setBranchCreateModalOpen}
+        branchCreateName={branchCreateName}
+        setBranchCreateName={setBranchCreateName}
+        branchCreateError={branchCreateError}
+        setBranchCreateError={setBranchCreateError}
+        submitBranchCreate={submitBranchCreate}
+        branchSwitching={branchSwitching}
+        commitModalOpen={commitModalOpen}
+        setCommitModalOpen={setCommitModalOpen}
+        commitSummary={commitSummary}
+        commitSummaryLoading={commitSummaryLoading}
+        commitIncludeUnstaged={commitIncludeUnstaged}
+        setCommitIncludeUnstaged={setCommitIncludeUnstaged}
+        commitMessageDraft={commitMessageDraft}
+        setCommitMessageDraft={setCommitMessageDraft}
+        commitNextStepOptions={commitNextStepOptions}
+        commitNextStep={commitNextStep}
+        setCommitNextStep={setCommitNextStep}
+        commitSubmitting={commitSubmitting}
+        submitCommit={submitCommit}
+        jobEditorOpen={jobEditorOpen}
+        jobDraft={jobDraft}
+        closeJobEditor={closeJobEditor}
+        updateJobEditor={updateJobEditor}
+        saveJobEditor={saveJobEditor}
+        addProjectDirectory={addProjectDirectory}
+        skillUseModal={skillUseModal}
+        setSkillUseModal={setSkillUseModal}
+        applySkillToProject={applySkillToProject}
+        profileModalOpen={profileModalOpen}
+        setProfileModalOpen={setProfileModalOpen}
         profiles={profiles}
         runtime={runtime}
-        onClose={() => setProfileModalOpen(false)}
-        onSave={async (profile: RuntimeProfileInput) => {
+        onSaveProfile={async (profile: RuntimeProfileInput) => {
           await window.orxa.runtime.saveProfile(profile);
           await refreshProfiles();
           setStatusLine("Profile saved");
         }}
-        onDelete={async (profileID) => {
+        onDeleteProfile={async (profileID) => {
           await window.orxa.runtime.deleteProfile(profileID);
           await refreshProfiles();
           setStatusLine("Profile deleted");
         }}
-        onAttach={async (profileID) => {
+        onAttachProfile={async (profileID) => {
           await window.orxa.runtime.attach(profileID);
           await refreshProfiles();
           await bootstrap();
           setStatusLine("Attached to server");
         }}
-        onStartLocal={async (profileID) => {
+        onStartLocalProfile={async (profileID) => {
           await window.orxa.runtime.startLocal(profileID);
           await refreshProfiles();
           await bootstrap();
           setStatusLine("Local server started");
         }}
-        onStopLocal={async () => {
+        onStopLocalProfile={async () => {
           await window.orxa.runtime.stopLocal();
           await refreshProfiles();
           setStatusLine("Local server stopped");

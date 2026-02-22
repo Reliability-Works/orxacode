@@ -5,13 +5,7 @@ import type {
   RawConfigDocument,
   ServerDiagnostics,
 } from "@shared/ipc";
-
-type AppPreferences = {
-  showOperationsPane: boolean;
-  autoOpenTerminalOnCreate: boolean;
-  confirmDangerousActions: boolean;
-  commitGuidancePrompt: string;
-};
+import type { AppPreferences } from "~/types/app";
 
 type Props = {
   open: boolean;
