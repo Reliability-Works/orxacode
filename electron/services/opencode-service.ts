@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { applyEdits, modify, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
+import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import {
   createOpencodeClient,
   type Config,
@@ -44,12 +44,16 @@ import type {
   WorktreeSessionResult,
 } from "../../shared/ipc";
 import { PasswordStore } from "./password-store";
+import {
+  ORXA_PLUGIN_PACKAGE,
+  ORXA_PLUGIN_SPECIFIER,
+  canonicalPluginName,
+  updateOrxaPluginInConfigDocument,
+} from "./plugin-config";
 import { ProjectStore } from "./project-store";
 import { ProfileStore } from "./profile-store";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
-const ORXA_PLUGIN_PACKAGE = "@reliabilityworks/opencode-orxa";
-const ORXA_PLUGIN_VERSION = "1.0.43";
 const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const DEFAULT_COMMIT_GUIDANCE = [
   "Write a high-quality conventional commit message.",
@@ -74,18 +78,6 @@ function sanitizeError(error: unknown) {
   return raw
     .replace(/https?:\/\/[^\s)]+/gi, "[server]")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[server]");
-}
-
-function canonicalPluginName(specifier: string) {
-  if (specifier.startsWith("file://")) {
-    const url = new URL(specifier);
-    return path.parse(url.pathname).name;
-  }
-  const lastAt = specifier.lastIndexOf("@");
-  if (lastAt > 0) {
-    return specifier.slice(0, lastAt);
-  }
-  return specifier;
 }
 
 function parseSimpleYamlFrontmatter(content: string) {
@@ -427,48 +419,33 @@ export class OpencodeService {
     const configDir = path.join(homedir(), ".config", "opencode");
     await mkdir(configDir, { recursive: true });
 
-    const configPath = this.findConfigFile(configDir);
-    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
-    const parseErrors: Parameters<typeof parseJsonc>[1] = [];
-    const parsed = parseJsonc(raw, parseErrors, { allowTrailingComma: true });
-    if (parseErrors.length > 0) {
-      const first = parseErrors[0];
-      throw new Error(`Failed to parse OpenCode config (${configPath}): ${printParseErrorCode(first.error)} at offset ${first.offset}`);
-    }
-
-    const doc = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-
-    const configuredPlugins = Array.isArray(doc.plugin)
-      ? doc.plugin.filter((item): item is string => typeof item === "string")
-      : [];
-
-    const pluginSpec = `${ORXA_PLUGIN_PACKAGE}@${ORXA_PLUGIN_VERSION}`;
-    const cleanedPlugins = configuredPlugins.filter((item) => {
-      if (item.includes("opencode-orxa")) {
-        return false;
-      }
-      return canonicalPluginName(item) !== ORXA_PLUGIN_PACKAGE;
-    });
-    const nextPluginList = [...cleanedPlugins, pluginSpec];
-    const pluginsChanged =
-      nextPluginList.length !== configuredPlugins.length ||
-      nextPluginList.some((item, index) => item !== configuredPlugins[index]);
-
-    if (pluginsChanged) {
-      const source = raw.trim().length > 0 ? raw : "{}\n";
-      const edits = modify(source, ["plugin"], nextPluginList, {
-        formattingOptions: {
-          insertSpaces: true,
-          tabSize: 2,
-        },
-      });
-      const output = applyEdits(source, edits);
-      await writeFile(configPath, output.endsWith("\n") ? output : `${output}\n`, "utf8");
-    }
+    await this.addOrxaPluginToConfig();
 
     await this.ensureOrxaPluginInstalled(configDir);
+  }
+
+  async addOrxaPluginToConfig() {
+    const configDir = path.join(homedir(), ".config", "opencode");
+    await mkdir(configDir, { recursive: true });
+    const configPath = this.findConfigFile(configDir);
+    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
+    const result = updateOrxaPluginInConfigDocument(raw, "orxa");
+    if (result.changed) {
+      await writeFile(configPath, result.output, "utf8");
+    }
+    return { changed: result.changed, configPath };
+  }
+
+  async removeOrxaPluginFromConfig() {
+    const configDir = path.join(homedir(), ".config", "opencode");
+    await mkdir(configDir, { recursive: true });
+    const configPath = this.findConfigFile(configDir);
+    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
+    const result = updateOrxaPluginInConfigDocument(raw, "standard");
+    if (result.changed) {
+      await writeFile(configPath, result.output, "utf8");
+    }
+    return { changed: result.changed, configPath };
   }
 
   async getServerDiagnostics(): Promise<ServerDiagnostics> {
@@ -502,7 +479,7 @@ export class OpencodeService {
       activeProfile: profile,
       health,
       plugin: {
-        specifier: `${ORXA_PLUGIN_PACKAGE}@${ORXA_PLUGIN_VERSION}`,
+        specifier: ORXA_PLUGIN_SPECIFIER,
         configPath,
         installedPath,
         configured: pluginConfigured,
@@ -2037,7 +2014,7 @@ export class OpencodeService {
       await writeFile(packageJsonPath, "{\n  \"private\": true\n}\n", "utf8");
     }
 
-    const packageSpec = `${ORXA_PLUGIN_PACKAGE}@${ORXA_PLUGIN_VERSION}`;
+    const packageSpec = ORXA_PLUGIN_SPECIFIER;
     const installAttempts: Array<{ command: string; args: string[] }> = [
       { command: "bun", args: ["add", packageSpec, "--exact"] },
       { command: "pnpm", args: ["add", packageSpec, "--save-exact"] },

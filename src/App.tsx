@@ -22,6 +22,7 @@ import {
   Upload,
 } from "lucide-react";
 import type {
+  AppMode,
   AgentsDocument,
   ProjectListItem,
   RuntimeProfile,
@@ -52,6 +53,7 @@ import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import { findFallbackModel, listAgentOptions, listModelOptions, listModelOptionsFromConfig, type ModelOption } from "./lib/models";
+import { preferredAgentForMode } from "./lib/app-mode";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import antigravityLogo from "./assets/app-icons/antigravity.png";
@@ -214,6 +216,8 @@ export default function App() {
       };
     },
   });
+  const [appMode, setAppMode] = useState<AppMode>("orxa");
+  const [modeSwitching, setModeSwitching] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -446,6 +450,10 @@ export default function App() {
     [serverAgentNames, orxaModels.orxa, orxaPrompts.orxa],
   );
   const isPlanMode = selectedAgent === "plan";
+  const isOrxaMode = appMode === "orxa";
+  const composerPlaceholder = isOrxaMode ? "Send message to Orxa" : "Send message";
+  const assistantLabel = isOrxaMode ? "Orxa" : "Assistant";
+  const todosLabel = isOrxaMode ? "Orxa Todos" : "Todos";
   const modelOptionsForAgent = useMemo(() => {
     if (selectedAgent === "orxa" && orxaModels.orxa) {
       const exact = modelOptions.filter((item) => item.key === orxaModels.orxa);
@@ -477,6 +485,12 @@ export default function App() {
     const [nextRuntime, nextProfiles] = await Promise.all([window.orxa.runtime.getState(), window.orxa.runtime.listProfiles()]);
     setRuntime(nextRuntime);
     setProfiles(nextProfiles);
+  }, []);
+
+  const refreshMode = useCallback(async () => {
+    const nextMode = await window.orxa.mode.get();
+    setAppMode(nextMode);
+    return nextMode;
   }, []);
 
   const refreshOrxaState = useCallback(async () => {
@@ -605,9 +619,19 @@ export default function App() {
 
   useEffect(() => {
     void refreshProfiles()
-      .then(() => Promise.all([bootstrap(), refreshOrxaState(), refreshConfigModels()]))
+      .then(async () => {
+        const mode = await refreshMode();
+        await bootstrap();
+        await refreshConfigModels();
+        if (mode === "orxa") {
+          await refreshOrxaState();
+          return;
+        }
+        setOrxaModels({});
+        setOrxaPrompts({});
+      })
       .catch((error) => setStatusLine(error instanceof Error ? error.message : String(error)));
-  }, [bootstrap, refreshConfigModels, refreshOrxaState, refreshProfiles]);
+  }, [bootstrap, refreshConfigModels, refreshMode, refreshOrxaState, refreshProfiles]);
 
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
@@ -636,10 +660,17 @@ export default function App() {
     }
 
     if (!selectedAgent || !available.has(selectedAgent)) {
-      const preferred = hasOrxaAgent ? "orxa" : (agentOptions[0]?.name ?? (hasPlanAgent ? "plan" : undefined));
+      const preferred = preferredAgentForMode({
+        mode: appMode,
+        hasOrxaAgent,
+        hasPlanAgent,
+        serverAgentNames,
+        firstAgentName: agentOptions[0]?.name,
+      });
       setSelectedAgent(preferred);
     }
   }, [
+    appMode,
     agentOptions,
     hasOrxaAgent,
     hasPlanAgent,
@@ -649,6 +680,7 @@ export default function App() {
     selectedAgent,
     selectedAgentDefinition?.model,
     selectedModel,
+    serverAgentNames,
   ]);
 
   useEffect(() => {
@@ -1239,16 +1271,23 @@ export default function App() {
         }
         return;
       }
-      if (hasOrxaAgent) {
+      if (appMode === "orxa" && hasOrxaAgent) {
         setSelectedAgent("orxa");
         if (orxaModels.orxa) {
           setSelectedModel(orxaModels.orxa);
         }
         return;
       }
-      setSelectedAgent(agentOptions[0]?.name);
+      const preferred = preferredAgentForMode({
+        mode: "standard",
+        hasOrxaAgent,
+        hasPlanAgent,
+        serverAgentNames,
+        firstAgentName: agentOptions[0]?.name,
+      });
+      setSelectedAgent(preferred);
     },
-    [agentOptions, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan],
+    [agentOptions, appMode, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan, serverAgentNames],
   );
 
   const activeSession = useMemo(
@@ -1739,12 +1778,16 @@ export default function App() {
               </div>
               {!showingProjectDashboard ? (
                 <>
-                  <MessageFeed messages={messages} showAssistantPlaceholder={isSessionBusy} />
+                  <MessageFeed
+                    messages={messages}
+                    showAssistantPlaceholder={isSessionBusy}
+                    assistantLabel={assistantLabel}
+                  />
 
                   {orxaTodos.length > 0 ? (
                     <section className={`todos-drawer ${todosOpen ? "open" : "closed"}`.trim()}>
                       <button type="button" className="todos-drawer-toggle" onClick={() => setTodosOpen((value) => !value)}>
-                        <span>Orxa Todos</span>
+                        <span>{todosLabel}</span>
                         <small>{orxaTodos.length}</small>
                       </button>
                       {todosOpen ? (
@@ -1806,6 +1849,7 @@ export default function App() {
                     setSelectedVariant={setSelectedVariant}
                     variantOptions={variantOptions}
                     variantSelectWidthCh={variantSelectWidthCh}
+                    placeholder={composerPlaceholder}
                   />
 
                   <TerminalPanel
@@ -2081,6 +2125,8 @@ export default function App() {
 
       <SettingsDrawer
         open={settingsOpen}
+        mode={appMode}
+        modeSwitching={modeSwitching}
         directory={activeProjectDir}
         onClose={() => setSettingsOpen(false)}
         onReadRaw={(scope, directory) => window.orxa.opencode.readRawConfig(scope, directory)}
@@ -2102,6 +2148,24 @@ export default function App() {
           await Promise.all([refreshOrxaState(), refreshConfigModels()]);
           await bootstrap();
           return doc;
+        }}
+        onChangeMode={async (nextMode) => {
+          try {
+            setModeSwitching(true);
+            const applied = await window.orxa.mode.set(nextMode);
+            setAppMode(applied);
+            await bootstrap();
+            await refreshConfigModels();
+            if (applied === "orxa") {
+              await refreshOrxaState();
+            } else {
+              setOrxaModels({});
+              setOrxaPrompts({});
+            }
+            setStatusLine(`Mode switched to ${applied === "orxa" ? "Orxa" : "Standard"}`);
+          } finally {
+            setModeSwitching(false);
+          }
         }}
         onListOrxaAgents={() => window.orxa.opencode.listOrxaAgents()}
         onSaveOrxaAgent={async (input) => {

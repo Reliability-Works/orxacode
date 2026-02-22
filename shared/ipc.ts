@@ -21,6 +21,8 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 export const IPC = {
+  modeGet: "orxa:mode:get",
+  modeSet: "orxa:mode:set",
   runtimeGetState: "orxa:runtime:getState",
   runtimeListProfiles: "orxa:runtime:listProfiles",
   runtimeSaveProfile: "orxa:runtime:saveProfile",
@@ -88,6 +90,8 @@ export const IPC = {
   terminalClose: "orxa:terminal:close",
   events: "orxa:events",
 } as const;
+
+export type AppMode = "orxa" | "standard";
 
 export type RuntimeProfile = {
   id: string;
@@ -358,6 +362,10 @@ export type OrxaEvent =
     };
 
 export interface OrxaBridge {
+  mode: {
+    get: () => Promise<AppMode>;
+    set: (mode: AppMode) => Promise<AppMode>;
+  };
   runtime: {
     getState: () => Promise<RuntimeState>;
     listProfiles: () => Promise<RuntimeProfile[]>;

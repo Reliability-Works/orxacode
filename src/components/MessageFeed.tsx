@@ -4,6 +4,7 @@ import type { SessionMessageBundle } from "@shared/ipc";
 type Props = {
   messages: SessionMessageBundle[];
   showAssistantPlaceholder?: boolean;
+  assistantLabel?: string;
 };
 
 type InternalEvent = {
@@ -12,9 +13,9 @@ type InternalEvent = {
   details?: string;
 };
 
-function getRoleLabel(role: string) {
+function getRoleLabel(role: string, assistantLabel: string) {
   if (role === "assistant") {
-    return "Orxa";
+    return assistantLabel;
   }
   if (role === "user") {
     return "User";
@@ -180,7 +181,7 @@ function renderPart(part: Part) {
   return null;
 }
 
-export function MessageFeed({ messages, showAssistantPlaceholder = false }: Props) {
+export function MessageFeed({ messages, showAssistantPlaceholder = false, assistantLabel = "Orxa" }: Props) {
   if (messages.length === 0) {
     return <div className="messages-empty">No messages yet. Start by sending a prompt.</div>;
   }
@@ -204,7 +205,7 @@ export function MessageFeed({ messages, showAssistantPlaceholder = false }: Prop
         return (
           <article key={`${message.id}:${message.time.created}:${messageIndex}`} className={`message-card message-${role}`}>
             <header className="message-header">
-              <span className="message-role">{getRoleLabel(role)}</span>
+              <span className="message-role">{getRoleLabel(role, assistantLabel)}</span>
               <span className="message-time">{new Date(message.time.created).toLocaleTimeString()}</span>
             </header>
             <div className="message-parts">
@@ -220,7 +221,7 @@ export function MessageFeed({ messages, showAssistantPlaceholder = false }: Prop
       {showAssistantPlaceholder ? (
         <article className="message-card message-assistant">
           <header className="message-header">
-            <span className="message-role">Orxa</span>
+            <span className="message-role">{assistantLabel}</span>
             <span className="message-time">{new Date().toLocaleTimeString()}</span>
           </header>
           <div className="message-parts">

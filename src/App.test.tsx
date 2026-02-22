@@ -2,12 +2,22 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { OrxaAgentDocument } from "@shared/ipc";
+import { preferredAgentForMode } from "./lib/app-mode";
+
+const modeGetMock = vi.fn(async () => "orxa");
+const modeSetMock = vi.fn(async (mode: "orxa" | "standard") => mode);
 
 beforeEach(() => {
   const subscribe = vi.fn(() => () => undefined);
+  modeGetMock.mockResolvedValue("orxa");
+  modeSetMock.mockImplementation(async (mode: "orxa" | "standard") => mode);
 
   Object.defineProperty(window, "orxa", {
     value: {
+      mode: {
+        get: modeGetMock,
+        set: modeSetMock,
+      },
       runtime: {
         getState: vi.fn(async () => ({ status: "disconnected", managedServer: false })),
         listProfiles: vi.fn(async () => []),
@@ -110,5 +120,37 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: "Profiles" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
+  });
+
+  it("chooses preferred agents by mode", () => {
+    expect(
+      preferredAgentForMode({
+        mode: "standard",
+        hasOrxaAgent: true,
+        hasPlanAgent: true,
+        serverAgentNames: new Set(["orxa", "plan", "build"]),
+        firstAgentName: "orxa",
+      }),
+    ).toBe("build");
+
+    expect(
+      preferredAgentForMode({
+        mode: "standard",
+        hasOrxaAgent: false,
+        hasPlanAgent: true,
+        serverAgentNames: new Set(["plan"]),
+        firstAgentName: "plan",
+      }),
+    ).toBe("plan");
+
+    expect(
+      preferredAgentForMode({
+        mode: "orxa",
+        hasOrxaAgent: true,
+        hasPlanAgent: true,
+        serverAgentNames: new Set(["orxa", "plan"]),
+        firstAgentName: "plan",
+      }),
+    ).toBe("orxa");
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  AppMode,
   OrxaAgentDetails,
   OrxaAgentDocument,
   RawConfigDocument,
@@ -9,6 +10,8 @@ import type { AppPreferences } from "~/types/app";
 
 type Props = {
   open: boolean;
+  mode: AppMode;
+  modeSwitching: boolean;
   directory: string | undefined;
   onClose: () => void;
   onReadRaw: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
@@ -30,6 +33,7 @@ type Props = {
   onAppPreferencesChange: (next: AppPreferences) => void;
   onGetServerDiagnostics: () => Promise<ServerDiagnostics>;
   onRepairRuntime: () => Promise<ServerDiagnostics>;
+  onChangeMode: (mode: AppMode) => Promise<void>;
 };
 
 type SettingsSection = "config" | "agents" | "app" | "server";
@@ -59,6 +63,8 @@ function buildSimpleDiff(baseText: string, currentText: string) {
 
 export function SettingsDrawer({
   open,
+  mode,
+  modeSwitching,
   directory,
   onClose,
   onReadRaw,
@@ -74,9 +80,11 @@ export function SettingsDrawer({
   onAppPreferencesChange,
   onGetServerDiagnostics,
   onRepairRuntime,
+  onChangeMode,
 }: Props) {
   const [section, setSection] = useState<SettingsSection>("config");
   const [scope, setScope] = useState<"project" | "global">("project");
+  const [nextMode, setNextMode] = useState<AppMode>(mode);
 
   const [rawDoc, setRawDoc] = useState<RawConfigDocument | null>(null);
   const [rawText, setRawText] = useState("");
@@ -112,22 +120,39 @@ export function SettingsDrawer({
     () => agents.find((agent) => agent.path === selectedAgentPath),
     [agents, selectedAgentPath],
   );
+  const availableSections = useMemo<SettingsSection[]>(() => {
+    if (mode === "standard") {
+      return ["config", "app", "server"];
+    }
+    return ["config", "agents", "app", "server"];
+  }, [mode]);
+
+  useEffect(() => {
+    setNextMode(mode);
+  }, [mode]);
+
+  useEffect(() => {
+    if (availableSections.includes(section)) {
+      return;
+    }
+    setSection("config");
+  }, [availableSections, section]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
     const load = async () => {
-      const [raw, orxa, nextAgents, diagnostics] = await Promise.all([
+      const [raw, diagnostics, orxa, nextAgents] = await Promise.all([
         onReadRaw(effectiveScope, directory),
-        onReadOrxa(),
-        onListOrxaAgents(),
         onGetServerDiagnostics(),
+        mode === "orxa" ? onReadOrxa() : Promise.resolve(null),
+        mode === "orxa" ? onListOrxaAgents() : Promise.resolve([]),
       ]);
       setRawDoc(raw);
       setRawText(raw.content);
       setOrxaDoc(orxa);
-      setOrxaText(orxa.content);
+      setOrxaText(orxa?.content ?? "");
       setAgents(nextAgents);
       setSelectedAgentPath((current) => current ?? nextAgents[0]?.path);
       setServerDiagnostics(diagnostics);
@@ -141,6 +166,7 @@ export function SettingsDrawer({
     effectiveScope,
     directory,
     onReadRaw,
+    mode,
     onReadOrxa,
     onListOrxaAgents,
     onGetServerDiagnostics,
@@ -210,6 +236,29 @@ export function SettingsDrawer({
       return (
         <section className="settings-section-card settings-pad">
           <h3>App Preferences</h3>
+          <div className="settings-controls">
+            <label>
+              Application mode
+              <select value={nextMode} onChange={(event) => setNextMode(event.target.value as AppMode)}>
+                <option value="orxa">Orxa Mode</option>
+                <option value="standard">Standard Mode</option>
+              </select>
+            </label>
+          </div>
+          <p className="raw-path">Current mode: {mode === "orxa" ? "Orxa Mode" : "Standard Mode"}</p>
+          <div className="settings-actions">
+            <button
+              type="button"
+              disabled={modeSwitching || nextMode === mode}
+              onClick={() =>
+                void onChangeMode(nextMode)
+                  .then(() => setFeedback(`Mode switched to ${nextMode === "orxa" ? "Orxa" : "Standard"}`))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+              }
+            >
+              {modeSwitching ? "Applying..." : "Apply Mode"}
+            </button>
+          </div>
           <label className="settings-inline-toggle">
             <input
               type="checkbox"
@@ -261,9 +310,13 @@ export function SettingsDrawer({
           <p className="raw-path">Status: {serverDiagnostics?.runtime.status ?? "unknown"}</p>
           <p className="raw-path">Health: {serverDiagnostics?.health ?? "unknown"}</p>
           <p className="raw-path">Active profile: {serverDiagnostics?.activeProfile?.name ?? "none"}</p>
-          <p className="raw-path">Plugin configured: {serverDiagnostics?.plugin.configured ? "yes" : "no"}</p>
-          <p className="raw-path">Plugin installed: {serverDiagnostics?.plugin.installed ? "yes" : "no"}</p>
-          <p className="raw-path">{serverDiagnostics?.plugin.configPath}</p>
+          {mode === "orxa" ? (
+            <>
+              <p className="raw-path">Plugin configured: {serverDiagnostics?.plugin.configured ? "yes" : "no"}</p>
+              <p className="raw-path">Plugin installed: {serverDiagnostics?.plugin.installed ? "yes" : "no"}</p>
+              <p className="raw-path">{serverDiagnostics?.plugin.configPath}</p>
+            </>
+          ) : null}
           <div className="settings-actions">
             <button
               type="button"
@@ -278,19 +331,21 @@ export function SettingsDrawer({
             >
               Refresh Diagnostics
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                void onRepairRuntime()
-                  .then((next) => {
-                    setServerDiagnostics(next);
-                    setFeedback("Runtime repaired");
-                  })
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-              }
-            >
-              Repair Runtime
-            </button>
+            {mode === "orxa" ? (
+              <button
+                type="button"
+                onClick={() =>
+                  void onRepairRuntime()
+                    .then((next) => {
+                      setServerDiagnostics(next);
+                      setFeedback("Runtime repaired");
+                    })
+                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                }
+              >
+                Repair Runtime
+              </button>
+            ) : null}
           </div>
         </section>
       );
@@ -315,9 +370,11 @@ export function SettingsDrawer({
             <button type="button" onClick={() => openEditor("opencode")}>
               Open OpenCode JSON Editor
             </button>
-            <button type="button" onClick={() => openEditor("orxa")}>
-              Open Orxa JSON Editor
-            </button>
+            {mode === "orxa" ? (
+              <button type="button" onClick={() => openEditor("orxa")}>
+                Open Orxa JSON Editor
+              </button>
+            ) : null}
           </div>
 
           <div className="settings-config-grid">
@@ -353,38 +410,40 @@ export function SettingsDrawer({
               </div>
             </article>
 
-            <article className="settings-config-card">
-              <h4>Orxa JSON</h4>
-              <p className="raw-path">{orxaDoc?.path}</p>
-              <textarea rows={16} value={orxaText} onChange={(event) => setOrxaText(event.target.value)} />
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void onWriteOrxa(orxaText)
-                      .then((next) => {
+            {mode === "orxa" ? (
+              <article className="settings-config-card">
+                <h4>Orxa JSON</h4>
+                <p className="raw-path">{orxaDoc?.path}</p>
+                <textarea rows={16} value={orxaText} onChange={(event) => setOrxaText(event.target.value)} />
+                <div className="settings-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void onWriteOrxa(orxaText)
+                        .then((next) => {
+                          setOrxaDoc(next);
+                          setOrxaText(next.content);
+                          setFeedback("Orxa config saved");
+                        })
+                        .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                    }
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void onReadOrxa().then((next) => {
                         setOrxaDoc(next);
                         setOrxaText(next.content);
-                        setFeedback("Orxa config saved");
                       })
-                      .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                  }
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void onReadOrxa().then((next) => {
-                      setOrxaDoc(next);
-                      setOrxaText(next.content);
-                    })
-                  }
-                >
-                  Reload
-                </button>
-              </div>
-            </article>
+                    }
+                  >
+                    Reload
+                  </button>
+                </div>
+              </article>
+            ) : null}
           </div>
         </section>
       );
@@ -588,9 +647,11 @@ export function SettingsDrawer({
               <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
                 Config Files
               </button>
-              <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
-                Agents
-              </button>
+              {mode === "orxa" ? (
+                <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
+                  Agents
+                </button>
+              ) : null}
               <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                 App
               </button>

@@ -2,13 +2,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { IPC, type GitCommitRequest, type OpenDirectoryTarget, type RuntimeProfileInput } from "../shared/ipc";
+import { IPC, type AppMode, type GitCommitRequest, type OpenDirectoryTarget, type RuntimeProfileInput } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
+import { shouldRunOrxaBootstrap } from "./services/app-mode";
+import { ModeStore } from "./services/mode-store";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const service = new OpencodeService();
+const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
 
 function assertString(value: unknown, field: string): string {
@@ -31,6 +34,13 @@ function assertOpenDirectoryTarget(value: unknown): OpenDirectoryTarget {
     throw new Error("Invalid open target");
   }
   return value as OpenDirectoryTarget;
+}
+
+function assertAppMode(value: unknown): AppMode {
+  if (value !== "orxa" && value !== "standard") {
+    throw new Error("Invalid app mode");
+  }
+  return value;
 }
 
 function createWindow() {
@@ -101,6 +111,18 @@ function inferMimeFromPath(filePath: string) {
 }
 
 function registerIpcHandlers() {
+  ipcMain.handle(IPC.modeGet, async () => modeStore.getMode());
+  ipcMain.handle(IPC.modeSet, async (_event, modeInput: unknown) => {
+    const mode = assertAppMode(modeInput);
+    if (mode === "orxa") {
+      await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
+      await service.ensureOrxaPluginRegistration();
+      return modeStore.setMode(mode);
+    }
+    await service.removeOrxaPluginFromConfig();
+    return modeStore.setMode(mode);
+  });
+
   ipcMain.handle(IPC.runtimeGetState, async () => service.runtimeState());
   ipcMain.handle(IPC.runtimeListProfiles, async () => service.listProfiles());
   ipcMain.handle(IPC.runtimeSaveProfile, async (_event, input: RuntimeProfileInput) => service.saveProfile(input));
@@ -389,12 +411,15 @@ function registerIpcHandlers() {
 
 async function boot() {
   await app.whenReady();
-  await service.ensureOrxaWorkspace(resolveOrxaTemplateDir()).catch((error) => {
-    console.error("Failed to initialize Orxa workspace:", error);
-  });
-  await service.ensureOrxaPluginRegistration().catch((error) => {
-    console.error("Failed to register/install Orxa plugin:", error);
-  });
+  const startupMode = modeStore.getMode();
+  if (shouldRunOrxaBootstrap(startupMode)) {
+    await service.ensureOrxaWorkspace(resolveOrxaTemplateDir()).catch((error) => {
+      console.error("Failed to initialize Orxa workspace:", error);
+    });
+    await service.ensureOrxaPluginRegistration().catch((error) => {
+      console.error("Failed to register/install Orxa plugin:", error);
+    });
+  }
   registerIpcHandlers();
 
   service.onEvent = (event) => {

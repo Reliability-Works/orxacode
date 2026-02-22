@@ -10,6 +10,7 @@ type Command = {
 };
 
 type ComposerPanelProps = {
+  placeholder: string;
   composer: string;
   setComposer: (value: string) => void;
   composerAttachments: Attachment[];
@@ -53,6 +54,7 @@ type ComposerPanelProps = {
 
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
+    placeholder,
     composer,
     setComposer,
     composerAttachments,
@@ -98,7 +100,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     <section className="composer-zone">
       <div className="composer-input-wrap">
         <textarea
-          placeholder="Send message to Orxa"
+          placeholder={placeholder}
           value={composer}
           onChange={(event) => setComposer(event.target.value)}
           onKeyDown={(event) => {

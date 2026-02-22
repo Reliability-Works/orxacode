@@ -97,4 +97,30 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Thinking...")).toBeInTheDocument();
     expect(screen.getByText(/Live events \(1\)/i)).toBeInTheDocument();
   });
+
+  it("uses mode-aware assistant label", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-label",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-text-label",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-label",
+            text: "Done.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} assistantLabel="Assistant" />);
+
+    expect(screen.getByText("Assistant")).toBeInTheDocument();
+  });
 });

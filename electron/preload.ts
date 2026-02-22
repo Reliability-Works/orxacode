@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC, type OrxaBridge, type OrxaEvent } from "../shared/ipc";
 
 const bridge: OrxaBridge = {
+  mode: {
+    get: () => ipcRenderer.invoke(IPC.modeGet),
+    set: (mode) => ipcRenderer.invoke(IPC.modeSet, mode),
+  },
   runtime: {
     getState: () => ipcRenderer.invoke(IPC.runtimeGetState),
     listProfiles: () => ipcRenderer.invoke(IPC.runtimeListProfiles),
