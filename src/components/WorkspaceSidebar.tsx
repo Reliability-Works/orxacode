@@ -90,35 +90,33 @@ export function WorkspaceSidebar({
     <aside className="sidebar projects-pane">
       <div className="sidebar-inner">
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
-        <button
-          type="button"
-          className={sidebarMode === "jobs" ? "active" : ""}
-          onClick={() => setSidebarMode("jobs")}
-        >
-          Jobs
-          {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
-        </button>
-        <button
-          type="button"
-          className={sidebarMode === "skills" ? "active" : ""}
-          onClick={() => setSidebarMode("skills")}
-        >
-          Skills
-        </button>
-      </nav>
-      <div className="pane-header">
-        <h2>
           <button
             type="button"
-            className={`pane-heading-link ${sidebarMode === "projects" ? "active" : ""}`.trim()}
+            className={sidebarMode === "jobs" ? "active" : ""}
+            onClick={() => setSidebarMode("jobs")}
+          >
+            Jobs
+            {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={sidebarMode === "skills" ? "active" : ""}
+            onClick={() => setSidebarMode("skills")}
+          >
+            Skills
+          </button>
+          <button
+            type="button"
+            className={sidebarMode === "projects" ? "active" : ""}
             onClick={openWorkspaceDashboard}
           >
-            Workspaces
+            Dashboard
           </button>
-        </h2>
-        <div className="pane-header-actions">
-          {sidebarMode === "projects" ? (
-            <>
+        </nav>
+      <>
+          <div className="pane-header">
+            <h2>Workspaces</h2>
+            <div className="pane-header-actions">
               <IconButton
                 icon="search"
                 className="pane-action-icon"
@@ -138,18 +136,8 @@ export function WorkspaceSidebar({
                 }}
               />
               <IconButton icon="folderPlus" className="pane-action-icon" label="Add workspace folder" onClick={() => void addProjectDirectory()} />
-            </>
-          ) : null}
-          {sidebarMode === "jobs" ? (
-            <IconButton icon="plus" className="pane-action-icon" label="New job" onClick={openJobEditor} />
-          ) : null}
-          {sidebarMode === "skills" ? (
-            <IconButton icon="refresh" className="pane-action-icon" label="Refresh skills" onClick={() => void loadSkills()} />
-          ) : null}
-        </div>
-      </div>
-      {sidebarMode === "projects" ? (
-        <>
+            </div>
+          </div>
           {projectSortOpen ? (
             <div className="project-sort-popover">
               <button
@@ -305,11 +293,7 @@ export function WorkspaceSidebar({
             })}
           </div>
         </>
-      ) : (
-        <div className="sidebar-mode-placeholder">
-          {sidebarMode === "jobs" ? "Scheduled automations run from the Jobs page." : "Skill cards are available in the Skills page."}
-        </div>
-      )}
+      
 
       <div className="sidebar-footer-actions">
         <IconButton

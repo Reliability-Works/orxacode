@@ -1249,6 +1249,7 @@ export default function App() {
         if (s.side === "left") {
           const next = Math.max(MIN_LEFT_PANE_WIDTH, Math.min(MAX_LEFT_PANE_WIDTH, s.startWidth + (s.latestX - s.startX)));
           el?.style.setProperty("--left-pane-width", `${next}px`);
+          document.documentElement.style.setProperty("--left-pane-width", `${next}px`);
           s.currentWidth = next;
         } else {
           const next = Math.max(280, Math.min(760, s.startWidth - (s.latestX - s.startX)));
@@ -1365,6 +1366,7 @@ export default function App() {
   useLayoutEffect(() => {
     if (!resizeStateRef.current) {
       workspaceRef.current?.style.setProperty("--left-pane-width", `${leftPaneWidth}px`);
+      document.documentElement.style.setProperty("--left-pane-width", `${leftPaneWidth}px`);
     }
   }, [leftPaneWidth]);
 
@@ -1373,6 +1375,10 @@ export default function App() {
       workspaceRef.current?.style.setProperty("--right-pane-width", `${effectiveRightPaneWidth}px`);
     }
   }, [effectiveRightPaneWidth]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--left-pane-visible", showProjectsPane ? "1" : "0");
+  }, [showProjectsPane]);
 
   useEffect(() => {
     setTodosOpen(false);

@@ -2,7 +2,7 @@ import type { GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search } from "lucide-react";
+import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search, X } from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
 
 export type BranchState = GitBranchState;
@@ -552,7 +552,7 @@ export function GitSidebar(props: GitSidebarProps) {
   };
 
   const renderListView = () => (
-    <div className={`git-list-view${listViewFocusKey ? " has-focus" : ""}`}>
+    <div className="git-list-view">
       <div className="git-list-files">
         {parsedDiff.files.map((file) => {
           const statusTag = inferStatusTag(file.status);
@@ -624,40 +624,6 @@ export function GitSidebar(props: GitSidebarProps) {
           );
         })}
       </div>
-
-      {listViewFocusFile ? (
-        <div className="git-list-diff-panel">
-          <div className="git-diff-file-header">
-            <button
-              type="button"
-              className="git-diff-file-toggle"
-              onClick={() => setListViewFocusKey(null)}
-              title="Close"
-            >
-              <ChevronRight size={14} />
-            </button>
-            <span className="git-diff-file-path" title={listViewFocusFile.path}>
-              {listViewFocusFile.path}
-            </span>
-            <span className="git-diff-file-stats">
-              <span className="added">+{listViewFocusFile.added}</span>
-              <span className="removed">-{listViewFocusFile.removed}</span>
-            </span>
-          </div>
-          <div className="git-list-diff-body">
-            {listViewFocusParsed.map(({ section, hunks }) => (
-              <div key={section.key} className="git-diff-section">
-                {listViewFocusParsed.length > 1 ? (
-                  <div className="git-diff-section-label">{section.label}</div>
-                ) : null}
-                <div className="git-diff-hunk-body">
-                  {renderFileHunks(hunks, section.key)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 
@@ -1186,6 +1152,40 @@ export function GitSidebar(props: GitSidebarProps) {
 
       {sidebarPanelTab === "files" ? (
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
+      ) : null}
+
+      {gitDiffViewMode === "list" && listViewFocusFile ? (
+        <div className="git-list-diff-overlay">
+          <div className="git-diff-file-header">
+            <button
+              type="button"
+              className="git-diff-file-toggle"
+              onClick={() => setListViewFocusKey(null)}
+              title="Close"
+            >
+              <X size={14} />
+            </button>
+            <span className="git-diff-file-path" title={listViewFocusFile.path}>
+              {listViewFocusFile.path}
+            </span>
+            <span className="git-diff-file-stats">
+              <span className="added">+{listViewFocusFile.added}</span>
+              <span className="removed">-{listViewFocusFile.removed}</span>
+            </span>
+          </div>
+          <div className="git-list-diff-body">
+            {listViewFocusParsed.map(({ section, hunks }) => (
+              <div key={section.key} className="git-diff-section">
+                {listViewFocusParsed.length > 1 ? (
+                  <div className="git-diff-section-label">{section.label}</div>
+                ) : null}
+                <div className="git-diff-hunk-body">
+                  {renderFileHunks(hunks, section.key)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : null}
     </aside>
   );

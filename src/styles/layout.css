@@ -61,7 +61,6 @@
   overflow: hidden;
   position: relative;
   box-sizing: border-box;
-  padding-top: 36px;
   transition: grid-template-columns 340ms ease;
 }
 
@@ -113,6 +112,8 @@
   height: 100%;
   min-height: 0;
   transition: opacity 280ms ease, transform 280ms ease;
+  padding-top: 36px;
+  box-sizing: border-box;
 }
 
 .workspace-left-pane.collapsed .sidebar-inner {
@@ -130,6 +131,8 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-surface);
+  padding-top: 36px;
+  box-sizing: border-box;
 }
 
 .workspace-right-pane.collapsed {
@@ -169,10 +172,10 @@
 
 .projects-pane .pane-header {
   border-bottom: 0;
-  border-top: 1px solid var(--border);
+  border-top: 0;
   padding-top: 10px;
   padding-bottom: 10px;
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 .ops-pane .pane-header {
@@ -285,13 +288,14 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  padding: calc(var(--space-4) + 30px) var(--space-4) 0;
+  padding: calc(var(--space-4) + 30px) var(--space-4) var(--space-4);
 }
 
 .sidebar-mode-links button {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
-  padding: 0;
+  padding: 5px 8px;
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -301,15 +305,20 @@
   font-size: 0.82rem;
   font-weight: 700;
   transform: none;
+  width: 100%;
 }
 
 .sidebar-mode-links button:hover {
   transform: none;
   color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--border);
 }
 
 .sidebar-mode-links button.active {
   color: var(--text-main);
+  background: var(--bg-raised);
+  border-color: var(--border);
 }
 
 .sidebar-mode-badge {
@@ -552,6 +561,8 @@
   border-radius: 0;
   background: var(--bg-sidebar);
   border: 0;
+  padding-top: 36px;
+  box-sizing: border-box;
 }
 
 /* Layer 2: surface color on top */
@@ -629,24 +640,19 @@ body.is-resizing * {
   left: 0;
   right: 0;
   height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 0 10px 0 8px;
   pointer-events: none;
   -webkit-app-region: no-drag;
   z-index: 80;
 }
 
 .workspace-left-toggle {
-  position: static;
-  top: auto;
-  left: auto;
-  z-index: auto;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
+  position: absolute;
+  left: 78px;
+  top: calc(50% - 12px);
+  z-index: 82;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -669,8 +675,6 @@ body.is-resizing * {
 }
 
 .content-edge-controls .titlebar-toggle {
-  position: absolute;
-  top: 5px;
   transform: none;
 }
 
@@ -681,8 +685,10 @@ body.is-resizing * {
 .content-edge-right-actions {
   pointer-events: auto;
   -webkit-app-region: no-drag;
-  position: static;
-  transform: none;
+  position: absolute;
+  right: 10px;
+  top: calc(50% + 2px);
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -690,20 +696,24 @@ body.is-resizing * {
 }
 
 .content-edge-left-actions {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
+  display: none;
 }
 
 .content-topbar-title-wrap {
-  position: relative;
+  position: absolute;
+  left: max(
+    calc(var(--left-pane-visible, 1) * (var(--left-pane-width, 300px) + 4px) + 14px),
+    116px
+  );
+  top: calc(50% + 2px);
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+  transition: left 340ms ease;
 }
 
 .content-topbar-title {
@@ -1321,6 +1331,7 @@ body.is-resizing * {
   display: flex;
   flex-direction: column;
   transition: opacity 340ms ease, transform 340ms ease;
+  position: relative;
 }
 
 .ops-pane .pane-header {
@@ -2173,9 +2184,6 @@ body.is-resizing * {
   transition: grid-template-columns 0.2s ease;
 }
 
-.git-list-view.has-focus {
-  grid-template-columns: minmax(260px, 42%) minmax(0, 1fr);
-}
 
 .git-list-files {
   min-height: 0;
@@ -2296,32 +2304,31 @@ body.is-resizing * {
   pointer-events: auto;
 }
 
-.git-list-diff-panel {
-  min-height: 0;
+.git-list-diff-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border);
-  background: var(--bg-raised);
   overflow: hidden;
+}
+
+.git-list-diff-overlay .git-diff-file-header {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .git-list-diff-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
 }
 
 .git-list-diff-body .git-diff-hunk-body {
   border-radius: 6px;
-}
-
-.git-list-diff-body .git-diff-file-header {
-  position: sticky;
-  top: 0;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
-  z-index: 2;
 }
 
 @media (max-width: 1320px) {

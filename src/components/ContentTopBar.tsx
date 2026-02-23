@@ -79,68 +79,66 @@ export function ContentTopBar({
 
   return (
     <div className="content-edge-controls">
-      <div className="content-edge-left-actions">
-        <IconButton
-          icon="panelLeft"
-          label="Toggle left sidebar"
-          className={`workspace-left-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
-          onClick={toggleProjectsPane}
-        />
-        <div className="content-topbar-title-wrap">
-          <h2 className="content-topbar-title" title={contentPaneTitle}>
-            {contentPaneTitle}
-          </h2>
-          {!showingProjectDashboard ? (
-            <>
-              <button
-                type="button"
-                className="title-overflow-button"
-                aria-label="Session and workspace actions"
-                title="Session actions"
-                onClick={() => {
-                  setTitleMenuOpen(!titleMenuOpen);
-                  setOpenMenuOpen(false);
-                  setCommitMenuOpen(false);
-                }}
-              >
-                <Ellipsis size={16} aria-hidden="true" />
-              </button>
-              {titleMenuOpen ? (
-                <div className="title-overflow-menu">
-                  <button type="button" disabled={!hasActiveSession} onClick={onTogglePinSession}>
-                    <span className="menu-item-logo">{isActiveSessionPinned ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}</span>
-                    <span>{isActiveSessionPinned ? "Unpin session" : "Pin session"}</span>
-                  </button>
-                  <button type="button" disabled={!hasActiveSession} onClick={onRenameSession}>
-                    <span className="menu-item-logo">
-                      <Pencil size={14} aria-hidden="true" />
-                    </span>
-                    <span>Rename session</span>
-                  </button>
-                  <button type="button" disabled={!hasActiveSession} onClick={onArchiveSession}>
-                    <span className="menu-item-logo">
-                      <Archive size={14} aria-hidden="true" />
-                    </span>
-                    <span>Archive session</span>
-                  </button>
-                  <div className="menu-separator" />
-                  <button type="button" onClick={onCopyPath}>
-                    <span className="menu-item-logo">
-                      <Copy size={14} aria-hidden="true" />
-                    </span>
-                    <span>Copy path</span>
-                  </button>
-                  <button type="button" disabled={!hasActiveSession} onClick={onCopySessionId}>
-                    <span className="menu-item-logo">
-                      <Fingerprint size={14} aria-hidden="true" />
-                    </span>
-                    <span>Copy session id</span>
-                  </button>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </div>
+      <IconButton
+        icon="panelLeft"
+        label="Toggle left sidebar"
+        className={`workspace-left-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
+        onClick={toggleProjectsPane}
+      />
+      <div className="content-topbar-title-wrap">
+        <h2 className="content-topbar-title" title={contentPaneTitle}>
+          {contentPaneTitle}
+        </h2>
+        {!showingProjectDashboard ? (
+          <>
+            <button
+              type="button"
+              className="title-overflow-button"
+              aria-label="Session and workspace actions"
+              title="Session actions"
+              onClick={() => {
+                setTitleMenuOpen(!titleMenuOpen);
+                setOpenMenuOpen(false);
+                setCommitMenuOpen(false);
+              }}
+            >
+              <Ellipsis size={16} aria-hidden="true" />
+            </button>
+            {titleMenuOpen ? (
+              <div className="title-overflow-menu">
+                <button type="button" disabled={!hasActiveSession} onClick={onTogglePinSession}>
+                  <span className="menu-item-logo">{isActiveSessionPinned ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}</span>
+                  <span>{isActiveSessionPinned ? "Unpin session" : "Pin session"}</span>
+                </button>
+                <button type="button" disabled={!hasActiveSession} onClick={onRenameSession}>
+                  <span className="menu-item-logo">
+                    <Pencil size={14} aria-hidden="true" />
+                  </span>
+                  <span>Rename session</span>
+                </button>
+                <button type="button" disabled={!hasActiveSession} onClick={onArchiveSession}>
+                  <span className="menu-item-logo">
+                    <Archive size={14} aria-hidden="true" />
+                  </span>
+                  <span>Archive session</span>
+                </button>
+                <div className="menu-separator" />
+                <button type="button" onClick={onCopyPath}>
+                  <span className="menu-item-logo">
+                    <Copy size={14} aria-hidden="true" />
+                  </span>
+                  <span>Copy path</span>
+                </button>
+                <button type="button" disabled={!hasActiveSession} onClick={onCopySessionId}>
+                  <span className="menu-item-logo">
+                    <Fingerprint size={14} aria-hidden="true" />
+                  </span>
+                  <span>Copy session id</span>
+                </button>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
       <div className="content-edge-right-actions">
         <div className={`titlebar-split titlebar-open ${openMenuOpen ? "open" : ""}`.trim()}>
