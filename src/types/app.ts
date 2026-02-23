@@ -4,6 +4,7 @@ export type AppPreferences = {
   confirmDangerousActions: boolean;
   commitGuidancePrompt: string;
   codeFont: string;
+  hiddenModels: string[];
 };
 
 export type CodeFontOption = {

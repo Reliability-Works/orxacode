@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   AppMode,
+  OpenCodeAgentFile,
+  OpenDirectoryTarget,
   OrxaAgentDetails,
   OrxaAgentDocument,
   RawConfigDocument,
   ServerDiagnostics,
 } from "@shared/ipc";
+import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
 import { CODE_FONT_OPTIONS } from "~/types/app";
 
@@ -35,9 +39,10 @@ type Props = {
   onGetServerDiagnostics: () => Promise<ServerDiagnostics>;
   onRepairRuntime: () => Promise<ServerDiagnostics>;
   onChangeMode: (mode: AppMode) => Promise<void>;
+  allModelOptions: ModelOption[];
 };
 
-type SettingsSection = "config" | "agents" | "app" | "server" | "preferences";
+type SettingsSection = "config" | "agents" | "provider-models" | "opencode-agents" | "app" | "server" | "preferences";
 type EditorKind = "opencode" | "orxa";
 
 function buildSimpleDiff(baseText: string, currentText: string) {
@@ -82,9 +87,10 @@ export function SettingsDrawer({
   onGetServerDiagnostics,
   onRepairRuntime,
   onChangeMode,
+  allModelOptions,
 }: Props) {
   const [section, setSection] = useState<SettingsSection>("config");
-  const [scope, setScope] = useState<"project" | "global">("project");
+  const [scope, setScope] = useState<"project" | "global">("global");
   const [nextMode, setNextMode] = useState<AppMode>(mode);
 
   const [rawDoc, setRawDoc] = useState<RawConfigDocument | null>(null);
@@ -105,6 +111,14 @@ export function SettingsDrawer({
 
   const [serverDiagnostics, setServerDiagnostics] = useState<ServerDiagnostics | null>(null);
 
+  const [ocAgents, setOcAgents] = useState<OpenCodeAgentFile[]>([]);
+  const [ocAgentsLoading, setOcAgentsLoading] = useState(false);
+  const [selectedOcAgent, setSelectedOcAgent] = useState<string | undefined>();
+  const [ocAgentDraft, setOcAgentDraft] = useState("");
+  const [ocAgentSaving, setOcAgentSaving] = useState(false);
+  const [ocOpenInMenu, setOcOpenInMenu] = useState(false);
+  const [collapsedProviders, setCollapsedProviders] = useState<Record<string, boolean>>({});
+
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorKind, setEditorKind] = useState<EditorKind>("opencode");
   const [editorText, setEditorText] = useState("");
@@ -123,9 +137,9 @@ export function SettingsDrawer({
   );
   const availableSections = useMemo<SettingsSection[]>(() => {
     if (mode === "standard") {
-      return ["config", "app", "preferences", "server"];
+      return ["config", "provider-models", "opencode-agents", "app", "preferences", "server"];
     }
-    return ["config", "agents", "app", "preferences", "server"];
+    return ["config", "agents", "provider-models", "opencode-agents", "app", "preferences", "server"];
   }, [mode]);
 
   useEffect(() => {
@@ -192,6 +206,28 @@ export function SettingsDrawer({
       .then((details) => setAgentDetails(details))
       .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
   }, [onGetOrxaAgentDetails, selectedAgent]);
+
+  const loadOcAgents = useCallback(async () => {
+    setOcAgentsLoading(true);
+    try {
+      const files = await window.orxa.opencode.listAgentFiles();
+      setOcAgents(files);
+      if (!selectedOcAgent && files.length > 0) {
+        setSelectedOcAgent(files[0].filename);
+        setOcAgentDraft(files[0].content);
+      }
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOcAgentsLoading(false);
+    }
+  }, [selectedOcAgent]);
+
+  useEffect(() => {
+    if (open && section === "opencode-agents" && ocAgents.length === 0) {
+      void loadOcAgents();
+    }
+  }, [open, section, loadOcAgents, ocAgents.length]);
 
   if (!open) {
     return null;
@@ -405,11 +441,11 @@ export function SettingsDrawer({
             ) : null}
           </div>
 
-          <div className="settings-config-grid">
+          <div className={`settings-config-grid${mode !== "orxa" ? " settings-config-grid--single" : ""}`}>
             <article className="settings-config-card">
               <h4>OpenCode JSON</h4>
               <p className="raw-path">{rawDoc?.path}</p>
-              <textarea rows={16} value={rawText} onChange={(event) => setRawText(event.target.value)} />
+              <textarea value={rawText} onChange={(event) => setRawText(event.target.value)} />
               <div className="settings-actions">
                 <button
                   type="button"
@@ -473,6 +509,250 @@ export function SettingsDrawer({
               </article>
             ) : null}
           </div>
+        </section>
+      );
+    }
+
+    if (section === "provider-models") {
+      const providerMap = new Map<string, { name: string; models: { key: string; modelName: string }[] }>();
+      for (const m of allModelOptions) {
+        if (!providerMap.has(m.providerID)) {
+          providerMap.set(m.providerID, { name: m.providerName, models: [] });
+        }
+        providerMap.get(m.providerID)!.models.push({ key: m.key, modelName: m.modelName });
+      }
+      const providers = [...providerMap.entries()];
+      const hidden = new Set(appPreferences.hiddenModels);
+
+      const toggleModel = (key: string) => {
+        const next = new Set(hidden);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        onAppPreferencesChange({ ...appPreferences, hiddenModels: [...next] });
+      };
+
+      const enableAll = (allKeys: string[]) => {
+        const next = new Set(hidden);
+        for (const k of allKeys) next.delete(k);
+        onAppPreferencesChange({ ...appPreferences, hiddenModels: [...next] });
+      };
+
+      const disableAll = (allKeys: string[]) => {
+        const next = new Set(hidden);
+        for (const k of allKeys) next.add(k);
+        onAppPreferencesChange({ ...appPreferences, hiddenModels: [...next] });
+      };
+
+      const toggleCollapse = (providerID: string) => {
+        setCollapsedProviders((prev) => ({ ...prev, [providerID]: !prev[providerID] }));
+      };
+
+      return (
+        <section className="settings-section-card settings-pad">
+          <h3>Provider Models</h3>
+          <p className="raw-path">Toggle which models appear in the model selector. Unticked models will be hidden.</p>
+          <div className="provider-models-list">
+            {providers.map(([providerID, group]) => {
+              const allKeys = group.models.map((m) => m.key);
+              const visibleCount = allKeys.filter((k) => !hidden.has(k)).length;
+              const isCollapsed = Boolean(collapsedProviders[providerID]);
+              return (
+                <div key={providerID} className="provider-models-group">
+                  <div className="provider-models-header">
+                    <button type="button" className="provider-models-chevron" onClick={() => toggleCollapse(providerID)}>
+                      {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    <strong onClick={() => toggleCollapse(providerID)} className="provider-models-name">{group.name}</strong>
+                    <small>{visibleCount}/{allKeys.length} enabled</small>
+                    <button type="button" className="provider-models-toggle-btn" onClick={() => enableAll(allKeys)}>Enable all</button>
+                    <button type="button" className="provider-models-toggle-btn" onClick={() => disableAll(allKeys)}>Disable all</button>
+                  </div>
+                  {!isCollapsed ? (
+                    <div className="provider-models-items">
+                      {group.models.map((m) => (
+                        <label key={m.key} className="provider-models-item">
+                          <input
+                            type="checkbox"
+                            checked={!hidden.has(m.key)}
+                            onChange={() => toggleModel(m.key)}
+                          />
+                          <span>{m.modelName}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      );
+    }
+
+    if (section === "opencode-agents") {
+      const currentOcAgent = ocAgents.find((a) => a.filename === selectedOcAgent);
+
+      const saveOcAgent = async () => {
+        if (!selectedOcAgent) return;
+        setOcAgentSaving(true);
+        try {
+          await window.orxa.opencode.writeAgentFile(selectedOcAgent, ocAgentDraft);
+          await loadOcAgents();
+          setFeedback(`Saved ${selectedOcAgent}`);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : String(error));
+        } finally {
+          setOcAgentSaving(false);
+        }
+      };
+
+      const deleteOcAgent = async () => {
+        if (!selectedOcAgent || !window.confirm(`Delete agent file ${selectedOcAgent}?`)) return;
+        try {
+          await window.orxa.opencode.deleteAgentFile(selectedOcAgent);
+          setSelectedOcAgent(undefined);
+          setOcAgentDraft("");
+          await loadOcAgents();
+          setFeedback(`Deleted ${selectedOcAgent}`);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : String(error));
+        }
+      };
+
+      const createOcAgent = async () => {
+        const existing = new Set(ocAgents.map((a) => a.filename));
+        let index = 1;
+        let filename = "new-agent.md";
+        while (existing.has(filename)) {
+          index += 1;
+          filename = `new-agent-${index}.md`;
+        }
+        const baseName = filename.replace(/\.md$/, "");
+        const template = [
+          "---",
+          `description: ${baseName} agent`,
+          "mode: subagent",
+          "model: ",
+          "temperature: 0.1",
+          "---",
+          "",
+          `# ${baseName.charAt(0).toUpperCase() + baseName.slice(1)}`,
+          "",
+          "Your system prompt here.",
+          "",
+        ].join("\n");
+        try {
+          await window.orxa.opencode.writeAgentFile(filename, template);
+          await loadOcAgents();
+          setSelectedOcAgent(filename);
+          setOcAgentDraft(template);
+          setFeedback(`Created ${filename}`);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : String(error));
+        }
+      };
+
+      const openOcAgentIn = async (target: OpenDirectoryTarget) => {
+        if (!currentOcAgent) return;
+        try {
+          await window.orxa.opencode.openFileIn(currentOcAgent.path, target);
+          setOcOpenInMenu(false);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : String(error));
+        }
+      };
+
+      const duplicateOcAgent = async () => {
+        if (!currentOcAgent) return;
+        const existing = new Set(ocAgents.map((a) => a.filename));
+        const baseName = currentOcAgent.name;
+        let index = 1;
+        let filename = `${baseName}-copy.md`;
+        while (existing.has(filename)) {
+          index += 1;
+          filename = `${baseName}-copy-${index}.md`;
+        }
+        const content = ocAgentDraft || currentOcAgent.content;
+        try {
+          await window.orxa.opencode.writeAgentFile(filename, content);
+          await loadOcAgents();
+          setSelectedOcAgent(filename);
+          setOcAgentDraft(content);
+          setFeedback(`Duplicated as ${filename}`);
+        } catch (error) {
+          setFeedback(error instanceof Error ? error.message : String(error));
+        }
+      };
+
+      return (
+        <section className="settings-section-card settings-pad oc-agents-section">
+          <div className="oc-agents-toolbar">
+            <select
+              className="oc-agents-select"
+              value={selectedOcAgent ?? ""}
+              onChange={(e) => {
+                const filename = e.target.value;
+                if (!filename) { setSelectedOcAgent(undefined); setOcAgentDraft(""); return; }
+                const agent = ocAgents.find((a) => a.filename === filename);
+                if (agent) { setSelectedOcAgent(filename); setOcAgentDraft(agent.content); }
+              }}
+            >
+              <option value="">Select agent...</option>
+              {ocAgents.map((agent) => (
+                <option key={agent.filename} value={agent.filename}>
+                  {agent.name} ({agent.mode})
+                </option>
+              ))}
+            </select>
+            <button type="button" className="oc-agents-new-btn" onClick={() => void createOcAgent()}>Create new agent</button>
+            {currentOcAgent ? (
+              <button type="button" className="oc-agents-new-btn" onClick={() => void duplicateOcAgent()}>Duplicate</button>
+            ) : null}
+          </div>
+
+          {selectedOcAgent ? (
+            <div className="oc-agents-editor">
+              <div className="oc-agents-meta">
+                <span className="oc-agents-filename">{selectedOcAgent}</span>
+                {currentOcAgent?.model ? <span className="oc-agents-model">{currentOcAgent.model}</span> : null}
+              </div>
+              <textarea
+                className="oc-agents-textarea"
+                value={ocAgentDraft}
+                onChange={(event) => setOcAgentDraft(event.target.value)}
+              />
+              <div className="oc-agents-actions">
+                <button type="button" className="oc-agents-action-btn" disabled={ocAgentSaving} onClick={() => void saveOcAgent()}>
+                  {ocAgentSaving ? "Saving..." : "Save"}
+                </button>
+                <button type="button" className="oc-agents-action-btn" onClick={() => void loadOcAgents()}>Reload</button>
+                <button type="button" className="oc-agents-action-btn oc-agents-action-btn--danger" onClick={() => void deleteOcAgent()}>Delete</button>
+                <div className="oc-agents-openin-wrap">
+                  <button
+                    type="button"
+                    className="oc-agents-action-btn"
+                    onClick={() => setOcOpenInMenu((v) => !v)}
+                    disabled={!currentOcAgent}
+                  >
+                    Open in...
+                  </button>
+                  {ocOpenInMenu ? (
+                    <div className="oc-agents-openin-menu">
+                      <button type="button" onClick={() => void openOcAgentIn("cursor")}>Cursor</button>
+                      <button type="button" onClick={() => void openOcAgentIn("zed")}>Zed</button>
+                      <button type="button" onClick={() => void openOcAgentIn("finder")}>Finder</button>
+                      <button type="button" onClick={() => void openOcAgentIn("terminal")}>Terminal</button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="oc-agents-empty">Select an agent to edit, or create a new one.</p>
+          )}
         </section>
       );
     }
@@ -677,9 +957,15 @@ export function SettingsDrawer({
               </button>
               {mode === "orxa" ? (
                 <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
-                  Agents
+                  Orxa Agents
                 </button>
               ) : null}
+              <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
+                Provider Models
+              </button>
+              <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
+                Agents
+              </button>
               <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                 App
               </button>

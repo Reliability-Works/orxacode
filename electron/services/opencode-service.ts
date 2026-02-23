@@ -21,6 +21,7 @@ import type {
   GitCommitResult,
   GitCommitSummary,
   GlobalBootstrap,
+  OpenCodeAgentFile,
   OpenDirectoryResult,
   OpenDirectoryTarget,
   OrxaEvent,
@@ -1100,6 +1101,135 @@ export class OpencodeService {
     }
 
     const detail = await this.runCommandAttempts(attempts, cwd);
+    return {
+      target,
+      ok: true,
+      detail,
+    };
+  }
+
+  async listOpenCodeAgentFiles(): Promise<OpenCodeAgentFile[]> {
+    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
+    const dirInfo = await stat(agentsDir).catch(() => undefined);
+    if (!dirInfo?.isDirectory()) {
+      return [];
+    }
+
+    const entries = await readdir(agentsDir, { withFileTypes: true }).catch(() => []);
+    const output: OpenCodeAgentFile[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) {
+        continue;
+      }
+      const filePath = path.join(agentsDir, entry.name);
+      const raw = await readFile(filePath, "utf8").catch(() => "");
+      if (!raw) {
+        continue;
+      }
+      output.push(this.parseOpenCodeAgentFile(entry.name, filePath, raw));
+    }
+
+    return output;
+  }
+
+  async readOpenCodeAgentFile(filename: string): Promise<OpenCodeAgentFile> {
+    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
+    const filePath = path.join(agentsDir, filename);
+    const rel = path.relative(agentsDir, filePath);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Invalid filename");
+    }
+    const raw = await readFile(filePath, "utf8");
+    return this.parseOpenCodeAgentFile(filename, filePath, raw);
+  }
+
+  async writeOpenCodeAgentFile(filename: string, content: string): Promise<OpenCodeAgentFile> {
+    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    const filePath = path.join(agentsDir, filename);
+    const rel = path.relative(agentsDir, filePath);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Invalid filename");
+    }
+    await writeFile(filePath, content, "utf8");
+    return this.parseOpenCodeAgentFile(filename, filePath, content);
+  }
+
+  async deleteOpenCodeAgentFile(filename: string): Promise<boolean> {
+    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
+    const filePath = path.join(agentsDir, filename);
+    const rel = path.relative(agentsDir, filePath);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      throw new Error("Invalid filename");
+    }
+    await rm(filePath, { force: true });
+    return true;
+  }
+
+  async openFileIn(filePath: string, target: OpenDirectoryTarget): Promise<OpenDirectoryResult> {
+    const resolved = path.resolve(filePath);
+    const info = await stat(resolved).catch(() => undefined);
+    if (!info) {
+      throw new Error("File not found");
+    }
+
+    const platform = process.platform;
+    const attempts: Array<{ command: string; args: string[]; label: string }> = [];
+
+    if (platform === "darwin") {
+      if (target === "finder") {
+        attempts.push({ command: "open", args: ["-R", resolved], label: "Finder" });
+      }
+      if (target === "cursor") {
+        attempts.push({ command: "open", args: ["-a", "Cursor", resolved], label: "Cursor" });
+        attempts.push({ command: "cursor", args: [resolved], label: "Cursor CLI" });
+      }
+      if (target === "antigravity") {
+        attempts.push({ command: "open", args: ["-a", "Antigravity", resolved], label: "Antigravity" });
+      }
+      if (target === "terminal") {
+        attempts.push({ command: "open", args: ["-a", "Terminal", resolved], label: "Terminal" });
+      }
+      if (target === "ghostty") {
+        attempts.push({ command: "open", args: ["-a", "Ghostty", resolved], label: "Ghostty" });
+      }
+      if (target === "xcode") {
+        attempts.push({ command: "open", args: ["-a", "Xcode", resolved], label: "Xcode" });
+      }
+      if (target === "zed") {
+        attempts.push({ command: "open", args: ["-a", "Zed", resolved], label: "Zed" });
+        attempts.push({ command: "zed", args: [resolved], label: "Zed CLI" });
+      }
+    } else {
+      if (target === "finder") {
+        attempts.push({ command: "xdg-open", args: [resolved], label: "File manager" });
+      }
+      if (target === "cursor") {
+        attempts.push({ command: "cursor", args: [resolved], label: "Cursor" });
+      }
+      if (target === "antigravity") {
+        attempts.push({ command: "antigravity", args: [resolved], label: "Antigravity" });
+      }
+      if (target === "terminal") {
+        attempts.push({ command: "ghostty", args: [resolved], label: "Ghostty" });
+        attempts.push({ command: "x-terminal-emulator", args: [resolved], label: "Terminal" });
+      }
+      if (target === "ghostty") {
+        attempts.push({ command: "ghostty", args: [resolved], label: "Ghostty" });
+      }
+      if (target === "xcode") {
+        attempts.push({ command: "xdg-open", args: [resolved], label: "Editor" });
+      }
+      if (target === "zed") {
+        attempts.push({ command: "zed", args: [resolved], label: "Zed" });
+      }
+    }
+
+    if (attempts.length === 0) {
+      throw new Error(`No open strategy found for target "${target}" on ${platform}`);
+    }
+
+    const detail = await this.runCommandAttempts(attempts, path.dirname(resolved));
     return {
       target,
       ok: true,
@@ -2443,6 +2573,22 @@ export class OpencodeService {
 
   private orxaAgentPromptPath(agent: "orxa" | "plan") {
     return path.join(this.orxaRootDir(), "agents", `${agent}.yaml`);
+  }
+
+  private parseOpenCodeAgentFile(filename: string, filePath: string, raw: string): OpenCodeAgentFile {
+    const parsed = parseSimpleYamlFrontmatter(raw);
+    const name = filename.replace(/\.md$/i, "");
+    const temperature = parsed.metadata.temperature ? Number.parseFloat(parsed.metadata.temperature) : undefined;
+    return {
+      name,
+      filename,
+      path: filePath,
+      description: parsed.metadata.description ?? "",
+      mode: parsed.metadata.mode ?? "",
+      model: parsed.metadata.model ?? "",
+      temperature: temperature !== undefined && !Number.isNaN(temperature) ? temperature : undefined,
+      content: raw,
+    };
   }
 
   private extractMarkdownBody(content: string) {

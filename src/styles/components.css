@@ -1194,6 +1194,21 @@
   gap: var(--space-3);
 }
 
+.settings-config-grid--single {
+  grid-template-columns: 1fr;
+}
+
+.settings-config-grid--single .settings-config-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-config-grid--single .settings-config-card textarea {
+  flex: 1;
+  min-height: 52vh;
+  resize: vertical;
+}
+
 .settings-config-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1205,6 +1220,255 @@
 
 .settings-config-card h4 {
   margin: 0;
+}
+
+.provider-models-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.provider-models-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.provider-models-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.provider-models-header:last-child {
+  border-bottom: none;
+}
+
+.provider-models-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.provider-models-name {
+  flex: 1;
+  cursor: pointer;
+}
+
+.provider-models-header small {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+}
+
+.provider-models-toggle-btn {
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.provider-models-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.provider-models-items {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px 8px 34px;
+}
+
+.provider-models-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.provider-models-item:hover {
+  background: var(--bg-hover);
+}
+
+.provider-models-item input {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-agents-add {
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 8px;
+  text-align: center;
+}
+
+.oc-agents-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.oc-agents-toolbar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.oc-agents-select {
+  max-width: 280px;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.oc-agents-new-btn {
+  white-space: nowrap;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-main);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.oc-agents-new-btn:hover {
+  background: var(--bg-hover);
+}
+
+.oc-agents-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+}
+
+.oc-agents-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+.oc-agents-filename {
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.oc-agents-model {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.oc-agents-textarea {
+  flex: 1;
+  min-height: 52vh;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-main);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.oc-agents-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.oc-agents-action-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-main);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.oc-agents-action-btn:hover {
+  background: var(--bg-hover);
+}
+
+.oc-agents-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.oc-agents-action-btn--danger {
+  color: var(--text-danger, #e06c75);
+  border-color: var(--text-danger, #e06c75);
+}
+
+.oc-agents-openin-wrap {
+  position: relative;
+  margin-left: auto;
+}
+
+.oc-agents-openin-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  z-index: 10;
+  padding: 4px;
+}
+
+.oc-agents-openin-menu button {
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-main);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.oc-agents-openin-menu button:hover {
+  background: var(--bg-hover);
+}
+
+.oc-agents-empty {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  margin: 0;
+  padding: var(--space-3) 0;
 }
 
 .settings-server-grid {
@@ -1830,10 +2094,13 @@
 }
 
 .project-agents-missing {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  padding: var(--space-5) 0;
+  text-align: center;
 }
 
 .project-agents-create {
@@ -1860,6 +2127,41 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+.dashboard-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.dashboard-icon-btn:hover:not(:disabled) {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.dashboard-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
 }
 
 .titlebar-menu button,

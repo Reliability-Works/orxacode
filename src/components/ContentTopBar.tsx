@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, LayoutDashboard, Pencil, Pin, PinOff } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
@@ -33,6 +33,7 @@ type ContentTopBarProps = {
   onTogglePinSession: () => void;
   onRenameSession: () => void;
   onArchiveSession: () => void;
+  onViewWorkspace: () => void;
   onCopyPath: () => void;
   onCopySessionId: () => void;
   activeOpenTarget: OpenTargetOption;
@@ -66,6 +67,7 @@ export function ContentTopBar({
   onTogglePinSession,
   onRenameSession,
   onArchiveSession,
+  onViewWorkspace,
   onCopyPath,
   onCopySessionId,
   activeOpenTarget,
@@ -121,6 +123,12 @@ export function ContentTopBar({
                     <Archive size={14} aria-hidden="true" />
                   </span>
                   <span>Archive session</span>
+                </button>
+                <button type="button" onClick={onViewWorkspace}>
+                  <span className="menu-item-logo">
+                    <LayoutDashboard size={14} aria-hidden="true" />
+                  </span>
+                  <span>View workspace</span>
                 </button>
                 <div className="menu-separator" />
                 <button type="button" onClick={onCopyPath}>

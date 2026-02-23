@@ -34,6 +34,7 @@ type UseComposerStateOptions = {
   deriveSessionTitleFromPrompt: (prompt: string, maxLength?: number) => string;
   startResponsePolling: (directory: string, sessionID: string) => void;
   stopResponsePolling: () => void;
+  clearPendingSession: () => void;
 };
 
 export function useComposerState(activeProjectDir: string | null, activeSessionID: string | null, options: UseComposerStateOptions) {
@@ -164,6 +165,10 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
+    const capturedAttachments = [...composerAttachments];
+    setComposer("");
+    setComposerAttachments([]);
+
     const supportsSelectedAgent = options.selectedAgent ? options.serverAgentNames.has(options.selectedAgent) : false;
     const activeSession = options.sessions.find((item) => item.id === activeSessionID);
     const shouldAutoTitle = text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title);
@@ -179,7 +184,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         directory: activeProjectDir,
         sessionID: activeSessionID,
         text,
-        attachments: composerAttachments.map((attachment) => ({
+        attachments: capturedAttachments.map((attachment) => ({
           url: attachment.url,
           mime: attachment.mime,
           filename: attachment.filename,
@@ -189,8 +194,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         variant: selectedVariant,
       });
 
-      setComposer("");
-      setComposerAttachments([]);
+      options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
       window.setTimeout(() => {
         void options.refreshMessages();
@@ -200,6 +204,8 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         void options.refreshProject(activeProjectDir).catch(() => undefined);
       }
     } catch (error) {
+      setComposer(text);
+      setComposerAttachments(capturedAttachments);
       options.setStatusLine(error instanceof Error ? error.message : String(error));
     }
   }, [

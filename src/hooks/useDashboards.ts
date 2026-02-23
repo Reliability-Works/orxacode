@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Part } from "@opencode-ai/sdk/v2/client";
 import type { ProjectBootstrap, ProjectListItem } from "@shared/ipc";
 
@@ -153,6 +153,8 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
     daySeries: buildDaySeries([]),
     recentSessions: [],
   });
+
+  const projectDashboardCacheRef = useRef<Record<string, ProjectDashboardState>>({});
 
   const refreshDashboard = useCallback(async () => {
     setDashboard((current) => ({ ...current, loading: true, error: undefined, projects: projects.length }));
@@ -319,7 +321,12 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
       return;
     }
 
-    setProjectDashboard((current) => ({ ...current, loading: true, error: undefined }));
+    const cached = projectDashboardCacheRef.current[activeProjectDir];
+    if (cached) {
+      setProjectDashboard({ ...cached, loading: true, error: undefined });
+    } else {
+      setProjectDashboard((current) => ({ ...current, loading: true, error: undefined }));
+    }
 
     try {
       const sessionsAll = [...projectData.sessions]
@@ -369,7 +376,7 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
         }
       }
 
-      setProjectDashboard({
+      const nextState: ProjectDashboardState = {
         loading: false,
         updatedAt: now,
         sessions7d: sessionsAll.filter((item) => item.time.updated >= sevenDaysAgo).length,
@@ -382,7 +389,9 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
         topModels: topModelsFromUsage(modelUsage),
         daySeries: buildDaySeries(tokenSeriesPoints),
         recentSessions,
-      });
+      };
+      projectDashboardCacheRef.current[activeProjectDir] = nextState;
+      setProjectDashboard(nextState);
     } catch (error) {
       setProjectDashboard((current) => ({
         ...current,

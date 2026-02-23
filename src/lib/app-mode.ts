@@ -12,10 +12,8 @@ export function preferredAgentForMode(params: {
     if (serverAgentNames.has("build")) {
       return "build";
     }
-    if (serverAgentNames.has("plan")) {
-      return "plan";
-    }
-    return firstAgentName;
+    const firstNonPlan = firstAgentName !== "plan" ? firstAgentName : [...serverAgentNames].find((n) => n !== "plan");
+    return firstNonPlan;
   }
   if (hasOrxaAgent) {
     return "orxa";

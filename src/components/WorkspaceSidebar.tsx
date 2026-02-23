@@ -37,6 +37,7 @@ export type WorkspaceSidebarProps = {
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
   activeSessionID?: string;
+  pendingSessionId?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionStatusType: (sessionID: string, directory?: string) => string;
   selectProject: (directory: string) => Promise<void> | void;
@@ -73,6 +74,7 @@ export function WorkspaceSidebar({
   setCollapsedProjects,
   sessions,
   activeSessionID,
+  pendingSessionId,
   setAllSessionsModalOpen,
   getSessionStatusType,
   selectProject,
@@ -107,7 +109,7 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className={sidebarMode === "projects" ? "active" : ""}
+            className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}
             onClick={openWorkspaceDashboard}
           >
             Dashboard
@@ -230,6 +232,10 @@ export function WorkspaceSidebar({
                       type="button"
                       className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
                       onClick={() => {
+                        if (isActiveProject && activeSessionID) {
+                          openWorkspaceDashboard();
+                          return;
+                        }
                         if (isActiveProject) {
                           setCollapsedProjects((current) => ({
                             ...current,
@@ -261,8 +267,8 @@ export function WorkspaceSidebar({
                   </div>
                   {isExpanded ? (
                     <div className="project-session-list">
-                      {sessions.length === 0 ? <p>No sessions yet</p> : null}
-                      {sessions.slice(0, 4).map((session) => {
+                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).length === 0 ? <p>No sessions yet</p> : null}
+                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).slice(0, 4).map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
                         const busy = status === "busy" || status === "retry";
                         return (
@@ -281,7 +287,7 @@ export function WorkspaceSidebar({
                           </button>
                         );
                       })}
-                      {sessions.length > 4 ? (
+                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).length > 4 ? (
                         <button type="button" className="project-sessions-more" onClick={() => setAllSessionsModalOpen(true)}>
                           View all
                         </button>

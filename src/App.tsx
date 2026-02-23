@@ -45,7 +45,7 @@ import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
-import { findFallbackModel, listAgentOptions, listModelOptions, listModelOptionsFromConfig, type ModelOption } from "./lib/models";
+import { findFallbackModel, listAgentOptions, listAllModelOptions, listModelOptions, listModelOptionsFromConfig, type ModelOption } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
@@ -81,12 +81,14 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   confirmDangerousActions: true,
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
   codeFont: "IBM Plex Mono",
+  hiddenModels: [],
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
 const OPEN_TARGET_KEY = "orxa:openTarget:v1";
 const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
+const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
@@ -233,6 +235,7 @@ export default function App() {
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
   const projectLastOpenedRef = useRef<Record<string, number>>({});
   const projectLastUpdatedRef = useRef<Record<string, number>>({});
+  const prevAppModeRef = useRef<typeof appMode>(appMode);
   const {
     sidebarMode,
     setSidebarMode,
@@ -242,6 +245,8 @@ export default function App() {
     setProjectData,
     activeSessionID,
     setActiveSessionID,
+    pendingSessionId,
+    clearPendingSession,
     messages,
     setMessages,
     contextMenu,
@@ -253,7 +258,7 @@ export default function App() {
     selectProject,
     openWorkspaceDashboard,
     refreshMessages,
-    selectSession: openSession,
+    selectSession: selectSessionRaw,
     createSession: createWorkspaceSession,
     queueRefresh,
     startResponsePolling,
@@ -271,10 +276,24 @@ export default function App() {
     projectLastOpenedRef,
     projectLastUpdatedRef,
   });
+
+  const openSession = useCallback(
+    (sessionID: string) => {
+      setSidebarMode("projects");
+      selectSessionRaw(sessionID);
+    },
+    [selectSessionRaw, setSidebarMode],
+  );
+
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState("");
   const [projectSortOpen, setProjectSortOpen] = useState(false);
-  const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("updated");
+  const [projectSortMode, setProjectSortMode] = usePersistedState<ProjectSortMode>("orxa:projectSortMode:v1", "updated", {
+    deserialize: (raw) => {
+      const valid: ProjectSortMode[] = ["updated", "recent", "alpha-asc", "alpha-desc"];
+      return valid.includes(raw as ProjectSortMode) ? (raw as ProjectSortMode) : "updated";
+    },
+  });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
@@ -331,6 +350,7 @@ export default function App() {
     },
     serialize: (value) => value,
   });
+  const [agentModelPrefs, setAgentModelPrefs] = usePersistedState<Record<string, string>>(AGENT_MODEL_PREFS_KEY, {});
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
@@ -432,6 +452,10 @@ export default function App() {
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
   );
+  const allServerModelOptions = useMemo(
+    () => listAllModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
+    [projectData],
+  );
   const modelOptions = useMemo(() => {
     const merged = [...serverModelOptions];
     for (const model of configModelOptions) {
@@ -441,6 +465,24 @@ export default function App() {
     }
     return merged.sort((a, b) => a.key.localeCompare(b.key));
   }, [configModelOptions, serverModelOptions]);
+  const settingsModelsRef = useRef<ModelOption[]>([]);
+  const settingsModelOptions = useMemo(() => {
+    const keySet = new Set<string>();
+    const merged: ModelOption[] = [];
+    const addModel = (m: ModelOption) => {
+      if (keySet.has(m.key)) return;
+      keySet.add(m.key);
+      merged.push(m);
+    };
+    for (const m of modelOptions) addModel(m);
+    for (const m of allServerModelOptions) addModel(m);
+    for (const m of configModelOptions) addModel(m);
+    merged.sort((a, b) => a.key.localeCompare(b.key));
+    if (merged.length > 0) {
+      settingsModelsRef.current = merged;
+    }
+    return settingsModelsRef.current.length > 0 ? settingsModelsRef.current : merged;
+  }, [modelOptions, allServerModelOptions, configModelOptions]);
   const preferredAgentModel = useMemo(() => {
     if (selectedAgent === "plan") {
       return orxaModels.plan;
@@ -466,7 +508,11 @@ export default function App() {
   const isPlanMode = selectedAgent === "plan";
   const isOrxaMode = appMode === "orxa";
   const composerPlaceholder = isOrxaMode ? "Send message to Orxa" : "Send message";
-  const assistantLabel = isOrxaMode ? "Orxa" : "Assistant";
+  const assistantLabel = selectedAgent
+    ? selectedAgent.charAt(0).toUpperCase() + selectedAgent.slice(1)
+    : isOrxaMode
+      ? "Orxa"
+      : "Assistant";
   const todosLabel = isOrxaMode ? "Orxa Todos" : "Todos";
   const modelOptionsForAgent = useMemo(() => {
     if (selectedAgent === "orxa" && orxaModels.orxa) {
@@ -591,9 +637,10 @@ export default function App() {
     deriveSessionTitleFromPrompt,
     startResponsePolling,
     stopResponsePolling,
+    clearPendingSession,
   });
 
-  const modelSelectOptions = useMemo(() => {
+  const allModelOptions = useMemo(() => {
     const items = [...modelOptionsForAgent];
     const extras = [preferredAgentModel, selectedModel].filter((value): value is string => Boolean(value));
     for (const key of extras) {
@@ -616,6 +663,12 @@ export default function App() {
     }
     return items;
   }, [modelOptionsForAgent, preferredAgentModel, selectedModel]);
+
+  const hiddenModelsSet = useMemo(() => new Set(appPreferences.hiddenModels), [appPreferences.hiddenModels]);
+  const modelSelectOptions = useMemo(
+    () => allModelOptions.filter((m) => !hiddenModelsSet.has(m.key)),
+    [allModelOptions, hiddenModelsSet],
+  );
   const variantOptions = useMemo(() => {
     const model = modelSelectOptions.find((item) => item.key === selectedModel);
     return model?.variants ?? [];
@@ -653,38 +706,41 @@ export default function App() {
       return;
     }
 
+    setMessages([]);
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages]);
 
   useEffect(() => {
-    const preferredModel = selectedAgentDefinition?.model ?? preferredAgentModel ?? projectData?.config.model;
-    const fallback = findFallbackModel(modelSelectOptions, selectedModel ?? preferredModel);
-    if (!selectedModel) {
-      setSelectedModel(preferredModel ?? fallback?.key);
-    } else if (!modelSelectOptions.some((item) => item.key === selectedModel) && preferredModel) {
-      setSelectedModel(preferredModel);
-    }
-
     const available = new Set(agentOptions.map((item) => item.name));
-    if (hasOrxaAgent) {
-      available.add("orxa");
-    }
-    if (hasPlanAgent) {
-      available.add("plan");
-    }
+    if (hasOrxaAgent) available.add("orxa");
+    if (hasPlanAgent) available.add("plan");
 
-    if (!selectedAgent || !available.has(selectedAgent)) {
-      const preferred = preferredAgentForMode({
+    const modeChanged = prevAppModeRef.current !== appMode;
+    prevAppModeRef.current = appMode;
+
+    let nextAgent = selectedAgent;
+    if (modeChanged || !selectedAgent || !available.has(selectedAgent)) {
+      nextAgent = preferredAgentForMode({
         mode: appMode,
         hasOrxaAgent,
         hasPlanAgent,
         serverAgentNames,
         firstAgentName: agentOptions[0]?.name,
       });
-      setSelectedAgent(preferred);
+      setSelectedAgent(nextAgent);
+    }
+
+    const savedModel = nextAgent ? agentModelPrefs[nextAgent] : undefined;
+    const preferredModel = savedModel ?? selectedAgentDefinition?.model ?? preferredAgentModel ?? projectData?.config.model;
+    const fallback = findFallbackModel(modelSelectOptions, selectedModel ?? preferredModel);
+    if (!selectedModel || modeChanged || (nextAgent !== selectedAgent)) {
+      setSelectedModel(preferredModel ?? fallback?.key);
+    } else if (!modelSelectOptions.some((item) => item.key === selectedModel) && preferredModel) {
+      setSelectedModel(preferredModel);
     }
   }, [
     appMode,
+    agentModelPrefs,
     agentOptions,
     hasOrxaAgent,
     hasPlanAgent,
@@ -696,6 +752,19 @@ export default function App() {
     selectedModel,
     serverAgentNames,
   ]);
+
+  const prevSelectedAgentRef = useRef<string | undefined>(selectedAgent);
+  useEffect(() => {
+    if (selectedModel && selectedAgent && prevSelectedAgentRef.current === selectedAgent) {
+      if (modelSelectOptions.some((item) => item.key === selectedModel)) {
+        setAgentModelPrefs((prev) => {
+          if (prev[selectedAgent] === selectedModel) return prev;
+          return { ...prev, [selectedAgent]: selectedModel };
+        });
+      }
+    }
+    prevSelectedAgentRef.current = selectedAgent;
+  }, [selectedModel, selectedAgent, modelSelectOptions, setAgentModelPrefs]);
 
   useEffect(() => {
     const events = window.orxa?.events;
@@ -1695,6 +1764,10 @@ export default function App() {
             setTitleMenuOpen(false);
             void archiveSession(activeProjectDir, activeSessionID);
           }}
+          onViewWorkspace={() => {
+            setTitleMenuOpen(false);
+            openWorkspaceDashboard();
+          }}
           onCopyPath={() => {
             if (!activeProjectDir) {
               return;
@@ -1741,6 +1814,7 @@ export default function App() {
             setCollapsedProjects={setCollapsedProjects}
             sessions={sessions}
             activeSessionID={activeSessionID ?? undefined}
+            pendingSessionId={pendingSessionId}
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionStatusType={getSessionStatusType}
             selectProject={selectProject}
@@ -1856,11 +1930,9 @@ export default function App() {
                     modelSelectOptions={modelSelectOptions}
                     selectedModel={selectedModel}
                     setSelectedModel={setSelectedModel}
-                    modelSelectWidthCh={modelSelectWidthCh}
                     selectedVariant={selectedVariant}
                     setSelectedVariant={setSelectedVariant}
                     variantOptions={variantOptions}
-                    variantSelectWidthCh={variantSelectWidthCh}
                     placeholder={composerPlaceholder}
                   />
 
@@ -2199,6 +2271,7 @@ export default function App() {
         onGetOrxaAgentDetails={(name) => window.orxa.opencode.getOrxaAgentDetails(name)}
         onResetOrxaAgent={(name) => window.orxa.opencode.resetOrxaAgent(name)}
         onRestoreOrxaAgentHistory={(name, historyID) => window.orxa.opencode.restoreOrxaAgentHistory(name, historyID)}
+        allModelOptions={settingsModelOptions}
       />
     </div>
   );

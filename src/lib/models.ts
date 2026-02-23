@@ -61,6 +61,29 @@ export function listModelOptions(providers: ProviderListResponse): ModelOption[]
   return options.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+export function listAllModelOptions(providers: ProviderListResponse): ModelOption[] {
+  const options: ModelOption[] = [];
+
+  for (const provider of providers.all) {
+    for (const model of Object.values(provider.models)) {
+      if (model.status === "deprecated") {
+        continue;
+      }
+
+      options.push({
+        key: `${provider.id}/${model.id}`,
+        providerID: provider.id,
+        modelID: model.id,
+        providerName: provider.name,
+        modelName: model.name,
+        variants: model.variants ? Object.keys(model.variants) : [],
+      });
+    }
+  }
+
+  return options.sort((a, b) => a.key.localeCompare(b.key));
+}
+
 export function findFallbackModel(options: ModelOption[], configured?: string) {
   if (configured) {
     const match = options.find((item) => item.key === configured);

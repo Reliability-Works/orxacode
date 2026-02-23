@@ -1,7 +1,8 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import fs from "node:fs";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
 import { IPC, type AppMode, type GitCommitRequest, type OpenDirectoryTarget, type RuntimeProfileInput } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
@@ -88,6 +89,24 @@ function resolveOrxaTemplateDir() {
     return path.join(process.resourcesPath, "orxa-template");
   }
   return path.join(process.cwd(), "assets", "orxa-template");
+}
+
+function configureMacAppIdentity() {
+  if (process.platform !== "darwin") {
+    return;
+  }
+
+  app.setName("OrxaCode");
+
+  const dockIconPath = path.join(process.cwd(), "build", "icon.png");
+  if (!fs.existsSync(dockIconPath)) {
+    return;
+  }
+
+  const dockIcon = nativeImage.createFromPath(dockIconPath);
+  if (!dockIcon.isEmpty()) {
+    app.dock?.setIcon(dockIcon);
+  }
 }
 
 function inferMimeFromPath(filePath: string) {
@@ -336,6 +355,19 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeWriteAgentsMd, async (_event, directory: unknown, content: unknown) =>
     service.writeAgentsMd(assertString(directory, "directory"), assertString(content, "content")),
   );
+  ipcMain.handle(IPC.opencodeListAgentFiles, async () => service.listOpenCodeAgentFiles());
+  ipcMain.handle(IPC.opencodeReadAgentFile, async (_event, filename: unknown) =>
+    service.readOpenCodeAgentFile(assertString(filename, "filename")),
+  );
+  ipcMain.handle(IPC.opencodeWriteAgentFile, async (_event, filename: unknown, content: unknown) =>
+    service.writeOpenCodeAgentFile(assertString(filename, "filename"), assertString(content, "content")),
+  );
+  ipcMain.handle(IPC.opencodeDeleteAgentFile, async (_event, filename: unknown) =>
+    service.deleteOpenCodeAgentFile(assertString(filename, "filename")),
+  );
+  ipcMain.handle(IPC.opencodeOpenFileIn, async (_event, filePath: unknown, target: unknown) =>
+    service.openFileIn(assertString(filePath, "filePath"), assertOpenDirectoryTarget(target)),
+  );
   ipcMain.handle(IPC.opencodeListFiles, async (_event, directory: unknown, relativePath?: unknown) =>
     service.listFiles(assertString(directory, "directory"), typeof relativePath === "string" ? relativePath : undefined),
   );
@@ -411,6 +443,7 @@ function registerIpcHandlers() {
 
 async function boot() {
   await app.whenReady();
+  configureMacAppIdentity();
   const startupMode = modeStore.getMode();
   if (shouldRunOrxaBootstrap(startupMode)) {
     await service.ensureOrxaWorkspace(resolveOrxaTemplateDir()).catch((error) => {

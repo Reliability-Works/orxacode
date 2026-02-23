@@ -121,6 +121,17 @@ export function useGitPanel(activeProjectDir: string | null) {
     }
   }, [activeProjectDir]);
 
+  const silentRefreshDiff = useCallback(async () => {
+    if (!activeProjectDir) return;
+    try {
+      const output = await window.orxa.opencode.gitDiff(activeProjectDir);
+      setGitPanelOutput(output);
+      setGitDiffStats(parseGitDiffStats(output));
+    } catch {
+      // ignore to avoid overwriting existing content on transient errors
+    }
+  }, [activeProjectDir]);
+
   const loadGitLog = useCallback(async () => {
     if (!activeProjectDir) {
       return;
@@ -319,6 +330,14 @@ export function useGitPanel(activeProjectDir: string | null) {
     void refreshBranchState();
     void refreshGitDiffStats();
   }, [activeProjectDir, refreshBranchState, refreshGitDiffStats]);
+
+  useEffect(() => {
+    if (!activeProjectDir) return;
+    const interval = setInterval(() => {
+      void silentRefreshDiff();
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [activeProjectDir, silentRefreshDiff]);
 
   useEffect(() => {
     if (!commitModalOpen || !activeProjectDir) {

@@ -1,4 +1,5 @@
 import type { AgentsDocument } from "@shared/ipc";
+import { RotateCcw, Save } from "lucide-react";
 import { compact, money, timeAgo, trimProviderPrefix } from "~/lib/format";
 
 type ProjectModel = {
@@ -56,19 +57,21 @@ export function ProjectDashboard({
   return (
     <section className="dashboard project-dashboard">
       <section className={`dashboard-section project-agents-section ${agentsMissing ? "project-agents-empty" : ""}`.trim()}>
-        <div className="dashboard-section-title">
-          <h2>AGENTS.md</h2>
-          <div className="project-agents-actions">
-            <button type="button" onClick={onRefreshAgents} disabled={agentsLoading}>
-              {agentsLoading ? "Refreshing..." : "Refresh"}
-            </button>
-            {agentsDocument?.exists ? (
-              <button type="button" onClick={onSaveAgents} disabled={agentsSaving || agentsLoading}>
-                {agentsSaving ? "Saving..." : "Save"}
+        {!agentsMissing ? (
+          <div className="dashboard-section-title">
+            <h2>AGENTS.md</h2>
+            <div className="project-agents-actions">
+              <button type="button" className="dashboard-icon-btn" onClick={onRefreshAgents} disabled={agentsLoading} title="Refresh">
+                <RotateCcw size={14} className={agentsLoading ? "spin" : ""} />
               </button>
-            ) : null}
+              {agentsDocument?.exists ? (
+                <button type="button" className="dashboard-icon-btn" onClick={onSaveAgents} disabled={agentsSaving || agentsLoading} title="Save">
+                  <Save size={14} />
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {agentsLoading ? <p className="dashboard-empty">Loading AGENTS.md...</p> : null}
         {agentsMissing ? (
           <div className="project-agents-missing">
@@ -94,8 +97,8 @@ export function ProjectDashboard({
           <h2>Workspace Usage</h2>
           <div className="project-usage-actions">
             <small>{updatedAt ? `Updated ${timeAgo(updatedAt)}` : "Not updated yet"}</small>
-            <button type="button" onClick={onRefresh} disabled={loading}>
-              {loading ? "Refreshing..." : "Refresh"}
+            <button type="button" className="dashboard-icon-btn" onClick={onRefresh} disabled={loading} title="Refresh">
+              <RotateCcw size={14} className={loading ? "spin" : ""} />
             </button>
           </div>
         </div>

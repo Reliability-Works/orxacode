@@ -69,6 +69,11 @@ export const IPC = {
   opencodeListSkills: "orxa:opencode:listSkills",
   opencodeReadAgentsMd: "orxa:opencode:readAgentsMd",
   opencodeWriteAgentsMd: "orxa:opencode:writeAgentsMd",
+  opencodeListAgentFiles: "orxa:opencode:listAgentFiles",
+  opencodeReadAgentFile: "orxa:opencode:readAgentFile",
+  opencodeWriteAgentFile: "orxa:opencode:writeAgentFile",
+  opencodeDeleteAgentFile: "orxa:opencode:deleteAgentFile",
+  opencodeOpenFileIn: "orxa:opencode:openFileIn",
   opencodeListFiles: "orxa:opencode:listFiles",
   opencodeCountProjectFiles: "orxa:opencode:countProjectFiles",
   opencodeReadProjectFile: "orxa:opencode:readProjectFile",
@@ -213,6 +218,17 @@ export type ProjectFileDocument = {
   content: string;
   binary: boolean;
   truncated: boolean;
+};
+
+export type OpenCodeAgentFile = {
+  name: string;
+  filename: string;
+  path: string;
+  description: string;
+  mode: string;
+  model: string;
+  temperature?: number;
+  content: string;
 };
 
 export type OpenDirectoryTarget =
@@ -420,6 +436,11 @@ export interface OrxaBridge {
     listSkills: () => Promise<SkillEntry[]>;
     readAgentsMd: (directory: string) => Promise<AgentsDocument>;
     writeAgentsMd: (directory: string, content: string) => Promise<AgentsDocument>;
+    listAgentFiles: () => Promise<OpenCodeAgentFile[]>;
+    readAgentFile: (filename: string) => Promise<OpenCodeAgentFile>;
+    writeAgentFile: (filename: string, content: string) => Promise<OpenCodeAgentFile>;
+    deleteAgentFile: (filename: string) => Promise<boolean>;
+    openFileIn: (filePath: string, target: OpenDirectoryTarget) => Promise<OpenDirectoryResult>;
     listFiles: (directory: string, relativePath?: string) => Promise<ProjectFileEntry[]>;
     countProjectFiles: (directory: string) => Promise<number>;
     readProjectFile: (directory: string, relativePath: string) => Promise<ProjectFileDocument>;

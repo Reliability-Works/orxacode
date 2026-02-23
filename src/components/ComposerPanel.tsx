@@ -1,4 +1,4 @@
-import type { KeyboardEvent, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
@@ -45,11 +45,9 @@ type ComposerPanelProps = {
   modelSelectOptions: ModelOption[];
   selectedModel?: string;
   setSelectedModel: (value: string | undefined) => void;
-  modelSelectWidthCh: number;
   selectedVariant?: string;
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
-  variantSelectWidthCh: number;
 };
 
 export function ComposerPanel(props: ComposerPanelProps) {
@@ -89,11 +87,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
     modelSelectOptions,
     selectedModel,
     setSelectedModel,
-    modelSelectWidthCh,
     selectedVariant,
     setSelectedVariant,
     variantOptions,
-    variantSelectWidthCh,
   } = props;
 
   return (
@@ -249,24 +245,106 @@ export function ComposerPanel(props: ComposerPanelProps) {
             </div>
           ) : null}
         </div>
-        <select
-          className="composer-select composer-model-select"
-          aria-label="Model"
-          value={selectedModel ?? ""}
-          style={{ width: `${modelSelectWidthCh}ch` }}
-          onChange={(event) => setSelectedModel(event.target.value || undefined)}
-        >
-          {modelSelectOptions.map((model) => (
-            <option key={model.key} value={model.key}>
-              {model.providerName}/{model.modelName}
-            </option>
-          ))}
-        </select>
+        <ModelPicker
+          modelSelectOptions={modelSelectOptions}
+          selectedModel={selectedModel}
+          setSelectedModel={setSelectedModel}
+          selectedVariant={selectedVariant}
+          setSelectedVariant={setSelectedVariant}
+          variantOptions={variantOptions}
+        />
+      </div>
+    </section>
+  );
+}
+
+type ModelPickerProps = {
+  modelSelectOptions: ModelOption[];
+  selectedModel: string | undefined;
+  setSelectedModel: (value: string | undefined) => void;
+  selectedVariant: string | undefined;
+  setSelectedVariant: (value: string | undefined) => void;
+  variantOptions: string[];
+};
+
+function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, selectedVariant, setSelectedVariant, variantOptions }: ModelPickerProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const selectedOption = useMemo(
+    () => modelSelectOptions.find((m) => m.key === selectedModel),
+    [modelSelectOptions, selectedModel],
+  );
+
+  const providerGroups = useMemo(() => {
+    const filtered = query.trim()
+      ? modelSelectOptions.filter(
+          (m) =>
+            m.modelName.toLowerCase().includes(query.toLowerCase()) ||
+            m.providerName.toLowerCase().includes(query.toLowerCase()),
+        )
+      : modelSelectOptions;
+
+    const map = new Map<string, { id: string; name: string; models: ModelOption[] }>();
+    for (const m of filtered) {
+      if (!map.has(m.providerID)) {
+        map.set(m.providerID, { id: m.providerID, name: m.providerName, models: [] });
+      }
+      map.get(m.providerID)!.models.push(m);
+    }
+    return [...map.values()];
+  }, [modelSelectOptions, query]);
+
+  const handleSelect = useCallback(
+    (key: string) => {
+      setSelectedModel(key);
+      setOpen(false);
+      setQuery("");
+    },
+    [setSelectedModel],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const displayLabel = selectedOption
+    ? `${selectedOption.providerName}/${selectedOption.modelName}`
+    : "Select model";
+
+  return (
+    <div className="model-picker-wrap">
+      <button
+        type="button"
+        className="composer-select composer-model-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Select model"
+        title={displayLabel}
+      >
+        <span className="model-btn-label">{displayLabel}</span>
+        <ChevronDown size={12} aria-hidden="true" />
+      </button>
+
+      {variantOptions.length > 0 ? (
         <select
           className="composer-select composer-variant-select"
           aria-label="Variant"
           value={selectedVariant ?? ""}
-          style={{ width: `${variantSelectWidthCh}ch` }}
           onChange={(event) => setSelectedVariant(event.target.value || undefined)}
         >
           <option value="">(default)</option>
@@ -276,8 +354,53 @@ export function ComposerPanel(props: ComposerPanelProps) {
             </option>
           ))}
         </select>
-      </div>
-    </section>
+      ) : null}
+
+      {open ? (
+        <div className="model-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) { setOpen(false); setQuery(""); } }}>
+          <div className="model-modal">
+            <div className="model-modal-header">
+              <h3>Select Model</h3>
+              <div className="model-modal-search">
+                <SearchIcon size={14} aria-hidden="true" />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search models..."
+                />
+              </div>
+              <button type="button" className="model-modal-close" onClick={() => { setOpen(false); setQuery(""); }}>Close</button>
+            </div>
+            <div className="model-modal-body">
+              {providerGroups.length === 0 ? (
+                <p className="model-picker-empty">No models found</p>
+              ) : (
+                <div className="model-modal-columns">
+                  {providerGroups.map((group) => (
+                    <div key={group.id} className="model-modal-column">
+                      <div className="model-modal-provider">{group.name}</div>
+                      {group.models.map((m) => (
+                        <button
+                          key={m.key}
+                          type="button"
+                          className={`model-modal-item${selectedModel === m.key ? " active" : ""}`}
+                          onClick={() => handleSelect(m.key)}
+                        >
+                          {selectedModel === m.key ? <Check size={12} aria-hidden="true" /> : null}
+                          <span>{m.modelName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
