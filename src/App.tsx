@@ -348,6 +348,8 @@ export default function App() {
     branchState,
     gitPanelTab,
     setGitPanelTab,
+    gitDiffViewMode,
+    setGitDiffViewMode,
     gitPanelOutput,
     gitDiffStats,
     commitModalOpen,
@@ -1231,7 +1233,7 @@ export default function App() {
         setLeftPaneWidth(next);
         return;
       }
-      const next = Math.max(280, Math.min(560, state.startWidth - (event.clientX - state.startX)));
+      const next = Math.max(280, Math.min(760, state.startWidth - (event.clientX - state.startX)));
       setRightPaneWidth(next);
     };
     const onMouseUp = () => {
@@ -1315,15 +1317,18 @@ export default function App() {
   ]
     .filter(Boolean)
     .join(" ");
+  const isDiffContentView =
+    hasProjectContext && rightSidebarTab === "git" && gitPanelTab === "diff" && gitDiffViewMode !== "list";
+  const effectiveRightPaneWidth = isDiffContentView ? Math.max(rightPaneWidth, 520) : rightPaneWidth;
   const workspaceStyle = useMemo(
     () =>
       ({
         "--left-pane-width": `${leftPaneWidth}px`,
-        "--right-pane-width": `${rightPaneWidth}px`,
+        "--right-pane-width": `${effectiveRightPaneWidth}px`,
         "--left-pane-visible": showProjectsPane ? 1 : 0,
         "--right-pane-visible": showGitPane ? 1 : 0,
       }) as CSSProperties,
-    [leftPaneWidth, rightPaneWidth, showGitPane, showProjectsPane],
+    [effectiveRightPaneWidth, leftPaneWidth, showGitPane, showProjectsPane],
   );
 
   useEffect(() => {
@@ -1914,8 +1919,9 @@ export default function App() {
           <button
             type="button"
             className={`sidebar-resizer sidebar-resizer-right ${showGitPane ? "" : "is-collapsed"}`.trim()}
-            aria-label="Git sidebar spacer"
-            disabled
+            aria-label="Resize git sidebar"
+            onMouseDown={(event) => startSidebarResize("right", event)}
+            disabled={!showGitPane}
           />
         ) : null}
         {hasProjectContext ? (
@@ -1925,6 +1931,8 @@ export default function App() {
               setSidebarPanelTab={setRightSidebarTab}
               gitPanelTab={gitPanelTab}
               setGitPanelTab={setGitPanelTab}
+              gitDiffViewMode={gitDiffViewMode}
+              setGitDiffViewMode={setGitDiffViewMode}
               gitPanelOutput={gitPanelOutput}
               branchState={branchState}
               branchQuery={branchQuery}

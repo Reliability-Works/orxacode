@@ -2,7 +2,9 @@ import type { GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { Plus, Eye, RotateCcw, Minus } from "lucide-react";
+import { DiffModeEnum, DiffView } from "@git-diff-view/react";
+import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2 } from "lucide-react";
+import type { GitDiffViewMode } from "../hooks/useGitPanel";
 
 export type BranchState = GitBranchState;
 
@@ -31,6 +33,14 @@ type GitDiffFile = {
   hasUnstaged: boolean;
   hasStaged: boolean;
   diffText: string;
+  unstagedDiffText?: string;
+  stagedDiffText?: string;
+};
+
+type GitDiffViewSection = {
+  key: string;
+  label: string;
+  text: string;
 };
 
 function statusPriority(status: GitFileStatus) {
@@ -149,8 +159,8 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
     const existing = grouped.get(key);
     const chunkText = chunk.lines.join("\n").trimEnd();
     const nextDiffText = existing
-      ? [existing.diffText, `## ${chunk.section === "unstaged" ? "Unstaged" : "Staged"}\n`, chunkText].join("\n\n")
-      : [`## ${chunk.section === "unstaged" ? "Unstaged" : "Staged"}\n`, chunkText].join("\n");
+      ? [existing.diffText, chunkText].join("\n\n")
+      : chunkText;
 
     if (!existing) {
       grouped.set(key, {
@@ -163,6 +173,8 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
         hasUnstaged: chunk.section === "unstaged",
         hasStaged: chunk.section === "staged",
         diffText: nextDiffText,
+        unstagedDiffText: chunk.section === "unstaged" ? chunkText : undefined,
+        stagedDiffText: chunk.section === "staged" ? chunkText : undefined,
       });
       continue;
     }
@@ -172,6 +184,12 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
     existing.hasUnstaged = existing.hasUnstaged || chunk.section === "unstaged";
     existing.hasStaged = existing.hasStaged || chunk.section === "staged";
     existing.diffText = nextDiffText;
+    if (chunk.section === "unstaged") {
+      existing.unstagedDiffText = existing.unstagedDiffText ? `${existing.unstagedDiffText}\n\n${chunkText}` : chunkText;
+    }
+    if (chunk.section === "staged") {
+      existing.stagedDiffText = existing.stagedDiffText ? `${existing.stagedDiffText}\n\n${chunkText}` : chunkText;
+    }
 
     if (statusPriority(chunk.status) > statusPriority(existing.status)) {
       existing.status = chunk.status;
@@ -184,6 +202,23 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
 
   const files = Array.from(grouped.values()).sort((left, right) => left.path.localeCompare(right.path));
   return { files };
+}
+
+function toDiffSections(file: GitDiffFile | null): GitDiffViewSection[] {
+  if (!file) {
+    return [];
+  }
+  const sections: GitDiffViewSection[] = [];
+  if (file.unstagedDiffText) {
+    sections.push({ key: `${file.key}:unstaged`, label: "Unstaged", text: file.unstagedDiffText });
+  }
+  if (file.stagedDiffText) {
+    sections.push({ key: `${file.key}:staged`, label: "Staged", text: file.stagedDiffText });
+  }
+  if (sections.length === 0 && file.diffText.trim().length > 0) {
+    sections.push({ key: `${file.key}:diff`, label: "Changes", text: file.diffText });
+  }
+  return sections;
 }
 
 export type GitSidebarProps = {
@@ -200,6 +235,8 @@ export type GitSidebarProps = {
   onLoadGitLog: () => Promise<void>;
   onLoadGitIssues: () => Promise<void>;
   onLoadGitPrs: () => Promise<void>;
+  gitDiffViewMode: GitDiffViewMode;
+  setGitDiffViewMode: (mode: GitDiffViewMode) => void;
   onStageAllChanges?: () => Promise<void>;
   onDiscardAllChanges?: () => Promise<void>;
   onStageFile?: (filePath: string) => Promise<void>;
@@ -221,6 +258,8 @@ export function GitSidebar(props: GitSidebarProps) {
     onLoadGitLog,
     onLoadGitIssues,
     onLoadGitPrs,
+    gitDiffViewMode,
+    setGitDiffViewMode,
     onStageAllChanges,
     onDiscardAllChanges,
     onStageFile,
@@ -252,6 +291,7 @@ export function GitSidebar(props: GitSidebarProps) {
   }, [gitPanelTab, parsedDiff.files, selectedDiffKey]);
 
   const selectedDiffFile = parsedDiff.files.find((file) => file.key === selectedDiffKey) ?? parsedDiff.files[0] ?? null;
+  const diffSections = useMemo(() => toDiffSections(selectedDiffFile), [selectedDiffFile]);
 
   const runFileAction = async (actionKey: string, action: () => Promise<void>, successMessage: string) => {
     setPendingAction(actionKey);
@@ -383,7 +423,40 @@ export function GitSidebar(props: GitSidebarProps) {
               ) : parsedDiff.files.length === 0 ? (
                 <p className="git-files-empty">{parsedDiff.message ?? "No local changes."}</p>
               ) : (
-                <>
+                <div className={`git-diff-layout git-diff-layout-${gitDiffViewMode}`.trim()}>
+                  <div className="git-files-heading">
+                    <p className="git-files-count">Files ({parsedDiff.files.length})</p>
+                    <div className="git-diff-mode-toggle" role="group" aria-label="Git diff view mode">
+                      <button
+                        type="button"
+                        className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
+                        aria-label="List view"
+                        title="List view"
+                        onClick={() => setGitDiffViewMode("list")}
+                      >
+                        <List size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
+                        aria-label="Unified view"
+                        title="Unified view"
+                        onClick={() => setGitDiffViewMode("unified")}
+                      >
+                        <AlignJustify size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
+                        aria-label="Split view"
+                        title="Split view"
+                        onClick={() => setGitDiffViewMode("split")}
+                      >
+                        <Columns2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="git-file-list" role="list" aria-label="Changed files">
                     {parsedDiff.files.map((file) => {
                       const statusTag = inferStatusTag(file.status);
@@ -474,7 +547,43 @@ export function GitSidebar(props: GitSidebarProps) {
                       );
                     })}
                   </div>
-                </>
+
+                  {gitDiffViewMode === "list" ? null : (
+                    <div className="git-diff-view-panel" aria-label="Selected file diff">
+                      {diffSections.length > 1
+                        ? diffSections.map((section) => (
+                            <section key={section.key} className="git-diff-view-section">
+                              <div className="git-diff-view-section-label">{section.label}</div>
+                              <DiffView
+                                data={{
+                                  oldFile: { fileName: selectedDiffFile?.oldPath ?? selectedDiffFile?.path ?? "" },
+                                  newFile: { fileName: selectedDiffFile?.path ?? "" },
+                                  hunks: section.text.split("\n"),
+                                }}
+                                diffViewMode={gitDiffViewMode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
+                                diffViewTheme="dark"
+                                diffViewHighlight
+                                diffViewWrap={false}
+                              />
+                            </section>
+                          ))
+                        : diffSections.map((section) => (
+                            <DiffView
+                              key={section.key}
+                              data={{
+                                oldFile: { fileName: selectedDiffFile?.oldPath ?? selectedDiffFile?.path ?? "" },
+                                newFile: { fileName: selectedDiffFile?.path ?? "" },
+                                hunks: section.text.split("\n"),
+                              }}
+                              diffViewMode={gitDiffViewMode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
+                              diffViewTheme="dark"
+                              diffViewHighlight
+                              diffViewWrap={false}
+                            />
+                          ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ) : (

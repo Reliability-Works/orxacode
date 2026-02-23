@@ -44,6 +44,7 @@
     }
   },
   "dependencies": {
+    "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "clsx": "^2.1.1",
     "electron": "^40.6.0",

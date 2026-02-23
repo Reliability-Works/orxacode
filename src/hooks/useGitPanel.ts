@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GitBranchState } from "@shared/ipc";
+import { usePersistedState } from "./usePersistedState";
 
 export type CommitNextStep = "commit" | "commit_and_push" | "commit_and_create_pr";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
+export type GitDiffViewMode = "list" | "unified" | "split";
 export type GitDiffStats = { additions: number; deletions: number; hasChanges: boolean };
+
+const GIT_DIFF_VIEW_MODE_KEY = "orxa:gitDiffViewMode:v1";
 
 function formatError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -47,6 +51,15 @@ function parseGitDiffStats(output: string): GitDiffStats {
 export function useGitPanel(activeProjectDir: string | null) {
   const [branchState, setBranchState] = useState<GitBranchState | null>(null);
   const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("diff");
+  const [gitDiffViewMode, setGitDiffViewMode] = usePersistedState<GitDiffViewMode>(GIT_DIFF_VIEW_MODE_KEY, "list", {
+    deserialize: (raw) => {
+      if (raw === "list" || raw === "unified" || raw === "split") {
+        return raw;
+      }
+      return "list";
+    },
+    serialize: (value) => value,
+  });
   const [gitPanelOutput, setGitPanelOutput] = useState("Select DIFF or LOG.");
   const [gitDiffStats, setGitDiffStats] = useState<GitDiffStats>({ additions: 0, deletions: 0, hasChanges: false });
   const [gitDiffLoading, setGitDiffLoading] = useState(false);
@@ -319,6 +332,8 @@ export function useGitPanel(activeProjectDir: string | null) {
     setBranchState,
     gitPanelTab,
     setGitPanelTab,
+    gitDiffViewMode,
+    setGitDiffViewMode,
     gitPanelOutput,
     gitDiffStats,
     setGitPanelOutput,
