@@ -1526,8 +1526,11 @@
   gap: var(--space-2);
 }
 
-.git-diff-layout .git-files-heading {
-  grid-column: 1 / -1;
+.git-file-list-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
 .git-diff-layout-unified,
@@ -1536,8 +1539,8 @@
   gap: var(--space-2);
 }
 
-.git-diff-layout-unified .git-file-list,
-.git-diff-layout-split .git-file-list {
+.git-diff-layout-unified .git-file-list-pane,
+.git-diff-layout-split .git-file-list-pane {
   grid-column: 1 / 2;
 }
 
@@ -1546,7 +1549,7 @@
   grid-column: 2 / 3;
 }
 
-.git-diff-layout-list .git-file-list {
+.git-diff-layout-list .git-file-list-pane {
   grid-column: 1 / -1;
 }
 
