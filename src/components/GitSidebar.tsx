@@ -2,7 +2,7 @@ import type { GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search, X } from "lucide-react";
+import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search, X, PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
 
 export type BranchState = GitBranchState;
@@ -491,6 +491,7 @@ export function GitSidebar(props: GitSidebarProps) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedUnchangedRows, setExpandedUnchangedRows] = useState<Record<string, boolean>>({});
   const [treeFilter, setTreeFilter] = useState("");
+  const [showFileTree, setShowFileTree] = useState(true);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
@@ -1001,7 +1002,7 @@ export function GitSidebar(props: GitSidebarProps) {
               ) : parsedDiff.files.length === 0 ? (
                 <p className="git-files-empty">{parsedDiff.message ?? "No local changes."}</p>
               ) : (
-                <div className={`git-diff-layout git-diff-layout-${gitDiffViewMode}`.trim()}>
+                <div className={`git-diff-layout git-diff-layout-${gitDiffViewMode}${gitDiffViewMode !== "list" && !showFileTree ? " tree-hidden" : ""}`.trim()}>
                   <div className="git-files-heading">
                     <p className="git-files-count">Files ({parsedDiff.files.length})</p>
                     <div className="git-diff-mode-toggle" role="group" aria-label="Git diff view mode">
@@ -1032,6 +1033,17 @@ export function GitSidebar(props: GitSidebarProps) {
                       >
                         <Columns2 size={15} />
                       </button>
+                      {gitDiffViewMode !== "list" ? (
+                        <button
+                          type="button"
+                          className="git-action-icon-btn"
+                          aria-label={showFileTree ? "Hide file tree" : "Show file tree"}
+                          title={showFileTree ? "Hide file tree" : "Show file tree"}
+                          onClick={() => setShowFileTree((v) => !v)}
+                        >
+                          {showFileTree ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1138,7 +1150,7 @@ export function GitSidebar(props: GitSidebarProps) {
                           );
                         })}
                       </div>
-                      <div className="git-file-tree-pane">{renderTreePanel()}</div>
+                      {showFileTree ? <div className="git-file-tree-pane">{renderTreePanel()}</div> : null}
                     </>
                   )}
                 </div>

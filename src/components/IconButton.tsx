@@ -219,7 +219,7 @@ export function IconButton({ icon, label, className = "", type = "button", ...pr
         const r = btnRef.current.getBoundingClientRect();
         const above = r.top > 56;
         const centerX = r.left + r.width / 2;
-        const clampedLeft = Math.max(80, Math.min(window.innerWidth - 80, centerX));
+        const clampedLeft = Math.max(130, Math.min(window.innerWidth - 130, centerX));
         setTooltip({
           left: clampedLeft,
           top: above ? r.top - 8 : r.bottom + 8,

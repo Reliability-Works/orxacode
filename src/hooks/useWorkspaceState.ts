@@ -101,11 +101,13 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const refreshTimer = useRef<number | undefined>(undefined);
   const responsePollTimer = useRef<number | undefined>(undefined);
   const activeProjectDirRef = useRef<string | undefined>(undefined);
+  const projectDataCacheRef = useRef<Record<string, ProjectBootstrap>>({});
 
   const refreshProject = useCallback(
     async (directory: string) => {
       try {
         const data = await window.orxa.opencode.refreshProject(directory);
+        projectDataCacheRef.current[directory] = data;
         setProjectData(data);
         const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         projectLastUpdatedRef.current[directory] = lastUpdated;
@@ -151,7 +153,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     async (directory: string) => {
       try {
         setStatusLine(`Loading workspace ${directory}`);
-        setProjectData(null);
+        const cached = projectDataCacheRef.current[directory];
+        setProjectData(cached ?? null);
         setMessages([]);
         setActiveSessionID(undefined);
         setTerminalTabs([]);
@@ -160,6 +163,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setSidebarMode("projects");
         setCollapsedProjects((current) => ({ ...current, [directory]: false }));
         const data = await window.orxa.opencode.selectProject(directory);
+        projectDataCacheRef.current[directory] = data;
         setProjectData(data);
         const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         projectLastUpdatedRef.current[directory] = lastUpdated;

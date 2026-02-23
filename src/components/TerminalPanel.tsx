@@ -167,7 +167,7 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
                   <X size={11} />
                 </span>
               ) : (
-                <span className="terminal-tab-label">{i + 1}</span>
+                <span className="terminal-tab-label">{tab.label}</span>
               )}
             </button>
           ))}

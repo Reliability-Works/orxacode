@@ -1322,10 +1322,13 @@
   color: var(--text-dim);
   border-radius: 5px;
   cursor: pointer;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   transform: none;
+  padding: 0;
+  line-height: 1;
 }
 
 .terminal-tab-add:hover {
@@ -1342,12 +1345,14 @@
   color: var(--text-dim);
   border-radius: 5px;
   cursor: pointer;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.72rem;
   padding: 0 8px;
   flex-shrink: 0;
   transform: none;
+  line-height: 1;
 }
 
 .terminal-tab:hover {

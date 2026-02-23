@@ -1055,7 +1055,8 @@ export default function App() {
           setProjectData(null);
           setActiveSessionID(undefined);
           setMessages([]);
-          setTerminalPtyID(undefined);
+          setTerminalTabs([]);
+          setActiveTerminalId(undefined);
           setTerminalOpen(false);
         }
         await bootstrap();
@@ -1254,10 +1255,13 @@ export default function App() {
           document.documentElement.style.setProperty("--left-pane-width", `${next}px`);
           s.currentWidth = next;
         } else {
+          const workspaceWidth = el?.offsetWidth ?? window.innerWidth;
           const leftWidth = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-width") || "300");
           const leftVisible = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-visible") || "1");
-          const maxRight = Math.max(280, Math.floor(window.innerWidth * 0.8 - leftWidth * leftVisible - 8));
-          const next = Math.max(280, Math.min(maxRight, s.startWidth - (s.latestX - s.startX)));
+          const leftActual = leftWidth * leftVisible;
+          const leftResizer = 4 * leftVisible;
+          const maxRight = Math.floor(workspaceWidth - leftActual - leftResizer - 4 - workspaceWidth * 0.2);
+          const next = Math.max(280, Math.min(Math.max(280, maxRight), s.startWidth - (s.latestX - s.startX)));
           el?.style.setProperty("--right-pane-width", `${next}px`);
           s.currentWidth = next;
         }
@@ -1320,16 +1324,10 @@ export default function App() {
         }
         return;
       }
-      const preferred = preferredAgentForMode({
-        mode: "standard",
-        hasOrxaAgent,
-        hasPlanAgent,
-        serverAgentNames,
-        firstAgentName: agentOptions[0]?.name,
-      });
-      setSelectedAgent(preferred);
+      const nonPlanAgent = agentOptions.find((a) => a.name !== "plan" && a.name !== "orxa");
+      setSelectedAgent(nonPlanAgent?.name ?? agentOptions.find((a) => a.name !== "plan")?.name ?? agentOptions[0]?.name);
     },
-    [agentOptions, appMode, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan, serverAgentNames],
+    [agentOptions, appMode, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan],
   );
 
   const activeSession = useMemo(
@@ -1866,15 +1864,6 @@ export default function App() {
                     placeholder={composerPlaceholder}
                   />
 
-                  <TerminalPanel
-                    directory={activeProjectDir}
-                    tabs={terminalTabs}
-                    activeTabId={activeTerminalId}
-                    open={terminalOpen}
-                    onCreateTab={createTerminal}
-                    onCloseTab={closeTerminalTab}
-                    onSwitchTab={setActiveTerminalId}
-                  />
                 </>
               ) : (
                 <ProjectDashboard
@@ -1900,6 +1889,15 @@ export default function App() {
                   onRefresh={() => void refreshProjectDashboard()}
                 />
               )}
+              <TerminalPanel
+                directory={activeProjectDir}
+                tabs={terminalTabs}
+                activeTabId={activeTerminalId}
+                open={terminalOpen}
+                onCreateTab={createTerminal}
+                onCloseTab={closeTerminalTab}
+                onSwitchTab={setActiveTerminalId}
+              />
             </>
           ) : (
             <HomeDashboard
