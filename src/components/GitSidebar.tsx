@@ -6,7 +6,7 @@ import { Plus, Eye, RotateCcw, Minus } from "lucide-react";
 
 export type BranchState = GitBranchState;
 
-type OpsPanelTab = "git" | "files";
+type SidebarPanelTab = "git" | "files";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
 type GitDiffSection = "unstaged" | "staged";
 type GitFileStatus = "modified" | "added" | "deleted" | "renamed";
@@ -186,9 +186,9 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
   return { files };
 }
 
-export type OpsSidebarProps = {
-  opsPanelTab: OpsPanelTab;
-  setOpsPanelTab: (tab: OpsPanelTab) => void;
+export type GitSidebarProps = {
+  sidebarPanelTab: SidebarPanelTab;
+  setSidebarPanelTab: (tab: SidebarPanelTab) => void;
   gitPanelTab: GitPanelTab;
   setGitPanelTab: (tab: GitPanelTab) => void;
   gitPanelOutput: string;
@@ -209,10 +209,10 @@ export type OpsSidebarProps = {
   onStatusChange: (message: string) => void;
 };
 
-export function OpsSidebar(props: OpsSidebarProps) {
+export function GitSidebar(props: GitSidebarProps) {
   const {
-    opsPanelTab,
-    setOpsPanelTab,
+    sidebarPanelTab,
+    setSidebarPanelTab,
     gitPanelTab,
     setGitPanelTab,
     gitPanelOutput,
@@ -274,18 +274,18 @@ export function OpsSidebar(props: OpsSidebarProps) {
         <IconButton
           icon="git"
           label="Git"
-          className={`tab-icon ops-tab ${opsPanelTab === "git" ? "active" : ""}`.trim()}
-          onClick={() => setOpsPanelTab("git")}
+          className={`tab-icon ops-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
+          onClick={() => setSidebarPanelTab("git")}
         />
         <IconButton
           icon="files"
           label="Files"
-          className={`tab-icon ops-tab ${opsPanelTab === "files" ? "active" : ""}`.trim()}
-          onClick={() => setOpsPanelTab("files")}
+          className={`tab-icon ops-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
+          onClick={() => setSidebarPanelTab("files")}
         />
       </section>
 
-      {opsPanelTab === "git" ? (
+      {sidebarPanelTab === "git" ? (
         <section className="ops-section ops-section-fill">
           <h3>Git</h3>
           <div className="ops-icon-row ops-icon-tabs">
@@ -483,7 +483,7 @@ export function OpsSidebar(props: OpsSidebarProps) {
         </section>
       ) : null}
 
-      {opsPanelTab === "files" ? (
+      {sidebarPanelTab === "files" ? (
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
       ) : null}
     </aside>

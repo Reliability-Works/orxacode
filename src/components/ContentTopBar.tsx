@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronsUpDown, GitCommitHorizontal } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
-import type { CommitNextStep } from "../hooks/useGitPanel";
+import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
 
 type OpenTargetOption = {
@@ -11,8 +11,9 @@ type OpenTargetOption = {
 };
 
 type ContentTopBarProps = {
-  showOperationsPane: boolean;
-  setOperationsPaneVisible: (visible: boolean) => void;
+  showGitPane: boolean;
+  setGitPaneVisible: (visible: boolean) => void;
+  gitDiffStats: GitDiffStats;
   activeProjectDir: string | null;
   projectData: ProjectData | null;
   terminalOpen: boolean;
@@ -31,8 +32,9 @@ type ContentTopBarProps = {
 };
 
 export function ContentTopBar({
-  showOperationsPane,
-  setOperationsPaneVisible,
+  showGitPane,
+  setGitPaneVisible,
+  gitDiffStats,
   activeProjectDir,
   projectData,
   terminalOpen,
@@ -155,12 +157,20 @@ export function ContentTopBar({
           className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
           onClick={() => void toggleTerminal()}
         />
-        <IconButton
-          icon="panelRight"
-          label="Toggle right sidebar"
-          className={`titlebar-toggle titlebar-toggle-right ${showOperationsPane ? "active" : ""}`.trim()}
-          onClick={() => setOperationsPaneVisible(!showOperationsPane)}
-        />
+        <div className="titlebar-git-toggle-group">
+          {gitDiffStats.hasChanges ? (
+            <span className="titlebar-git-diff-stats" aria-label={`Git changes: +${gitDiffStats.additions} -${gitDiffStats.deletions}`}>
+              <span className="added">+{gitDiffStats.additions}</span>
+              <span className="removed">-{gitDiffStats.deletions}</span>
+            </span>
+          ) : null}
+          <IconButton
+            icon="panelRight"
+            label="Toggle Git sidebar"
+            className={`titlebar-toggle titlebar-toggle-right ${showGitPane ? "active" : ""}`.trim()}
+            onClick={() => setGitPaneVisible(!showGitPane)}
+          />
+        </div>
       </div>
     </div>
   );

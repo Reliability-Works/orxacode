@@ -267,7 +267,7 @@ export function SettingsDrawer({
                 onAppPreferencesChange({ ...appPreferences, showOperationsPane: event.target.checked })
               }
             />
-            Show operations sidebar
+            Show Git sidebar
           </label>
           <label className="settings-inline-toggle">
             <input

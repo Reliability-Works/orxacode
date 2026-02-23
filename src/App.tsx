@@ -37,7 +37,7 @@ import { IconButton } from "./components/IconButton";
 import { ContentTopBar } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
-import { OpsSidebar } from "./components/OpsSidebar";
+import { GitSidebar } from "./components/GitSidebar";
 import { ProjectDashboard } from "./components/ProjectDashboard";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
@@ -318,7 +318,7 @@ export default function App() {
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
-  const [opsPanelTab, setOpsPanelTab] = useState<"git" | "files">("git");
+  const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const [preferredOpenTarget, setPreferredOpenTarget] = usePersistedState<OpenTarget>(OPEN_TARGET_KEY, "finder", {
@@ -343,12 +343,13 @@ export default function App() {
   const [agentsSaving, setAgentsSaving] = useState(false);
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
-  const showOperationsPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
+  const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
   const {
     branchState,
     gitPanelTab,
     setGitPanelTab,
     gitPanelOutput,
+    gitDiffStats,
     commitModalOpen,
     setCommitModalOpen,
     commitIncludeUnstaged,
@@ -1308,9 +1309,9 @@ export default function App() {
   const pendingQuestion = useMemo(() => (projectData?.questions ?? [])[0] ?? null, [projectData?.questions]);
   const workspaceClassName = [
     "workspace",
-    showOperationsPane ? "" : "workspace-no-ops",
+    showGitPane ? "" : "workspace-no-ops",
     showProjectsPane ? "" : "workspace-left-collapsed",
-    showOperationsPane ? "" : "workspace-right-collapsed",
+    showGitPane ? "" : "workspace-right-collapsed",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1320,9 +1321,9 @@ export default function App() {
         "--left-pane-width": `${leftPaneWidth}px`,
         "--right-pane-width": `${rightPaneWidth}px`,
         "--left-pane-visible": showProjectsPane ? 1 : 0,
-        "--right-pane-visible": showOperationsPane ? 1 : 0,
+        "--right-pane-visible": showGitPane ? 1 : 0,
       }) as CSSProperties,
-    [leftPaneWidth, rightPaneWidth, showOperationsPane, showProjectsPane],
+    [leftPaneWidth, rightPaneWidth, showGitPane, showProjectsPane],
   );
 
   useEffect(() => {
@@ -1506,7 +1507,7 @@ export default function App() {
       const pushSuffix = result.pushed ? " • pushed" : "";
       setStatusLine(`Committed ${result.commitHash.slice(0, 7)}${pushSuffix}${prSuffix}`);
       await refreshProject(activeProjectDir);
-      if (opsPanelTab === "git") {
+      if (rightSidebarTab === "git") {
         void loadGitDiff();
       }
     } catch (error) {
@@ -1521,7 +1522,7 @@ export default function App() {
     commitMessageDraft,
     commitNextStep,
     loadGitDiff,
-    opsPanelTab,
+    rightSidebarTab,
     refreshProject,
   ]);
 
@@ -1531,13 +1532,13 @@ export default function App() {
 
   useEffect(() => {
     if (!activeProjectDir) {
-      setOpsPanelTab("git");
+      setRightSidebarTab("git");
       return;
     }
   }, [activeProjectDir]);
 
   useEffect(() => {
-    if (!activeProjectDir || opsPanelTab !== "git") {
+    if (!activeProjectDir || rightSidebarTab !== "git") {
       return;
     }
     if (gitPanelTab === "diff") {
@@ -1553,7 +1554,7 @@ export default function App() {
       return;
     }
     void loadGitPrs();
-  }, [activeProjectDir, gitPanelTab, loadGitDiff, loadGitIssues, loadGitLog, loadGitPrs, opsPanelTab]);
+  }, [activeProjectDir, gitPanelTab, loadGitDiff, loadGitIssues, loadGitLog, loadGitPrs, rightSidebarTab]);
 
   const openTargets = OPEN_TARGETS;
   const activeOpenTarget = openTargets.find((target) => target.id === preferredOpenTarget) ?? openTargets[2]!;
@@ -1624,13 +1625,14 @@ export default function App() {
         <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"} ${showProjectsPane ? "" : "content-pane-left-collapsed"}`.trim()}>
           {hasProjectContext ? (
             <ContentTopBar
-              showOperationsPane={showOperationsPane}
-              setOperationsPaneVisible={(visible) =>
+              showGitPane={showGitPane}
+              setGitPaneVisible={(visible) =>
                 setAppPreferences((current) => ({
                   ...current,
                   showOperationsPane: visible,
                 }))
               }
+              gitDiffStats={gitDiffStats}
               activeProjectDir={activeProjectDir ?? null}
               projectData={projectData}
               terminalOpen={terminalOpen}
@@ -1911,16 +1913,16 @@ export default function App() {
         {hasProjectContext ? (
           <button
             type="button"
-            className={`sidebar-resizer sidebar-resizer-right ${showOperationsPane ? "" : "is-collapsed"}`.trim()}
-            aria-label="Operations sidebar spacer"
+            className={`sidebar-resizer sidebar-resizer-right ${showGitPane ? "" : "is-collapsed"}`.trim()}
+            aria-label="Git sidebar spacer"
             disabled
           />
         ) : null}
         {hasProjectContext ? (
-          <div className={`workspace-right-pane ${showOperationsPane ? "open" : "collapsed"}`.trim()}>
-            <OpsSidebar
-              opsPanelTab={opsPanelTab}
-              setOpsPanelTab={setOpsPanelTab}
+          <div className={`workspace-right-pane ${showGitPane ? "open" : "collapsed"}`.trim()}>
+            <GitSidebar
+              sidebarPanelTab={rightSidebarTab}
+              setSidebarPanelTab={setRightSidebarTab}
               gitPanelTab={gitPanelTab}
               setGitPanelTab={setGitPanelTab}
               gitPanelOutput={gitPanelOutput}

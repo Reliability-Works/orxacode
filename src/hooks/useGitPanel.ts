@@ -3,15 +3,52 @@ import type { GitBranchState } from "@shared/ipc";
 
 export type CommitNextStep = "commit" | "commit_and_push" | "commit_and_create_pr";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
+export type GitDiffStats = { additions: number; deletions: number; hasChanges: boolean };
 
 function formatError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function parseGitDiffStats(output: string): GitDiffStats {
+  const trimmed = output.trim();
+  if (
+    !trimmed ||
+    trimmed === "No local changes." ||
+    trimmed === "Not a git repository." ||
+    trimmed.startsWith("Loading diff")
+  ) {
+    return { additions: 0, deletions: 0, hasChanges: false };
+  }
+
+  const lines = output.split(/\r?\n/);
+  let additions = 0;
+  let deletions = 0;
+
+  for (const line of lines) {
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      continue;
+    }
+    if (line.startsWith("+")) {
+      additions += 1;
+      continue;
+    }
+    if (line.startsWith("-")) {
+      deletions += 1;
+    }
+  }
+
+  return {
+    additions,
+    deletions,
+    hasChanges: additions > 0 || deletions > 0,
+  };
 }
 
 export function useGitPanel(activeProjectDir: string | null) {
   const [branchState, setBranchState] = useState<GitBranchState | null>(null);
   const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("diff");
   const [gitPanelOutput, setGitPanelOutput] = useState("Select DIFF or LOG.");
+  const [gitDiffStats, setGitDiffStats] = useState<GitDiffStats>({ additions: 0, deletions: 0, hasChanges: false });
   const [gitDiffLoading, setGitDiffLoading] = useState(false);
   const [gitLogLoading, setGitLogLoading] = useState(false);
   const [gitIssuesLoading, setGitIssuesLoading] = useState(false);
@@ -49,10 +86,25 @@ export function useGitPanel(activeProjectDir: string | null) {
       setGitDiffLoading(true);
       const output = await window.orxa.opencode.gitDiff(activeProjectDir);
       setGitPanelOutput(output);
+      setGitDiffStats(parseGitDiffStats(output));
     } catch (error) {
       setGitPanelOutput(formatError(error));
+      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
     } finally {
       setGitDiffLoading(false);
+    }
+  }, [activeProjectDir]);
+
+  const refreshGitDiffStats = useCallback(async () => {
+    if (!activeProjectDir) {
+      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
+      return;
+    }
+    try {
+      const output = await window.orxa.opencode.gitDiff(activeProjectDir);
+      setGitDiffStats(parseGitDiffStats(output));
+    } catch {
+      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
     }
   }, [activeProjectDir]);
 
@@ -248,10 +300,12 @@ export function useGitPanel(activeProjectDir: string | null) {
       setGitPanelTab("diff");
       setGitPanelOutput("Select DIFF or LOG.");
       setBranchState(null);
+      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
       return;
     }
     void refreshBranchState();
-  }, [activeProjectDir, refreshBranchState]);
+    void refreshGitDiffStats();
+  }, [activeProjectDir, refreshBranchState, refreshGitDiffStats]);
 
   useEffect(() => {
     if (!commitModalOpen || !activeProjectDir) {
@@ -266,6 +320,7 @@ export function useGitPanel(activeProjectDir: string | null) {
     gitPanelTab,
     setGitPanelTab,
     gitPanelOutput,
+    gitDiffStats,
     setGitPanelOutput,
     gitDiffLoading,
     gitLogLoading,

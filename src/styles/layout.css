@@ -688,6 +688,29 @@
   transform: none;
 }
 
+.titlebar-git-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.titlebar-git-diff-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.titlebar-git-diff-stats .added {
+  color: var(--success);
+}
+
+.titlebar-git-diff-stats .removed {
+  color: var(--danger);
+}
+
 .titlebar-split {
   position: relative;
   display: inline-flex;
