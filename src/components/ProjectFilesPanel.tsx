@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProjectFileDocument, ProjectFileEntry } from "@shared/ipc";
-import { Check, ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-css";
@@ -27,6 +27,9 @@ type LineSelection = {
   endLine: number;
   top: number;
   left: number;
+  anchorTop: number;
+  anchorBottom: number;
+  clamped: boolean;
 };
 
 function extensionOf(name: string) {
@@ -110,6 +113,7 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
   const [preview, setPreview] = useState<ProjectFileDocument | null>(null);
   const [selection, setSelection] = useState<LineSelection | null>(null);
   const previewScrollerRef = useRef<HTMLDivElement | null>(null);
+  const selectionPopoverRef = useRef<HTMLDivElement | null>(null);
   const nodesByPathRef = useRef<TreeState>({});
   const folderRequestsRef = useRef<Record<string, Promise<ProjectFileEntry[]>>>({});
 
@@ -235,6 +239,22 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
   }, [directory, loadFolder]);
 
   useEffect(() => {
+    if (!preview) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelection(null);
+        setPreview(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [preview]);
+
+  useEffect(() => {
     if (!searchActive) {
       setSearchLoading(false);
       return;
@@ -299,7 +319,12 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
     setExpanded({});
   }, []);
 
-  const captureSelection = useCallback(() => {
+  const captureSelection = useCallback((event?: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event?.target;
+    if (target instanceof Element && target.closest(".file-preview-selection-popover")) {
+      return;
+    }
+
     const root = previewScrollerRef.current;
     const activePreview = preview;
     if (!root || !activePreview) {
@@ -327,7 +352,9 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
 
     const bounds = range.getBoundingClientRect();
     const rootBounds = root.getBoundingClientRect();
-    const top = bounds.top - rootBounds.top + root.scrollTop - 40;
+    const anchorTop = bounds.top - rootBounds.top + root.scrollTop;
+    const anchorBottom = bounds.bottom - rootBounds.top + root.scrollTop;
+    const top = anchorTop - 40;
     const left = bounds.right - rootBounds.left + root.scrollLeft + 8;
 
     setSelection({
@@ -335,8 +362,48 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
       endLine: Math.max(start, end),
       top: Math.max(8, top),
       left: Math.max(8, left),
+      anchorTop,
+      anchorBottom,
+      clamped: false,
     });
   }, [preview]);
+
+  useLayoutEffect(() => {
+    if (!selection || selection.clamped) {
+      return;
+    }
+
+    const root = previewScrollerRef.current;
+    const popover = selectionPopoverRef.current;
+    if (!root || !popover) {
+      return;
+    }
+
+    const minLeft = root.scrollLeft + 8;
+    const minTop = root.scrollTop + 8;
+    const maxLeft = root.scrollLeft + root.clientWidth - popover.offsetWidth - 8;
+    const maxTop = root.scrollTop + root.clientHeight - popover.offsetHeight - 8;
+
+    const preferredTop = selection.anchorTop - popover.offsetHeight - 8;
+    const fallbackTop = selection.anchorBottom + 8;
+    const preferredInView = preferredTop >= minTop;
+    const targetTop = preferredInView ? preferredTop : fallbackTop;
+
+    const clampedLeft = Math.min(Math.max(selection.left, minLeft), Math.max(minLeft, maxLeft));
+    const clampedTop = Math.min(Math.max(targetTop, minTop), Math.max(minTop, maxTop));
+
+    setSelection((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        left: clampedLeft,
+        top: clampedTop,
+        clamped: true,
+      };
+    });
+  }, [selection]);
 
   const totalFileCount = useMemo(() => {
     const paths = new Set<string>();
@@ -529,24 +596,26 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
         <div className="overlay file-preview-overlay" onMouseDown={() => setSelection(null)}>
           <div className="modal file-preview-modal" onMouseDown={(event) => event.stopPropagation()}>
             <header className="file-preview-header">
-              <div>
-                <strong>{preview.relativePath}</strong>
-                {preview.truncated ? <small>Preview truncated</small> : null}
+              <div className="file-preview-title-row">
+                <strong title={preview.relativePath}>{preview.relativePath}</strong>
+                <div className="file-preview-actions">
+                  <button
+                    type="button"
+                    className="file-preview-icon-action"
+                    onClick={() => {
+                      onAddToChatPath(preview.path);
+                      onStatus(`Added path to composer: ${preview.path}`);
+                    }}
+                    aria-label="Add file path to chat"
+                  >
+                    <Send size={14} aria-hidden="true" />
+                  </button>
+                  <button type="button" className="file-preview-icon-action" onClick={() => setPreview(null)} aria-label="Close preview">
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
-              <div className="file-preview-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onAddToChatPath(preview.path);
-                    onStatus(`Added path to composer: ${preview.path}`);
-                  }}
-                >
-                  Add to chat
-                </button>
-                <button type="button" onClick={() => setPreview(null)}>
-                  X
-                </button>
-              </div>
+              {preview.truncated ? <small>Preview truncated</small> : null}
             </header>
             <div
               ref={previewScrollerRef}
@@ -573,31 +642,40 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
               )}
 
               {selection ? (
-                <div className="file-preview-selection-popover" style={{ top: `${selection.top}px`, left: `${selection.left}px` }}>
-                  <small>
+                <div
+                  ref={selectionPopoverRef}
+                  className="file-preview-selection-popover"
+                  style={{ top: `${selection.top}px`, left: `${selection.left}px` }}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onMouseUp={(event) => event.stopPropagation()}
+                >
+                  <small className="file-preview-selection-label">
                     {selection.startLine === selection.endLine
                       ? `Line ${selection.startLine}`
                       : `Lines ${selection.startLine}-${selection.endLine}`}
                   </small>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const lineRef =
-                        selection.startLine === selection.endLine
-                          ? `${preview.path}:${selection.startLine}`
-                          : `${preview.path}:${selection.startLine}-${selection.endLine}`;
-                      onAddToChatPath(lineRef);
-                      onStatus(`Added selection to composer: ${lineRef}`);
-                      setSelection(null);
-                      window.getSelection()?.removeAllRanges();
-                    }}
-                  >
-                    <Plus size={12} aria-hidden="true" />
-                    Add selection
-                  </button>
-                  <button type="button" onClick={() => setSelection(null)} aria-label="Close selection actions">
-                    <Check size={12} aria-hidden="true" />
-                  </button>
+                  <div className="file-preview-selection-actions">
+                    <button
+                      type="button"
+                      className="file-preview-selection-add"
+                      onClick={() => {
+                        const lineRef =
+                          selection.startLine === selection.endLine
+                            ? `${preview.path}:${selection.startLine}`
+                            : `${preview.path}:${selection.startLine}-${selection.endLine}`;
+                        onAddToChatPath(lineRef);
+                        onStatus(`Added selection to composer: ${lineRef}`);
+                        setSelection(null);
+                        window.getSelection()?.removeAllRanges();
+                      }}
+                    >
+                      <Plus size={12} aria-hidden="true" />
+                      Add selection
+                    </button>
+                    <button type="button" className="file-preview-selection-close" onClick={() => setSelection(null)} aria-label="Close selection actions">
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>

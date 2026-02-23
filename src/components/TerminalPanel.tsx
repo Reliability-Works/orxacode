@@ -145,7 +145,7 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
           >
             <Plus size={13} />
           </button>
-          {tabs.map((tab, i) => (
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"

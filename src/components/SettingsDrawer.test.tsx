@@ -41,15 +41,18 @@ describe("SettingsDrawer", () => {
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
           commitGuidancePrompt: "",
+          codeFont: "IBM Plex Mono",
+          hiddenModels: [],
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
         onChangeMode={vi.fn(async () => undefined)}
+        allModelOptions={[]}
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "Agents" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Orxa Agents" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open Orxa JSON Editor" })).not.toBeInTheDocument();
   });
 });

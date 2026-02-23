@@ -25,6 +25,7 @@ import type {
   SkillEntry,
   SessionMessageBundle,
 } from "@shared/ipc";
+import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar } from "./components/ContentTopBar";
@@ -45,7 +46,15 @@ import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
-import { findFallbackModel, listAgentOptions, listAllModelOptions, listModelOptions, listModelOptionsFromConfig, type ModelOption } from "./lib/models";
+import {
+  findFallbackModel,
+  listAgentOptions,
+  listAllModelOptions,
+  listConfiguredProviderIDs,
+  listModelOptions,
+  listModelOptionsFromConfig,
+  type ModelOption,
+} from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
@@ -214,6 +223,8 @@ export default function App() {
     },
   });
   const [appMode, setAppMode] = useState<AppMode>("standard");
+  const [globalProviders, setGlobalProviders] = useState<ProviderListResponse>({ all: [], connected: [], default: {} });
+  const [configuredProviderIDs, setConfiguredProviderIDs] = useState<string[]>([]);
   const [modeSwitching, setModeSwitching] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
@@ -293,6 +304,7 @@ export default function App() {
       const valid: ProjectSortMode[] = ["updated", "recent", "alpha-asc", "alpha-desc"];
       return valid.includes(raw as ProjectSortMode) ? (raw as ProjectSortMode) : "updated";
     },
+    serialize: (value) => value,
   });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
@@ -456,6 +468,15 @@ export default function App() {
     () => listAllModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
   );
+  const globalServerModelOptions = useMemo(() => {
+    const connected = listModelOptions(globalProviders);
+    if (configuredProviderIDs.length === 0) {
+      return connected;
+    }
+
+    const allowed = new Set(configuredProviderIDs);
+    return connected.filter((model) => allowed.has(model.providerID));
+  }, [configuredProviderIDs, globalProviders]);
   const modelOptions = useMemo(() => {
     const merged = [...serverModelOptions];
     for (const model of configModelOptions) {
@@ -465,24 +486,30 @@ export default function App() {
     }
     return merged.sort((a, b) => a.key.localeCompare(b.key));
   }, [configModelOptions, serverModelOptions]);
+  const configuredProviderSet = useMemo(() => new Set(configuredProviderIDs), [configuredProviderIDs]);
   const settingsModelsRef = useRef<ModelOption[]>([]);
   const settingsModelOptions = useMemo(() => {
     const keySet = new Set<string>();
     const merged: ModelOption[] = [];
+    const providerFilterEnabled = configuredProviderSet.size > 0;
     const addModel = (m: ModelOption) => {
+      if (providerFilterEnabled && !configuredProviderSet.has(m.providerID)) {
+        return;
+      }
       if (keySet.has(m.key)) return;
       keySet.add(m.key);
       merged.push(m);
     };
     for (const m of modelOptions) addModel(m);
     for (const m of allServerModelOptions) addModel(m);
+    for (const m of globalServerModelOptions) addModel(m);
     for (const m of configModelOptions) addModel(m);
     merged.sort((a, b) => a.key.localeCompare(b.key));
     if (merged.length > 0) {
       settingsModelsRef.current = merged;
     }
     return settingsModelsRef.current.length > 0 ? settingsModelsRef.current : merged;
-  }, [modelOptions, allServerModelOptions, configModelOptions]);
+  }, [allServerModelOptions, configModelOptions, configuredProviderSet, globalServerModelOptions, modelOptions]);
   const preferredAgentModel = useMemo(() => {
     if (selectedAgent === "plan") {
       return orxaModels.plan;
@@ -585,8 +612,19 @@ export default function App() {
       const doc = await window.orxa.opencode.readRawConfig("global");
       const parsed = parseJsonc(doc.content) as unknown;
       setConfigModelOptions(listModelOptionsFromConfig(parsed));
+      setConfiguredProviderIDs(listConfiguredProviderIDs(parsed));
     } catch {
       setConfigModelOptions([]);
+      setConfiguredProviderIDs([]);
+    }
+  }, []);
+
+  const refreshGlobalProviders = useCallback(async () => {
+    try {
+      const providers = await window.orxa.opencode.listProviders();
+      setGlobalProviders(providers);
+    } catch {
+      setGlobalProviders({ all: [], connected: [], default: {} });
     }
   }, []);
 
@@ -673,23 +711,12 @@ export default function App() {
     const model = modelSelectOptions.find((item) => item.key === selectedModel);
     return model?.variants ?? [];
   }, [selectedModel, modelSelectOptions]);
-  const modelDisplayValue = useMemo(() => {
-    const selected = modelSelectOptions.find((item) => item.key === selectedModel);
-    if (selected) {
-      return `${selected.providerName}/${selected.modelName}`;
-    }
-    return "Model";
-  }, [modelSelectOptions, selectedModel]);
-  const variantDisplayValue = selectedVariant && selectedVariant.trim().length > 0 ? selectedVariant : "(default)";
-  const modelSelectWidthCh = useMemo(() => Math.max(18, Math.min(44, modelDisplayValue.length + 4)), [modelDisplayValue]);
-  const variantSelectWidthCh = useMemo(() => Math.max(12, Math.min(24, variantDisplayValue.length + 4)), [variantDisplayValue]);
-
   useEffect(() => {
     void refreshProfiles()
       .then(async () => {
         const mode = await refreshMode();
         await bootstrap();
-        await refreshConfigModels();
+        await Promise.all([refreshConfigModels(), refreshGlobalProviders()]);
         if (mode === "orxa") {
           await refreshOrxaState();
           return;
@@ -698,7 +725,14 @@ export default function App() {
         setOrxaPrompts({});
       })
       .catch((error) => setStatusLine(error instanceof Error ? error.message : String(error)));
-  }, [bootstrap, refreshConfigModels, refreshMode, refreshOrxaState, refreshProfiles]);
+  }, [bootstrap, refreshConfigModels, refreshGlobalProviders, refreshMode, refreshOrxaState, refreshProfiles]);
+
+  useEffect(() => {
+    if (!settingsOpen) {
+      return;
+    }
+    void Promise.all([refreshConfigModels(), refreshGlobalProviders()]).catch(() => undefined);
+  }, [refreshConfigModels, refreshGlobalProviders, settingsOpen]);
 
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
@@ -1823,8 +1857,6 @@ export default function App() {
             openProjectContextMenu={openProjectContextMenu}
             openSessionContextMenu={openSessionContextMenu}
             addProjectDirectory={() => addProjectDirectory()}
-            openJobEditor={() => openJobEditor()}
-            loadSkills={loadSkills}
             setProfileModalOpen={setProfileModalOpen}
             setSettingsOpen={setSettingsOpen}
           />
@@ -2223,7 +2255,7 @@ export default function App() {
         onWriteRaw={async (scope, content, directory) => {
           const doc = await window.orxa.opencode.writeRawConfig(scope, content, directory);
           if (scope === "global") {
-            await refreshConfigModels();
+            await Promise.all([refreshConfigModels(), refreshGlobalProviders()]);
           }
           if (directory) {
             await refreshProject(directory);
@@ -2245,7 +2277,7 @@ export default function App() {
             const applied = await window.orxa.mode.set(nextMode);
             setAppMode(applied);
             await bootstrap();
-            await refreshConfigModels();
+            await Promise.all([refreshConfigModels(), refreshGlobalProviders()]);
             if (applied === "orxa") {
               await refreshOrxaState();
             } else {

@@ -515,6 +515,10 @@
   z-index: 45;
 }
 
+.settings-modal-overlay {
+  z-index: 60;
+}
+
 .modal {
   width: min(1080px, 94vw);
   max-height: 86vh;
@@ -955,6 +959,15 @@
   gap: 6px;
   font-size: 0.82rem;
   color: var(--text-muted);
+}
+
+.settings-config-controls--standard {
+  align-items: end;
+}
+
+.settings-config-open-btn {
+  width: 100%;
+  min-height: 41px;
 }
 
 .settings-raw {
@@ -1485,7 +1498,18 @@
   max-height: 90vh;
 }
 
+.oc-agent-filename-modal {
+  width: min(560px, 92vw);
+  max-height: 420px;
+}
+
 .raw-editor-body {
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.oc-agent-filename-body {
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
@@ -1529,6 +1553,10 @@
   .settings-advanced-grid,
   .settings-config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-config-controls--standard {
+    align-items: stretch;
   }
 
   .settings-agents {

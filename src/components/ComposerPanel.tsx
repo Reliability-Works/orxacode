@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
@@ -19,7 +19,7 @@ type ComposerPanelProps = {
   filteredSlashCommands: Command[];
   slashSelectedIndex: number;
   insertSlashCommand: (name: string) => void;
-  handleSlashKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  handleSlashKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   sendPrompt: () => void | Promise<void>;
   abortActiveSession: () => void | Promise<void>;
   isSessionBusy: boolean;
@@ -307,7 +307,7 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => {
+    const handler = (e: globalThis.KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
         setQuery("");

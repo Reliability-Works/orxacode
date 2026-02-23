@@ -44,6 +44,9 @@ type Props = {
 
 type SettingsSection = "config" | "agents" | "provider-models" | "opencode-agents" | "app" | "server" | "preferences";
 type EditorKind = "opencode" | "orxa";
+type OcAgentFilenameDialog =
+  | { kind: "create"; title: string }
+  | { kind: "duplicate"; title: string; content: string };
 
 function buildSimpleDiff(baseText: string, currentText: string) {
   const base = baseText.split("\n");
@@ -112,7 +115,6 @@ export function SettingsDrawer({
   const [serverDiagnostics, setServerDiagnostics] = useState<ServerDiagnostics | null>(null);
 
   const [ocAgents, setOcAgents] = useState<OpenCodeAgentFile[]>([]);
-  const [ocAgentsLoading, setOcAgentsLoading] = useState(false);
   const [selectedOcAgent, setSelectedOcAgent] = useState<string | undefined>();
   const [ocAgentDraft, setOcAgentDraft] = useState("");
   const [ocAgentSaving, setOcAgentSaving] = useState(false);
@@ -123,6 +125,9 @@ export function SettingsDrawer({
   const [editorKind, setEditorKind] = useState<EditorKind>("opencode");
   const [editorText, setEditorText] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [ocFilenameDialog, setOcFilenameDialog] = useState<OcAgentFilenameDialog | null>(null);
+  const [ocFilenameValue, setOcFilenameValue] = useState("");
+  const [ocFilenameError, setOcFilenameError] = useState<string | null>(null);
 
   const effectiveScope = useMemo(() => {
     if (scope === "project" && !directory) {
@@ -208,7 +213,6 @@ export function SettingsDrawer({
   }, [onGetOrxaAgentDetails, selectedAgent]);
 
   const loadOcAgents = useCallback(async () => {
-    setOcAgentsLoading(true);
     try {
       const files = await window.orxa.opencode.listAgentFiles();
       setOcAgents(files);
@@ -218,10 +222,81 @@ export function SettingsDrawer({
       }
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : String(error));
-    } finally {
-      setOcAgentsLoading(false);
     }
   }, [selectedOcAgent]);
+
+  const closeOcFilenameDialog = () => {
+    setOcFilenameDialog(null);
+    setOcFilenameValue("");
+    setOcFilenameError(null);
+  };
+
+  const normalizeOcAgentFilename = (raw: string): { filename: string } | { error: string } => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return { error: "Filename is required." };
+    }
+
+    const withExt = trimmed.toLowerCase().endsWith(".md") ? trimmed : `${trimmed}.md`;
+    if (withExt.includes("/") || withExt.includes("\\") || withExt.includes("..")) {
+      return { error: "Use a plain filename only (no folders)." };
+    }
+
+    return { filename: withExt };
+  };
+
+  const submitOcFilenameDialog = async () => {
+    if (!ocFilenameDialog) {
+      return;
+    }
+
+    const parsed = normalizeOcAgentFilename(ocFilenameValue);
+    if ("error" in parsed) {
+      setOcFilenameError(parsed.error);
+      return;
+    }
+
+    const filename = parsed.filename;
+    const exists = ocAgents.some((item) => item.filename.toLowerCase() === filename.toLowerCase());
+    if (exists) {
+      setOcFilenameError(`Agent file ${filename} already exists.`);
+      return;
+    }
+
+    try {
+      if (ocFilenameDialog.kind === "create") {
+        const baseName = filename.replace(/\.md$/, "");
+        const template = [
+          "---",
+          `description: ${baseName} agent`,
+          "mode: subagent",
+          "model: ",
+          "temperature: 0.1",
+          "---",
+          "",
+          `# ${baseName.charAt(0).toUpperCase() + baseName.slice(1)}`,
+          "",
+          "Your system prompt here.",
+          "",
+        ].join("\n");
+        await window.orxa.opencode.writeAgentFile(filename, template);
+        await loadOcAgents();
+        setSelectedOcAgent(filename);
+        setOcAgentDraft(template);
+        setFeedback(`Created ${filename}`);
+      } else {
+        const content = ocFilenameDialog.content;
+        await window.orxa.opencode.writeAgentFile(filename, content);
+        await loadOcAgents();
+        setSelectedOcAgent(filename);
+        setOcAgentDraft(content);
+        setFeedback(`Duplicated as ${filename}`);
+      }
+      closeOcFilenameDialog();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   useEffect(() => {
     if (open && section === "opencode-agents" && ocAgents.length === 0) {
@@ -418,7 +493,7 @@ export function SettingsDrawer({
     if (section === "config") {
       return (
         <section className="settings-section-card settings-pad settings-config">
-          <div className="settings-controls">
+          <div className={`settings-controls settings-config-controls${mode === "standard" ? " settings-config-controls--standard" : ""}`}>
             <label>
               Scope
               <select value={effectiveScope} onChange={(event) => setScope(event.target.value as "project" | "global")}> 
@@ -428,18 +503,27 @@ export function SettingsDrawer({
                 <option value="global">Global</option>
               </select>
             </label>
-          </div>
-
-          <div className="settings-actions settings-top-actions">
-            <button type="button" onClick={() => openEditor("opencode")}>
-              Open OpenCode JSON Editor
-            </button>
-            {mode === "orxa" ? (
-              <button type="button" onClick={() => openEditor("orxa")}>
-                Open Orxa JSON Editor
+            {mode === "standard" ? (
+              <button
+                type="button"
+                className="settings-config-open-btn"
+                onClick={() => openEditor("opencode")}
+              >
+                Open OpenCode JSON Editor
               </button>
             ) : null}
           </div>
+
+          {mode === "orxa" ? (
+            <div className="settings-actions settings-top-actions">
+              <button type="button" onClick={() => openEditor("opencode")}>
+                Open OpenCode JSON Editor
+              </button>
+              <button type="button" onClick={() => openEditor("orxa")}>
+                Open Orxa JSON Editor
+              </button>
+            </div>
+          ) : null}
 
           <div className={`settings-config-grid${mode !== "orxa" ? " settings-config-grid--single" : ""}`}>
             <article className="settings-config-card">
@@ -623,36 +707,16 @@ export function SettingsDrawer({
       };
 
       const createOcAgent = async () => {
-        const existing = new Set(ocAgents.map((a) => a.filename));
+        const existing = new Set(ocAgents.map((a) => a.filename.toLowerCase()));
         let index = 1;
-        let filename = "new-agent.md";
-        while (existing.has(filename)) {
+        let filenameStem = "new-agent";
+        while (existing.has(`${filenameStem}.md`)) {
           index += 1;
-          filename = `new-agent-${index}.md`;
+          filenameStem = `new-agent-${index}`;
         }
-        const baseName = filename.replace(/\.md$/, "");
-        const template = [
-          "---",
-          `description: ${baseName} agent`,
-          "mode: subagent",
-          "model: ",
-          "temperature: 0.1",
-          "---",
-          "",
-          `# ${baseName.charAt(0).toUpperCase() + baseName.slice(1)}`,
-          "",
-          "Your system prompt here.",
-          "",
-        ].join("\n");
-        try {
-          await window.orxa.opencode.writeAgentFile(filename, template);
-          await loadOcAgents();
-          setSelectedOcAgent(filename);
-          setOcAgentDraft(template);
-          setFeedback(`Created ${filename}`);
-        } catch (error) {
-          setFeedback(error instanceof Error ? error.message : String(error));
-        }
+        setOcFilenameDialog({ kind: "create", title: "Create new agent file" });
+        setOcFilenameValue(filenameStem);
+        setOcFilenameError(null);
       };
 
       const openOcAgentIn = async (target: OpenDirectoryTarget) => {
@@ -667,24 +731,18 @@ export function SettingsDrawer({
 
       const duplicateOcAgent = async () => {
         if (!currentOcAgent) return;
-        const existing = new Set(ocAgents.map((a) => a.filename));
-        const baseName = currentOcAgent.name;
+        const existing = new Set(ocAgents.map((a) => a.filename.toLowerCase()));
+        const baseName = currentOcAgent.filename.replace(/\.md$/i, "");
         let index = 1;
-        let filename = `${baseName}-copy.md`;
-        while (existing.has(filename)) {
+        let filenameStem = `${baseName}-copy`;
+        while (existing.has(`${filenameStem}.md`)) {
           index += 1;
-          filename = `${baseName}-copy-${index}.md`;
+          filenameStem = `${baseName}-copy-${index}`;
         }
         const content = ocAgentDraft || currentOcAgent.content;
-        try {
-          await window.orxa.opencode.writeAgentFile(filename, content);
-          await loadOcAgents();
-          setSelectedOcAgent(filename);
-          setOcAgentDraft(content);
-          setFeedback(`Duplicated as ${filename}`);
-        } catch (error) {
-          setFeedback(error instanceof Error ? error.message : String(error));
-        }
+        setOcFilenameDialog({ kind: "duplicate", title: `Duplicate ${currentOcAgent.filename} as`, content });
+        setOcFilenameValue(filenameStem);
+        setOcFilenameError(null);
       };
 
       return (
@@ -988,8 +1046,49 @@ export function SettingsDrawer({
         </section>
       </div>
 
+      {ocFilenameDialog ? (
+        <div className="overlay settings-modal-overlay">
+          <div className="modal oc-agent-filename-modal">
+            <div className="modal-header">
+              <h2>{ocFilenameDialog.title}</h2>
+              <button type="button" onClick={closeOcFilenameDialog}>
+                Close
+              </button>
+            </div>
+            <form
+              className="oc-agent-filename-body"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitOcFilenameDialog();
+              }}
+            >
+              <p className="raw-path">Enter a filename. If `.md` is omitted, it will be added automatically.</p>
+              <input
+                autoFocus
+                type="text"
+                value={ocFilenameValue}
+                onChange={(event) => {
+                  setOcFilenameValue(event.target.value);
+                  if (ocFilenameError) {
+                    setOcFilenameError(null);
+                  }
+                }}
+                placeholder="agent-name"
+              />
+              {ocFilenameError ? <p className="raw-path">{ocFilenameError}</p> : null}
+              <div className="settings-actions">
+                <button type="submit">Save</button>
+                <button type="button" onClick={closeOcFilenameDialog}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
       {editorOpen ? (
-        <div className="overlay">
+        <div className="overlay settings-modal-overlay">
           <div className="modal raw-editor-modal">
             <div className="modal-header">
               <h2>{editorKind === "orxa" ? "Edit orxa.json" : "Edit opencode.json"}</h2>

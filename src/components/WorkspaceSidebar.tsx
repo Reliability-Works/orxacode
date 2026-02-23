@@ -46,8 +46,6 @@ export type WorkspaceSidebarProps = {
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
-  openJobEditor: () => void;
-  loadSkills: () => Promise<void>;
   setProfileModalOpen: Dispatch<SetStateAction<boolean>>;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -83,8 +81,6 @@ export function WorkspaceSidebar({
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
-  openJobEditor,
-  loadSkills,
   setProfileModalOpen,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {

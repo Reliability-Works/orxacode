@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
-import { findFallbackModel, listModelOptions, listModelOptionsFromConfig } from "./models";
+import { findFallbackModel, listConfiguredProviderIDs, listModelOptions, listModelOptionsFromConfig } from "./models";
 
 describe("model discovery", () => {
   it("filters deprecated and disconnected models", () => {
@@ -103,5 +103,66 @@ describe("model discovery", () => {
 
     expect(options.map((item) => item.key)).toEqual(["custom/alpha-1", "openai/gpt-5.2"]);
     expect(options.find((item) => item.key === "custom/alpha-1")?.variants).toEqual(["fast", "precise"]);
+  });
+
+  it("supports shorthand provider model formats in config", () => {
+    const options = listModelOptionsFromConfig({
+      providers: {
+        openrouter: {
+          name: "OpenRouter",
+          models: {
+            "anthropic/claude-3.5-sonnet": "Claude 3.5 Sonnet",
+            "openai/gpt-4.1": true,
+            "old-model": {
+              status: "deprecated",
+            },
+          },
+        },
+        anthropic: {
+          models: [
+            "claude-3-7-sonnet",
+            {
+              id: "claude-opus-4-1",
+              name: "Claude Opus 4.1",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(options.map((item) => item.key)).toEqual([
+      "anthropic/claude-3-7-sonnet",
+      "anthropic/claude-opus-4-1",
+      "openrouter/anthropic/claude-3.5-sonnet",
+      "openrouter/openai/gpt-4.1",
+    ]);
+    expect(options.find((item) => item.key === "openrouter/anthropic/claude-3.5-sonnet")?.modelName).toBe("Claude 3.5 Sonnet");
+  });
+
+  it("collects provider ids from provider blocks and agent model strings", () => {
+    const providers = listConfiguredProviderIDs({
+      provider: {
+        openai: {},
+        google: {},
+      },
+      model: "openai/gpt-5.2",
+      small_model: "openai/gpt-5.2-codex",
+      orxa: {
+        model: "kimi-for-coding/kimi-k2.5",
+      },
+      plan: {
+        model: "openai/gpt-5.2-codex",
+      },
+      agent: {
+        coder: {
+          model: "opencode/kimi-k2.5",
+        },
+        reviewer: {
+          model: "openai/gpt-5.2-codex",
+        },
+      },
+    });
+
+    expect(providers).toEqual(["google", "kimi-for-coding", "openai", "opencode"]);
   });
 });

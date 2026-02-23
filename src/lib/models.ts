@@ -99,13 +99,83 @@ export function listModelOptionsFromConfig(config: unknown): ModelOption[] {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
     return [];
   }
-  const root = config as { provider?: Record<string, unknown> };
-  const providers = root.provider;
+  const root = config as { provider?: Record<string, unknown>; providers?: Record<string, unknown> };
+  const providers = root.provider ?? root.providers;
   if (!providers || typeof providers !== "object" || Array.isArray(providers)) {
     return [];
   }
 
-  const options: ModelOption[] = [];
+  const optionMap = new Map<string, ModelOption>();
+  const pushOption = (option: ModelOption) => {
+    if (!optionMap.has(option.key)) {
+      optionMap.set(option.key, option);
+    }
+  };
+
+  const parseModelObject = (
+    providerID: string,
+    providerName: string,
+    fallbackModelID: string,
+    modelValue: unknown,
+  ): ModelOption | null => {
+    if (typeof modelValue === "string") {
+      const modelID = fallbackModelID;
+      const modelName = modelValue.trim().length > 0 ? modelValue.trim() : modelID;
+      return {
+        key: `${providerID}/${modelID}`,
+        providerID,
+        modelID,
+        providerName,
+        modelName,
+        variants: [],
+      };
+    }
+
+    if (typeof modelValue === "boolean") {
+      if (!modelValue) {
+        return null;
+      }
+      return {
+        key: `${providerID}/${fallbackModelID}`,
+        providerID,
+        modelID: fallbackModelID,
+        providerName,
+        modelName: fallbackModelID,
+        variants: [],
+      };
+    }
+
+    if (!modelValue || typeof modelValue !== "object" || Array.isArray(modelValue)) {
+      return null;
+    }
+
+    const model = modelValue as {
+      id?: unknown;
+      name?: unknown;
+      status?: unknown;
+      variants?: Record<string, unknown>;
+    };
+
+    if (model.status === "deprecated") {
+      return null;
+    }
+
+    const modelID = typeof model.id === "string" && model.id.trim().length > 0 ? model.id : fallbackModelID;
+    const modelName = typeof model.name === "string" && model.name.trim().length > 0 ? model.name : modelID;
+    const variants = model.variants && typeof model.variants === "object" && !Array.isArray(model.variants)
+      ? Object.keys(model.variants)
+      : [];
+
+    return {
+      key: `${providerID}/${modelID}`,
+      providerID,
+      modelID,
+      providerName,
+      modelName,
+      variants,
+    };
+  };
+
   for (const [providerID, providerValue] of Object.entries(providers)) {
     if (!providerValue || typeof providerValue !== "object" || Array.isArray(providerValue)) {
       continue;
@@ -113,38 +183,120 @@ export function listModelOptionsFromConfig(config: unknown): ModelOption[] {
     const provider = providerValue as { name?: unknown; models?: Record<string, unknown> };
     const providerName = typeof provider.name === "string" && provider.name.trim().length > 0 ? provider.name : providerID;
     const models = provider.models;
-    if (!models || typeof models !== "object" || Array.isArray(models)) {
+    if (!models) {
+      continue;
+    }
+
+    if (Array.isArray(models)) {
+      for (const modelValue of models) {
+        if (typeof modelValue === "string") {
+          const modelID = modelValue.trim();
+          if (!modelID) {
+            continue;
+          }
+          pushOption({
+            key: `${providerID}/${modelID}`,
+            providerID,
+            modelID,
+            providerName,
+            modelName: modelID,
+            variants: [],
+          });
+          continue;
+        }
+
+        if (!modelValue || typeof modelValue !== "object" || Array.isArray(modelValue)) {
+          continue;
+        }
+
+        const item = modelValue as { id?: unknown; name?: unknown; status?: unknown; variants?: Record<string, unknown> };
+        const fallbackModelID = typeof item.id === "string" && item.id.trim().length > 0
+          ? item.id
+          : (typeof item.name === "string" && item.name.trim().length > 0 ? item.name : "");
+        if (!fallbackModelID) {
+          continue;
+        }
+        const parsed = parseModelObject(providerID, providerName, fallbackModelID, item);
+        if (parsed) {
+          pushOption(parsed);
+        }
+      }
+      continue;
+    }
+
+    if (typeof models !== "object") {
       continue;
     }
 
     for (const [modelID, modelValue] of Object.entries(models)) {
-      if (!modelValue || typeof modelValue !== "object" || Array.isArray(modelValue)) {
+      const fallbackModelID = modelID.trim();
+      if (!fallbackModelID) {
         continue;
       }
-      const model = modelValue as {
-        id?: unknown;
-        name?: unknown;
-        status?: unknown;
-        variants?: Record<string, unknown>;
-      };
-      if (model.status === "deprecated") {
-        continue;
+      const parsed = parseModelObject(providerID, providerName, fallbackModelID, modelValue);
+      if (parsed) {
+        pushOption(parsed);
       }
-      const resolvedModelID = typeof model.id === "string" && model.id.trim().length > 0 ? model.id : modelID;
-      const modelName = typeof model.name === "string" && model.name.trim().length > 0 ? model.name : resolvedModelID;
-      const variants = model.variants && typeof model.variants === "object" && !Array.isArray(model.variants)
-        ? Object.keys(model.variants)
-        : [];
-      options.push({
-        key: `${providerID}/${resolvedModelID}`,
-        providerID,
-        modelID: resolvedModelID,
-        providerName,
-        modelName,
-        variants,
-      });
     }
   }
 
-  return options.sort((a, b) => a.key.localeCompare(b.key));
+  return [...optionMap.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function listConfiguredProviderIDs(config: unknown): string[] {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return [];
+  }
+
+  const ids = new Set<string>();
+  const root = config as Record<string, unknown>;
+
+  const providers = root.provider ?? root.providers;
+  if (providers && typeof providers === "object" && !Array.isArray(providers)) {
+    for (const providerID of Object.keys(providers)) {
+      const trimmed = providerID.trim();
+      if (trimmed.length > 0) {
+        ids.add(trimmed);
+      }
+    }
+  }
+
+  const collectFromModel = (value: unknown) => {
+    if (typeof value !== "string") {
+      return;
+    }
+    const [providerID, ...modelParts] = value.split("/");
+    if (!providerID || modelParts.length === 0) {
+      return;
+    }
+    const trimmed = providerID.trim();
+    if (trimmed.length > 0) {
+      ids.add(trimmed);
+    }
+  };
+
+  collectFromModel(root.model);
+  collectFromModel(root.small_model);
+
+  const orxa = root.orxa;
+  if (orxa && typeof orxa === "object" && !Array.isArray(orxa)) {
+    collectFromModel((orxa as { model?: unknown }).model);
+  }
+
+  const plan = root.plan;
+  if (plan && typeof plan === "object" && !Array.isArray(plan)) {
+    collectFromModel((plan as { model?: unknown }).model);
+  }
+
+  const agents = root.agent;
+  if (agents && typeof agents === "object" && !Array.isArray(agents)) {
+    for (const definition of Object.values(agents)) {
+      if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+        continue;
+      }
+      collectFromModel((definition as { model?: unknown }).model);
+    }
+  }
+
+  return [...ids].sort((a, b) => a.localeCompare(b));
 }

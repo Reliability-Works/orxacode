@@ -57,6 +57,7 @@ beforeEach(() => {
         updateConfig: vi.fn(async () => ({})),
         readRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
         writeRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
+        listProviders: vi.fn(async () => ({ all: [], connected: [], default: {} })),
         pickImage: vi.fn(async () => undefined),
         readOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),
         writeOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),

@@ -186,7 +186,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
+    [activeProjectDir, pendingSessionId, projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
   );
 
   const openWorkspaceDashboard = useCallback(() => {

@@ -8,6 +8,7 @@ import {
   createOpencodeClient,
   type Config,
   type OpencodeClient,
+  type ProviderListResponse,
   type QuestionAnswer,
   type Pty,
   type Session,
@@ -785,7 +786,13 @@ export class OpencodeService {
       vcs,
       ptys,
     ] = await Promise.all([
-      this.unwrap(client.path.get({ directory })),
+      this.unwrap(client.path.get({ directory })).catch(() => ({
+        home: homedir(),
+        state: path.join(homedir(), ".local", "share", "opencode"),
+        config: path.join(homedir(), ".config", "opencode"),
+        worktree: directory,
+        directory,
+      })),
       this.unwrap(client.session.list({ directory, roots: true, limit: 120 })).catch(() => []),
       this.unwrap(client.session.status({ directory })).catch(() => ({})),
       this.unwrap(client.provider.list({ directory })).catch(() => ({ all: [], connected: [], default: {} })),
@@ -1720,6 +1727,16 @@ export class OpencodeService {
       path: resolved.path,
       content,
     };
+  }
+
+  async listProviders(directory?: string): Promise<ProviderListResponse> {
+    const fallback: ProviderListResponse = { all: [], connected: [], default: {} };
+    try {
+      const response = await this.client(directory).provider.list(directory ? { directory } : undefined);
+      return this.unwrap(response, fallback);
+    } catch {
+      return fallback;
+    }
   }
 
   async listPtys(directory: string) {

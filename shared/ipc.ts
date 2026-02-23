@@ -50,6 +50,7 @@ export const IPC = {
   opencodeUpdateConfig: "orxa:opencode:updateConfig",
   opencodeReadRawConfig: "orxa:opencode:readRawConfig",
   opencodeWriteRawConfig: "orxa:opencode:writeRawConfig",
+  opencodeListProviders: "orxa:opencode:listProviders",
   opencodePickImage: "orxa:opencode:pickImage",
   opencodeGitDiff: "orxa:opencode:gitDiff",
   opencodeGitLog: "orxa:opencode:gitLog",
@@ -417,6 +418,7 @@ export interface OrxaBridge {
     updateConfig: (scope: "project" | "global", patch: Config, directory?: string) => Promise<Config>;
     readRawConfig: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
     writeRawConfig: (scope: "project" | "global", content: string, directory?: string) => Promise<RawConfigDocument>;
+    listProviders: (directory?: string) => Promise<ProviderListResponse>;
     pickImage: () => Promise<ImageSelection | undefined>;
     gitDiff: (directory: string) => Promise<string>;
     gitLog: (directory: string) => Promise<string>;

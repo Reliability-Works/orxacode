@@ -52,7 +52,8 @@ function createWindow() {
     height: 980,
     minWidth: 1120,
     minHeight: 740,
-    backgroundColor: "#071018",
+    // Match renderer base tone to avoid a blue flash before first paint.
+    backgroundColor: "#121316",
     title: "",
     ...(process.platform === "darwin"
       ? {
@@ -258,6 +259,9 @@ function registerIpcHandlers() {
     }
     return service.writeRawConfig(scope, assertString(content, "content"), typeof directory === "string" ? directory : undefined);
   });
+  ipcMain.handle(IPC.opencodeListProviders, async (_event, directory?: unknown) =>
+    service.listProviders(typeof directory === "string" ? directory : undefined),
+  );
   ipcMain.handle(IPC.opencodePickImage, async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openFile"],
