@@ -1,4 +1,5 @@
-import type { ButtonHTMLAttributes, SVGProps } from "react";
+import { useRef, useState, useCallback, useEffect, type ButtonHTMLAttributes, type SVGProps } from "react";
+import { createPortal } from "react-dom";
 
 type IconName =
   | "profiles"
@@ -201,9 +202,67 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
 }
 
 export function IconButton({ icon, label, className = "", type = "button", ...props }: Props) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tooltip, setTooltip] = useState<{ left: number; top: number; above: boolean } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleMouseEnter = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      if (btnRef.current) {
+        const r = btnRef.current.getBoundingClientRect();
+        const above = r.top > 56;
+        const centerX = r.left + r.width / 2;
+        const clampedLeft = Math.max(80, Math.min(window.innerWidth - 80, centerX));
+        setTooltip({
+          left: clampedLeft,
+          top: above ? r.top - 8 : r.bottom + 8,
+          above,
+        });
+      }
+    }, 1000);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setTooltip(null);
+  }, []);
+
   return (
-    <button type={type} className={`icon-button ${className}`.trim()} aria-label={label} title={label} {...props}>
-      <Icon name={icon} width={18} height={18} aria-hidden="true" />
-    </button>
+    <>
+      <button
+        {...props}
+        ref={btnRef}
+        type={type}
+        className={`icon-button ${className}`.trim()}
+        aria-label={label}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+      >
+        <Icon name={icon} width={18} height={18} aria-hidden="true" />
+      </button>
+      {tooltip
+        ? createPortal(
+            <div
+              className="icon-btn-tooltip"
+              style={{
+                left: tooltip.left,
+                top: tooltip.top,
+                transform: tooltip.above ? "translate(-50%, -100%)" : "translate(-50%, 0)",
+              }}
+            >
+              {label}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

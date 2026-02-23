@@ -739,7 +739,19 @@ body.is-resizing * {
 .titlebar-git-toggle-group {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
+}
+
+.titlebar-git-toggle-group.has-changes {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.titlebar-git-toggle-group.has-changes .titlebar-toggle-right {
+  border-left: 1px solid var(--border);
+  border-radius: 0 7px 7px 0;
 }
 
 .titlebar-git-diff-stats {
@@ -749,6 +761,17 @@ body.is-resizing * {
   font-family: var(--code-font);
   font-size: 0.72rem;
   line-height: 1;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 7px 0 0 7px;
+  cursor: pointer;
+}
+
+.titlebar-git-diff-stats:hover {
+  background: var(--bg-hover);
+  transform: none;
 }
 
 .titlebar-git-diff-stats .added {
@@ -1626,15 +1649,25 @@ body.is-resizing * {
   margin-top: 6px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   background: var(--bg-raised);
+}
+
+.git-diff-rows-wrapper {
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+  width: 100%;
 }
 
 .git-diff-row {
   display: grid;
-  grid-template-columns: 44px 44px minmax(0, 1fr);
+  grid-template-columns: 44px 44px 1fr;
   align-items: center;
   gap: 0;
+  min-width: unset;
+  width: 100%;
   font-family: var(--code-font);
   font-size: 0.73rem;
   line-height: 1.45;
@@ -1649,7 +1682,6 @@ body.is-resizing * {
 
 .git-diff-code {
   white-space: pre;
-  overflow-x: auto;
   padding: 2px 10px;
 }
 
@@ -1689,12 +1721,14 @@ body.is-resizing * {
 
 .git-diff-split-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 1fr 1fr;
+  min-width: unset;
+  width: 100%;
 }
 
 .git-diff-cell {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
+  grid-template-columns: 44px 1fr;
   align-items: center;
   font-family: var(--code-font);
   font-size: 0.73rem;
@@ -2648,4 +2682,19 @@ body.is-resizing * {
   .composer-variant-select {
     width: 100%;
   }
+}
+
+.icon-btn-tooltip {
+  position: fixed;
+  z-index: 9999;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px hsl(220 40% 2% / 0.4);
 }

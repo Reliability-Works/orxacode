@@ -686,7 +686,7 @@ export function GitSidebar(props: GitSidebarProps) {
     </>
   );
 
-  const renderFileHunks = (hunks: ParsedHunk[], sectionKey: string): ReactNode[] => {
+  const renderFileHunks = (hunks: ParsedHunk[], sectionKey: string): ReactNode => {
     const allRows: ReactNode[] = [];
     for (let i = 0; i < hunks.length; i++) {
       const hunk = hunks[i]!;
@@ -719,7 +719,7 @@ export function GitSidebar(props: GitSidebarProps) {
       const rows = gitDiffViewMode === "split" ? renderSplitHunk(hunk, sectionKey) : renderUnifiedHunk(hunk, sectionKey);
       allRows.push(...rows);
     }
-    return allRows;
+    return <div className="git-diff-rows-wrapper">{allRows}</div>;
   };
 
   const renderUnifiedHunk = (hunk: ParsedHunk, sectionKey: string) => {

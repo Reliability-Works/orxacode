@@ -10,7 +10,7 @@ export class ModeStore {
   private store = new Store<ModeState>({
     name: "app-mode",
     defaults: {
-      mode: "orxa",
+      mode: "standard",
       version: 1,
     },
   });

@@ -139,6 +139,12 @@ export function ContentTopBar({
             ) : null}
           </>
         ) : null}
+        <IconButton
+          icon="terminal"
+          label="Toggle terminal"
+          className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
+          onClick={() => void toggleTerminal()}
+        />
       </div>
       <div className="content-edge-right-actions">
         <div className={`titlebar-split titlebar-open ${openMenuOpen ? "open" : ""}`.trim()}>
@@ -236,18 +242,17 @@ export function ContentTopBar({
           ) : null}
         </div>
 
-        <IconButton
-          icon="terminal"
-          label="Toggle terminal"
-          className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
-          onClick={() => void toggleTerminal()}
-        />
-        <div className="titlebar-git-toggle-group">
+        <div className={`titlebar-git-toggle-group${gitDiffStats.hasChanges ? " has-changes" : ""}`}>
           {gitDiffStats.hasChanges ? (
-            <span className="titlebar-git-diff-stats" aria-label={`Git changes: +${gitDiffStats.additions} -${gitDiffStats.deletions}`}>
+            <button
+              type="button"
+              className="titlebar-action titlebar-git-diff-stats"
+              onClick={() => setGitPaneVisible(!showGitPane)}
+              aria-label={`Git changes: +${gitDiffStats.additions} -${gitDiffStats.deletions}. Toggle Git sidebar`}
+            >
               <span className="added">+{gitDiffStats.additions}</span>
               <span className="removed">-{gitDiffStats.deletions}</span>
-            </span>
+            </button>
           ) : null}
           <IconButton
             icon="panelRight"

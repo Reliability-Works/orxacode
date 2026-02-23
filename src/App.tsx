@@ -211,7 +211,7 @@ export default function App() {
       };
     },
   });
-  const [appMode, setAppMode] = useState<AppMode>("orxa");
+  const [appMode, setAppMode] = useState<AppMode>("standard");
   const [modeSwitching, setModeSwitching] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
@@ -1252,7 +1252,10 @@ export default function App() {
           document.documentElement.style.setProperty("--left-pane-width", `${next}px`);
           s.currentWidth = next;
         } else {
-          const next = Math.max(280, Math.min(760, s.startWidth - (s.latestX - s.startX)));
+          const leftWidth = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-width") || "300");
+          const leftVisible = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-visible") || "1");
+          const maxRight = Math.max(280, Math.floor(window.innerWidth * 0.8 - leftWidth * leftVisible - 8));
+          const next = Math.max(280, Math.min(maxRight, s.startWidth - (s.latestX - s.startX)));
           el?.style.setProperty("--right-pane-width", `${next}px`);
           s.currentWidth = next;
         }
