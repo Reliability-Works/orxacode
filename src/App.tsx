@@ -1570,6 +1570,8 @@ export default function App() {
       <div className={workspaceClassName} style={workspaceStyle}>
         <div className={`workspace-left-pane ${showProjectsPane ? "open" : "collapsed"}`.trim()}>
           <WorkspaceSidebar
+            appMode={appMode}
+            setAppMode={setAppMode}
             sidebarMode={sidebarMode}
             setSidebarMode={setSidebarMode}
             unreadJobRunsCount={unreadJobRunsCount}

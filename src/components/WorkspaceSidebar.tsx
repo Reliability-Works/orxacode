@@ -1,6 +1,6 @@
 import { type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import type { ProjectListItem } from "@shared/ipc";
+import { ChevronDown, ChevronRight, Zap, Circle } from "lucide-react";
+import type { AppMode, ProjectListItem } from "@shared/ipc";
 import { IconButton } from "./IconButton";
 
 type SidebarMode = "projects" | "jobs" | "skills";
@@ -16,6 +16,8 @@ type SessionListItem = {
 };
 
 export type WorkspaceSidebarProps = {
+  appMode: AppMode;
+  setAppMode: Dispatch<SetStateAction<AppMode>>;
   sidebarMode: SidebarMode;
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
@@ -50,6 +52,8 @@ export type WorkspaceSidebarProps = {
 };
 
 export function WorkspaceSidebar({
+  appMode,
+  setAppMode,
   sidebarMode,
   setSidebarMode,
   unreadJobRunsCount,
@@ -307,6 +311,36 @@ export function WorkspaceSidebar({
         </div>
       )}
 
+      <div className="sidebar-mode-toggle">
+        <button
+          type="button"
+          className={`mode-option ${appMode === "orxa" ? "active" : ""}`}
+          onClick={() => {
+            if (appMode !== "orxa") {
+              void window.orxa.mode.set("orxa");
+              setAppMode("orxa");
+            }
+          }}
+          title="Orxa Mode: Full Orxa experience with agents and orchestration"
+        >
+          <Zap size={14} aria-hidden="true" />
+          <span>Orxa</span>
+        </button>
+        <button
+          type="button"
+          className={`mode-option ${appMode === "standard" ? "active" : ""}`}
+          onClick={() => {
+            if (appMode !== "standard") {
+              void window.orxa.mode.set("standard");
+              setAppMode("standard");
+            }
+          }}
+          title="Standard Mode: Vanilla OpenCode experience"
+        >
+          <Circle size={14} aria-hidden="true" />
+          <span>Standard</span>
+        </button>
+      </div>
       <div className="sidebar-footer-actions">
         <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
         <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
