@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
 import type { ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
+import type { TerminalTab } from "../components/TerminalPanel";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 
@@ -25,9 +26,10 @@ type ContextMenuState =
 
 type UseWorkspaceStateOptions = {
   setStatusLine: (status: string) => void;
-  terminalPtyID?: string;
+  terminalTabIds: string[];
+  setTerminalTabs: (tabs: TerminalTab[]) => void;
+  setActiveTerminalId: (id: string | undefined) => void;
   setTerminalOpen: (open: boolean) => void;
-  setTerminalPtyID: (ptyID: string | undefined) => void;
   messageCacheRef: MutableRefObject<Record<string, SessionMessageBundle[]>>;
   projectLastOpenedRef: MutableRefObject<Record<string, number>>;
   projectLastUpdatedRef: MutableRefObject<Record<string, number>>;
@@ -64,9 +66,10 @@ function clampContextMenuPosition(x: number, y: number) {
 export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const {
     setStatusLine,
-    terminalPtyID,
+    terminalTabIds,
+    setTerminalTabs,
+    setActiveTerminalId,
     setTerminalOpen,
-    setTerminalPtyID,
     messageCacheRef,
     projectLastOpenedRef,
     projectLastUpdatedRef,
@@ -115,8 +118,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           setMessages([]);
         }
 
-        if (!terminalPtyID || !data.ptys.some((item) => item.id === terminalPtyID)) {
-          setTerminalPtyID(data.ptys[0]?.id);
+        const serverPtyIds = data.ptys.map((p) => p.id);
+        const hasValidTab = terminalTabIds.some((id) => serverPtyIds.includes(id));
+        if (!hasValidTab && serverPtyIds.length > 0) {
+          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+          setActiveTerminalId(data.ptys[0]?.id);
         }
 
         if (nextSessionID) {
@@ -138,7 +144,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         throw error;
       }
     },
-    [activeSessionID, messageCacheRef, projectLastUpdatedRef, setStatusLine, setTerminalPtyID, terminalPtyID],
+    [activeSessionID, messageCacheRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs, terminalTabIds],
   );
 
   const selectProject = useCallback(
@@ -148,7 +154,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setProjectData(null);
         setMessages([]);
         setActiveSessionID(undefined);
-        setTerminalPtyID(undefined);
+        setTerminalTabs([]);
+        setActiveTerminalId(undefined);
         setActiveProjectDir(directory);
         setSidebarMode("projects");
         setCollapsedProjects((current) => ({ ...current, [directory]: false }));
@@ -158,7 +165,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         projectLastUpdatedRef.current[directory] = lastUpdated;
         projectLastOpenedRef.current[directory] = Date.now();
 
-        setTerminalPtyID(data.ptys[0]?.id);
+        if (data.ptys.length > 0) {
+          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+          setActiveTerminalId(data.ptys[0]?.id);
+        }
         setActiveSessionID(undefined);
         setMessages([]);
         setStatusLine(`Loaded ${directory}`);
@@ -166,7 +176,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [projectLastOpenedRef, projectLastUpdatedRef, setStatusLine, setTerminalPtyID],
+    [projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
   );
 
   const openWorkspaceDashboard = useCallback(() => {
@@ -176,9 +186,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     setActiveSessionID(undefined);
     setMessages([]);
     setTerminalOpen(false);
-    setTerminalPtyID(undefined);
+    setTerminalTabs([]);
+    setActiveTerminalId(undefined);
     setStatusLine("Workspace dashboard");
-  }, [setStatusLine, setTerminalOpen, setTerminalPtyID]);
+  }, [setActiveTerminalId, setStatusLine, setTerminalOpen, setTerminalTabs]);
 
   const refreshMessages = useCallback(async () => {
     if (!activeProjectDir || !activeSessionID) {

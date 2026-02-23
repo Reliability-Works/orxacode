@@ -1632,12 +1632,21 @@ export class OpencodeService {
     });
 
     socket.on("message", (chunk) => {
+      const str = chunk.toString();
+      if (!str.includes("\n") && str.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(str) as unknown;
+          if (typeof parsed === "object" && parsed !== null && "cursor" in (parsed as Record<string, unknown>)) {
+            return;
+          }
+        } catch {}
+      }
       this.emit({
         type: "pty.output",
         payload: {
           ptyID,
           directory,
-          chunk: chunk.toString(),
+          chunk: str,
         },
       });
     });

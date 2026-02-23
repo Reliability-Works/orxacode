@@ -1294,31 +1294,110 @@
 
 .terminal-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: var(--space-2) var(--space-4);
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
   background: var(--bg-terminal);
+  height: 34px;
 }
 
-.terminal-header strong {
-  font-size: 0.9rem;
-}
-
-.terminal-header span {
-  display: block;
-  color: var(--text-dim);
-  font-size: 0.72rem;
-}
-
-.terminal-actions {
+.terminal-tabs {
   display: flex;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.terminal-body {
+.terminal-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.terminal-tab-add {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  transform: none;
+}
+
+.terminal-tab-add:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  transform: none;
+}
+
+.terminal-tab {
+  min-width: 28px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.72rem;
+  padding: 0 8px;
+  flex-shrink: 0;
+  transform: none;
+}
+
+.terminal-tab:hover {
+  background: var(--bg-hover);
+  transform: none;
+}
+
+.terminal-tab.active {
+  background: var(--bg-raised);
+  color: var(--text-primary);
+}
+
+.terminal-tab-close {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.terminal-tab-close:hover {
+  color: var(--text-primary);
+}
+
+.terminal-tab-label {
+  display: inline-block;
+  line-height: 1;
+}
+
+.terminal-empty-hint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  padding-left: 6px;
+  white-space: nowrap;
+}
+
+.terminal-body-container {
+  position: relative;
   height: 240px;
   min-height: 180px;
+  background: #0d1117;
+}
+
+.terminal-body-instance {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+.terminal-body-instance.active {
+  visibility: visible;
 }
 
 .jobs-board,

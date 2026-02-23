@@ -218,7 +218,8 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | undefined>();
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [terminalPtyID, setTerminalPtyID] = useState<string | undefined>();
+  const [terminalTabs, setTerminalTabs] = useState<Array<{ id: string; label: string }>>([]);
+  const [activeTerminalId, setActiveTerminalId] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -262,9 +263,10 @@ export default function App() {
     openSessionContextMenu,
   } = useWorkspaceState({
     setStatusLine,
-    terminalPtyID,
+    terminalTabIds: terminalTabs.map((t) => t.id),
+    setTerminalTabs,
+    setActiveTerminalId,
     setTerminalOpen,
-    setTerminalPtyID,
     messageCacheRef,
     projectLastOpenedRef,
     projectLastUpdatedRef,
@@ -1387,21 +1389,24 @@ export default function App() {
     setTodosOpen(false);
   }, [activeSessionID]);
 
-  const createTerminal = useCallback(async (openAfterCreate = appPreferences.autoOpenTerminalOnCreate) => {
+  const createTerminal = useCallback(async () => {
     if (!activeProjectDir) {
       return;
     }
 
     const cwd = projectData?.path.directory ?? activeProjectDir;
     try {
-      const pty = await window.orxa.terminal.create(activeProjectDir, cwd, "Workspace shell");
-      setTerminalPtyID(pty.id);
-      setTerminalOpen(openAfterCreate);
+      const tabNum = terminalTabs.length + 1;
+      const pty = await window.orxa.terminal.create(activeProjectDir, cwd, `Tab ${tabNum}`);
+      const newTab = { id: pty.id, label: `Tab ${tabNum}` };
+      setTerminalTabs((prev) => [...prev, newTab]);
+      setActiveTerminalId(pty.id);
+      setTerminalOpen(true);
       setStatusLine("Terminal created");
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [activeProjectDir, appPreferences.autoOpenTerminalOnCreate, projectData?.path.directory]);
+  }, [activeProjectDir, projectData?.path.directory, terminalTabs.length]);
 
   const toggleTerminal = useCallback(async () => {
     if (terminalOpen) {
@@ -1411,12 +1416,30 @@ export default function App() {
     if (!activeProjectDir) {
       return;
     }
-    if (!terminalPtyID) {
-      await createTerminal(true);
+    if (terminalTabs.length === 0) {
+      await createTerminal();
       return;
     }
     setTerminalOpen(true);
-  }, [activeProjectDir, createTerminal, terminalOpen, terminalPtyID]);
+  }, [activeProjectDir, createTerminal, terminalOpen, terminalTabs.length]);
+
+  const closeTerminalTab = useCallback(
+    async (ptyId: string) => {
+      if (!activeProjectDir) return;
+      await window.orxa.terminal.close(activeProjectDir, ptyId).catch(() => undefined);
+      setTerminalTabs((prev) => {
+        const remaining = prev.filter((t) => t.id !== ptyId);
+        if (activeTerminalId === ptyId) {
+          setActiveTerminalId(remaining[remaining.length - 1]?.id);
+        }
+        if (remaining.length === 0) {
+          setTerminalOpen(false);
+        }
+        return remaining;
+      });
+    },
+    [activeProjectDir, activeTerminalId],
+  );
 
   const replyPendingPermission = useCallback(
     async (reply: "once" | "always" | "reject") => {
@@ -1501,7 +1524,7 @@ export default function App() {
       return;
     }
 
-    if (terminalPtyID) {
+    if (terminalTabs.length > 0) {
       terminalAutoCreateTried.current = false;
       return;
     }
@@ -1511,8 +1534,8 @@ export default function App() {
     }
 
     terminalAutoCreateTried.current = true;
-    void createTerminal(true);
-  }, [activeProjectDir, createTerminal, terminalOpen, terminalPtyID]);
+    void createTerminal();
+  }, [activeProjectDir, createTerminal, terminalOpen, terminalTabs.length]);
 
   const openDirectoryInTarget = useCallback(
     async (target: OpenTarget) => {
@@ -1845,9 +1868,12 @@ export default function App() {
 
                   <TerminalPanel
                     directory={activeProjectDir}
-                    ptyID={terminalPtyID}
+                    tabs={terminalTabs}
+                    activeTabId={activeTerminalId}
                     open={terminalOpen}
-                    onCreate={() => createTerminal(true)}
+                    onCreateTab={createTerminal}
+                    onCloseTab={closeTerminalTab}
+                    onSwitchTab={setActiveTerminalId}
                   />
                 </>
               ) : (
