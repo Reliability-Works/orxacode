@@ -91,6 +91,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
+  will-change: width;
+  contain: layout style;
 }
 
 .workspace-left-pane {
@@ -580,10 +582,25 @@
   cursor: col-resize;
   transform: none;
   z-index: 8;
-  transition: opacity 280ms ease;
+  transition: opacity 280ms ease, background-color 120ms ease;
   appearance: none;
   outline: none;
   border-radius: 0;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--border-hover);
+}
+
+body.is-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.is-resizing * {
+  pointer-events: none !important;
+  cursor: col-resize !important;
 }
 
 .sidebar-resizer.is-collapsed {
@@ -719,7 +736,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.72rem;
   line-height: 1;
 }
@@ -1503,6 +1520,10 @@
   display: block;
 }
 
+.git-diff-layout-list {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .git-diff-layout-unified,
 .git-diff-layout-split {
   grid-template-columns: minmax(0, 1fr) minmax(220px, 34%);
@@ -1524,6 +1545,9 @@
 
 .git-file-tree-pane {
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .git-file-tree-pane .git-file-row.compact .git-file-stage-state {
@@ -1550,7 +1574,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.76rem;
 }
 
@@ -1558,7 +1582,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.74rem;
 }
 
@@ -1578,7 +1602,7 @@
 }
 
 .git-diff-hunk-header {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.72rem;
   color: var(--text-dim);
   padding: 4px 8px;
@@ -1592,6 +1616,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+  background: var(--bg-raised);
 }
 
 .git-diff-row {
@@ -1599,21 +1624,16 @@
   grid-template-columns: 44px 44px minmax(0, 1fr);
   align-items: center;
   gap: 0;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.73rem;
   line-height: 1.45;
-}
-
-.git-diff-row + .git-diff-row,
-.git-diff-split-row + .git-diff-split-row {
-  border-top: 1px solid var(--border);
 }
 
 .git-diff-ln {
   text-align: right;
   color: var(--text-dim);
   padding: 2px 8px 2px 4px;
-  border-right: 1px solid var(--border);
+  user-select: none;
 }
 
 .git-diff-code {
@@ -1623,7 +1643,7 @@
 }
 
 .git-diff-row-context {
-  background: transparent;
+  background: var(--bg-raised);
 }
 
 .git-diff-row-add {
@@ -1644,20 +1664,16 @@
   background: var(--bg-surface);
   color: var(--text-dim);
   font-size: 0.72rem;
-  font-family: "IBM Plex Mono", monospace;
-  padding: 4px 8px;
-  text-align: left;
+  font-family: var(--code-font);
+  padding: 6px 12px;
+  text-align: center;
   transform: none;
+  cursor: pointer;
 }
 
 .git-diff-collapsed-lines:hover {
   background: var(--bg-hover);
   transform: none;
-}
-
-.git-diff-collapsed-lines.split {
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
 }
 
 .git-diff-split-row {
@@ -1669,13 +1685,13 @@
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
   align-items: center;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.73rem;
   line-height: 1.45;
 }
 
 .git-diff-cell-left {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .git-diff-empty {
@@ -1801,7 +1817,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.76rem;
 }
 
@@ -1816,7 +1832,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.74rem;
 }
 
@@ -1870,7 +1886,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   font-size: 0.74rem;
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
@@ -1936,21 +1952,383 @@
   margin-top: 0;
 }
 
+.git-tree-filter-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.git-tree-filter-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.git-tree-filter {
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font-size: 0.8rem;
+  padding: 0 8px 0 30px;
+  outline: none;
+}
+
+.git-tree-filter:focus {
+  border-color: var(--border-active);
+}
+
+.git-tree-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  padding: 4px 0;
+}
+
+.git-tree-folder {
+  width: 100%;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  transform: none;
+  text-align: left;
+  border-radius: 0;
+}
+
+.git-tree-folder:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  transform: none;
+}
+
+.git-tree-file {
+  width: 100%;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  transform: none;
+  text-align: left;
+  border-radius: 0;
+}
+
+.git-tree-file:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  transform: none;
+}
+
+.git-tree-file.active {
+  color: var(--text-main);
+  background: var(--bg-active);
+}
+
+.git-tree-name {
+  white-space: nowrap;
+  min-width: 0;
+  font-family: var(--code-font);
+  font-size: 0.76rem;
+}
+
+.git-diff-multi-pane {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px;
+}
+
+.git-diff-file-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.git-diff-file-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.git-diff-file-toggle {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transform: none;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.git-diff-file-toggle:hover {
+  color: var(--text-main);
+  background: var(--bg-hover);
+  transform: none;
+}
+
+.git-diff-file-path {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--code-font);
+  font-size: 0.76rem;
+  color: var(--text-main);
+}
+
+.git-diff-file-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--code-font);
+  font-size: 0.74rem;
+  flex-shrink: 0;
+}
+
+.git-diff-file-stats .added {
+  color: var(--success);
+}
+
+.git-diff-file-stats .removed {
+  color: var(--danger);
+}
+
+.git-diff-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.git-diff-file-body .git-diff-hunk-body {
+  margin-top: 0;
+  border-radius: 0;
+  border: 0;
+}
+
+.git-diff-file-body .git-diff-hunk-body:empty {
+  display: none;
+}
+
+.git-diff-file-body .git-diff-section-label {
+  margin: 0;
+  border-radius: 0;
+}
+
+
+.git-file-tree-pane.full {
+  grid-column: 1 / -1;
+}
+
+.git-list-view-pane {
+  grid-column: 1 / -1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.git-list-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.git-list-view.has-focus {
+  grid-template-columns: minmax(260px, 42%) minmax(0, 1fr);
+}
+
+.git-list-files {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px;
+}
+
+.git-list-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.git-list-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.git-list-card.active {
+  border-color: var(--border-active);
+  background: var(--bg-active);
+}
+
+.git-list-status {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  font-weight: 600;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.git-list-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.git-list-filename {
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-list-dir {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-family: var(--code-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-list-meta {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.git-list-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--code-font);
+  font-size: 0.76rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.git-list-stats-sep {
+  color: var(--text-dim);
+}
+
+.git-list-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  right: 0;
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.git-list-card:hover .git-list-stats {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+.git-list-card:hover .git-list-actions {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.git-list-diff-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.git-list-diff-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+}
+
+.git-list-diff-body .git-diff-hunk-body {
+  border-radius: 6px;
+}
+
+.git-list-diff-body .git-diff-file-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+
 @media (max-width: 1320px) {
   .git-diff-layout-unified,
   .git-diff-layout-split {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) minmax(220px, 0.8fr);
-  }
-
-  .git-file-row {
-    grid-template-columns: 20px minmax(0, 1fr);
-    grid-template-rows: auto auto;
-  }
-
-  .git-file-stats,
-  .git-file-actions {
-    grid-column: 2 / 3;
   }
 }
 
@@ -2144,7 +2522,7 @@
   padding: 12px 0;
   font-size: 0.82rem;
   line-height: 1.52;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--code-font);
   background: var(--bg-surface);
   position: relative;
   user-select: text;

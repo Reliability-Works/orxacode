@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap");
+@import url("https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@4.2.1/index.css");
+@import url("https://cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack-subset.css");
 
 :root {
   --bg-app: hsl(220 8% 8%);
@@ -21,6 +23,7 @@
   --bg-hover: hsl(220 10% 20% / 0.4);
   --bg-active: hsl(220 10% 25% / 0.6);
   --shadow: 0 16px 45px hsl(220 40% 2% / 0.55);
+  --code-font: "IBM Plex Mono", monospace;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -48,6 +49,7 @@ import { findFallbackModel, listAgentOptions, listModelOptions, listModelOptions
 import { preferredAgentForMode } from "./lib/app-mode";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
+import { CODE_FONT_OPTIONS } from "~/types/app";
 import antigravityLogo from "./assets/app-icons/antigravity.png";
 import cursorLogo from "./assets/app-icons/cursor.png";
 import finderLogo from "./assets/app-icons/finder.png";
@@ -78,6 +80,7 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   autoOpenTerminalOnCreate: true,
   confirmDangerousActions: true,
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
+  codeFont: "IBM Plex Mono",
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
@@ -218,6 +221,12 @@ export default function App() {
   const [terminalPtyID, setTerminalPtyID] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const option = CODE_FONT_OPTIONS.find((o) => o.value === appPreferences.codeFont);
+    const stack = option?.stack ?? `"${appPreferences.codeFont}", monospace`;
+    document.documentElement.style.setProperty("--code-font", stack);
+  }, [appPreferences.codeFont]);
   const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
   const [, setStatusLine] = useState<string>("Ready");
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
@@ -382,7 +391,15 @@ export default function App() {
     submitBranchCreate,
   } = useGitPanel(activeProjectDir ?? null);
 
-  const resizeStateRef = useRef<null | { side: "left" | "right"; startX: number; startWidth: number }>(null);
+  const resizeStateRef = useRef<null | {
+    side: "left" | "right";
+    startX: number;
+    startWidth: number;
+    latestX: number;
+    currentWidth?: number;
+    rafId?: number;
+  }>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const projectSearchInputRef = useRef<HTMLInputElement | null>(null);
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAutoCreateTried = useRef(false);
@@ -1204,11 +1221,9 @@ export default function App() {
 
   const startSidebarResize = useCallback((side: "left" | "right", event: ReactMouseEvent) => {
     event.preventDefault();
-    resizeStateRef.current = {
-      side,
-      startX: event.clientX,
-      startWidth: side === "left" ? leftPaneWidth : rightPaneWidth,
-    };
+    const startWidth = side === "left" ? leftPaneWidth : rightPaneWidth;
+    document.body.classList.add("is-resizing");
+    resizeStateRef.current = { side, startX: event.clientX, startWidth, latestX: event.clientX };
   }, [leftPaneWidth, rightPaneWidth]);
 
   const MIN_LEFT_PANE_WIDTH = 280;
@@ -1220,15 +1235,41 @@ export default function App() {
       if (!state) {
         return;
       }
-      if (state.side === "left") {
-        const next = Math.max(MIN_LEFT_PANE_WIDTH, Math.min(MAX_LEFT_PANE_WIDTH, state.startWidth + (event.clientX - state.startX)));
-        setLeftPaneWidth(next);
+      state.latestX = event.clientX;
+      if (state.rafId !== undefined) {
         return;
       }
-      const next = Math.max(280, Math.min(760, state.startWidth - (event.clientX - state.startX)));
-      setRightPaneWidth(next);
+      state.rafId = requestAnimationFrame(() => {
+        const s = resizeStateRef.current;
+        if (!s) {
+          return;
+        }
+        s.rafId = undefined;
+        const el = workspaceRef.current;
+        if (s.side === "left") {
+          const next = Math.max(MIN_LEFT_PANE_WIDTH, Math.min(MAX_LEFT_PANE_WIDTH, s.startWidth + (s.latestX - s.startX)));
+          el?.style.setProperty("--left-pane-width", `${next}px`);
+          s.currentWidth = next;
+        } else {
+          const next = Math.max(280, Math.min(760, s.startWidth - (s.latestX - s.startX)));
+          el?.style.setProperty("--right-pane-width", `${next}px`);
+          s.currentWidth = next;
+        }
+      });
     };
     const onMouseUp = () => {
+      const state = resizeStateRef.current;
+      document.body.classList.remove("is-resizing");
+      if (state?.rafId !== undefined) {
+        cancelAnimationFrame(state.rafId);
+      }
+      if (state?.currentWidth !== undefined) {
+        if (state.side === "left") {
+          setLeftPaneWidth(state.currentWidth);
+        } else {
+          setRightPaneWidth(state.currentWidth);
+        }
+      }
       resizeStateRef.current = null;
     };
     window.addEventListener("mousemove", onMouseMove);
@@ -1315,13 +1356,23 @@ export default function App() {
   const workspaceStyle = useMemo(
     () =>
       ({
-        "--left-pane-width": `${leftPaneWidth}px`,
-        "--right-pane-width": `${effectiveRightPaneWidth}px`,
         "--left-pane-visible": showProjectsPane ? 1 : 0,
         "--right-pane-visible": showGitPane ? 1 : 0,
       }) as CSSProperties,
-    [effectiveRightPaneWidth, leftPaneWidth, showGitPane, showProjectsPane],
+    [showGitPane, showProjectsPane],
   );
+
+  useLayoutEffect(() => {
+    if (!resizeStateRef.current) {
+      workspaceRef.current?.style.setProperty("--left-pane-width", `${leftPaneWidth}px`);
+    }
+  }, [leftPaneWidth]);
+
+  useLayoutEffect(() => {
+    if (!resizeStateRef.current) {
+      workspaceRef.current?.style.setProperty("--right-pane-width", `${effectiveRightPaneWidth}px`);
+    }
+  }, [effectiveRightPaneWidth]);
 
   useEffect(() => {
     setTodosOpen(false);
@@ -1636,7 +1687,7 @@ export default function App() {
           setCommitNextStep={setCommitNextStep}
         />
       ) : null}
-      <div className={workspaceClassName} style={workspaceStyle}>
+      <div ref={workspaceRef} className={workspaceClassName} style={workspaceStyle}>
         <div className={`workspace-left-pane ${showProjectsPane ? "open" : "collapsed"}`.trim()}>
           <WorkspaceSidebar
             appMode={appMode}

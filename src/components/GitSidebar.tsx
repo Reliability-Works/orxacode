@@ -2,7 +2,7 @@ import type { GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2 } from "lucide-react";
+import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search } from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
 
 export type BranchState = GitBranchState;
@@ -121,6 +121,67 @@ function inferStatusTag(status: GitFileStatus) {
     return "R";
   }
   return "M";
+}
+
+type FileTreeNode = {
+  name: string;
+  fullPath: string;
+  type: "file" | "folder";
+  children: FileTreeNode[];
+  file?: GitDiffFile;
+};
+
+function buildFileTree(files: GitDiffFile[]): FileTreeNode[] {
+  const root: FileTreeNode[] = [];
+  for (const file of files) {
+    const parts = file.path.split("/");
+    let siblings = root;
+    for (let i = 0; i < parts.length; i++) {
+      const name = parts[i]!;
+      const isFile = i === parts.length - 1;
+      const fullPath = parts.slice(0, i + 1).join("/");
+      let node = siblings.find((n) => n.name === name && n.type === (isFile ? "file" : "folder"));
+      if (!node) {
+        node = { name, fullPath, type: isFile ? "file" : "folder", children: [], file: isFile ? file : undefined };
+        siblings.push(node);
+      }
+      siblings = node.children;
+    }
+  }
+  const sortNodes = (nodes: FileTreeNode[]) => {
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === "folder" ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    for (const node of nodes) {
+      sortNodes(node.children);
+    }
+  };
+  sortNodes(root);
+  return root;
+}
+
+function filterTreeNodes(nodes: FileTreeNode[], query: string): FileTreeNode[] {
+  if (!query.trim()) {
+    return nodes;
+  }
+  const lower = query.toLowerCase();
+  const result: FileTreeNode[] = [];
+  for (const node of nodes) {
+    if (node.type === "file") {
+      if (node.name.toLowerCase().includes(lower) || node.fullPath.toLowerCase().includes(lower)) {
+        result.push(node);
+      }
+    } else {
+      const filtered = filterTreeNodes(node.children, query);
+      if (filtered.length > 0) {
+        result.push({ ...node, children: filtered });
+      }
+    }
+  }
+  return result;
 }
 
 function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: string } {
@@ -429,9 +490,37 @@ export function GitSidebar(props: GitSidebarProps) {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedUnchangedRows, setExpandedUnchangedRows] = useState<Record<string, boolean>>({});
+  const [treeFilter, setTreeFilter] = useState("");
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
+  const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
 
   const parsedDiff = useMemo(() => parseGitDiffOutput(gitPanelOutput), [gitPanelOutput]);
   const hasUnstagedFiles = useMemo(() => parsedDiff.files.some((file) => file.hasUnstaged), [parsedDiff.files]);
+  const fileTree = useMemo(() => buildFileTree(parsedDiff.files), [parsedDiff.files]);
+  const filteredTree = useMemo(() => filterTreeNodes(fileTree, treeFilter), [fileTree, treeFilter]);
+
+  const listViewFocusFile = useMemo(
+    () => parsedDiff.files.find((f) => f.key === listViewFocusKey) ?? null,
+    [parsedDiff.files, listViewFocusKey],
+  );
+  const listViewFocusSections = useMemo(() => toDiffSections(listViewFocusFile), [listViewFocusFile]);
+  const listViewFocusParsed = useMemo(
+    () => listViewFocusSections.map((section) => ({ section, hunks: parseDiffHunks(section) })),
+    [listViewFocusSections],
+  );
+
+  const allFileSections = useMemo(
+    () =>
+      parsedDiff.files
+        .map((file) => {
+          const sections = toDiffSections(file);
+          const parsed = sections.map((section) => ({ section, hunks: parseDiffHunks(section) }));
+          return { file, sections: parsed };
+        })
+        .filter(({ sections }) => sections.some(({ hunks }) => hunks.length > 0)),
+    [parsedDiff.files],
+  );
 
   useEffect(() => {
     if (gitPanelTab !== "diff") {
@@ -446,13 +535,6 @@ export function GitSidebar(props: GitSidebarProps) {
       setSelectedDiffKey(parsedDiff.files[0]?.key ?? null);
     }
   }, [gitPanelTab, parsedDiff.files, selectedDiffKey]);
-
-  const selectedDiffFile = parsedDiff.files.find((file) => file.key === selectedDiffKey) ?? parsedDiff.files[0] ?? null;
-  const diffSections = useMemo(() => toDiffSections(selectedDiffFile), [selectedDiffFile]);
-  const parsedSections = useMemo(
-    () => diffSections.map((section) => ({ section, hunks: parseDiffHunks(section) })),
-    [diffSections],
-  );
 
   const runFileAction = async (actionKey: string, action: () => Promise<void>, successMessage: string) => {
     setPendingAction(actionKey);
@@ -469,101 +551,209 @@ export function GitSidebar(props: GitSidebarProps) {
     }
   };
 
-  const renderFileRows = (compact = false) => {
-    return (
-      <div className="git-file-list" role="list" aria-label="Changed files">
+  const renderListView = () => (
+    <div className={`git-list-view${listViewFocusKey ? " has-focus" : ""}`}>
+      <div className="git-list-files">
         {parsedDiff.files.map((file) => {
           const statusTag = inferStatusTag(file.status);
           const fileName = file.path.split("/").pop() ?? file.path;
-          const oldFileName = file.oldPath ? file.oldPath.split("/").pop() : undefined;
+          const dirPath = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
+          const isActive = listViewFocusKey === file.key;
           return (
             <div
               key={file.key}
-              role="listitem"
-              className={`git-file-row ${selectedDiffFile?.key === file.key ? "active" : ""} ${compact ? "compact" : ""}`.trim()}
-              onClick={() => setSelectedDiffKey(file.key)}
+              className={`git-list-card${isActive ? " active" : ""}`}
+              onClick={() => setListViewFocusKey(isActive ? null : file.key)}
+              role="button"
+              tabIndex={0}
             >
-              <span className={`git-file-status git-file-status-${file.status}`}>{statusTag}</span>
-              <span className="git-file-main">
-                {file.status === "renamed" && oldFileName ? (
-                  <span className="git-file-path" title={`${file.oldPath} -> ${file.path}`}>
-                    {oldFileName} -&gt; {fileName}
-                  </span>
-                ) : (
-                  <span className="git-file-path" title={file.path}>
-                    {fileName}
-                  </span>
-                )}
-                <span className="git-file-stage-state">
-                  {file.hasStaged && file.hasUnstaged ? "staged + unstaged" : file.hasStaged ? "staged" : "unstaged"}
-                </span>
+              <span className={`git-list-status git-file-status-${file.status}`}>{statusTag}</span>
+              <span className="git-list-info">
+                <span className="git-list-filename">{fileName}</span>
+                {dirPath ? <span className="git-list-dir">{dirPath}</span> : null}
               </span>
-              <span className="git-file-meta">
-                <span className="git-file-stats">
+              <span className="git-list-meta">
+                <span className="git-list-stats">
                   <span className="added">+{file.added}</span>
+                  <span className="git-list-stats-sep">/</span>
                   <span className="removed">-{file.removed}</span>
                 </span>
-                {!compact ? (
-                  <span className="git-file-actions" onClick={(event) => event.stopPropagation()}>
-                    {file.hasUnstaged ? (
-                      <button
-                        type="button"
-                        className="git-file-action-btn"
-                        onClick={() => {
-                          if (!onStageFile) {
-                            return;
-                          }
-                          void runFileAction(`stage:${file.key}`, () => onStageFile(file.path), `Staged ${file.path}`);
-                        }}
-                        disabled={pendingAction === `stage:${file.key}` || !onStageFile}
-                        aria-label={`Stage ${fileName}`}
-                        title="Stage"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    ) : null}
-                    {file.hasUnstaged ? (
-                      <button
-                        type="button"
-                        className="git-file-action-btn"
-                        onClick={() => {
-                          if (!onRestoreFile) {
-                            return;
-                          }
-                          void runFileAction(`restore:${file.key}`, () => onRestoreFile(file.path), `Restored ${file.path}`);
-                        }}
-                        disabled={pendingAction === `restore:${file.key}` || !onRestoreFile}
-                        aria-label={`Restore ${fileName}`}
-                        title="Restore"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                    ) : null}
-                    {file.hasStaged ? (
-                      <button
-                        type="button"
-                        className="git-file-action-btn"
-                        onClick={() => {
-                          if (!onUnstageFile) {
-                            return;
-                          }
-                          void runFileAction(`unstage:${file.key}`, () => onUnstageFile(file.path), `Unstaged ${file.path}`);
-                        }}
-                        disabled={pendingAction === `unstage:${file.key}` || !onUnstageFile}
-                        aria-label={`Unstage ${fileName}`}
-                        title="Unstage"
-                      >
-                        <Minus size={14} />
-                      </button>
-                    ) : null}
-                  </span>
-                ) : null}
+                <span className="git-list-actions" onClick={(e) => e.stopPropagation()}>
+                  {file.hasUnstaged && onRestoreFile ? (
+                    <button
+                      type="button"
+                      className="git-file-action-btn"
+                      onClick={() =>
+                        void runFileAction(`restore:${file.key}`, () => onRestoreFile(file.path), `Restored ${file.path}`)
+                      }
+                      disabled={pendingAction === `restore:${file.key}`}
+                      title="Restore"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  ) : null}
+                  {file.hasUnstaged && onStageFile ? (
+                    <button
+                      type="button"
+                      className="git-file-action-btn"
+                      onClick={() =>
+                        void runFileAction(`stage:${file.key}`, () => onStageFile(file.path), `Staged ${file.path}`)
+                      }
+                      disabled={pendingAction === `stage:${file.key}`}
+                      title="Stage"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  ) : null}
+                  {file.hasStaged && onUnstageFile ? (
+                    <button
+                      type="button"
+                      className="git-file-action-btn"
+                      onClick={() =>
+                        void runFileAction(`unstage:${file.key}`, () => onUnstageFile(file.path), `Unstaged ${file.path}`)
+                      }
+                      disabled={pendingAction === `unstage:${file.key}`}
+                      title="Unstage"
+                    >
+                      <Minus size={14} />
+                    </button>
+                  ) : null}
+                </span>
               </span>
             </div>
           );
         })}
       </div>
-    );
+
+      {listViewFocusFile ? (
+        <div className="git-list-diff-panel">
+          <div className="git-diff-file-header">
+            <button
+              type="button"
+              className="git-diff-file-toggle"
+              onClick={() => setListViewFocusKey(null)}
+              title="Close"
+            >
+              <ChevronRight size={14} />
+            </button>
+            <span className="git-diff-file-path" title={listViewFocusFile.path}>
+              {listViewFocusFile.path}
+            </span>
+            <span className="git-diff-file-stats">
+              <span className="added">+{listViewFocusFile.added}</span>
+              <span className="removed">-{listViewFocusFile.removed}</span>
+            </span>
+          </div>
+          <div className="git-list-diff-body">
+            {listViewFocusParsed.map(({ section, hunks }) => (
+              <div key={section.key} className="git-diff-section">
+                {listViewFocusParsed.length > 1 ? (
+                  <div className="git-diff-section-label">{section.label}</div>
+                ) : null}
+                <div className="git-diff-hunk-body">
+                  {renderFileHunks(hunks, section.key)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const renderTreeNodes = (nodes: FileTreeNode[], depth = 0): ReactNode[] => {
+    return nodes.map((node) => {
+      if (node.type === "folder") {
+        const isExpanded = expandedFolders[node.fullPath] !== false;
+        return (
+          <div key={node.fullPath} className="git-tree-group">
+            <button
+              type="button"
+              className="git-tree-folder"
+              style={{ paddingLeft: `${depth * 16 + 8}px` }}
+              onClick={() => setExpandedFolders((prev) => ({ ...prev, [node.fullPath]: !isExpanded }))}
+            >
+              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <Folder size={14} />
+              <span className="git-tree-name">{node.name}</span>
+            </button>
+            {isExpanded ? renderTreeNodes(node.children, depth + 1) : null}
+          </div>
+        );
+      }
+      return (
+        <button
+          key={node.fullPath}
+          type="button"
+          className={`git-tree-file ${node.file && selectedDiffKey === node.file.key ? "active" : ""}`.trim()}
+          style={{ paddingLeft: `${depth * 16 + 22}px` }}
+          onClick={() => {
+            if (node.file) {
+              setSelectedDiffKey(node.file.key);
+              const idx = parsedDiff.files.findIndex((f) => f.key === node.file!.key);
+              if (idx >= 0) {
+                document.getElementById(`diff-file-${idx}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }
+            }
+          }}
+        >
+          <FileText size={14} />
+          <span className="git-tree-name">{node.name}</span>
+        </button>
+      );
+    });
+  };
+
+  const renderTreePanel = () => (
+    <>
+      <div className="git-tree-filter-wrap">
+        <Search size={13} className="git-tree-filter-icon" />
+        <input
+          type="text"
+          className="git-tree-filter"
+          placeholder="Filter files..."
+          value={treeFilter}
+          onChange={(e) => setTreeFilter(e.target.value)}
+        />
+      </div>
+      <div className="git-tree-scroll">{renderTreeNodes(filteredTree)}</div>
+    </>
+  );
+
+  const renderFileHunks = (hunks: ParsedHunk[], sectionKey: string): ReactNode[] => {
+    const allRows: ReactNode[] = [];
+    for (let i = 0; i < hunks.length; i++) {
+      const hunk = hunks[i]!;
+      const hunkStart = parseHunkHeader(hunk.header);
+      if (i === 0 && hunkStart.oldStart > 1) {
+        const count = hunkStart.oldStart - 1;
+        allRows.push(
+          <div key={`${sectionKey}:leading`} className="git-diff-collapsed-lines">
+            {count} unmodified {count === 1 ? "line" : "lines"}
+          </div>,
+        );
+      } else if (i > 0) {
+        const prev = hunks[i - 1]!;
+        let prevEnd = 0;
+        for (let j = prev.lines.length - 1; j >= 0; j--) {
+          if (prev.lines[j]!.oldLine !== null) {
+            prevEnd = prev.lines[j]!.oldLine!;
+            break;
+          }
+        }
+        const gap = hunkStart.oldStart - prevEnd - 1;
+        if (gap > 0) {
+          allRows.push(
+            <div key={`${sectionKey}:gap:${i}`} className="git-diff-collapsed-lines">
+              {gap} unmodified {gap === 1 ? "line" : "lines"}
+            </div>,
+          );
+        }
+      }
+      const rows = gitDiffViewMode === "split" ? renderSplitHunk(hunk, sectionKey) : renderUnifiedHunk(hunk, sectionKey);
+      allRows.push(...rows);
+    }
+    return allRows;
   };
 
   const renderUnifiedHunk = (hunk: ParsedHunk, sectionKey: string) => {
@@ -645,7 +835,7 @@ export function GitSidebar(props: GitSidebarProps) {
       }
     }
 
-    return <div className="git-diff-hunk-body">{rows}</div>;
+    return rows;
   };
 
   const renderSplitHunk = (hunk: ParsedHunk, sectionKey: string) => {
@@ -722,7 +912,7 @@ export function GitSidebar(props: GitSidebarProps) {
       }
     }
 
-    return <div className="git-diff-hunk-body split">{rows}</div>;
+    return rows;
   };
 
   return (
@@ -820,10 +1010,15 @@ export function GitSidebar(props: GitSidebarProps) {
                   type="button"
                   className="git-action-icon-btn"
                   onClick={() => {
-                    if (!selectedDiffFile) {
+                    const first = parsedDiff.files[0];
+                    if (!first) {
                       return;
                     }
-                    setSelectedDiffKey(selectedDiffFile.key);
+                    setSelectedDiffKey(first.key);
+                    if (gitDiffViewMode !== "list") {
+                      setGitDiffViewMode("unified");
+                    }
+                    document.getElementById("diff-file-0")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   }}
                   disabled={parsedDiff.files.length === 0}
                   aria-label="Review changes"
@@ -875,42 +1070,109 @@ export function GitSidebar(props: GitSidebarProps) {
                   </div>
 
                   {gitDiffViewMode === "list" ? (
-                    <div className="git-file-list-pane">{renderFileRows(false)}</div>
+                    <div className="git-list-view-pane">{renderListView()}</div>
                   ) : (
                     <>
-                      <div className="git-diff-main-pane" aria-label="Selected file diff">
-                        {!selectedDiffFile ? (
-                          <p className="git-diff-empty">Select a file to view diff</p>
-                        ) : (
-                          <div className="git-selected-file-header">
-                            <span className="git-selected-file-title" title={selectedDiffFile.path}>
-                              {selectedDiffFile.path}
-                            </span>
-                            <span className="git-selected-file-stats">
-                              <span className="added">+{selectedDiffFile.added}</span>
-                              <span className="removed">-{selectedDiffFile.removed}</span>
-                            </span>
-                          </div>
-                        )}
-                        {parsedSections.length === 0 ? (
-                          <p className="git-diff-empty">Select a file to view diff</p>
-                        ) : (
-                          parsedSections.map(({ section, hunks }) => (
-                            <div key={section.key} className="git-diff-section">
-                              {parsedSections.length > 1 ? <div className="git-diff-section-label">{section.label}</div> : null}
-                              {hunks.map((hunk) => (
-                                <div key={hunk.key} className="git-diff-hunk">
-                                  <div className="git-diff-hunk-header">{hunk.header}</div>
-                                  {gitDiffViewMode === "split"
-                                    ? renderSplitHunk(hunk, section.key)
-                                    : renderUnifiedHunk(hunk, section.key)}
+                      <div className="git-diff-multi-pane">
+                        {allFileSections.map(({ file, sections }, idx) => {
+                          const isCollapsed = collapsedFileSections[file.key] === true;
+                          return (
+                            <div key={file.key} id={`diff-file-${idx}`} className="git-diff-file-section">
+                              <div className="git-diff-file-header">
+                                <button
+                                  type="button"
+                                  className="git-diff-file-toggle"
+                                  onClick={() =>
+                                    setCollapsedFileSections((prev) => ({ ...prev, [file.key]: !isCollapsed }))
+                                  }
+                                >
+                                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                                </button>
+                                <span className="git-diff-file-path" title={file.path}>
+                                  {file.path}
+                                </span>
+                                <span className="git-diff-file-stats">
+                                  <span className="added">+{file.added}</span>
+                                  <span className="removed">-{file.removed}</span>
+                                </span>
+                                <span
+                                  className="git-diff-file-actions"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {file.hasUnstaged && onRestoreFile ? (
+                                    <button
+                                      type="button"
+                                      className="git-file-action-btn"
+                                      onClick={() =>
+                                        void runFileAction(
+                                          `restore:${file.key}`,
+                                          () => onRestoreFile(file.path),
+                                          `Restored ${file.path}`,
+                                        )
+                                      }
+                                      disabled={pendingAction === `restore:${file.key}`}
+                                      title="Restore"
+                                    >
+                                      <RotateCcw size={14} />
+                                    </button>
+                                  ) : null}
+                                  {file.hasUnstaged && onStageFile ? (
+                                    <button
+                                      type="button"
+                                      className="git-file-action-btn"
+                                      onClick={() =>
+                                        void runFileAction(
+                                          `stage:${file.key}`,
+                                          () => onStageFile(file.path),
+                                          `Staged ${file.path}`,
+                                        )
+                                      }
+                                      disabled={pendingAction === `stage:${file.key}`}
+                                      title="Stage"
+                                    >
+                                      <Plus size={14} />
+                                    </button>
+                                  ) : null}
+                                  {file.hasStaged && onUnstageFile ? (
+                                    <button
+                                      type="button"
+                                      className="git-file-action-btn"
+                                      onClick={() =>
+                                        void runFileAction(
+                                          `unstage:${file.key}`,
+                                          () => onUnstageFile(file.path),
+                                          `Unstaged ${file.path}`,
+                                        )
+                                      }
+                                      disabled={pendingAction === `unstage:${file.key}`}
+                                      title="Unstage"
+                                    >
+                                      <Minus size={14} />
+                                    </button>
+                                  ) : null}
+                                </span>
+                              </div>
+                              {!isCollapsed ? (
+                                <div className="git-diff-file-body">
+                                  {sections.map(({ section, hunks }) => (
+                                    <div key={section.key} className="git-diff-section">
+                                      {sections.length > 1 ? (
+                                        <div className="git-diff-section-label">{section.label}</div>
+                                      ) : null}
+                                      <div
+                                        className={`git-diff-hunk-body${gitDiffViewMode === "split" ? " split" : ""}`}
+                                      >
+                                        {renderFileHunks(hunks, section.key)}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              ) : null}
                             </div>
-                          ))
-                        )}
+                          );
+                        })}
                       </div>
-                      <div className="git-file-tree-pane">{renderFileRows(true)}</div>
+                      <div className="git-file-tree-pane">{renderTreePanel()}</div>
                     </>
                   )}
                 </div>

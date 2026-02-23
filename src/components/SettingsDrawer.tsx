@@ -7,6 +7,7 @@ import type {
   ServerDiagnostics,
 } from "@shared/ipc";
 import type { AppPreferences } from "~/types/app";
+import { CODE_FONT_OPTIONS } from "~/types/app";
 
 type Props = {
   open: boolean;
@@ -36,7 +37,7 @@ type Props = {
   onChangeMode: (mode: AppMode) => Promise<void>;
 };
 
-type SettingsSection = "config" | "agents" | "app" | "server";
+type SettingsSection = "config" | "agents" | "app" | "server" | "preferences";
 type EditorKind = "opencode" | "orxa";
 
 function buildSimpleDiff(baseText: string, currentText: string) {
@@ -122,9 +123,9 @@ export function SettingsDrawer({
   );
   const availableSections = useMemo<SettingsSection[]>(() => {
     if (mode === "standard") {
-      return ["config", "app", "server"];
+      return ["config", "app", "preferences", "server"];
     }
-    return ["config", "agents", "app", "server"];
+    return ["config", "agents", "app", "preferences", "server"];
   }, [mode]);
 
   useEffect(() => {
@@ -299,6 +300,33 @@ export function SettingsDrawer({
               }
             />
           </label>
+        </section>
+      );
+    }
+
+    if (section === "preferences") {
+      return (
+        <section className="settings-section-card settings-pad">
+          <h3>Preferences</h3>
+          <p className="raw-path" style={{ margin: "4px 0 12px" }}>Code font — used in the diff viewer, file tree, and file preview.</p>
+          <div className="settings-font-list">
+            {CODE_FONT_OPTIONS.map((opt) => {
+              const isSelected = appPreferences.codeFont === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`settings-font-option${isSelected ? " active" : ""}`}
+                  onClick={() => onAppPreferencesChange({ ...appPreferences, codeFont: opt.value })}
+                >
+                  <span className="settings-font-option-name">{opt.label}</span>
+                  <span className="settings-font-option-preview" style={{ fontFamily: opt.stack }}>
+                    {`const greet = (name) => \`Hello, \${name}!\`;`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
       );
     }
@@ -654,6 +682,13 @@ export function SettingsDrawer({
               ) : null}
               <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                 App
+              </button>
+              <button
+                type="button"
+                className={section === "preferences" ? "active" : ""}
+                onClick={() => setSection("preferences")}
+              >
+                Preferences
               </button>
               <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
                 Server
