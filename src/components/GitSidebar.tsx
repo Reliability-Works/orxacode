@@ -2,7 +2,6 @@ import type { GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { DiffModeEnum, DiffView } from "@git-diff-view/react";
 import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2 } from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
 
@@ -550,37 +549,20 @@ export function GitSidebar(props: GitSidebarProps) {
 
                   {gitDiffViewMode === "list" ? null : (
                     <div className="git-diff-view-panel" aria-label="Selected file diff">
-                      {diffSections.length > 1
-                        ? diffSections.map((section) => (
-                            <section key={section.key} className="git-diff-view-section">
-                              <div className="git-diff-view-section-label">{section.label}</div>
-                              <DiffView
-                                data={{
-                                  oldFile: { fileName: selectedDiffFile?.oldPath ?? selectedDiffFile?.path ?? "" },
-                                  newFile: { fileName: selectedDiffFile?.path ?? "" },
-                                  hunks: section.text.split("\n"),
-                                }}
-                                diffViewMode={gitDiffViewMode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
-                                diffViewTheme="dark"
-                                diffViewHighlight
-                                diffViewWrap={false}
-                              />
-                            </section>
-                          ))
-                        : diffSections.map((section) => (
-                            <DiffView
-                              key={section.key}
-                              data={{
-                                oldFile: { fileName: selectedDiffFile?.oldPath ?? selectedDiffFile?.path ?? "" },
-                                newFile: { fileName: selectedDiffFile?.path ?? "" },
-                                hunks: section.text.split("\n"),
-                              }}
-                              diffViewMode={gitDiffViewMode === "split" ? DiffModeEnum.Split : DiffModeEnum.Unified}
-                              diffViewTheme="dark"
-                              diffViewHighlight
-                              diffViewWrap={false}
-                            />
-                          ))}
+                      {diffSections.length === 0 ? (
+                        <p className="git-diff-empty">Select a file to view diff</p>
+                      ) : (
+                        diffSections.map((section) => (
+                          <div key={section.key} className="git-diff-section">
+                            {diffSections.length > 1 && (
+                              <div className="git-diff-section-label">{section.label}</div>
+                            )}
+                            <pre className="git-diff-content">
+                              <code>{section.text}</code>
+                            </pre>
+                          </div>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

@@ -1575,6 +1575,60 @@
   border: 0;
 }
 
+.git-diff-section + .git-diff-section {
+  margin-top: var(--space-3);
+}
+
+.git-diff-section-label {
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.git-diff-empty {
+  margin: 0;
+  padding: var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.git-diff-content {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.git-diff-content code {
+  display: block;
+  padding: 8px;
+  background: transparent;
+  color: var(--text);
+}
+
+/* Diff line colors */
+.git-diff-content .diff-line-add,
+.git-diff-content code[data-line-type="add"] {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.git-diff-content .diff-line-del,
+.git-diff-content code[data-line-type="del"] {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
 .git-files-actions {
   display: flex;
   align-items: center;
