@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChevronsUpDown, GitCommitHorizontal } from "lucide-react";
+import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, Pencil, Pin, PinOff } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
@@ -11,18 +11,30 @@ type OpenTargetOption = {
 };
 
 type ContentTopBarProps = {
+  projectsPaneVisible: boolean;
+  toggleProjectsPane: () => void;
   showGitPane: boolean;
   setGitPaneVisible: (visible: boolean) => void;
   gitDiffStats: GitDiffStats;
+  contentPaneTitle: string;
+  showingProjectDashboard: boolean;
   activeProjectDir: string | null;
   projectData: ProjectData | null;
   terminalOpen: boolean;
   toggleTerminal: () => Promise<void>;
+  titleMenuOpen: boolean;
   openMenuOpen: boolean;
   setOpenMenuOpen: (open: boolean) => void;
   commitMenuOpen: boolean;
   setCommitMenuOpen: (open: boolean) => void;
   setTitleMenuOpen: (open: boolean) => void;
+  hasActiveSession: boolean;
+  isActiveSessionPinned: boolean;
+  onTogglePinSession: () => void;
+  onRenameSession: () => void;
+  onArchiveSession: () => void;
+  onCopyPath: () => void;
+  onCopySessionId: () => void;
   activeOpenTarget: OpenTargetOption;
   openTargets: OpenTargetOption[];
   openDirectoryInTarget: (targetID: OpenTargetOption["id"]) => Promise<void>;
@@ -32,18 +44,30 @@ type ContentTopBarProps = {
 };
 
 export function ContentTopBar({
+  projectsPaneVisible,
+  toggleProjectsPane,
   showGitPane,
   setGitPaneVisible,
   gitDiffStats,
+  contentPaneTitle,
+  showingProjectDashboard,
   activeProjectDir,
   projectData,
   terminalOpen,
   toggleTerminal,
+  titleMenuOpen,
   openMenuOpen,
   setOpenMenuOpen,
   commitMenuOpen,
   setCommitMenuOpen,
   setTitleMenuOpen,
+  hasActiveSession,
+  isActiveSessionPinned,
+  onTogglePinSession,
+  onRenameSession,
+  onArchiveSession,
+  onCopyPath,
+  onCopySessionId,
   activeOpenTarget,
   openTargets,
   openDirectoryInTarget,
@@ -55,6 +79,69 @@ export function ContentTopBar({
 
   return (
     <div className="content-edge-controls">
+      <div className="content-edge-left-actions">
+        <IconButton
+          icon="panelLeft"
+          label="Toggle left sidebar"
+          className={`workspace-left-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
+          onClick={toggleProjectsPane}
+        />
+        <div className="content-topbar-title-wrap">
+          <h2 className="content-topbar-title" title={contentPaneTitle}>
+            {contentPaneTitle}
+          </h2>
+          {!showingProjectDashboard ? (
+            <>
+              <button
+                type="button"
+                className="title-overflow-button"
+                aria-label="Session and workspace actions"
+                title="Session actions"
+                onClick={() => {
+                  setTitleMenuOpen(!titleMenuOpen);
+                  setOpenMenuOpen(false);
+                  setCommitMenuOpen(false);
+                }}
+              >
+                <Ellipsis size={16} aria-hidden="true" />
+              </button>
+              {titleMenuOpen ? (
+                <div className="title-overflow-menu">
+                  <button type="button" disabled={!hasActiveSession} onClick={onTogglePinSession}>
+                    <span className="menu-item-logo">{isActiveSessionPinned ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}</span>
+                    <span>{isActiveSessionPinned ? "Unpin session" : "Pin session"}</span>
+                  </button>
+                  <button type="button" disabled={!hasActiveSession} onClick={onRenameSession}>
+                    <span className="menu-item-logo">
+                      <Pencil size={14} aria-hidden="true" />
+                    </span>
+                    <span>Rename session</span>
+                  </button>
+                  <button type="button" disabled={!hasActiveSession} onClick={onArchiveSession}>
+                    <span className="menu-item-logo">
+                      <Archive size={14} aria-hidden="true" />
+                    </span>
+                    <span>Archive session</span>
+                  </button>
+                  <div className="menu-separator" />
+                  <button type="button" onClick={onCopyPath}>
+                    <span className="menu-item-logo">
+                      <Copy size={14} aria-hidden="true" />
+                    </span>
+                    <span>Copy path</span>
+                  </button>
+                  <button type="button" disabled={!hasActiveSession} onClick={onCopySessionId}>
+                    <span className="menu-item-logo">
+                      <Fingerprint size={14} aria-hidden="true" />
+                    </span>
+                    <span>Copy session id</span>
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      </div>
       <div className="content-edge-right-actions">
         <div className={`titlebar-split titlebar-open ${openMenuOpen ? "open" : ""}`.trim()}>
           <button

@@ -10,14 +10,7 @@ import {
 } from "react";
 import { parse as parseJsonc } from "jsonc-parser";
 import {
-  Archive,
-  Copy,
-  Ellipsis,
-  Fingerprint,
   GitCommitHorizontal,
-  Pin,
-  PinOff,
-  Pencil,
   Send,
   Upload,
 } from "lucide-react";
@@ -33,7 +26,6 @@ import type {
 } from "@shared/ipc";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
-import { IconButton } from "./components/IconButton";
 import { ContentTopBar } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
@@ -1573,6 +1565,77 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="window-drag-region" />
+      {hasProjectContext ? (
+        <ContentTopBar
+          projectsPaneVisible={showProjectsPane}
+          toggleProjectsPane={() => setProjectsSidebarVisible(!showProjectsPane)}
+          showGitPane={showGitPane}
+          setGitPaneVisible={(visible) =>
+            setAppPreferences((current) => ({
+              ...current,
+              showOperationsPane: visible,
+            }))
+          }
+          gitDiffStats={gitDiffStats}
+          contentPaneTitle={contentPaneTitle}
+          showingProjectDashboard={showingProjectDashboard}
+          activeProjectDir={activeProjectDir ?? null}
+          projectData={projectData}
+          terminalOpen={terminalOpen}
+          toggleTerminal={toggleTerminal}
+          titleMenuOpen={titleMenuOpen}
+          openMenuOpen={openMenuOpen}
+          setOpenMenuOpen={setOpenMenuOpen}
+          commitMenuOpen={commitMenuOpen}
+          setCommitMenuOpen={setCommitMenuOpen}
+          setTitleMenuOpen={setTitleMenuOpen}
+          hasActiveSession={Boolean(activeSessionID)}
+          isActiveSessionPinned={isActiveSessionPinned}
+          onTogglePinSession={() => {
+            if (!activeProjectDir || !activeSessionID) {
+              return;
+            }
+            const nextPinned = !isActiveSessionPinned;
+            togglePinSession(activeProjectDir, activeSessionID);
+            setStatusLine(nextPinned ? "Session pinned" : "Session unpinned");
+            setTitleMenuOpen(false);
+          }}
+          onRenameSession={() => {
+            if (!activeProjectDir || !activeSessionID || !activeSession) {
+              return;
+            }
+            setTitleMenuOpen(false);
+            void renameSession(activeProjectDir, activeSessionID, activeSession.title || activeSession.slug);
+          }}
+          onArchiveSession={() => {
+            if (!activeProjectDir || !activeSessionID) {
+              return;
+            }
+            setTitleMenuOpen(false);
+            void archiveSession(activeProjectDir, activeSessionID);
+          }}
+          onCopyPath={() => {
+            if (!activeProjectDir) {
+              return;
+            }
+            setTitleMenuOpen(false);
+            void copyProjectPath(activeProjectDir);
+          }}
+          onCopySessionId={() => {
+            if (!activeSessionID) {
+              return;
+            }
+            setTitleMenuOpen(false);
+            void copySessionID(activeSessionID);
+          }}
+          activeOpenTarget={activeOpenTarget}
+          openTargets={openTargets}
+          openDirectoryInTarget={openDirectoryInTarget}
+          openCommitModal={openCommitModal}
+          commitNextStepOptions={commitNextStepOptions}
+          setCommitNextStep={setCommitNextStep}
+        />
+      ) : null}
       <div className={workspaceClassName} style={workspaceStyle}>
         <div className={`workspace-left-pane ${showProjectsPane ? "open" : "collapsed"}`.trim()}>
           <WorkspaceSidebar
@@ -1611,14 +1674,6 @@ export default function App() {
             setSettingsOpen={setSettingsOpen}
           />
         </div>
-        {hasProjectContext ? (
-          <IconButton
-            icon="panelLeft"
-            label="Toggle left sidebar"
-            className={`workspace-left-toggle titlebar-toggle ${showProjectsPane ? "expanded" : "collapsed"}`.trim()}
-            onClick={() => setProjectsSidebarVisible(!showProjectsPane)}
-          />
-        ) : null}
         <button
           type="button"
           className={`sidebar-resizer sidebar-resizer-left ${showProjectsPane ? "" : "is-collapsed"}`.trim()}
@@ -1627,34 +1682,7 @@ export default function App() {
           disabled={!showProjectsPane}
         />
 
-        <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"} ${showProjectsPane ? "" : "content-pane-left-collapsed"}`.trim()}>
-          {hasProjectContext ? (
-            <ContentTopBar
-              showGitPane={showGitPane}
-              setGitPaneVisible={(visible) =>
-                setAppPreferences((current) => ({
-                  ...current,
-                  showOperationsPane: visible,
-                }))
-              }
-              gitDiffStats={gitDiffStats}
-              activeProjectDir={activeProjectDir ?? null}
-              projectData={projectData}
-              terminalOpen={terminalOpen}
-              toggleTerminal={toggleTerminal}
-              openMenuOpen={openMenuOpen}
-              setOpenMenuOpen={setOpenMenuOpen}
-              commitMenuOpen={commitMenuOpen}
-              setCommitMenuOpen={setCommitMenuOpen}
-              setTitleMenuOpen={setTitleMenuOpen}
-              activeOpenTarget={activeOpenTarget}
-              openTargets={openTargets}
-              openDirectoryInTarget={openDirectoryInTarget}
-              openCommitModal={openCommitModal}
-              commitNextStepOptions={commitNextStepOptions}
-              setCommitNextStep={setCommitNextStep}
-            />
-          ) : null}
+        <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"}`.trim()}>
           {sidebarMode === "jobs" ? (
             <JobsBoard
               templates={jobTemplates}
@@ -1679,112 +1707,6 @@ export default function App() {
             />
           ) : activeProjectDir ? (
             <>
-              <div className="content-header">
-                <div className="content-title-row">
-                  <h2 className="content-pane-title">{contentPaneTitle}</h2>
-                  {!showingProjectDashboard ? (
-                    <>
-                      <button
-                        type="button"
-                        className="title-overflow-button"
-                        aria-label="Session and workspace actions"
-                        title="Session actions"
-                        onClick={() => {
-                          setTitleMenuOpen((value) => !value);
-                          setOpenMenuOpen(false);
-                          setCommitMenuOpen(false);
-                        }}
-                      >
-                        <Ellipsis size={16} aria-hidden="true" />
-                      </button>
-                      {titleMenuOpen ? (
-                        <div className="title-overflow-menu">
-                          <button
-                            type="button"
-                            disabled={!activeSessionID}
-                            onClick={() => {
-                              if (!activeProjectDir || !activeSessionID) {
-                                return;
-                              }
-                              const nextPinned = !isActiveSessionPinned;
-                              togglePinSession(activeProjectDir, activeSessionID);
-                              setStatusLine(nextPinned ? "Session pinned" : "Session unpinned");
-                              setTitleMenuOpen(false);
-                            }}
-                          >
-                            <span className="menu-item-logo">{isActiveSessionPinned ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}</span>
-                            <span>{isActiveSessionPinned ? "Unpin session" : "Pin session"}</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!activeSessionID || !activeSession || !activeProjectDir}
-                            onClick={() => {
-                              if (!activeProjectDir || !activeSessionID || !activeSession) {
-                                return;
-                              }
-                              setTitleMenuOpen(false);
-                              void renameSession(activeProjectDir, activeSessionID, activeSession.title || activeSession.slug);
-                            }}
-                          >
-                            <span className="menu-item-logo">
-                              <Pencil size={14} aria-hidden="true" />
-                            </span>
-                            <span>Rename session</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!activeSessionID || !activeProjectDir}
-                            onClick={() => {
-                              if (!activeProjectDir || !activeSessionID) {
-                                return;
-                              }
-                              setTitleMenuOpen(false);
-                              void archiveSession(activeProjectDir, activeSessionID);
-                            }}
-                          >
-                            <span className="menu-item-logo">
-                              <Archive size={14} aria-hidden="true" />
-                            </span>
-                            <span>Archive session</span>
-                          </button>
-                          <div className="menu-separator" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!activeProjectDir) {
-                                return;
-                              }
-                              setTitleMenuOpen(false);
-                              void copyProjectPath(activeProjectDir);
-                            }}
-                          >
-                            <span className="menu-item-logo">
-                              <Copy size={14} aria-hidden="true" />
-                            </span>
-                            <span>Copy path</span>
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!activeSessionID}
-                            onClick={() => {
-                              if (!activeSessionID) {
-                                return;
-                              }
-                              setTitleMenuOpen(false);
-                              void copySessionID(activeSessionID);
-                            }}
-                          >
-                            <span className="menu-item-logo">
-                              <Fingerprint size={14} aria-hidden="true" />
-                            </span>
-                            <span>Copy session id</span>
-                          </button>
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              </div>
               {!showingProjectDashboard ? (
                 <>
                   <MessageFeed
