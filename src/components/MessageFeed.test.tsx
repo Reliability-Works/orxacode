@@ -443,6 +443,87 @@ describe("MessageFeed", () => {
     });
   });
 
+  it("shows patch file +/- summary in delegated session live output", async () => {
+    const now = Date.now();
+    const loadMessages = vi.fn(async () => [
+      {
+        info: ({
+          id: "child-msg-1",
+          role: "assistant",
+          sessionID: "child-1",
+          time: { created: now + 10, updated: now + 10 },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "child-tool-patch-1",
+            type: "tool",
+            sessionID: "child-1",
+            messageID: "child-msg-1",
+            callID: "child-call-patch-1",
+            tool: "apply_patch",
+            state: {
+              status: "completed",
+              input: {
+                patch: "*** Begin Patch\n*** Update File: /repo/package.json\n@@\n-  \"name\": \"old\"\n+  \"name\": \"new\"\n+  \"version\": \"1.2.3\"\n*** End Patch",
+              },
+              output: "",
+              title: "apply_patch",
+              metadata: {},
+              time: { start: now + 10, end: now + 11 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ]);
+    const currentOrxa = (window as { orxa?: unknown }).orxa as { opencode?: Record<string, unknown> } | undefined;
+    const nextOpencode = { ...(currentOrxa?.opencode ?? {}), loadMessages };
+    Object.defineProperty(window, "orxa", {
+      value: { ...(currentOrxa ?? {}), opencode: nextOpencode },
+      configurable: true,
+    });
+
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-task-patch-summary",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-task-patch-summary",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-task-patch-summary",
+            callID: "call-task-patch-summary",
+            tool: "task",
+            state: {
+              status: "completed",
+              input: {
+                prompt: "Build the full Spencer Solutions website.",
+                description: "Build Spencer Solutions site",
+                subagent_type: "build",
+              },
+              output: "task_id: child-1",
+              title: "Build Spencer Solutions site",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
+    const buildButtons = screen.getAllByRole("button", { name: /build/i });
+    fireEvent.click(buildButtons[buildButtons.length - 1]!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/package\.json \+2 \| -1/i)).toBeInTheDocument();
+    });
+  });
+
   it("shows delegation bubbles with modal details for sub-agent tasks", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
@@ -496,6 +577,48 @@ describe("MessageFeed", () => {
     expect(within(dialog).getByText(/Model: openai\/gpt-5-codex/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/Inspect files and implement a fix/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/apply_patch \(completed\)/i)).toBeInTheDocument();
+  });
+
+  it("does not close delegation modal on backdrop click and closes on escape", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-delegation-close-behavior",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "subtask-close-behavior",
+            type: "subtask",
+            sessionID: "session-1",
+            messageID: "msg-assistant-delegation-close-behavior",
+            prompt: "Do work.",
+            description: "Close behavior test",
+            agent: "build",
+            model: { providerID: "openai", modelID: "gpt-5-codex" },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    const buildButtons = screen.getAllByRole("button", { name: /build/i });
+    fireEvent.click(buildButtons[buildButtons.length - 1]!);
+    const openedDialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
+    expect(openedDialogs[openedDialogs.length - 1]).toBeInTheDocument();
+
+    const backdrop = document.querySelector(".delegation-modal-overlay");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    const stillOpenDialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
+    expect(stillOpenDialogs[stillOpenDialogs.length - 1]).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
   });
 
   it("shows in-place activity with current file target from tool calls", () => {

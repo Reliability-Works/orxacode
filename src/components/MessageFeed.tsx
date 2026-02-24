@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Part } from "@opencode-ai/sdk/v2/client";
 import type { SessionMessageBundle } from "@shared/ipc";
 
@@ -443,6 +443,104 @@ function extractTaskSessionIDFromOutput(output: unknown) {
     return fromLine.trim();
   }
   return undefined;
+}
+
+function isLikelyPatchText(value: string) {
+  return /(?:\*\*\*\s+(?:Begin Patch|Update|Add|Delete)\s+File:|diff --git\s+a\/|@@)/.test(value);
+}
+
+function extractPatchText(input: unknown, output: unknown) {
+  const candidates: string[] = [];
+  if (typeof input === "string" && input.trim()) {
+    candidates.push(input);
+  }
+  const nestedPatchText = extractStringByKeys(input, ["patch", "content", "text", "diff"]);
+  if (nestedPatchText) {
+    candidates.push(nestedPatchText);
+  }
+  if (typeof output === "string" && output.trim()) {
+    candidates.push(output);
+  }
+  return candidates.find((candidate) => isLikelyPatchText(candidate)) ?? null;
+}
+
+type PatchFileStat = {
+  filePath: string;
+  additions: number;
+  deletions: number;
+};
+
+function parsePatchFileStats(patchText: string, workspaceDirectory?: string | null): PatchFileStat[] {
+  const lines = patchText.split(/\r?\n/);
+  const stats = new Map<string, PatchFileStat>();
+  let currentFilePath: string | null = null;
+
+  const normalizePath = (rawPath: string) => {
+    const cleaned = rawPath
+      .trim()
+      .replace(/^a\//, "")
+      .replace(/^b\//, "");
+    return formatTarget(cleaned, workspaceDirectory, 96);
+  };
+
+  const startFile = (rawPath: string) => {
+    const nextPath = normalizePath(rawPath);
+    if (!nextPath) {
+      return;
+    }
+    if (currentFilePath === nextPath) {
+      return;
+    }
+    currentFilePath = nextPath;
+    if (!stats.has(nextPath)) {
+      stats.set(nextPath, { filePath: nextPath, additions: 0, deletions: 0 });
+    }
+  };
+
+  for (const line of lines) {
+    const applyPatchMatch = line.match(/^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s+(.+)$/i);
+    if (applyPatchMatch?.[1]) {
+      startFile(applyPatchMatch[1]);
+      continue;
+    }
+    const gitDiffMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (gitDiffMatch?.[2]) {
+      startFile(gitDiffMatch[2]);
+      continue;
+    }
+    const plusPlusPlusMatch = line.match(/^\+\+\+\s+(.+)$/);
+    if (plusPlusPlusMatch?.[1] && plusPlusPlusMatch[1] !== "/dev/null") {
+      startFile(plusPlusPlusMatch[1]);
+      continue;
+    }
+    if (!currentFilePath) {
+      continue;
+    }
+    const active = stats.get(currentFilePath);
+    if (!active) {
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      active.additions += 1;
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      active.deletions += 1;
+    }
+  }
+  return [...stats.values()];
+}
+
+function summarizePatchFileStats(stats: PatchFileStat[]) {
+  if (stats.length === 0) {
+    return null;
+  }
+  const [first] = stats;
+  const base = `${first.filePath} +${first.additions} | -${first.deletions}`;
+  if (stats.length === 1) {
+    return base;
+  }
+  return `${base} (+${stats.length - 1} more file${stats.length - 1 === 1 ? "" : "s"})`;
 }
 
 function extractTaskResultText(output: string, maxLength = 2200) {
@@ -931,8 +1029,25 @@ function summarizeDelegationSessionMessages(messages: SessionMessageBundle[], wo
         continue;
       }
       if (part.type === "tool") {
-        const label = toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory);
+        let label = toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory);
         const toolEvent = summarizeDelegationEvent(part);
+        const toolName = part.tool.trim().toLowerCase();
+        if (toolName.includes("apply_patch") || toolName.includes("patch")) {
+          const stateRecord = part.state as unknown as Record<string, unknown>;
+          const patchText = extractPatchText(stateRecord.input, stateRecord.output);
+          if (patchText) {
+            const summary = summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
+            if (summary) {
+              if (part.state.status === "completed") {
+                label = `Applied patch ${summary}`;
+              } else if (/applied patch/i.test(label)) {
+                label = `${label} ${summary}`;
+              } else {
+                label = `${label} (${summary})`;
+              }
+            }
+          }
+        }
         events.push({
           id: `${bundle.info.id}:${part.id}:tool`,
           summary: label,
@@ -1093,11 +1208,18 @@ export function MessageFeed({
   workspaceDirectory,
   bottomClearance = 24,
 }: Props) {
+  const messageFeedRef = useRef<HTMLDivElement | null>(null);
   const [selectedDelegationId, setSelectedDelegationId] = useState<string | null>(null);
   const [thinkingDots, setThinkingDots] = useState(3);
   const [delegationSessionEvents, setDelegationSessionEvents] = useState<InternalEvent[]>([]);
   const [delegationSessionLoading, setDelegationSessionLoading] = useState(false);
   const [delegationSessionError, setDelegationSessionError] = useState<string | null>(null);
+  const [delegationOverlayBounds, setDelegationOverlayBounds] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const messageFeedStyle = useMemo(
     () =>
       ({
@@ -1155,6 +1277,17 @@ export function MessageFeed({
     }
     return [...selectedDelegation.events, ...delegationSessionEvents];
   }, [selectedDelegation, delegationSessionEvents]);
+  const delegationOverlayStyle = useMemo(() => {
+    if (!delegationOverlayBounds) {
+      return undefined;
+    }
+    return {
+      top: `${delegationOverlayBounds.top}px`,
+      left: `${delegationOverlayBounds.left}px`,
+      width: `${delegationOverlayBounds.width}px`,
+      height: `${delegationOverlayBounds.height}px`,
+    } as CSSProperties;
+  }, [delegationOverlayBounds]);
 
   useEffect(() => {
     if (!selectedDelegationId) {
@@ -1171,11 +1304,13 @@ export function MessageFeed({
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         setSelectedDelegationId(null);
       }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [selectedDelegation]);
 
   useEffect(() => {
@@ -1195,11 +1330,13 @@ export function MessageFeed({
 
     let cancelled = false;
     let timer: number | null = null;
-    const load = async () => {
+    const load = async (showLoading = false) => {
       if (cancelled) {
         return;
       }
-      setDelegationSessionLoading(true);
+      if (showLoading) {
+        setDelegationSessionLoading(true);
+      }
       try {
         const bundles = await bridge.loadMessages(workspaceDirectory, selectedDelegation.sessionID!);
         if (cancelled) {
@@ -1212,15 +1349,15 @@ export function MessageFeed({
           setDelegationSessionError(error instanceof Error ? error.message : String(error));
         }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && showLoading) {
           setDelegationSessionLoading(false);
         }
       }
     };
 
-    void load();
+    void load(true);
     timer = window.setInterval(() => {
-      void load();
+      void load(false);
     }, 1300);
 
     return () => {
@@ -1230,6 +1367,33 @@ export function MessageFeed({
       }
     };
   }, [selectedDelegation?.sessionID, workspaceDirectory]);
+
+  useLayoutEffect(() => {
+    if (!selectedDelegation) {
+      setDelegationOverlayBounds(null);
+      return;
+    }
+    const updateOverlayBounds = () => {
+      const paneElement = messageFeedRef.current?.closest(".content-pane") as HTMLElement | null;
+      const rect = paneElement?.getBoundingClientRect() ?? messageFeedRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return;
+      }
+      setDelegationOverlayBounds({
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    };
+    updateOverlayBounds();
+    window.addEventListener("resize", updateOverlayBounds);
+    window.addEventListener("scroll", updateOverlayBounds, true);
+    return () => {
+      window.removeEventListener("resize", updateOverlayBounds);
+      window.removeEventListener("scroll", updateOverlayBounds, true);
+    };
+  }, [selectedDelegation]);
 
   useEffect(() => {
     if (!showAssistantPlaceholder) {
@@ -1245,7 +1409,7 @@ export function MessageFeed({
   }, [showAssistantPlaceholder]);
 
   return (
-    <div className="messages-scroll" style={messageFeedStyle}>
+    <div ref={messageFeedRef} className="messages-scroll" style={messageFeedStyle}>
       {renderedMessages.length === 0 ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div> : null}
       {renderedMessages.map((message) => {
         const { key, role, timeCreated, visibleParts, timeline } = message;
@@ -1342,8 +1506,8 @@ export function MessageFeed({
           </div>
         </article>
       ) : null}
-      {selectedDelegation ? (
-        <div className="overlay delegation-modal-overlay" onClick={() => setSelectedDelegationId(null)}>
+      {selectedDelegation && delegationOverlayStyle ? (
+        <div className="overlay delegation-modal-overlay" style={delegationOverlayStyle}>
           <section
             className="modal delegation-modal"
             role="dialog"
@@ -1379,8 +1543,9 @@ export function MessageFeed({
                     ))}
                   </ul>
                 )}
-                {delegationSessionLoading ? <p>Fetching subagent session...</p> : null}
-                {delegationSessionError ? <p>{delegationSessionError}</p> : null}
+                <p className={`delegation-modal-session-status${delegationSessionError ? " error" : ""}`}>
+                  {delegationSessionError ? delegationSessionError : delegationSessionLoading ? "Fetching subagent session..." : ""}
+                </p>
               </div>
             </div>
           </section>
