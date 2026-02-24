@@ -2,19 +2,21 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
 import {
   IPC,
   type AppMode,
   type GitCommitRequest,
   type OpenDirectoryTarget,
   type OrxaEvent,
+  type UpdatePreferences,
   type RuntimeProfileInput,
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
-import { setupAutoUpdates } from "./services/auto-updater";
+import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
+import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,9 +24,10 @@ const __dirname = path.dirname(__filename);
 const service = new OpencodeService();
 const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
-let autoUpdateCleanup: (() => void) | undefined;
-let startupOrxaBootstrap: Promise<void> | undefined;
+let autoUpdaterController: AutoUpdaterController | undefined;
+const startupBootstrap = createStartupBootstrapTracker();
 const PTY_OUTPUT_FLUSH_MS = 16;
+const SMOKE_TEST_FLAG = "--smoke-test";
 const ptyOutputBuffer = new Map<string, { directory: string; ptyID: string; chunks: string[] }>();
 const ptyOutputFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -55,6 +58,195 @@ function assertAppMode(value: unknown): AppMode {
     throw new Error("Invalid app mode");
   }
   return value;
+}
+
+function assertUpdatePreferencesInput(input: unknown): Partial<UpdatePreferences> {
+  if (!input || typeof input !== "object") {
+    throw new Error("Update preferences input is required");
+  }
+
+  const payload = input as Partial<UpdatePreferences>;
+  const result: Partial<UpdatePreferences> = {};
+
+  if (payload.autoCheckEnabled !== undefined) {
+    if (typeof payload.autoCheckEnabled !== "boolean") {
+      throw new Error("autoCheckEnabled must be a boolean");
+    }
+    result.autoCheckEnabled = payload.autoCheckEnabled;
+  }
+
+  if (payload.releaseChannel !== undefined) {
+    if (payload.releaseChannel !== "stable" && payload.releaseChannel !== "prerelease") {
+      throw new Error("Invalid release channel");
+    }
+    result.releaseChannel = payload.releaseChannel;
+  }
+
+  return result;
+}
+
+function assertPort(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65_535) {
+    throw new Error(`${field} must be an integer between 1 and 65535`);
+  }
+  return value;
+}
+
+function assertStringArray(value: unknown, field: string, maxItems = 32): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${field} must be an array`);
+  }
+  if (value.length > maxItems) {
+    throw new Error(`${field} exceeds maximum item count (${maxItems})`);
+  }
+  return value.map((item, index) => {
+    if (typeof item !== "string" || item.trim().length === 0) {
+      throw new Error(`${field}[${index}] must be a non-empty string`);
+    }
+    if (item.length > 2048) {
+      throw new Error(`${field}[${index}] is too long`);
+    }
+    return item;
+  });
+}
+
+function assertRuntimeProfileInput(value: unknown): RuntimeProfileInput {
+  if (!value || typeof value !== "object") {
+    throw new Error("Runtime profile payload is required");
+  }
+  const payload = value as Partial<RuntimeProfileInput>;
+  return {
+    id: typeof payload.id === "string" ? payload.id : undefined,
+    name: assertString(payload.name, "name"),
+    host: assertString(payload.host, "host"),
+    port: assertPort(payload.port, "port"),
+    https: assertBoolean(payload.https, "https"),
+    username: typeof payload.username === "string" ? payload.username : undefined,
+    password: typeof payload.password === "string" ? payload.password : undefined,
+    startCommand: assertBoolean(payload.startCommand, "startCommand"),
+    startHost: assertString(payload.startHost, "startHost"),
+    startPort: assertPort(payload.startPort, "startPort"),
+    cliPath: typeof payload.cliPath === "string" ? payload.cliPath : undefined,
+    corsOrigins: assertStringArray(payload.corsOrigins, "corsOrigins", 64),
+  };
+}
+
+function assertSafeJsonValue(value: unknown, field: string, depth = 0): unknown {
+  if (depth > 24) {
+    throw new Error(`${field} exceeds max nesting depth`);
+  }
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 1_500) {
+      throw new Error(`${field} exceeds max array length`);
+    }
+    return value.map((item, index) => assertSafeJsonValue(item, `${field}[${index}]`, depth + 1));
+  }
+  if (typeof value === "object") {
+    if (Object.getPrototypeOf(value) !== Object.prototype) {
+      throw new Error(`${field} must be a plain object`);
+    }
+    const next: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      if (key === "__proto__" || key === "constructor" || key === "prototype") {
+        throw new Error(`${field} contains restricted key ${key}`);
+      }
+      next[key] = assertSafeJsonValue(nested, `${field}.${key}`, depth + 1);
+    }
+    return next;
+  }
+  throw new Error(`${field} contains unsupported value type`);
+}
+
+function assertConfigPatch(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Config patch must be an object");
+  }
+  return assertSafeJsonValue(value, "patch") as Parameters<typeof service.updateConfig>[1];
+}
+
+function assertPromptRequestInput(value: unknown): Parameters<typeof service.sendPrompt>[0] {
+  if (!value || typeof value !== "object") {
+    throw new Error("Prompt request is required");
+  }
+
+  const payload = value as {
+    directory?: unknown;
+    sessionID?: unknown;
+    text?: unknown;
+    attachments?: unknown;
+    agent?: unknown;
+    model?: unknown;
+    variant?: unknown;
+  };
+
+  const text = assertString(payload.text, "text");
+  if (text.length > 64_000) {
+    throw new Error("text exceeds maximum length");
+  }
+
+  const result: Parameters<typeof service.sendPrompt>[0] = {
+    directory: assertString(payload.directory, "directory"),
+    sessionID: assertString(payload.sessionID, "sessionID"),
+    text,
+  };
+
+  if (payload.attachments !== undefined) {
+    if (!Array.isArray(payload.attachments) || payload.attachments.length > 24) {
+      throw new Error("attachments must be an array with at most 24 items");
+    }
+    result.attachments = payload.attachments.map((entry, index) => {
+      if (!entry || typeof entry !== "object") {
+        throw new Error(`attachments[${index}] must be an object`);
+      }
+      const item = entry as { url?: unknown; mime?: unknown; filename?: unknown };
+      const url = assertString(item.url, `attachments[${index}].url`);
+      const mime = assertString(item.mime, `attachments[${index}].mime`);
+      if (url.length > 4096) {
+        throw new Error(`attachments[${index}].url is too long`);
+      }
+      if (mime.length > 256) {
+        throw new Error(`attachments[${index}].mime is too long`);
+      }
+      const attachment: { url: string; mime: string; filename?: string } = { url, mime };
+      if (item.filename !== undefined) {
+        if (typeof item.filename !== "string" || item.filename.length > 256) {
+          throw new Error(`attachments[${index}].filename must be a string (max 256 chars)`);
+        }
+        attachment.filename = item.filename;
+      }
+      return attachment;
+    });
+  }
+
+  if (payload.agent !== undefined) {
+    if (typeof payload.agent !== "string" || payload.agent.length > 128) {
+      throw new Error("agent must be a string with max length 128");
+    }
+    result.agent = payload.agent;
+  }
+
+  if (payload.model !== undefined) {
+    if (!payload.model || typeof payload.model !== "object") {
+      throw new Error("model must be an object");
+    }
+    const model = payload.model as { providerID?: unknown; modelID?: unknown };
+    result.model = {
+      providerID: assertString(model.providerID, "model.providerID"),
+      modelID: assertString(model.modelID, "model.modelID"),
+    };
+  }
+
+  if (payload.variant !== undefined) {
+    if (typeof payload.variant !== "string" || payload.variant.length > 128) {
+      throw new Error("variant must be a string with max length 128");
+    }
+    result.variant = payload.variant;
+  }
+
+  return result;
 }
 
 function createWindow() {
@@ -98,6 +290,37 @@ function createWindow() {
   return window;
 }
 
+function buildAppMenuTemplate(): MenuItemConstructorOptions[] {
+  const helpMenu: MenuItemConstructorOptions = {
+    role: "help",
+    submenu: [
+      {
+        label: "Check for updates",
+        click: () => {
+          void autoUpdaterController?.checkNow();
+        },
+      },
+    ],
+  };
+
+  if (process.platform === "darwin") {
+    return [
+      { role: "appMenu" },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" },
+      helpMenu,
+    ];
+  }
+
+  return [{ role: "fileMenu" }, { role: "viewMenu" }, { role: "windowMenu" }, helpMenu];
+}
+
+function setupApplicationMenu() {
+  Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate()));
+}
+
 function resolveOrxaTemplateDir() {
   if (app.isPackaged) {
     return path.join(process.resourcesPath, "orxa-template");
@@ -110,7 +333,7 @@ async function configureMacAppIdentity() {
     return;
   }
 
-  app.setName("OrxaCode");
+  app.setName("Opencode Orxa");
 
   const dockIconPath = path.join(process.cwd(), "build", "icon.png");
   try {
@@ -160,14 +383,33 @@ function registerIpcHandlers() {
       await service.ensureOrxaPluginRegistration();
       return modeStore.setMode(mode);
     }
-    startupOrxaBootstrap = undefined;
+    startupBootstrap.clear();
     await service.removeOrxaPluginFromConfig();
     return modeStore.setMode(mode);
+  });
+  ipcMain.handle(IPC.updatesGetPreferences, async () =>
+    autoUpdaterController?.getPreferences() ?? { autoCheckEnabled: true, releaseChannel: "stable" },
+  );
+  ipcMain.handle(IPC.updatesSetPreferences, async (_event, input: unknown) => {
+    if (!autoUpdaterController) {
+      throw new Error("Updater controller not available");
+    }
+    return autoUpdaterController.setPreferences(assertUpdatePreferencesInput(input));
+  });
+  ipcMain.handle(IPC.updatesCheckNow, async () => {
+    if (!autoUpdaterController) {
+      return {
+        ok: true,
+        status: "skipped",
+        message: "Updater not initialized",
+      };
+    }
+    return autoUpdaterController.checkNow();
   });
 
   ipcMain.handle(IPC.runtimeGetState, async () => service.runtimeState());
   ipcMain.handle(IPC.runtimeListProfiles, async () => service.listProfiles());
-  ipcMain.handle(IPC.runtimeSaveProfile, async (_event, input: RuntimeProfileInput) => service.saveProfile(input));
+  ipcMain.handle(IPC.runtimeSaveProfile, async (_event, input: unknown) => service.saveProfile(assertRuntimeProfileInput(input)));
   ipcMain.handle(IPC.runtimeDeleteProfile, async (_event, profileID: unknown) =>
     service.deleteProfile(assertString(profileID, "profileID")),
   );
@@ -178,9 +420,7 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.runtimeStopLocal, async () => service.stopLocal());
 
   ipcMain.handle(IPC.opencodeBootstrap, async () => {
-    if (startupOrxaBootstrap) {
-      await startupOrxaBootstrap;
-    }
+    await startupBootstrap.wait();
     return service.bootstrap();
   });
   ipcMain.handle(IPC.opencodeAddProjectDirectory, async () => {
@@ -230,12 +470,7 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeLoadMessages, async (_event, directory: unknown, sessionID: unknown) =>
     service.loadMessages(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
   );
-  ipcMain.handle(IPC.opencodeSendPrompt, async (_event, request: unknown) => {
-    if (!request || typeof request !== "object") {
-      throw new Error("Prompt request is required");
-    }
-    return service.sendPrompt(request as Parameters<typeof service.sendPrompt>[0]);
-  });
+  ipcMain.handle(IPC.opencodeSendPrompt, async (_event, request: unknown) => service.sendPrompt(assertPromptRequestInput(request)));
   ipcMain.handle(
     IPC.opencodeReplyPermission,
     async (_event, directory: unknown, requestID: unknown, reply: unknown, message?: unknown) => {
@@ -269,10 +504,7 @@ function registerIpcHandlers() {
     if (scope !== "project" && scope !== "global") {
       throw new Error("Invalid config scope");
     }
-    if (!patch || typeof patch !== "object") {
-      throw new Error("Config patch is required");
-    }
-    return service.updateConfig(scope, patch as Parameters<typeof service.updateConfig>[1], typeof directory === "string" ? directory : undefined);
+    return service.updateConfig(scope, assertConfigPatch(patch), typeof directory === "string" ? directory : undefined);
   });
   ipcMain.handle(IPC.opencodeReadRawConfig, async (_event, scope: unknown, directory?: unknown) => {
     if (scope !== "project" && scope !== "global") {
@@ -539,21 +771,34 @@ async function boot() {
 
   service.onEvent = (event) => publishEvent(event);
 
+  if (process.argv.includes(SMOKE_TEST_FLAG) || process.env.ORXA_SMOKE_TEST === "1") {
+    setTimeout(() => {
+      app.quit();
+    }, 300);
+    return;
+  }
+
   mainWindow = createWindow();
   void configureMacAppIdentity();
-  autoUpdateCleanup = setupAutoUpdates(() => mainWindow);
+  autoUpdaterController = setupAutoUpdates(
+    () => mainWindow,
+    (payload) =>
+      publishEvent({
+        type: "updater.telemetry",
+        payload,
+      }),
+  );
+  setupApplicationMenu();
 
   const startupMode = modeStore.getMode();
   if (shouldRunOrxaBootstrap(startupMode)) {
-    startupOrxaBootstrap = (async () => {
-      await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
-      await service.ensureOrxaPluginRegistration();
-    })()
+    void startupBootstrap
+      .start(async () => {
+        await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
+        await service.ensureOrxaPluginRegistration();
+      })
       .catch((error) => {
         console.error("Failed to initialize Orxa workspace/plugin:", error);
-      })
-      .finally(() => {
-        startupOrxaBootstrap = undefined;
       });
   }
 
@@ -576,7 +821,7 @@ async function boot() {
   });
 
   app.on("before-quit", () => {
-    autoUpdateCleanup?.();
+    autoUpdaterController?.cleanup();
     flushAllPtyOutput();
     void service.stopLocal();
   });

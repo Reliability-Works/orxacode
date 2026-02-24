@@ -22,6 +22,9 @@ import type {
 export const IPC = {
   modeGet: "orxa:mode:get",
   modeSet: "orxa:mode:set",
+  updatesGetPreferences: "orxa:updates:getPreferences",
+  updatesSetPreferences: "orxa:updates:setPreferences",
+  updatesCheckNow: "orxa:updates:checkNow",
   runtimeGetState: "orxa:runtime:getState",
   runtimeListProfiles: "orxa:runtime:listProfiles",
   runtimeSaveProfile: "orxa:runtime:saveProfile",
@@ -97,6 +100,19 @@ export const IPC = {
 } as const;
 
 export type AppMode = "orxa" | "standard";
+
+export type UpdateReleaseChannel = "stable" | "prerelease";
+
+export type UpdatePreferences = {
+  autoCheckEnabled: boolean;
+  releaseChannel: UpdateReleaseChannel;
+};
+
+export type UpdateCheckResult = {
+  ok: boolean;
+  status: "started" | "skipped" | "error";
+  message?: string;
+};
 
 export type RuntimeProfile = {
   id: string;
@@ -389,12 +405,29 @@ export type OrxaEvent =
         ptyID: string;
         directory: string;
       };
+    }
+  | {
+      type: "updater.telemetry";
+      payload: {
+        phase: "check.start" | "check.success" | "check.error" | "download.progress" | "download.complete";
+        manual: boolean;
+        releaseChannel: UpdateReleaseChannel;
+        durationMs?: number;
+        percent?: number;
+        message?: string;
+        version?: string;
+      };
     };
 
 export interface OrxaBridge {
   mode: {
     get: () => Promise<AppMode>;
     set: (mode: AppMode) => Promise<AppMode>;
+  };
+  updates: {
+    getPreferences: () => Promise<UpdatePreferences>;
+    setPreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
+    checkNow: () => Promise<UpdateCheckResult>;
   };
   runtime: {
     getState: () => Promise<RuntimeState>;

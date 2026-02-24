@@ -18,6 +18,11 @@ beforeEach(() => {
         get: modeGetMock,
         set: modeSetMock,
       },
+      updates: {
+        getPreferences: vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" })),
+        setPreferences: vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" })),
+        checkNow: vi.fn(async () => ({ ok: true, status: "started" })),
+      },
       runtime: {
         getState: vi.fn(async () => ({ status: "disconnected", managedServer: false })),
         listProfiles: vi.fn(async () => []),

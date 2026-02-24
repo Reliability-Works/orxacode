@@ -18,38 +18,38 @@
 - [x] Integrate `electron-updater` with user prompts for download and restart.
 - [x] Configure Electron Builder GitHub publish metadata.
 - [x] Add periodic update checks for packaged builds.
-- [ ] Add a settings toggle for auto-update checks.
-- [ ] Add “Check for updates” manual action in settings/help menu.
-- [ ] Add release-channel support (stable/prerelease).
-- [ ] Add telemetry for update-check success/failure/download timing.
+- [x] Add a settings toggle for auto-update checks.
+- [x] Add “Check for updates” manual action in settings/help menu.
+- [x] Add release-channel support (stable/prerelease).
+- [x] Add telemetry for update-check success/failure/download timing.
 
 ## 3) CI/CD and Release Process
 
 - [x] Create CI workflow for lint/typecheck/coverage.
 - [x] Create tag-driven release workflow for GitHub Releases publishing.
 - [x] Document tag-based release process in README.
-- [ ] Add signed macOS builds + notarization pipeline.
-- [ ] Add Windows target packaging and publishing.
+- [x] Add signed macOS builds + notarization pipeline.
+- [x] Add Windows target packaging and publishing.
 - [ ] Add changelog generation from conventional commits.
-- [ ] Add release smoke-test job (launch app artifact, sanity checks).
+- [x] Add release smoke-test job (launch app artifact, sanity checks).
 
 ## 4) Documentation
 
 - [x] Rewrite README to reflect current architecture/features.
 - [x] Add explicit homage and “powered by OpenCode” attribution.
 - [x] Document auto-update behavior and release flow.
-- [ ] Add architecture diagram (main/preload/renderer + IPC + runtime).
-- [ ] Add troubleshooting guide for runtime/plugin/update failures.
+- [x] Add architecture diagram (main/preload/renderer + IPC + runtime).
+- [x] Add troubleshooting guide for runtime/plugin/update failures.
 
 ## 5) Testing and Coverage
 
 - [x] Add coverage script and CI enforcement.
 - [x] Add/expand tests for core model/format/agent selection logic.
 - [x] Enforce 80%+ coverage gate for core shared logic modules.
-- [ ] Expand coverage gate to include hooks and renderer integration paths.
-- [ ] Add tests for updater service behavior with mocked Electron APIs.
-- [ ] Add tests for startup/bootstrap sequencing in main process.
-- [ ] Add integration test harness for IPC event flow under load.
+- [x] Expand coverage gate to include hooks and renderer integration paths.
+- [x] Add tests for updater service behavior with mocked Electron APIs.
+- [x] Add tests for startup/bootstrap sequencing in main process.
+- [x] Add integration test harness for IPC event flow under load.
 - [ ] Reach 80%+ coverage across the full renderer code surface.
 
 ## 6) Security and Hardening
@@ -57,5 +57,5 @@
 - [x] Keep context isolation and sandbox defaults in BrowserWindow.
 - [x] Keep external-link opening constrained via `shell.openExternal`.
 - [ ] Add dependency vulnerability scan in CI (`pnpm audit` policy + allowlist flow).
-- [ ] Add secret scanning workflow.
-- [ ] Add stricter schema validation for high-risk IPC payloads.
+- [x] Add secret scanning workflow.
+- [x] Add stricter schema validation for high-risk IPC payloads.

@@ -1,8 +1,8 @@
 {
-  "name": "orxacode",
+  "name": "opencode-orxa",
   "private": true,
   "version": "0.1.0",
-  "description": "Electron OpenCode monitor desktop app",
+  "description": "Opencode Orxa Electron desktop app",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -10,17 +10,19 @@
     "dev:mac": "node scripts/sync-macos-dev-icon.mjs && vite",
     "build": "tsc -b && vite build",
     "dist": "pnpm build && electron-builder",
+    "dist:dir": "pnpm build && electron-builder --dir",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "ci": "pnpm lint && pnpm typecheck && pnpm test:coverage",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke:artifact": "node scripts/release-smoke-test.mjs"
   },
   "build": {
     "appId": "ai.orxa.opencode.monitor",
-    "productName": "OrxaCode",
+    "productName": "Opencode Orxa",
     "files": [
       "dist/**",
       "dist-electron/**",
@@ -37,7 +39,7 @@
       {
         "provider": "github",
         "owner": "Reliability-Works",
-        "repo": "orxacode",
+        "repo": "opencode-orxa",
         "releaseType": "release"
       }
     ],
@@ -48,7 +50,17 @@
         "zip"
       ],
       "icon": "build/icon.icns",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
     },
     "linux": {
       "target": [

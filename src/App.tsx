@@ -803,7 +803,7 @@ export default function App() {
   useEffect(() => {
     const events = window.orxa?.events;
     if (!events) {
-      setStatusLine("Desktop bridge unavailable. Restart OrxaCode to reconnect.");
+      setStatusLine("Desktop bridge unavailable. Restart Opencode Orxa to reconnect.");
       return;
     }
 
@@ -814,6 +814,23 @@ export default function App() {
 
       if (event.type === "runtime.error") {
         setStatusLine(event.payload.message);
+      }
+
+      if (event.type === "updater.telemetry") {
+        if (event.payload.phase === "check.start") {
+          setStatusLine("Checking for updates...");
+        } else if (event.payload.phase === "check.success") {
+          const timing = typeof event.payload.durationMs === "number" ? ` (${Math.round(event.payload.durationMs)}ms)` : "";
+          if (event.payload.version) {
+            setStatusLine(`Update available: ${event.payload.version}${timing}`);
+          } else if (event.payload.manual) {
+            setStatusLine(`Update check complete${timing}`);
+          }
+        } else if (event.payload.phase === "check.error") {
+          setStatusLine(event.payload.message ? `Update check failed: ${event.payload.message}` : "Update check failed");
+        } else if (event.payload.phase === "download.complete") {
+          setStatusLine("Update downloaded. Restart when ready.");
+        }
       }
 
       if (event.type === "opencode.global") {
@@ -1148,7 +1165,7 @@ export default function App() {
       try {
         const confirmed = await requestConfirmation({
           title: "Remove workspace",
-          message: `Remove "${label}" from OrxaCode workspace list?`,
+          message: `Remove "${label}" from Opencode Orxa workspace list?`,
           confirmLabel: "Remove",
           cancelLabel: "Cancel",
           variant: "danger",
@@ -2304,6 +2321,9 @@ export default function App() {
         onAppPreferencesChange={setAppPreferences}
         onGetServerDiagnostics={() => window.orxa.opencode.getServerDiagnostics()}
         onRepairRuntime={() => window.orxa.opencode.repairRuntime()}
+        onGetUpdatePreferences={() => window.orxa.updates.getPreferences()}
+        onSetUpdatePreferences={(input) => window.orxa.updates.setPreferences(input)}
+        onCheckForUpdates={() => window.orxa.updates.checkNow()}
         onGetOrxaAgentDetails={(name) => window.orxa.opencode.getOrxaAgentDetails(name)}
         onResetOrxaAgent={(name) => window.orxa.opencode.resetOrxaAgent(name)}
         onRestoreOrxaAgentHistory={(name, historyID) => window.orxa.opencode.restoreOrxaAgentHistory(name, historyID)}

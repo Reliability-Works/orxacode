@@ -8,6 +8,7 @@ import type {
   OrxaAgentDocument,
   RawConfigDocument,
   ServerDiagnostics,
+  UpdatePreferences,
 } from "@shared/ipc";
 import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
@@ -38,6 +39,9 @@ type Props = {
   onAppPreferencesChange: (next: AppPreferences) => void;
   onGetServerDiagnostics: () => Promise<ServerDiagnostics>;
   onRepairRuntime: () => Promise<ServerDiagnostics>;
+  onGetUpdatePreferences: () => Promise<UpdatePreferences>;
+  onSetUpdatePreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
+  onCheckForUpdates: () => Promise<{ ok: boolean; status: "started" | "skipped" | "error"; message?: string }>;
   onChangeMode: (mode: AppMode) => Promise<void>;
   allModelOptions: ModelOption[];
 };
@@ -89,6 +93,9 @@ export function SettingsDrawer({
   onAppPreferencesChange,
   onGetServerDiagnostics,
   onRepairRuntime,
+  onGetUpdatePreferences,
+  onSetUpdatePreferences,
+  onCheckForUpdates,
   onChangeMode,
   allModelOptions,
 }: Props) {
@@ -113,6 +120,11 @@ export function SettingsDrawer({
   const [agentDetails, setAgentDetails] = useState<OrxaAgentDetails | null>(null);
 
   const [serverDiagnostics, setServerDiagnostics] = useState<ServerDiagnostics | null>(null);
+  const [updatePreferences, setUpdatePreferences] = useState<UpdatePreferences>({
+    autoCheckEnabled: true,
+    releaseChannel: "stable",
+  });
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
 
   const [ocAgents, setOcAgents] = useState<OpenCodeAgentFile[]>([]);
   const [selectedOcAgent, setSelectedOcAgent] = useState<string | undefined>();
@@ -163,17 +175,19 @@ export function SettingsDrawer({
       return;
     }
     const load = async () => {
-      const [raw, diagnostics, orxa, nextAgents] = await Promise.all([
+      const [raw, diagnostics, orxa, nextAgents, updaterPrefs] = await Promise.all([
         onReadRaw(effectiveScope, directory),
         onGetServerDiagnostics(),
         mode === "orxa" ? onReadOrxa() : Promise.resolve(null),
         mode === "orxa" ? onListOrxaAgents() : Promise.resolve([]),
+        onGetUpdatePreferences(),
       ]);
       setRawDoc(raw);
       setRawText(raw.content);
       setOrxaDoc(orxa);
       setOrxaText(orxa?.content ?? "");
       setAgents(nextAgents);
+      setUpdatePreferences(updaterPrefs);
       setSelectedAgentPath((current) => current ?? nextAgents[0]?.path);
       setServerDiagnostics(diagnostics);
       setFeedback(null);
@@ -190,6 +204,7 @@ export function SettingsDrawer({
     onReadOrxa,
     onListOrxaAgents,
     onGetServerDiagnostics,
+    onGetUpdatePreferences,
   ]);
 
   useEffect(() => {
@@ -345,6 +360,15 @@ export function SettingsDrawer({
 
   const renderSectionContent = () => {
     if (section === "app") {
+      const applyUpdatePreferences = (patch: Partial<UpdatePreferences>) => {
+        void onSetUpdatePreferences(patch)
+          .then((next) => {
+            setUpdatePreferences(next);
+            setFeedback("Update preferences saved");
+          })
+          .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+      };
+
       return (
         <section className="settings-section-card settings-pad">
           <h3>App Preferences</h3>
@@ -401,6 +425,49 @@ export function SettingsDrawer({
             />
             Confirm dangerous actions (reject buttons)
           </label>
+          <label className="settings-inline-toggle">
+            <input
+              type="checkbox"
+              checked={updatePreferences.autoCheckEnabled}
+              onChange={(event) => applyUpdatePreferences({ autoCheckEnabled: event.target.checked })}
+            />
+            Automatically check for updates (packaged app builds only)
+          </label>
+          <label>
+            Release channel
+            <select
+              value={updatePreferences.releaseChannel}
+              onChange={(event) =>
+                applyUpdatePreferences({ releaseChannel: event.target.value as UpdatePreferences["releaseChannel"] })
+              }
+            >
+              <option value="stable">Stable (production releases)</option>
+              <option value="prerelease">Prerelease (beta/RC releases)</option>
+            </select>
+          </label>
+          <div className="settings-actions">
+            <button
+              type="button"
+              disabled={checkingForUpdates}
+              onClick={() => {
+                setCheckingForUpdates(true);
+                void onCheckForUpdates()
+                  .then((result) => {
+                    if (result.status === "started") {
+                      setFeedback("Update check started");
+                    } else if (result.message) {
+                      setFeedback(result.message);
+                    } else {
+                      setFeedback("Update check skipped");
+                    }
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setCheckingForUpdates(false));
+              }}
+            >
+              {checkingForUpdates ? "Checking..." : "Check for updates now"}
+            </button>
+          </div>
           <label className="settings-textarea-label">
             Commit message guidance prompt
             <textarea

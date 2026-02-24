@@ -47,6 +47,9 @@ describe("SettingsDrawer", () => {
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
+        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
         onChangeMode={vi.fn(async () => undefined)}
         allModelOptions={[]}
       />,

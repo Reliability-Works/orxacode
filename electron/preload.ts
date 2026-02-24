@@ -1,29 +1,18 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { IPC, type OrxaBridge, type OrxaEvent } from "../shared/ipc";
+import { IPC, type OrxaBridge } from "../shared/ipc";
+import { createIpcEventHub } from "./services/ipc-event-hub";
 
-const eventListeners = new Set<(event: OrxaEvent) => void>();
-const onEvents = (_event: Electron.IpcRendererEvent, payload: OrxaEvent) => {
-  for (const listener of eventListeners) {
-    listener(payload);
-  }
-};
-
-function ensureEventSubscription() {
-  if (eventListeners.size === 1) {
-    ipcRenderer.on(IPC.events, onEvents);
-  }
-}
-
-function teardownEventSubscriptionIfIdle() {
-  if (eventListeners.size === 0) {
-    ipcRenderer.removeListener(IPC.events, onEvents);
-  }
-}
+const eventHub = createIpcEventHub(ipcRenderer, IPC.events);
 
 const bridge: OrxaBridge = {
   mode: {
     get: () => ipcRenderer.invoke(IPC.modeGet),
     set: (mode) => ipcRenderer.invoke(IPC.modeSet, mode),
+  },
+  updates: {
+    getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),
+    setPreferences: (input) => ipcRenderer.invoke(IPC.updatesSetPreferences, input),
+    checkNow: () => ipcRenderer.invoke(IPC.updatesCheckNow),
   },
   runtime: {
     getState: () => ipcRenderer.invoke(IPC.runtimeGetState),
@@ -107,14 +96,7 @@ const bridge: OrxaBridge = {
     close: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
   },
   events: {
-    subscribe: (listener) => {
-      eventListeners.add(listener);
-      ensureEventSubscription();
-      return () => {
-        eventListeners.delete(listener);
-        teardownEventSubscriptionIfIdle();
-      };
-    },
+    subscribe: (listener) => eventHub.subscribe(listener),
   },
 };
 
