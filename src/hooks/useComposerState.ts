@@ -35,6 +35,7 @@ type UseComposerStateOptions = {
   startResponsePolling: (directory: string, sessionID: string) => void;
   stopResponsePolling: () => void;
   clearPendingSession: () => void;
+  onSessionAbortRequested?: (directory: string, sessionID: string) => void;
 };
 
 export function useComposerState(activeProjectDir: string | null, activeSessionID: string | null, options: UseComposerStateOptions) {
@@ -242,6 +243,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
     try {
+      options.onSessionAbortRequested?.(activeProjectDir, activeSessionID);
       await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID);
       options.setStatusLine("Stopped");
       options.stopResponsePolling();

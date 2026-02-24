@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { OrxaAgentDocument } from "@shared/ipc";
@@ -6,12 +6,66 @@ import { preferredAgentForMode } from "./lib/app-mode";
 
 const modeGetMock = vi.fn(async () => "orxa");
 const modeSetMock = vi.fn(async (mode: "orxa" | "standard") => mode);
+const checkDependenciesMock = vi.fn(async () => ({
+  checkedAt: Date.now(),
+  missingAny: false,
+  missingRequired: false,
+  dependencies: [
+    {
+      key: "opencode" as const,
+      label: "OpenCode CLI",
+      required: true,
+      installed: true,
+      description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
+      reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+      installCommand: "npm install -g opencode-ai",
+      sourceUrl: "https://github.com/anomalyco/opencode",
+    },
+    {
+      key: "orxa" as const,
+      label: "Opencode Orxa Package",
+      required: false,
+      installed: true,
+      description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
+      reason: "Optional. Needed only when using Orxa mode features.",
+      installCommand: "npm install -g @reliabilityworks/opencode-orxa",
+      sourceUrl: "https://github.com/Reliability-Works/opencode-orxa",
+    },
+  ],
+}));
 
 beforeEach(() => {
   window.localStorage.clear();
   const subscribe = vi.fn(() => () => undefined);
   modeGetMock.mockResolvedValue("orxa");
   modeSetMock.mockImplementation(async (mode: "orxa" | "standard") => mode);
+  checkDependenciesMock.mockResolvedValue({
+    checkedAt: Date.now(),
+    missingAny: false,
+    missingRequired: false,
+    dependencies: [
+      {
+        key: "opencode",
+        label: "OpenCode CLI",
+        required: true,
+        installed: true,
+        description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
+        reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+        installCommand: "npm install -g opencode-ai",
+        sourceUrl: "https://github.com/anomalyco/opencode",
+      },
+      {
+        key: "orxa",
+        label: "Opencode Orxa Package",
+        required: false,
+        installed: true,
+        description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
+        reason: "Optional. Needed only when using Orxa mode features.",
+        installCommand: "npm install -g @reliabilityworks/opencode-orxa",
+        sourceUrl: "https://github.com/Reliability-Works/opencode-orxa",
+      },
+    ],
+  });
 
   Object.defineProperty(window, "orxa", {
     value: {
@@ -35,6 +89,7 @@ beforeEach(() => {
       },
       opencode: {
         bootstrap: vi.fn(async () => ({ projects: [], runtime: { status: "disconnected", managedServer: false } })),
+        checkDependencies: checkDependenciesMock,
         addProjectDirectory: vi.fn(async () => undefined),
         removeProjectDirectory: vi.fn(async () => true),
         selectProject: vi.fn(async () => {
@@ -163,6 +218,86 @@ describe("App", () => {
         firstAgentName: "plan",
       }),
     ).toBe("orxa");
+  });
+
+  it("shows dependency modal when required runtime dependency is missing", async () => {
+    checkDependenciesMock.mockResolvedValueOnce({
+      checkedAt: Date.now(),
+      missingAny: true,
+      missingRequired: true,
+      dependencies: [
+        {
+          key: "opencode",
+          label: "OpenCode CLI",
+          required: true,
+          installed: false,
+          description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
+          reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+          installCommand: "npm install -g opencode-ai",
+          sourceUrl: "https://github.com/anomalyco/opencode",
+        },
+        {
+          key: "orxa",
+          label: "Opencode Orxa Package",
+          required: false,
+          installed: false,
+          description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
+          reason: "Optional. Needed only when using Orxa mode features.",
+          installCommand: "npm install -g @reliabilityworks/opencode-orxa",
+          sourceUrl: "https://github.com/Reliability-Works/opencode-orxa",
+        },
+      ],
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Runtime Dependencies" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("npm install -g opencode-ai")).toBeInTheDocument();
+    expect(screen.getByText("npm install -g @reliabilityworks/opencode-orxa")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+
+    const overlay = document.querySelector(".dependency-overlay");
+    expect(overlay).not.toBeNull();
+    overlay?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(screen.getByRole("heading", { name: "Runtime Dependencies" })).toBeInTheDocument();
+
+    checkDependenciesMock.mockResolvedValueOnce({
+      checkedAt: Date.now(),
+      missingAny: false,
+      missingRequired: false,
+      dependencies: [
+        {
+          key: "opencode",
+          label: "OpenCode CLI",
+          required: true,
+          installed: true,
+          description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
+          reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+          installCommand: "npm install -g opencode-ai",
+          sourceUrl: "https://github.com/anomalyco/opencode",
+        },
+        {
+          key: "orxa",
+          label: "Opencode Orxa Package",
+          required: false,
+          installed: true,
+          description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
+          reason: "Optional. Needed only when using Orxa mode features.",
+          installCommand: "npm install -g @reliabilityworks/opencode-orxa",
+          sourceUrl: "https://github.com/Reliability-Works/opencode-orxa",
+        },
+      ],
+    });
+    const callsBeforeRetry = checkDependenciesMock.mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("heading", { name: "Runtime Dependencies" })).not.toBeInTheDocument();
+    });
+    expect(checkDependenciesMock.mock.calls.length).toBeGreaterThanOrEqual(callsBeforeRetry + 1);
   });
 
 });

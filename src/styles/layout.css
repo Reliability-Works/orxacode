@@ -1229,6 +1229,45 @@ body.is-resizing * {
   flex-wrap: wrap;
 }
 
+.composer-compaction-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-dim);
+}
+
+.composer-compaction-indicator-inline {
+  margin-left: auto;
+}
+
+.composer-compaction-glyph {
+  --compaction-progress: 0%;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, transparent 56%, transparent 58%, rgba(255, 255, 255, 0.15) 59%, rgba(255, 255, 255, 0.15) 100%),
+    conic-gradient(hsl(220 12% 84%) var(--compaction-progress), hsl(220 10% 30%) 0);
+  -webkit-mask: radial-gradient(circle at center, transparent 53%, #000 55%);
+  mask: radial-gradient(circle at center, transparent 53%, #000 55%);
+  transition: background 140ms ease;
+}
+
+.composer-compaction-indicator.compacted .composer-compaction-glyph {
+  background:
+    radial-gradient(circle at center, transparent 56%, transparent 58%, hsl(151 72% 58% / 0.2) 59%, hsl(151 72% 58% / 0.2) 100%),
+    conic-gradient(hsl(151 72% 66%) 100%, hsl(151 52% 24%) 0);
+}
+
+.composer-compaction-indicator:hover {
+  transform: none;
+  filter: brightness(1.06);
+}
+
 .composer-branch-wrap {
   position: relative;
 }
@@ -1241,11 +1280,11 @@ body.is-resizing * {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 3px 10px;
-  height: 30px;
+  height: 32px;
   background: var(--bg-raised);
   color: var(--text-muted);
-  min-width: 12ch;
-  max-width: min(58vw, 32ch);
+  min-width: 14ch;
+  max-width: min(72vw, 56ch);
 }
 
 .composer-branch-leading {
@@ -1573,23 +1612,81 @@ body.is-resizing * {
   background: var(--bg-raised);
 }
 
-.composer-permission-mode {
-  padding: 2px 6px 2px 9px;
-  min-height: 30px;
+.composer-permission-wrap {
+  position: relative;
+}
+
+.composer-permission-control {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-raised);
+  height: 32px;
+  padding: 3px 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transform: none;
+  max-width: min(64vw, 34ch);
 }
 
-.composer-permission-select {
-  min-width: 6.2ch;
-  max-width: 8ch;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  height: auto;
+.composer-permission-control:hover {
+  transform: none;
+}
+
+.composer-permission-label {
+  font-size: 0.8rem;
   color: var(--text-main);
-  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.composer-permission-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  min-width: 256px;
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  background: linear-gradient(170deg, var(--bg-raised), var(--bg-surface));
+  box-shadow: 0 16px 40px var(--shadow);
+  z-index: 72;
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+}
+
+.composer-permission-menu button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-main);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  transform: none;
+}
+
+.composer-permission-menu button:hover {
+  transform: none;
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+}
+
+.composer-permission-menu button.active {
+  border-color: var(--border-active);
+  background: var(--bg-active);
+}
+
+.composer-permission-option-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .agent-mode-toggle {

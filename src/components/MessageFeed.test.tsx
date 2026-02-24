@@ -579,7 +579,7 @@ describe("MessageFeed", () => {
     expect(within(dialog).getByText(/apply_patch \(completed\)/i)).toBeInTheDocument();
   });
 
-  it("does not close delegation modal on backdrop click and closes on escape", () => {
+  it("closes delegation modal on backdrop click and on escape", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -604,21 +604,24 @@ describe("MessageFeed", () => {
       },
     ];
 
-    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
+    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
     fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const openedDialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
+    const openedDialogs = within(view.container).getAllByRole("dialog", { name: /delegation: build/i });
     expect(openedDialogs[openedDialogs.length - 1]).toBeInTheDocument();
 
-    const backdrop = document.querySelector(".delegation-modal-overlay");
+    const backdrop = view.container.querySelector(".delegation-modal-overlay");
     expect(backdrop).not.toBeNull();
     fireEvent.click(backdrop!);
-    const stillOpenDialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
-    expect(stillOpenDialogs[stillOpenDialogs.length - 1]).toBeInTheDocument();
+    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
+
+    const reopenedBuildButtons = within(view.container).getAllByRole("button", { name: /build/i });
+    fireEvent.click(reopenedBuildButtons[reopenedBuildButtons.length - 1]!);
+    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
+    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
   });
 
   it("shows in-place activity with current file target from tool calls", () => {
@@ -769,6 +772,263 @@ describe("MessageFeed", () => {
 
     expect(screen.getByText(/Ran npm run typecheck/i)).toBeInTheDocument();
     expect(screen.getByText(/Command: npm run typecheck/i)).toBeInTheDocument();
+  });
+
+  it("shows created file summary for write tool without fake command rows", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-write-created",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-write-created",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-write-created",
+            callID: "call-write-created",
+            tool: "write",
+            state: {
+              status: "completed",
+              input: {
+                filePath: "/repo/src/components/ui/sheet.tsx",
+                content: "line one\nline two",
+              },
+              output: "Wrote file successfully.",
+              title: "src/components/ui/sheet.tsx",
+              metadata: {
+                filepath: "/repo/src/components/ui/sheet.tsx",
+                exists: false,
+              },
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    const createdPrefix = screen.getByText(/Created src\/components\/ui\/sheet\.tsx/i);
+    const createdRow = createdPrefix.closest(".message-timeline-row");
+    expect(createdRow).toBeTruthy();
+    expect(within(createdRow as HTMLElement).getByText("+2")).toHaveClass("message-diff-add");
+    expect(within(createdRow as HTMLElement).getByText("-0")).toHaveClass("message-diff-del");
+    expect(screen.queryByText(/Command: src\/components\/ui\/sheet\.tsx/i)).not.toBeInTheDocument();
+  });
+
+  it("shows useful error details for failed tool entries", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-write-failed",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-write-failed",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-write-failed",
+            callID: "call-write-failed",
+            tool: "write",
+            state: {
+              status: "error",
+              input: {
+                filePath: "/repo/package.json",
+                content: "{}",
+              },
+              error: "File not found: /repo/package.json",
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    expect(screen.getByText(/^Failed package\.json$/i)).toBeInTheDocument();
+    expect(screen.getByText(/Error: File not found: \/repo\/package\.json/i)).toBeInTheDocument();
+  });
+
+  it("does not render a generic ran-command row for non-command read-like titles", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-no-generic-run",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-read-title",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-no-generic-run",
+            callID: "call-read-title",
+            tool: "run",
+            state: {
+              status: "completed",
+              input: {},
+              output: "",
+              title: "Read .",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+    expect(screen.getByText("Read .")).toBeInTheDocument();
+    expect(screen.queryByText(/^Ran command$/i)).not.toBeInTheDocument();
+  });
+
+  it("renders loaded skill label without synthetic command line", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-loaded-skill",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-loaded-skill",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-loaded-skill",
+            callID: "call-loaded-skill",
+            tool: "run",
+            state: {
+              status: "completed",
+              input: {},
+              output: "",
+              title: "Loaded skill: frontend-design",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+    expect(screen.getAllByText("Loaded skill: frontend-design").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Command: Loaded skill: frontend-design/i)).not.toBeInTheDocument();
+  });
+
+  it("treats non-shell command titles as narrative labels", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-loaded-skill-command",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-loaded-skill-command",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-loaded-skill-command",
+            callID: "call-loaded-skill-command",
+            tool: "run",
+            state: {
+              status: "completed",
+              input: { command: "Loaded skill: frontend-design" },
+              output: "",
+              title: "Loaded skill: frontend-design",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+    expect(screen.getAllByText("Loaded skill: frontend-design").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^Ran Loaded skill:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Command: Loaded skill: frontend-design/i)).not.toBeInTheDocument();
+  });
+
+  it("renders additions/deletions with diff color classes in timeline labels", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-diff-color",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-write-diff-color",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-diff-color",
+            callID: "call-write-diff-color",
+            tool: "write",
+            state: {
+              status: "completed",
+              input: {
+                filePath: "/repo/src/app.tsx",
+                content: "line 1\nline 2",
+              },
+              output: "",
+              title: "write",
+              metadata: {
+                filepath: "/repo/src/app.tsx",
+                exists: false,
+              },
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    const additions = screen.getAllByText("+2");
+    const deletions = screen.getAllByText("-0");
+    expect(additions.some((node) => node.classList.contains("message-diff-add"))).toBe(true);
+    expect(deletions.some((node) => node.classList.contains("message-diff-del"))).toBe(true);
+  });
+
+  it("renders session stop notices with reason text", () => {
+    const now = Date.now();
+    render(
+      <MessageFeed
+        messages={[]}
+        sessionNotices={[
+          {
+            id: "notice-1",
+            time: now,
+            label: "Session stopped due to an error",
+            detail: "Permission request rejected by user",
+            tone: "error",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Session stopped due to an error")).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Permission request rejected by user/i)).toBeInTheDocument();
   });
 
   it("uses mode-aware assistant label", () => {

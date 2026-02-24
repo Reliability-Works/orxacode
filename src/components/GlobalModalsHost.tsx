@@ -1,6 +1,14 @@
 import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import type { PermissionRequest, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client";
-import type { ProjectListItem, RuntimeProfile, RuntimeProfileInput, RuntimeState, SessionMessageBundle, SkillEntry } from "@shared/ipc";
+import type {
+  ProjectListItem,
+  RuntimeDependencyReport,
+  RuntimeProfile,
+  RuntimeProfileInput,
+  RuntimeState,
+  SessionMessageBundle,
+  SkillEntry,
+} from "@shared/ipc";
 import { JobEditorModal, type JobRecord, type JobRunRecord } from "./JobsBoard";
 import { MessageFeed } from "./MessageFeed";
 import { ProfileModal } from "./ProfileModal";
@@ -18,6 +26,10 @@ type CommitSummary = {
 
 export type GlobalModalsHostProps = {
   activeProjectDir?: string;
+  dependencyReport: RuntimeDependencyReport | null;
+  dependencyModalOpen: boolean;
+  setDependencyModalOpen: Dispatch<SetStateAction<boolean>>;
+  onCheckDependencies: () => void | Promise<void>;
   permissionRequest: PermissionRequest | null;
   permissionDecisionPending: "once" | "always" | "reject" | null;
   replyPermission: (decision: "once" | "always" | "reject") => void | Promise<void>;
@@ -90,6 +102,10 @@ function formatQuestionPrompt(questionRequest: QuestionRequest | null) {
 
 export function GlobalModalsHost({
   activeProjectDir,
+  dependencyReport,
+  dependencyModalOpen,
+  setDependencyModalOpen,
+  onCheckDependencies,
   permissionRequest,
   permissionDecisionPending,
   replyPermission,
@@ -148,13 +164,105 @@ export function GlobalModalsHost({
   onStopLocalProfile,
 }: GlobalModalsHostProps) {
   const [questionDraft, setQuestionDraft] = useState("");
+  const [copiedDependencyKey, setCopiedDependencyKey] = useState<string | null>(null);
 
   useEffect(() => {
     setQuestionDraft("");
   }, [questionRequest?.id]);
 
+  useEffect(() => {
+    if (!copiedDependencyKey) {
+      return;
+    }
+    const timer = window.setTimeout(() => setCopiedDependencyKey(null), 1200);
+    return () => window.clearTimeout(timer);
+  }, [copiedDependencyKey]);
+
+  const copyDependencyCommand = async (installCommand: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(installCommand);
+      setCopiedDependencyKey(key);
+    } catch {
+      setCopiedDependencyKey(null);
+    }
+  };
+  const dependencyRequiredMissing = Boolean(dependencyReport?.missingRequired);
+  const closeDependencyModal = () => {
+    if (dependencyRequiredMissing) {
+      return;
+    }
+    setDependencyModalOpen(false);
+  };
+
   return (
     <>
+      {dependencyModalOpen && dependencyReport?.missingAny ? (
+        <div className="overlay dependency-overlay" onClick={closeDependencyModal}>
+          <section className="modal dependency-modal" onClick={(event) => event.stopPropagation()}>
+            <header className="modal-header">
+              <h2>Runtime Dependencies</h2>
+              {!dependencyRequiredMissing ? (
+                <button type="button" onClick={closeDependencyModal}>
+                  Close
+                </button>
+              ) : null}
+            </header>
+            <div className="dependency-modal-body">
+              <p className="dependency-intro">
+                OpenCode is required to run sessions. The Orxa package is optional and only needed for Orxa mode workflows.
+              </p>
+              {dependencyRequiredMissing ? (
+                <p className="dependency-warning">
+                  OpenCode is missing. Install it and use <strong>Check again</strong> to continue.
+                </p>
+              ) : null}
+              <div className="dependency-list">
+                {dependencyReport.dependencies.map((dependency) => (
+                  <article key={dependency.key} className={`dependency-card ${dependency.installed ? "ok" : "missing"}`.trim()}>
+                    <header>
+                      <strong>{dependency.label}</strong>
+                      <div className="dependency-badges">
+                        <span className={`dependency-badge ${dependency.required ? "required" : "optional"}`.trim()}>
+                          {dependency.required ? "Required" : "Optional"}
+                        </span>
+                        <span className={`dependency-badge ${dependency.installed ? "installed" : "missing"}`.trim()}>
+                          {dependency.installed ? "Installed" : "Missing"}
+                        </span>
+                      </div>
+                    </header>
+                    <p>{dependency.description}</p>
+                    <small>{dependency.reason}</small>
+                    <div className="dependency-install">
+                      <code>{dependency.installCommand}</code>
+                      <button
+                        type="button"
+                        className="dependency-copy-btn"
+                        onClick={() => void copyDependencyCommand(dependency.installCommand, dependency.key)}
+                      >
+                        {copiedDependencyKey === dependency.key ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <a href={dependency.sourceUrl} target="_blank" rel="noreferrer">
+                      Source repository
+                    </a>
+                  </article>
+                ))}
+              </div>
+              <div className="dependency-actions">
+                <button type="button" className="primary" onClick={() => void onCheckDependencies()}>
+                  Check again
+                </button>
+                {!dependencyRequiredMissing ? (
+                  <button type="button" onClick={closeDependencyModal}>
+                    Continue
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {permissionRequest && activeProjectDir ? (
         <div className="overlay permission-overlay">
           <section className="modal permission-modal">

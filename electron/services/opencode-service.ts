@@ -42,6 +42,7 @@ import type {
   RuntimeConnectionStatus,
   RuntimeProfile,
   RuntimeProfileInput,
+  RuntimeDependencyReport,
   RuntimeState,
   SkillEntry,
   ServerDiagnostics,
@@ -67,6 +68,11 @@ import { ProvenanceIndex } from "./provenance-index";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
+const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
+const OPENCODE_SOURCE_URL = "https://github.com/anomalyco/opencode";
+const ORXA_SOURCE_URL = "https://github.com/Reliability-Works/opencode-orxa";
+const OPENCODE_INSTALL_COMMAND = "npm install -g opencode-ai";
+const ORXA_INSTALL_COMMAND = "npm install -g @reliabilityworks/opencode-orxa";
 const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const DEFAULT_COMMIT_GUIDANCE = [
   "Write a high-quality conventional commit message.",
@@ -108,11 +114,17 @@ function toSessionPermissionRules(mode?: SessionPermissionMode) {
   if (!mode) {
     return undefined;
   }
+  const action = mode === "yolo-write" ? ("allow" as const) : ("ask" as const);
   return [
     {
       permission: "edit",
-      pattern: "**",
-      action: mode === "yolo-write" ? ("allow" as const) : ("ask" as const),
+      pattern: "*",
+      action,
+    },
+    {
+      permission: "bash",
+      pattern: "*",
+      action,
     },
   ];
 }
@@ -564,6 +576,50 @@ export class OpencodeService {
     return {
       projects,
       runtime: this.runtimeState(),
+    };
+  }
+
+  async checkRuntimeDependencies(): Promise<RuntimeDependencyReport> {
+    const configDir = path.join(homedir(), ".config", "opencode");
+    const orxaInstalledPath = path.join(configDir, "node_modules", "@reliabilityworks", "opencode-orxa");
+
+    const [opencodeInstalled, orxaInstalledLocal, orxaInstalledGlobal] = await Promise.all([
+      this.canRunCommand("opencode", ["--version"], homedir()),
+      stat(orxaInstalledPath).then((item) => item.isDirectory()).catch(() => false),
+      this.canRunCommand("npm", ["ls", "-g", ORXA_PLUGIN_PACKAGE, "--depth=0"], homedir()),
+    ]);
+    const orxaInstalled = orxaInstalledLocal || orxaInstalledGlobal;
+
+    const dependencies: RuntimeDependencyReport["dependencies"] = [
+      {
+        key: "opencode",
+        label: "OpenCode CLI",
+        required: true,
+        installed: opencodeInstalled,
+        description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
+        reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+        installCommand: OPENCODE_INSTALL_COMMAND,
+        sourceUrl: OPENCODE_SOURCE_URL,
+      },
+      {
+        key: "orxa",
+        label: "Opencode Orxa Package",
+        required: false,
+        installed: orxaInstalled,
+        description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
+        reason: "Optional. Needed only when using Orxa mode features.",
+        installCommand: ORXA_INSTALL_COMMAND,
+        sourceUrl: ORXA_SOURCE_URL,
+      },
+    ];
+
+    const missingRequired = dependencies.some((item) => item.required && !item.installed);
+    const missingAny = dependencies.some((item) => !item.installed);
+    return {
+      checkedAt: Date.now(),
+      dependencies,
+      missingAny,
+      missingRequired,
     };
   }
 
@@ -2331,13 +2387,43 @@ export class OpencodeService {
 
   private summarizeStreamEvent(event: Event) {
     if (event.type === "session.error") {
-      const properties = (event as { properties?: { error?: { message?: string } } }).properties;
+      const properties = (event as { properties?: { sessionID?: string; error?: { message?: string } } }).properties;
       return {
         type: String(event.type),
         properties: {
+          sessionID: properties?.sessionID,
           error: {
             message: properties?.error?.message,
           },
+        },
+      };
+    }
+
+    if (event.type === "session.status") {
+      const properties = (
+        event as { properties?: { sessionID?: string; status?: { type?: string; message?: string; attempt?: number } } }
+      ).properties;
+      return {
+        type: String(event.type),
+        properties: {
+          sessionID: properties?.sessionID,
+          status: properties?.status
+            ? {
+                type: properties.status.type,
+                message: properties.status.message,
+                attempt: properties.status.attempt,
+              }
+            : undefined,
+        },
+      };
+    }
+
+    if (event.type === "session.idle") {
+      const properties = (event as { properties?: { sessionID?: string } }).properties;
+      return {
+        type: String(event.type),
+        properties: {
+          sessionID: properties?.sessionID,
         },
       };
     }
@@ -2693,6 +2779,39 @@ export class OpencodeService {
         }
         const tail = [...stdout, ...stderr].join("").trim().slice(-2000);
         reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${tail ? `: ${tail}` : ""}`));
+      });
+    });
+  }
+
+  private async canRunCommand(command: string, args: string[], cwd: string) {
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      };
+
+      const child = spawn(command, args, {
+        cwd,
+        env: process.env,
+        stdio: "ignore",
+      });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(false);
+      }, DEPENDENCY_CHECK_TIMEOUT_MS);
+
+      child.on("error", () => {
+        clearTimeout(timer);
+        finish(false);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        finish(code === 0);
       });
     });
   }

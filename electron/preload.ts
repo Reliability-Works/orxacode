@@ -25,6 +25,7 @@ const bridge: OrxaBridge = {
   },
   opencode: {
     bootstrap: () => ipcRenderer.invoke(IPC.opencodeBootstrap),
+    checkDependencies: () => ipcRenderer.invoke(IPC.opencodeCheckDependencies),
     addProjectDirectory: () => ipcRenderer.invoke(IPC.opencodeAddProjectDirectory),
     removeProjectDirectory: (directory) => ipcRenderer.invoke(IPC.opencodeRemoveProjectDirectory, directory),
     selectProject: (directory) => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),

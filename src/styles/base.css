@@ -34,10 +34,10 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-7: 32px;
-  --scrollbar-size: 8px;
-  --scrollbar-track: hsl(220 8% 24% / 0.3);
-  --scrollbar-thumb: hsl(220 7% 72% / 0.72);
-  --scrollbar-thumb-hover: hsl(220 8% 80% / 0.85);
+  --scrollbar-size: 6px;
+  --scrollbar-track: hsl(220 8% 74% / 0.2);
+  --scrollbar-thumb: hsl(220 8% 84% / 0.56);
+  --scrollbar-thumb-hover: hsl(220 8% 92% / 0.76);
 }
 
 * {
@@ -58,7 +58,7 @@
 *::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--scrollbar-thumb);
-  border: 1px solid hsl(220 8% 18% / 0.25);
+  border: 1px solid hsl(220 8% 30% / 0.18);
 }
 
 *::-webkit-scrollbar-thumb:hover {

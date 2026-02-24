@@ -33,6 +33,7 @@ export const IPC = {
   runtimeStartLocal: "orxa:runtime:startLocal",
   runtimeStopLocal: "orxa:runtime:stopLocal",
   opencodeBootstrap: "orxa:opencode:bootstrap",
+  opencodeCheckDependencies: "orxa:opencode:checkDependencies",
   opencodeAddProjectDirectory: "orxa:opencode:addProjectDirectory",
   opencodeRemoveProjectDirectory: "orxa:opencode:removeProjectDirectory",
   opencodeSelectProject: "orxa:opencode:selectProject",
@@ -419,10 +420,33 @@ export type ServerDiagnostics = {
   lastError?: string;
 };
 
+export type RuntimeDependency = {
+  key: "opencode" | "orxa";
+  label: string;
+  required: boolean;
+  installed: boolean;
+  description: string;
+  reason: string;
+  installCommand: string;
+  sourceUrl: string;
+};
+
+export type RuntimeDependencyReport = {
+  checkedAt: number;
+  dependencies: RuntimeDependency[];
+  missingAny: boolean;
+  missingRequired: boolean;
+};
+
 export type TerminalConnectResult = {
   ptyID: string;
   directory: string;
   connected: boolean;
+};
+
+type StreamEventSummary = {
+  type: string;
+  properties?: Record<string, unknown>;
 };
 
 export type OrxaEvent =
@@ -440,28 +464,14 @@ export type OrxaEvent =
       type: "opencode.global";
       payload: {
         directory?: string;
-        event: {
-          type: string;
-          properties?: {
-            error?: {
-              message?: string;
-            };
-          };
-        };
+        event: StreamEventSummary;
       };
     }
   | {
       type: "opencode.project";
       payload: {
         directory: string;
-        event: {
-          type: string;
-          properties?: {
-            error?: {
-              message?: string;
-            };
-          };
-        };
+        event: StreamEventSummary;
       };
     }
   | {
@@ -513,6 +523,7 @@ export interface OrxaBridge {
   };
   opencode: {
     bootstrap: () => Promise<GlobalBootstrap>;
+    checkDependencies: () => Promise<RuntimeDependencyReport>;
     addProjectDirectory: () => Promise<string | undefined>;
     removeProjectDirectory: (directory: string) => Promise<boolean>;
     selectProject: (directory: string) => Promise<ProjectBootstrap>;

@@ -423,6 +423,7 @@ function registerIpcHandlers() {
     await startupBootstrap.wait();
     return service.bootstrap();
   });
+  ipcMain.handle(IPC.opencodeCheckDependencies, async () => service.checkRuntimeDependencies());
   ipcMain.handle(IPC.opencodeAddProjectDirectory, async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],

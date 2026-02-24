@@ -5,7 +5,31 @@
 Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
 Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.
-Homage: [OpenCode on GitHub](https://github.com/sst/opencode).
+Source of truth: [anomalyco/opencode](https://github.com/anomalyco/opencode).
+
+## Runtime Requirements
+
+### Required: OpenCode
+
+- Repository: [anomalyco/opencode](https://github.com/anomalyco/opencode)
+- Why required: Opencode Orxa depends on the OpenCode CLI/server runtime for sessions, tools, and streaming.
+- Install command:
+
+```bash
+npm install -g opencode-ai
+```
+
+### Optional: Orxa Package (for Orxa mode)
+
+- Repository: [Reliability-Works/opencode-orxa](https://github.com/Reliability-Works/opencode-orxa)
+- Why optional: needed only for Orxa mode workflows, templates, and agent assets.
+- Install command:
+
+```bash
+npm install -g @reliabilityworks/opencode-orxa
+```
+
+On startup, the app runs a dependency check and shows an install helper modal if either dependency is missing.
 
 ## What It Includes
 

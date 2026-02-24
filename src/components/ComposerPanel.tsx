@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
-import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
@@ -32,6 +32,9 @@ type ComposerPanelProps = {
   togglePlanMode: (enabled: boolean) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
+  compactionProgress: number;
+  compactionHint: string;
+  compactionCompacted: boolean;
   branchMenuOpen: boolean;
   setBranchMenuOpen: (updater: (value: boolean) => boolean) => void;
   branchControlWidthCh: number;
@@ -77,6 +80,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
     togglePlanMode,
     permissionMode,
     onPermissionModeChange,
+    compactionProgress,
+    compactionHint,
+    compactionCompacted,
     branchMenuOpen,
     setBranchMenuOpen,
     branchControlWidthCh,
@@ -98,6 +104,47 @@ export function ComposerPanel(props: ComposerPanelProps) {
     setSelectedVariant,
     variantOptions,
   } = props;
+  const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
+  const permissionMenuRef = useRef<HTMLDivElement | null>(null);
+  const clampedCompactionProgress = Math.max(0, Math.min(1, compactionProgress));
+  const compactionProgressStyle = useMemo(
+    () =>
+      ({
+        "--compaction-progress": `${Math.round(clampedCompactionProgress * 100)}%`,
+      }) as CSSProperties,
+    [clampedCompactionProgress],
+  );
+  const permissionLabel = permissionMode === "yolo-write" ? "Yolo Mode" : "Default Permissions";
+
+  useEffect(() => {
+    if (!permissionMenuOpen) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (permissionMenuRef.current?.contains(target)) {
+        return;
+      }
+      setPermissionMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setPermissionMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [permissionMenuOpen]);
 
   return (
     <section className="composer-zone">
@@ -187,17 +234,56 @@ export function ComposerPanel(props: ComposerPanelProps) {
           />
           Plan mode
         </label>
-        <label className="agent-mode-toggle composer-permission-mode" title="Write permission mode">
-          <span>Writes</span>
-          <select
-            className="composer-select composer-permission-select"
-            value={permissionMode}
-            onChange={(event) => onPermissionModeChange(event.target.value as PermissionMode)}
+        <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
+          <button
+            type="button"
+            className="composer-permission-control"
+            title="Permission mode"
+            onClick={() => setPermissionMenuOpen((value) => !value)}
+            aria-expanded={permissionMenuOpen}
+            aria-haspopup="menu"
           >
-            <option value="ask-write">Ask</option>
-            <option value="yolo-write">Yolo</option>
-          </select>
-        </label>
+            {permissionMode === "yolo-write" ? <Zap size={13} aria-hidden="true" /> : <Shield size={13} aria-hidden="true" />}
+            <span className="composer-permission-label">{permissionLabel}</span>
+            <ChevronDown size={13} aria-hidden="true" />
+          </button>
+          {permissionMenuOpen ? (
+            <div className="composer-permission-menu" role="menu" aria-label="Permission mode">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={permissionMode === "ask-write"}
+                className={permissionMode === "ask-write" ? "active" : ""}
+                onClick={() => {
+                  onPermissionModeChange("ask-write");
+                  setPermissionMenuOpen(false);
+                }}
+              >
+                <span className="composer-permission-option-main">
+                  <Shield size={13} aria-hidden="true" />
+                  <span>Default Permissions</span>
+                </span>
+                {permissionMode === "ask-write" ? <Check size={13} aria-hidden="true" /> : null}
+              </button>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={permissionMode === "yolo-write"}
+                className={permissionMode === "yolo-write" ? "active" : ""}
+                onClick={() => {
+                  onPermissionModeChange("yolo-write");
+                  setPermissionMenuOpen(false);
+                }}
+              >
+                <span className="composer-permission-option-main">
+                  <Zap size={13} aria-hidden="true" />
+                  <span>Yolo Mode</span>
+                </span>
+                {permissionMode === "yolo-write" ? <Check size={13} aria-hidden="true" /> : null}
+              </button>
+            </div>
+          ) : null}
+        </div>
         <div className={`composer-branch-wrap ${branchMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
@@ -274,6 +360,13 @@ export function ComposerPanel(props: ComposerPanelProps) {
           setSelectedVariant={setSelectedVariant}
           variantOptions={variantOptions}
         />
+        <div
+          className={`composer-compaction-indicator composer-compaction-indicator-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
+          title={compactionHint}
+          aria-label={compactionHint}
+        >
+          <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
+        </div>
       </div>
     </section>
   );

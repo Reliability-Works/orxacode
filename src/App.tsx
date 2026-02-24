@@ -22,6 +22,7 @@ import type {
   ProjectListItem,
   RuntimeProfile,
   RuntimeProfileInput,
+  RuntimeDependencyReport,
   RuntimeState,
   SkillEntry,
   SessionMessageBundle,
@@ -110,6 +111,14 @@ type OrxaTodoItem = {
   priority?: string;
 };
 
+type SessionFeedNotice = {
+  id: string;
+  time: number;
+  label: string;
+  detail?: string;
+  tone?: "info" | "error";
+};
+
 const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
 
 type OpenTargetOption = {
@@ -131,6 +140,8 @@ const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "xcode", label: "Xcode", logo: xcodeLogo },
   { id: "zed", label: "Zed", logo: zedLogo },
 ];
+const DEFAULT_COMPACTION_THRESHOLD = 120_000;
+const MIN_COMPACTION_THRESHOLD = 24_000;
 
 function shouldAutoRenameSessionTitle(title: string | undefined) {
   if (!title) {
@@ -224,9 +235,73 @@ function isTodoCompleted(todo: OrxaTodoItem) {
   return COMPLETED_TODO_STATUSES.has(status);
 }
 
-function isWritePermissionRequest(permission?: string) {
-  const normalized = (permission ?? "").trim().toLowerCase();
-  return normalized === "edit" || normalized === "write" || normalized.startsWith("edit.") || normalized.startsWith("write.");
+function tokenCountFromMessageInfo(info: SessionMessageBundle["info"]) {
+  if (info.role !== "assistant") {
+    return 0;
+  }
+  const assistantInfo = info as SessionMessageBundle["info"] & {
+    tokens?: {
+      total?: number;
+      input?: number;
+      output?: number;
+      cache?: { read?: number; write?: number };
+    };
+  };
+  const total = typeof assistantInfo.tokens?.total === "number" ? assistantInfo.tokens.total : 0;
+  if (total > 0) {
+    return total;
+  }
+  const input = typeof assistantInfo.tokens?.input === "number" ? assistantInfo.tokens.input : 0;
+  const output = typeof assistantInfo.tokens?.output === "number" ? assistantInfo.tokens.output : 0;
+  const cacheRead = typeof assistantInfo.tokens?.cache?.read === "number" ? assistantInfo.tokens.cache.read : 0;
+  const cacheWrite = typeof assistantInfo.tokens?.cache?.write === "number" ? assistantInfo.tokens.cache.write : 0;
+  return input + output + cacheRead + cacheWrite;
+}
+
+function buildCompactionMeterState(messages: SessionMessageBundle[]) {
+  const compactionIndexes: number[] = [];
+  const compactionThresholdHints: number[] = [];
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const bundle = messages[index];
+    if (!bundle.parts.some((part) => part.type === "compaction")) {
+      continue;
+    }
+    compactionIndexes.push(index);
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const previousTokens = tokenCountFromMessageInfo(messages[previous]!.info);
+      if (previousTokens > 0) {
+        compactionThresholdHints.push(previousTokens);
+        break;
+      }
+    }
+  }
+
+  const lastCompactionIndex = compactionIndexes.length > 0 ? compactionIndexes[compactionIndexes.length - 1]! : -1;
+  let currentTokens = 0;
+  for (let index = messages.length - 1; index > lastCompactionIndex; index -= 1) {
+    const tokens = tokenCountFromMessageInfo(messages[index]!.info);
+    if (tokens > 0) {
+      currentTokens = tokens;
+      break;
+    }
+  }
+
+  let threshold = compactionThresholdHints.length > 0
+    ? compactionThresholdHints[compactionThresholdHints.length - 1]!
+    : DEFAULT_COMPACTION_THRESHOLD;
+  threshold = Math.max(MIN_COMPACTION_THRESHOLD, threshold);
+  if (currentTokens > threshold) {
+    threshold = currentTokens;
+  }
+
+  const progress = threshold > 0 ? Math.min(1, currentTokens / threshold) : 0;
+  const compacted = lastCompactionIndex >= 0 && currentTokens < Math.max(4_000, Math.round(threshold * 0.22));
+  const hint = compacted
+    ? "Recent context compaction completed. The context window has been reset."
+    : `Estimated context usage before auto-compaction (${currentTokens.toLocaleString()} / ${threshold.toLocaleString()} tokens).`;
+
+  return { progress, hint, compacted };
 }
 
 export default function App() {
@@ -276,9 +351,39 @@ export default function App() {
   const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
   const [, setStatusLine] = useState<string>("Ready");
   const [sessionProvenanceByPath, setSessionProvenanceByPath] = useState<Record<string, ChangeProvenanceRecord>>({});
+  const [sessionFeedNotices, setSessionFeedNotices] = useState<Record<string, SessionFeedNotice[]>>({});
+  const addSessionFeedNotice = useCallback(
+    (directory: string, sessionID: string, notice: Omit<SessionFeedNotice, "id" | "time">) => {
+      const key = `${directory}::${sessionID}`;
+      setSessionFeedNotices((current) => {
+        const nextNotice: SessionFeedNotice = {
+          id: `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
+          time: Date.now(),
+          ...notice,
+        };
+        const existing = current[key] ?? [];
+        const duplicate = existing.some(
+          (item) =>
+            item.label === nextNotice.label &&
+            item.detail === nextNotice.detail &&
+            Math.abs(item.time - nextNotice.time) < 2_500,
+        );
+        if (duplicate) {
+          return current;
+        }
+        const trimmed = [...existing, nextNotice].slice(-8);
+        return {
+          ...current,
+          [key]: trimmed,
+        };
+      });
+    },
+    [],
+  );
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
   const projectLastOpenedRef = useRef<Record<string, number>>({});
   const projectLastUpdatedRef = useRef<Record<string, number>>({});
+  const manualSessionStopsRef = useRef<Record<string, number>>({});
   const prevAppModeRef = useRef<typeof appMode>(appMode);
   const {
     sidebarMode,
@@ -398,6 +503,8 @@ export default function App() {
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
+  const [dependencyReport, setDependencyReport] = useState<RuntimeDependencyReport | null>(null);
+  const [dependencyModalOpen, setDependencyModalOpen] = useState(false);
   const [textInputDialog, setTextInputDialog] = useState<TextInputDialogState | null>(null);
   const { dashboard, projectDashboard, refreshDashboard, refreshProjectDashboard } = useDashboards(
     projects,
@@ -549,7 +656,8 @@ export default function App() {
     }
     return branchState?.current || "Branch";
   }, [branchLoading, branchState]);
-  const branchControlWidthCh = useMemo(() => Math.max(12, Math.min(30, branchDisplayValue.length + 5)), [branchDisplayValue]);
+  const branchControlWidthCh = useMemo(() => Math.max(16, Math.min(54, branchDisplayValue.length + 7)), [branchDisplayValue]);
+  const compactionMeter = useMemo(() => buildCompactionMeterState(messages), [messages]);
   const filteredBranches = useMemo(() => {
     const query = branchQuery.trim().toLowerCase();
     const branches = branchState?.branches ?? [];
@@ -626,6 +734,16 @@ export default function App() {
     }
   }, []);
 
+  const refreshRuntimeDependencies = useCallback(async () => {
+    try {
+      const report = await window.orxa.opencode.checkDependencies();
+      setDependencyReport(report);
+      setDependencyModalOpen(report.missingAny);
+    } catch {
+      setDependencyReport(null);
+    }
+  }, []);
+
   const bootstrap = useCallback(async () => {
     try {
       const result = await window.orxa.opencode.bootstrap();
@@ -641,6 +759,10 @@ export default function App() {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
   }, [activeProjectDir]);
+
+  const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
+    manualSessionStopsRef.current[`${directory}::${sessionID}`] = Date.now();
+  }, []);
 
   const {
     composer,
@@ -675,6 +797,7 @@ export default function App() {
     startResponsePolling,
     stopResponsePolling,
     clearPendingSession,
+    onSessionAbortRequested: markSessionAbortRequested,
   });
 
   const allModelOptions = settingsModelOptions;
@@ -702,6 +825,10 @@ export default function App() {
       })
       .catch((error) => setStatusLine(error instanceof Error ? error.message : String(error)));
   }, [bootstrap, refreshConfigModels, refreshGlobalProviders, refreshMode, refreshOrxaState, refreshProfiles]);
+
+  useEffect(() => {
+    void refreshRuntimeDependencies();
+  }, [refreshRuntimeDependencies]);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -860,6 +987,23 @@ export default function App() {
         }
 
         const kind = String(event.payload.event.type);
+        const eventProperties =
+          event.payload.event.properties && typeof event.payload.event.properties === "object"
+            ? (event.payload.event.properties as Record<string, unknown>)
+            : undefined;
+        const eventSessionID =
+          eventProperties && typeof eventProperties.sessionID === "string"
+            ? eventProperties.sessionID
+            : undefined;
+        const eventSessionKey = eventSessionID ? `${event.payload.directory}::${eventSessionID}` : null;
+        const manualStopAt =
+          eventSessionKey && typeof manualSessionStopsRef.current[eventSessionKey] === "number"
+            ? manualSessionStopsRef.current[eventSessionKey]
+            : undefined;
+        const isRecentManualStop = typeof manualStopAt === "number" && Date.now() - manualStopAt < 30_000;
+        if (isRecentManualStop && eventSessionKey && (kind === "session.error" || kind === "session.idle")) {
+          delete manualSessionStopsRef.current[eventSessionKey];
+        }
         if (
           kind === "message.created" ||
           kind === "session.created" ||
@@ -910,10 +1054,37 @@ export default function App() {
         }
 
         if (kind === "session.error") {
-          const eventValue = event.payload.event as unknown as { properties?: { error?: { message?: string } } };
-          const message = eventValue.properties?.error?.message;
-          if (message && message.trim().length > 0) {
-            setStatusLine(message);
+          const errorRecord =
+            eventProperties?.error && typeof eventProperties.error === "object"
+              ? (eventProperties.error as Record<string, unknown>)
+              : undefined;
+          const message = typeof errorRecord?.message === "string" ? errorRecord.message.trim() : "";
+          const sessionID = eventSessionID ?? activeSessionID;
+          const interruptedDetail = "User interrupted. Send a new message to continue.";
+          const useInterruptedReason = isRecentManualStop;
+          if (sessionID) {
+            addSessionFeedNotice(event.payload.directory, sessionID, {
+              label: useInterruptedReason ? "Session stopped by user" : "Session stopped due to an error",
+              detail: useInterruptedReason
+                ? interruptedDetail
+                : message || "No additional error details were returned by the backend.",
+              tone: useInterruptedReason ? "info" : "error",
+            });
+          }
+          setStatusLine(useInterruptedReason ? interruptedDetail : message || "Session stopped due to an error.");
+          if (sessionID && sessionID === activeSessionID) {
+            stopResponsePolling();
+          }
+        }
+        if (kind === "session.idle" && isRecentManualStop && eventSessionID) {
+          addSessionFeedNotice(event.payload.directory, eventSessionID, {
+            label: "Session stopped by user",
+            detail: "User interrupted. Send a new message to continue.",
+            tone: "info",
+          });
+          setStatusLine("User interrupted. Send a new message to continue.");
+          if (eventSessionID === activeSessionID) {
+            stopResponsePolling();
           }
         }
       }
@@ -922,7 +1093,7 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeProjectDir, bootstrap, queueRefresh, scheduleGitRefresh]);
+  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, queueRefresh, scheduleGitRefresh, stopResponsePolling]);
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
@@ -1072,10 +1243,9 @@ export default function App() {
         selectedModelPayload,
         selectedVariant,
         serverAgentNames,
-        permissionMode: appPreferences.permissionMode,
       });
     },
-    [appPreferences.permissionMode, createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
+    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -1506,6 +1676,11 @@ export default function App() {
   const contentPaneTitle = showingProjectDashboard
     ? activeProject?.name || activeProjectDir?.split("/").at(-1) || "No workspace selected"
     : activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
+  const activeSessionNoticeKey = activeProjectDir && activeSessionID ? `${activeProjectDir}::${activeSessionID}` : null;
+  const activeSessionNotices = useMemo(
+    () => (activeSessionNoticeKey ? (sessionFeedNotices[activeSessionNoticeKey] ?? []) : []),
+    [activeSessionNoticeKey, sessionFeedNotices],
+  );
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
@@ -1536,19 +1711,15 @@ export default function App() {
     if (!activeProjectDir || !pendingPermission || permissionDecisionPending !== null) {
       return;
     }
-    if (!isWritePermissionRequest(pendingPermission.permission)) {
-      return;
-    }
-
     let cancelled = false;
     void (async () => {
       try {
-        setPermissionDecisionPending("always");
+        setPermissionDecisionPending("once");
         await window.orxa.opencode.replyPermission(
           activeProjectDir,
           pendingPermission.id,
-          "always",
-          "Auto-approved in Yolo write mode",
+          "once",
+          "Auto-approved in Yolo mode",
         );
         if (!cancelled) {
           await refreshProject(activeProjectDir);
@@ -1689,6 +1860,16 @@ export default function App() {
       try {
         setPermissionDecisionPending(reply);
         await window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply);
+        if (reply === "always") {
+          setAppPreferences((current) =>
+            current.permissionMode === "yolo-write"
+              ? current
+              : {
+                  ...current,
+                  permissionMode: "yolo-write",
+                },
+          );
+        }
         await refreshProject(activeProjectDir);
         setStatusLine(`Permission ${reply === "reject" ? "rejected" : "approved"}`);
       } catch (error) {
@@ -1697,7 +1878,7 @@ export default function App() {
         setPermissionDecisionPending(null);
       }
     },
-    [activeProjectDir, appPreferences.confirmDangerousActions, pendingPermission, refreshProject, requestConfirmation],
+    [activeProjectDir, appPreferences.confirmDangerousActions, pendingPermission, refreshProject, requestConfirmation, setAppPreferences],
   );
 
   const replyPendingQuestion = useCallback(
@@ -2034,6 +2215,7 @@ export default function App() {
                 <>
                   <MessageFeed
                     messages={messages}
+                    sessionNotices={activeSessionNotices}
                     showAssistantPlaceholder={isSessionInProgress}
                     assistantLabel={assistantLabel}
                     workspaceDirectory={activeProjectDir ?? null}
@@ -2114,6 +2296,9 @@ export default function App() {
                     togglePlanMode={togglePlanMode}
                     permissionMode={appPreferences.permissionMode}
                     onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
+                    compactionProgress={compactionMeter.progress}
+                    compactionHint={compactionMeter.hint}
+                    compactionCompacted={compactionMeter.compacted}
                     branchMenuOpen={branchMenuOpen}
                     setBranchMenuOpen={setBranchMenuOpen}
                     branchControlWidthCh={branchControlWidthCh}
@@ -2335,6 +2520,10 @@ export default function App() {
 
       <GlobalModalsHost
         activeProjectDir={activeProjectDir}
+        dependencyReport={dependencyReport}
+        dependencyModalOpen={dependencyModalOpen}
+        setDependencyModalOpen={setDependencyModalOpen}
+        onCheckDependencies={refreshRuntimeDependencies}
         permissionRequest={pendingPermission ?? null}
         permissionDecisionPending={permissionDecisionPending}
         replyPermission={replyPendingPermission}

@@ -4,10 +4,19 @@ import type { SessionMessageBundle } from "@shared/ipc";
 
 type Props = {
   messages: SessionMessageBundle[];
+  sessionNotices?: SessionFeedNotice[];
   showAssistantPlaceholder?: boolean;
   assistantLabel?: string;
   workspaceDirectory?: string | null;
   bottomClearance?: number;
+};
+
+type SessionFeedNotice = {
+  id: string;
+  time: number;
+  label: string;
+  detail?: string;
+  tone?: "info" | "error";
 };
 
 type InternalEvent = {
@@ -28,6 +37,7 @@ type TimelineEvent = {
   kind: TimelineKind;
   reason?: string;
   command?: string;
+  failure?: string;
 };
 
 type TimelineKind = "read" | "search" | "list" | "todo" | "create" | "edit" | "delete" | "git" | "delegate" | "run";
@@ -355,6 +365,20 @@ function extractCommandPreview(input: unknown, maxLength = 92) {
   return compactText(firstLine, maxLength);
 }
 
+function isLikelyShellCommand(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^loaded skill:/i.test(trimmed)) {
+    return false;
+  }
+  if (/[;&|><`$]/.test(trimmed)) {
+    return true;
+  }
+  return /^(pnpm|npm|yarn|bun|node|git|ls|cat|sed|rg|grep|find|mkdir|touch|mv|cp|rm|echo|printf|bash|zsh|sh)\b/i.test(trimmed);
+}
+
 function isTaskToolName(toolName: string) {
   const normalized = toolName.trim().toLowerCase();
   return normalized === "task" || normalized.endsWith("/task");
@@ -543,6 +567,66 @@ function summarizePatchFileStats(stats: PatchFileStat[]) {
   return `${base} (+${stats.length - 1} more file${stats.length - 1 === 1 ? "" : "s"})`;
 }
 
+function countContentLines(value: string) {
+  const normalized = value.replace(/\r/g, "");
+  if (!normalized) {
+    return 0;
+  }
+  return normalized.split("\n").length;
+}
+
+function extractMetaFileDiffSummary(metadata: unknown, workspaceDirectory?: string | null) {
+  const record = toObjectRecord(metadata);
+  if (!record) {
+    return null;
+  }
+  const filediff = toObjectRecord(record.filediff);
+  if (!filediff) {
+    return null;
+  }
+  const rawFile = typeof filediff.file === "string" ? filediff.file : "";
+  if (!rawFile) {
+    return null;
+  }
+  const additions = typeof filediff.additions === "number" ? Math.max(0, Math.round(filediff.additions)) : 0;
+  const deletions = typeof filediff.deletions === "number" ? Math.max(0, Math.round(filediff.deletions)) : 0;
+  return `${formatTarget(rawFile, workspaceDirectory, 96)} +${additions} | -${deletions}`;
+}
+
+function extractWriteFileSummary(input: unknown, metadata: unknown, workspaceDirectory?: string | null) {
+  const inputRecord = toObjectRecord(input);
+  const metadataRecord = toObjectRecord(metadata);
+  const filepath =
+    (metadataRecord && typeof metadataRecord.filepath === "string" ? metadataRecord.filepath : undefined) ??
+    (inputRecord && typeof inputRecord.filePath === "string" ? inputRecord.filePath : undefined) ??
+    (inputRecord && typeof inputRecord.path === "string" ? inputRecord.path : undefined);
+  if (!filepath) {
+    return null;
+  }
+  const exists = metadataRecord && typeof metadataRecord.exists === "boolean" ? metadataRecord.exists : undefined;
+  const target = formatTarget(filepath, workspaceDirectory, 96);
+  if (exists === false) {
+    const content = inputRecord && typeof inputRecord.content === "string" ? inputRecord.content : "";
+    const additions = countContentLines(content);
+    return {
+      verb: "Created" as const,
+      summary: `${target} +${additions} | -0`,
+    };
+  }
+  return {
+    verb: "Edited" as const,
+    summary: target,
+  };
+}
+
+function extractPatchSummary(input: unknown, output: unknown, workspaceDirectory?: string | null) {
+  const patchText = extractPatchText(input, output);
+  if (!patchText) {
+    return null;
+  }
+  return summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
+}
+
 function extractTaskResultText(output: string, maxLength = 2200) {
   const trimmed = output.trim();
   if (!trimmed) {
@@ -725,7 +809,14 @@ function extractToolTarget(input: unknown, workspaceDirectory?: string | null): 
   return null;
 }
 
-function toToolActivityLabel(toolName: string, status: string, input: unknown, workspaceDirectory?: string | null) {
+function toToolActivityLabel(
+  toolName: string,
+  status: string,
+  input: unknown,
+  workspaceDirectory?: string | null,
+  metadata?: unknown,
+  output?: unknown,
+) {
   const name = toolName.toLowerCase();
   const isActive = isToolStatusActive(status);
   const isError = status === "error";
@@ -774,9 +865,23 @@ function toToolActivityLabel(toolName: string, status: string, input: unknown, w
     return withTarget("Creating", "Created");
   }
   if (name.includes("write")) {
-    return withTarget("Writing", "Wrote");
+    const writeSummary = extractWriteFileSummary(input, metadata, workspaceDirectory);
+    if (isActive) {
+      return writeSummary ? `Writing ${writeSummary.summary}...` : "Writing...";
+    }
+    if (isError) {
+      return writeSummary ? `Failed ${writeSummary.summary}` : "Write failed";
+    }
+    if (writeSummary) {
+      return `${writeSummary.verb} ${writeSummary.summary}`;
+    }
+    return withTarget("Writing", "Edited", "Write failed");
   }
   if (name.includes("edit") || name.includes("replace")) {
+    const filediffSummary = extractMetaFileDiffSummary(metadata, workspaceDirectory);
+    if (!isActive && !isError && filediffSummary) {
+      return `Edited ${filediffSummary}`;
+    }
     return withTarget("Editing", "Edited");
   }
   if (name.includes("rename") || name.includes("move")) {
@@ -784,14 +889,15 @@ function toToolActivityLabel(toolName: string, status: string, input: unknown, w
   }
   if (name.includes("apply_patch")) {
     const patch = extractPatchTarget(input, workspaceDirectory);
+    const patchSummary = extractPatchSummary(input, output, workspaceDirectory);
     if (patch) {
       if (isActive) {
         return `${patch.verb === "Deleted" ? "Deleting" : patch.verb === "Created" ? "Creating" : "Editing"} ${patch.target}...`;
       }
       if (isError) {
-        return `Patch failed on ${patch.target}`;
+        return patchSummary ? `Patch failed on ${patch.target} (${patchSummary})` : `Patch failed on ${patch.target}`;
       }
-      return `${patch.verb} ${patch.target}`;
+      return patchSummary ? `${patch.verb} ${patchSummary}` : `${patch.verb} ${patch.target}`;
     }
     return isActive ? "Applying patch..." : isError ? "Patch failed" : "Applied patch";
   }
@@ -930,7 +1036,13 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
     return { id: part.id, summary: `Retry attempt ${part.attempt}`, actor };
   }
   if (part.type === "compaction") {
-    return { id: part.id, summary: "Context compaction", actor };
+    const auto = part.auto !== false;
+    return {
+      id: part.id,
+      summary: auto ? "Automatic context compaction" : "Manual context compaction",
+      details: auto ? "Summarized conversation state to recover context." : "Manual summarize/compaction requested.",
+      actor,
+    };
   }
   if (part.type === "snapshot") {
     return { id: part.id, summary: "Snapshot update", actor };
@@ -983,7 +1095,13 @@ function summarizeDelegationEvent(part: Part, actor?: string): InternalEvent | n
     return { id: part.id, summary: `Retry attempt ${part.attempt}`, actor };
   }
   if (part.type === "compaction") {
-    return { id: part.id, summary: "Context compaction", actor };
+    const auto = part.auto !== false;
+    return {
+      id: part.id,
+      summary: auto ? "Automatic context compaction" : "Manual context compaction",
+      details: auto ? "Summarized conversation state to recover context." : "Manual summarize/compaction requested.",
+      actor,
+    };
   }
   if (part.type === "snapshot") {
     return { id: part.id, summary: "Snapshot update", actor };
@@ -1029,11 +1147,13 @@ function summarizeDelegationSessionMessages(messages: SessionMessageBundle[], wo
         continue;
       }
       if (part.type === "tool") {
-        let label = toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory);
+        const stateRecord = part.state as unknown as Record<string, unknown>;
+        const stateMetadata = stateRecord.metadata;
+        const stateOutput = stateRecord.output;
+        let label = toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
         const toolEvent = summarizeDelegationEvent(part);
         const toolName = part.tool.trim().toLowerCase();
         if (toolName.includes("apply_patch") || toolName.includes("patch")) {
-          const stateRecord = part.state as unknown as Record<string, unknown>;
           const patchText = extractPatchText(stateRecord.input, stateRecord.output);
           if (patchText) {
             const summary = summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
@@ -1120,12 +1240,38 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
     if (part.type === "tool") {
       const status = part.state.status;
       const stateTitle = "title" in part.state && typeof part.state.title === "string" ? part.state.title.trim() : "";
-      let label = toToolActivityLabel(part.tool, status, part.state.input, workspaceDirectory);
-      if ((label === "Ran command" || label === "Running command...") && stateTitle) {
-        label = isToolStatusActive(status) ? `Running ${compactText(stateTitle, 72)}...` : `Ran ${compactText(stateTitle, 72)}`;
-      }
+      const stateRecord = part.state as unknown as Record<string, unknown>;
+      const stateMetadata = stateRecord.metadata;
+      const stateOutput = stateRecord.output;
+      const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
+      let label = toToolActivityLabel(part.tool, status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
       const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
       const toolName = part.tool.trim().toLowerCase();
+      const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+      const explicitCommand = extractCommand(part.state.input);
+      const explicitCommandPreview = extractCommandPreview(part.state.input, 92);
+      const explicitCommandLooksNarrative =
+        Boolean(explicitCommandPreview) &&
+        !isLikelyShellCommand(explicitCommandPreview ?? "") &&
+        (stateTitle.length === 0 || explicitCommandPreview?.toLowerCase() === stateTitle.toLowerCase());
+      const hasExplicitCommand = Boolean(explicitCommand) && !explicitCommandLooksNarrative;
+      const hasNarrativeTitle =
+        isCommandTool &&
+        kind === "run" &&
+        stateTitle.length > 0 &&
+        (!hasExplicitCommand || explicitCommandLooksNarrative) &&
+        !isLikelyShellCommand(stateTitle);
+      if (hasNarrativeTitle) {
+        if (isToolStatusActive(status)) {
+          label = `${compactText(stateTitle, 72)}...`;
+        } else if (status === "error") {
+          label = `Failed ${compactText(stateTitle, 92)}`;
+        } else {
+          label = compactText(stateTitle, 92);
+        }
+      } else if ((label === "Ran command" || label === "Running command...") && stateTitle) {
+        label = isToolStatusActive(status) ? `Running ${compactText(stateTitle, 72)}...` : `Ran ${compactText(stateTitle, 72)}`;
+      }
       const taskDelegation = isTaskToolName(toolName)
         ? extractTaskDelegationInfo(part.state.input, "metadata" in part.state ? part.state.metadata : undefined)
         : null;
@@ -1152,16 +1298,24 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         };
       } else {
         const showReason = kind === "create" || kind === "delete";
-        const showCommand = kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo";
-        const command = showCommand
-          ? extractCommandPreview(part.state.input) ?? (stateTitle ? compactText(stateTitle, 92) : null)
+        const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
+        const commandPreview = showCommand
+          ? extractCommandPreview(part.state.input) ??
+            (kind === "run" && !hasExplicitCommand && stateTitle && isLikelyShellCommand(stateTitle)
+              ? compactText(stateTitle, 92)
+              : null)
           : null;
+        const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : null;
+        if (kind === "run" && !command && !stateError && label.trim().toLowerCase() === "ran command") {
+          continue;
+        }
         timeline.push({
           id: `${part.id}:timeline`,
           label,
           kind,
           reason: showReason ? `Why this changed: ${currentActor} via ${toToolReason(part.tool)}` : undefined,
           command: command ?? undefined,
+          failure: status === "error" ? (stateError ? compactText(stateError, 220) : "Tool execution failed") : undefined,
         });
       }
     }
@@ -1201,8 +1355,29 @@ function renderPart(part: Part) {
   return null;
 }
 
+function renderLabelWithDiff(label: string) {
+  const match = label.match(/^(.*?)(\+\d+)\s*\|\s*(-\d+)(.*)$/);
+  if (!match) {
+    return label;
+  }
+  const prefix = match[1] ?? "";
+  const additions = match[2] ?? "";
+  const deletions = match[3] ?? "";
+  const suffix = match[4] ?? "";
+  return (
+    <>
+      {prefix}
+      <span className="message-diff-add">{additions}</span>
+      {" | "}
+      <span className="message-diff-del">{deletions}</span>
+      {suffix}
+    </>
+  );
+}
+
 export function MessageFeed({
   messages,
+  sessionNotices = [],
   showAssistantPlaceholder = false,
   assistantLabel = "Orxa",
   workspaceDirectory,
@@ -1379,21 +1554,65 @@ export function MessageFeed({
       if (!rect) {
         return;
       }
-      setDelegationOverlayBounds({
-        top: Math.round(rect.top),
-        left: Math.round(rect.left),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
+      const horizontalPadding = 8;
+      const topPadding = 8;
+      const bottomPadding = Math.max(24, Math.round(bottomClearance + 24));
+      if (!(rect.width > 0) || !(rect.height > 0)) {
+        setDelegationOverlayBounds((current) => {
+          if (current) {
+            return current;
+          }
+          const fallbackWidth = Math.max(0, Math.round(window.innerWidth - horizontalPadding * 2));
+          const fallbackHeight = Math.max(0, Math.round(window.innerHeight - topPadding - bottomPadding));
+          return {
+            top: topPadding,
+            left: horizontalPadding,
+            width: fallbackWidth,
+            height: fallbackHeight,
+          };
+        });
+        return;
+      }
+      const effectiveWidth = rect.width;
+      const effectiveHeight = rect.height;
+      const effectiveTop = Number.isFinite(rect.top) ? rect.top : 0;
+      const effectiveLeft = Number.isFinite(rect.left) ? rect.left : 0;
+      const width = Math.max(0, Math.round(effectiveWidth - horizontalPadding * 2));
+      const height = Math.max(0, Math.round(effectiveHeight - topPadding - bottomPadding));
+      const nextBounds = {
+        top: Math.round(effectiveTop + topPadding),
+        left: Math.round(effectiveLeft + horizontalPadding),
+        width,
+        height,
+      };
+      setDelegationOverlayBounds((current) => {
+        if (
+          current &&
+          current.top === nextBounds.top &&
+          current.left === nextBounds.left &&
+          current.width === nextBounds.width &&
+          current.height === nextBounds.height
+        ) {
+          return current;
+        }
+        return nextBounds;
       });
     };
     updateOverlayBounds();
+    const paneElement = messageFeedRef.current?.closest(".content-pane") as HTMLElement | null;
+    let resizeObserver: ResizeObserver | null = null;
+    if (paneElement && typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        updateOverlayBounds();
+      });
+      resizeObserver.observe(paneElement);
+    }
     window.addEventListener("resize", updateOverlayBounds);
-    window.addEventListener("scroll", updateOverlayBounds, true);
     return () => {
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", updateOverlayBounds);
-      window.removeEventListener("scroll", updateOverlayBounds, true);
     };
-  }, [selectedDelegation]);
+  }, [bottomClearance, selectedDelegation]);
 
   useEffect(() => {
     if (!showAssistantPlaceholder) {
@@ -1438,15 +1657,16 @@ export function MessageFeed({
                         <div className="message-exploration-entries">
                           {block.entries.map((entry) => (
                             <span key={entry.id} className="message-exploration-entry">
-                              {entry.label}
+                              {renderLabelWithDiff(entry.label)}
                             </span>
                           ))}
                         </div>
                       </details>
                     ) : (
                       <div key={block.id} className="message-timeline-row">
-                        <span className="message-timeline-row-label">{block.entry.label}</span>
+                        <span className="message-timeline-row-label">{renderLabelWithDiff(block.entry.label)}</span>
                         {block.entry.command ? <small className="message-timeline-row-command">Command: {block.entry.command}</small> : null}
+                        {block.entry.failure ? <small className="message-timeline-row-error">Error: {block.entry.failure}</small> : null}
                         {block.entry.reason ? <small className="message-timeline-row-reason">{block.entry.reason}</small> : null}
                       </div>
                     ),
@@ -1457,6 +1677,25 @@ export function MessageFeed({
           </article>
         );
       })}
+      {sessionNotices.map((notice) => (
+        <article
+          key={notice.id}
+          className={`message-card message-system${notice.tone === "error" ? " message-system-error" : ""}`.trim()}
+        >
+          <header className="message-header">
+            <span className="message-role">System</span>
+            <span className="message-time">{new Date(notice.time).toLocaleTimeString()}</span>
+          </header>
+          <div className="message-parts">
+            <section className="message-timeline">
+              <div className="message-timeline-row">
+                <span className="message-timeline-row-label">{notice.label}</span>
+                {notice.detail ? <small className="message-timeline-row-error">Reason: {notice.detail}</small> : null}
+              </div>
+            </section>
+          </div>
+        </article>
+      ))}
       {showAssistantPlaceholder && renderedMessages.length > 0 ? (
         <article className="message-card message-assistant">
           <header className="message-header">
@@ -1507,7 +1746,7 @@ export function MessageFeed({
         </article>
       ) : null}
       {selectedDelegation && delegationOverlayStyle ? (
-        <div className="overlay delegation-modal-overlay" style={delegationOverlayStyle}>
+        <div className="overlay delegation-modal-overlay" style={delegationOverlayStyle} onClick={() => setSelectedDelegationId(null)}>
           <section
             className="modal delegation-modal"
             role="dialog"

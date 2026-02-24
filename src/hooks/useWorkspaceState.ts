@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
-import type { ProjectBootstrap, SessionMessageBundle, SessionPermissionMode } from "@shared/ipc";
+import type { ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
 import type { TerminalTab } from "../components/TerminalPanel";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
@@ -42,7 +42,6 @@ type CreateSessionPromptOptions = {
   selectedModelPayload?: { providerID: string; modelID: string };
   selectedVariant?: string;
   serverAgentNames: Set<string>;
-  permissionMode?: SessionPermissionMode;
 };
 
 function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
@@ -349,7 +348,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         if (activeProjectDir !== targetDirectory) {
           await selectProject(targetDirectory);
         }
-        const createdSession = await window.orxa.opencode.createSession(targetDirectory, title, promptOptions?.permissionMode);
+        const createdSession = await window.orxa.opencode.createSession(targetDirectory, title, "ask-write");
         const nextSessionID = createdSession.id;
         activeSessionIDRef.current = nextSessionID;
         setActiveSessionID(nextSessionID);
