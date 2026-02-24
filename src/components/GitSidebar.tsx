@@ -1,4 +1,4 @@
-import type { GitBranchState } from "@shared/ipc";
+import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
@@ -216,6 +216,11 @@ function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: s
     if (line === "## Staged") {
       flushCurrent();
       section = "staged";
+      continue;
+    }
+    if (line === "## Untracked") {
+      flushCurrent();
+      section = "unstaged";
       continue;
     }
 
@@ -459,6 +464,7 @@ export type GitSidebarProps = {
   onStageFile?: (filePath: string) => Promise<void>;
   onRestoreFile?: (filePath: string) => Promise<void>;
   onUnstageFile?: (filePath: string) => Promise<void>;
+  fileProvenanceByPath?: Record<string, ChangeProvenanceRecord>;
   onAddToChatPath: (filePath: string) => void;
   onStatusChange: (message: string) => void;
 };
@@ -482,6 +488,7 @@ export function GitSidebar(props: GitSidebarProps) {
     onStageFile,
     onRestoreFile,
     onUnstageFile,
+    fileProvenanceByPath,
     onAddToChatPath,
     onStatusChange,
   } = props;
@@ -495,6 +502,26 @@ export function GitSidebar(props: GitSidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
+
+  const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {
+    const direct = fileProvenanceByPath?.[file.path];
+    if (direct) {
+      return direct;
+    }
+    if (file.oldPath) {
+      return fileProvenanceByPath?.[file.oldPath] ?? null;
+    }
+    return null;
+  };
+
+  const formatProvenanceLabel = (record: ChangeProvenanceRecord | null) => {
+    if (!record) {
+      return "Unknown provenance";
+    }
+    const actor = record.actorName?.trim().length ? record.actorName : record.actorType;
+    const reason = record.reason?.trim();
+    return reason ? `${actor} • ${reason}` : `${actor} • ${record.operation}`;
+  };
 
   const parsedDiff = useMemo(() => parseGitDiffOutput(gitPanelOutput), [gitPanelOutput]);
   const hasUnstagedFiles = useMemo(() => parsedDiff.files.some((file) => file.hasUnstaged), [parsedDiff.files]);
@@ -560,6 +587,7 @@ export function GitSidebar(props: GitSidebarProps) {
           const fileName = file.path.split("/").pop() ?? file.path;
           const dirPath = file.path.includes("/") ? file.path.slice(0, file.path.lastIndexOf("/")) : "";
           const isActive = listViewFocusKey === file.key;
+          const provenance = resolveProvenance(file);
           return (
             <div
               key={file.key}
@@ -572,6 +600,7 @@ export function GitSidebar(props: GitSidebarProps) {
               <span className="git-list-info">
                 <span className="git-list-filename">{fileName}</span>
                 {dirPath ? <span className="git-list-dir">{dirPath}</span> : null}
+                <span className={`git-list-provenance ${provenance ? "" : "unknown"}`.trim()}>{formatProvenanceLabel(provenance)}</span>
               </span>
               <span className="git-list-meta">
                 <span className="git-list-stats">
@@ -1054,6 +1083,7 @@ export function GitSidebar(props: GitSidebarProps) {
                       <div className="git-diff-multi-pane">
                         {allFileSections.map(({ file, sections }, idx) => {
                           const isCollapsed = collapsedFileSections[file.key] === true;
+                          const provenance = resolveProvenance(file);
                           return (
                             <div key={file.key} id={`diff-file-${idx}`} className="git-diff-file-section">
                               <div className="git-diff-file-header">
@@ -1072,6 +1102,9 @@ export function GitSidebar(props: GitSidebarProps) {
                                 <span className="git-diff-file-stats">
                                   <span className="added">+{file.added}</span>
                                   <span className="removed">-{file.removed}</span>
+                                </span>
+                                <span className={`git-diff-provenance-chip ${provenance ? "" : "unknown"}`.trim()}>
+                                  Why this changed: {formatProvenanceLabel(provenance)}
                                 </span>
                                 <span
                                   className="git-diff-file-actions"
@@ -1183,6 +1216,9 @@ export function GitSidebar(props: GitSidebarProps) {
             <span className="git-diff-file-stats">
               <span className="added">+{listViewFocusFile.added}</span>
               <span className="removed">-{listViewFocusFile.removed}</span>
+            </span>
+            <span className={`git-diff-provenance-chip ${resolveProvenance(listViewFocusFile) ? "" : "unknown"}`.trim()}>
+              Why this changed: {formatProvenanceLabel(resolveProvenance(listViewFocusFile))}
             </span>
           </div>
           <div className="git-list-diff-body">

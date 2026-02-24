@@ -44,4 +44,30 @@ describe("usePersistedState", () => {
 
     expect(window.localStorage.getItem("persist:custom")).toBe("7");
   });
+
+  it("persists hidden model preferences across remount", () => {
+    const key = "orxa:appPreferences:v1";
+    const initial = {
+      showOperationsPane: true,
+      autoOpenTerminalOnCreate: true,
+      confirmDangerousActions: true,
+      permissionMode: "ask-write" as const,
+      commitGuidancePrompt: "",
+      codeFont: "IBM Plex Mono",
+      hiddenModels: [] as string[],
+    };
+
+    const first = renderHook(() => usePersistedState(key, initial));
+    act(() => {
+      first.result.current[1]((previous) => ({
+        ...previous,
+        hiddenModels: [...previous.hiddenModels, "cloudflare/@cf/meta/llama-3.1-8b-instruct"],
+      }));
+    });
+    expect(first.result.current[0].hiddenModels).toEqual(["cloudflare/@cf/meta/llama-3.1-8b-instruct"]);
+    first.unmount();
+
+    const second = renderHook(() => usePersistedState(key, initial));
+    expect(second.result.current[0].hiddenModels).toEqual(["cloudflare/@cf/meta/llama-3.1-8b-instruct"]);
+  });
 });

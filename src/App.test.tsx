@@ -8,6 +8,7 @@ const modeGetMock = vi.fn(async () => "orxa");
 const modeSetMock = vi.fn(async (mode: "orxa" | "standard") => mode);
 
 beforeEach(() => {
+  window.localStorage.clear();
   const subscribe = vi.fn(() => () => undefined);
   modeGetMock.mockResolvedValue("orxa");
   modeSetMock.mockImplementation(async (mode: "orxa" | "standard") => mode);
@@ -54,6 +55,10 @@ beforeEach(() => {
           session: { id: "session-2", title: "Worktree: test", slug: "worktree-test", parentID: undefined, sharing: undefined, revert: [], time: { created: Date.now(), updated: Date.now() } },
         })),
         loadMessages: vi.fn(async () => []),
+        loadExecutionLedger: vi.fn(async () => ({ cursor: 0, records: [] })),
+        clearExecutionLedger: vi.fn(async () => true),
+        loadChangeProvenance: vi.fn(async () => ({ cursor: 0, records: [] })),
+        getFileProvenance: vi.fn(async () => []),
         sendPrompt: vi.fn(async () => true),
         replyPermission: vi.fn(async () => true),
         replyQuestion: vi.fn(async () => true),
@@ -159,4 +164,5 @@ describe("App", () => {
       }),
     ).toBe("orxa");
   });
+
 });

@@ -37,7 +37,6 @@ export type WorkspaceSidebarProps = {
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
   activeSessionID?: string;
-  pendingSessionId?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionStatusType: (sessionID: string, directory?: string) => string;
   selectProject: (directory: string) => Promise<void> | void;
@@ -72,7 +71,6 @@ export function WorkspaceSidebar({
   setCollapsedProjects,
   sessions,
   activeSessionID,
-  pendingSessionId,
   setAllSessionsModalOpen,
   getSessionStatusType,
   selectProject,
@@ -217,9 +215,18 @@ export function WorkspaceSidebar({
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
               const isExpanded = isActiveProject && !collapsedProjects[project.worktree];
-              const visibleSessions = isExpanded
-                ? sessions.filter((session) => session.id !== pendingSessionId || session.id === activeSessionID)
-                : [];
+              const visibleSessions = isExpanded ? sessions : [];
+              const displayedSessions = (() => {
+                const first = visibleSessions.slice(0, 4);
+                if (!activeSessionID || first.some((session) => session.id === activeSessionID)) {
+                  return first;
+                }
+                const active = visibleSessions.find((session) => session.id === activeSessionID);
+                if (!active) {
+                  return first;
+                }
+                return [active, ...first.slice(0, 3)];
+              })();
               return (
                 <article
                   key={project.id}
@@ -267,7 +274,7 @@ export function WorkspaceSidebar({
                   {isExpanded ? (
                     <div className="project-session-list">
                       {visibleSessions.length === 0 ? <p>No sessions yet</p> : null}
-                      {visibleSessions.slice(0, 4).map((session) => {
+                      {displayedSessions.map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
                         const busy = status === "busy" || status === "retry";
                         return (

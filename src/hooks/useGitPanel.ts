@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GitBranchState } from "@shared/ipc";
 import { usePersistedState } from "./usePersistedState";
 
 export type CommitNextStep = "commit" | "commit_and_push" | "commit_and_create_pr";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
 export type GitDiffViewMode = "list" | "unified" | "split";
-export type GitDiffStats = { additions: number; deletions: number; hasChanges: boolean };
+export type GitDiffStats = { additions: number; deletions: number; filesChanged: number; hasChanges: boolean };
 
 const GIT_DIFF_VIEW_MODE_KEY = "orxa:gitDiffViewMode:v1";
 
@@ -13,7 +13,7 @@ function formatError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function parseGitDiffStats(output: string): GitDiffStats {
+export function parseGitDiffStats(output: string): GitDiffStats {
   const trimmed = output.trim();
   if (
     !trimmed ||
@@ -21,14 +21,44 @@ function parseGitDiffStats(output: string): GitDiffStats {
     trimmed === "Not a git repository." ||
     trimmed.startsWith("Loading diff")
   ) {
-    return { additions: 0, deletions: 0, hasChanges: false };
+    return { additions: 0, deletions: 0, filesChanged: 0, hasChanges: false };
   }
 
   const lines = output.split(/\r?\n/);
   let additions = 0;
   let deletions = 0;
+  const changedFiles = new Set<string>();
 
   for (const line of lines) {
+    const diffHeaderMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    if (diffHeaderMatch) {
+      const path = diffHeaderMatch[2] ?? diffHeaderMatch[1];
+      if (path) {
+        changedFiles.add(path);
+      }
+      continue;
+    }
+    const untrackedMatch = line.match(/^\?\?\s+(.+)$/);
+    if (untrackedMatch) {
+      const path = untrackedMatch[1]?.trim();
+      if (path) {
+        changedFiles.add(path);
+        additions += 1;
+      }
+      continue;
+    }
+    const inlineUntracked = [...line.matchAll(/\?\?\s+([^?]+?)(?=\s+\?\?|$)/g)];
+    if (inlineUntracked.length > 0) {
+      for (const match of inlineUntracked) {
+        const path = (match[1] ?? "").trim();
+        if (!path) {
+          continue;
+        }
+        changedFiles.add(path);
+        additions += 1;
+      }
+      continue;
+    }
     if (line.startsWith("+++") || line.startsWith("---")) {
       continue;
     }
@@ -44,7 +74,8 @@ function parseGitDiffStats(output: string): GitDiffStats {
   return {
     additions,
     deletions,
-    hasChanges: additions > 0 || deletions > 0,
+    filesChanged: changedFiles.size,
+    hasChanges: changedFiles.size > 0 || additions > 0 || deletions > 0,
   };
 }
 
@@ -61,7 +92,7 @@ export function useGitPanel(activeProjectDir: string | null) {
     serialize: (value) => value,
   });
   const [gitPanelOutput, setGitPanelOutput] = useState("Select DIFF or LOG.");
-  const [gitDiffStats, setGitDiffStats] = useState<GitDiffStats>({ additions: 0, deletions: 0, hasChanges: false });
+  const [gitDiffStats, setGitDiffStats] = useState<GitDiffStats>({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
   const [gitDiffLoading, setGitDiffLoading] = useState(false);
   const [gitLogLoading, setGitLogLoading] = useState(false);
   const [gitIssuesLoading, setGitIssuesLoading] = useState(false);
@@ -88,6 +119,7 @@ export function useGitPanel(activeProjectDir: string | null) {
   const [branchCreateModalOpen, setBranchCreateModalOpen] = useState(false);
   const [branchCreateName, setBranchCreateName] = useState("");
   const [branchCreateError, setBranchCreateError] = useState<string | null>(null);
+  const gitRefreshTimerRef = useRef<number | undefined>(undefined);
 
   const loadGitDiff = useCallback(async () => {
     if (!activeProjectDir) {
@@ -102,7 +134,7 @@ export function useGitPanel(activeProjectDir: string | null) {
       setGitDiffStats(parseGitDiffStats(output));
     } catch (error) {
       setGitPanelOutput(formatError(error));
-      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
+      setGitDiffStats({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
     } finally {
       setGitDiffLoading(false);
     }
@@ -110,14 +142,14 @@ export function useGitPanel(activeProjectDir: string | null) {
 
   const refreshGitDiffStats = useCallback(async () => {
     if (!activeProjectDir) {
-      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
+      setGitDiffStats({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
       return;
     }
     try {
       const output = await window.orxa.opencode.gitDiff(activeProjectDir);
       setGitDiffStats(parseGitDiffStats(output));
     } catch {
-      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
+      setGitDiffStats({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
     }
   }, [activeProjectDir]);
 
@@ -131,6 +163,26 @@ export function useGitPanel(activeProjectDir: string | null) {
       // ignore to avoid overwriting existing content on transient errors
     }
   }, [activeProjectDir]);
+
+  const scheduleGitRefresh = useCallback(
+    (delayMs = 420) => {
+      if (!activeProjectDir) {
+        return;
+      }
+      if (gitRefreshTimerRef.current) {
+        window.clearTimeout(gitRefreshTimerRef.current);
+      }
+      gitRefreshTimerRef.current = window.setTimeout(() => {
+        gitRefreshTimerRef.current = undefined;
+        if (gitPanelTab === "diff") {
+          void silentRefreshDiff();
+        } else {
+          void refreshGitDiffStats();
+        }
+      }, Math.max(120, delayMs));
+    },
+    [activeProjectDir, gitPanelTab, refreshGitDiffStats, silentRefreshDiff],
+  );
 
   const loadGitLog = useCallback(async () => {
     if (!activeProjectDir) {
@@ -324,7 +376,7 @@ export function useGitPanel(activeProjectDir: string | null) {
       setGitPanelTab("diff");
       setGitPanelOutput("Select DIFF or LOG.");
       setBranchState(null);
-      setGitDiffStats({ additions: 0, deletions: 0, hasChanges: false });
+      setGitDiffStats({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
       return;
     }
     void refreshBranchState();
@@ -338,6 +390,14 @@ export function useGitPanel(activeProjectDir: string | null) {
     }, 8000);
     return () => clearInterval(interval);
   }, [activeProjectDir, silentRefreshDiff]);
+
+  useEffect(() => {
+    return () => {
+      if (gitRefreshTimerRef.current) {
+        window.clearTimeout(gitRefreshTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!commitModalOpen || !activeProjectDir) {
@@ -394,6 +454,7 @@ export function useGitPanel(activeProjectDir: string | null) {
     openBranchCreateModal,
     submitBranchCreate,
     loadCommitSummary,
+    scheduleGitRefresh,
     stageAllChanges,
     discardAllChanges,
     stageFile,

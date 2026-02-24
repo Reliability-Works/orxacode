@@ -18,6 +18,11 @@ import {
 import WebSocket from "ws";
 import type {
   AgentsDocument,
+  ChangeProvenanceRecord,
+  ExecutionEventActor,
+  ExecutionEventKind,
+  ExecutionEventRecord,
+  ExecutionLedgerSnapshot,
   GitBranchState,
   GitCommitRequest,
   GitCommitResult,
@@ -40,6 +45,8 @@ import type {
   RuntimeState,
   SkillEntry,
   ServerDiagnostics,
+  SessionProvenanceSnapshot,
+  SessionPermissionMode,
   ProjectFileDocument,
   ProjectFileEntry,
   SessionMessageBundle,
@@ -47,6 +54,7 @@ import type {
   WorktreeSessionResult,
 } from "../../shared/ipc";
 import { PasswordStore } from "./password-store";
+import { ExecutionLedgerStore } from "./execution-ledger-store";
 import {
   ORXA_PLUGIN_PACKAGE,
   ORXA_PLUGIN_SPECIFIER,
@@ -55,6 +63,8 @@ import {
 } from "./plugin-config";
 import { ProjectStore } from "./project-store";
 import { ProfileStore } from "./profile-store";
+import { ProvenanceIndex } from "./provenance-index";
+import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
@@ -81,6 +91,30 @@ function sanitizeError(error: unknown) {
   return raw
     .replace(/https?:\/\/[^\s)]+/gi, "[server]")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[server]");
+}
+
+function isTransientPromptError(error: unknown) {
+  const normalized = sanitizeError(error).toLowerCase();
+  return (
+    normalized.includes("und_err_headers_timeout") ||
+    normalized.includes("headers timeout") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("socket hang up") ||
+    normalized.includes("econnreset")
+  );
+}
+
+function toSessionPermissionRules(mode?: SessionPermissionMode) {
+  if (!mode) {
+    return undefined;
+  }
+  return [
+    {
+      permission: "edit",
+      pattern: "**",
+      action: mode === "yolo-write" ? ("allow" as const) : ("ask" as const),
+    },
+  ];
 }
 
 function parseSimpleYamlFrontmatter(content: string) {
@@ -161,10 +195,148 @@ function normalizeWorktreeName(value: string) {
   return `session-${Date.now().toString(36)}`;
 }
 
+function toWorkspaceRelativePath(directory: string, target: string) {
+  const normalizedDirectory = path.resolve(directory).replace(/\\/g, "/");
+  const normalizedTarget = target.replace(/\\/g, "/");
+  if (normalizedTarget.startsWith(`${normalizedDirectory}/`)) {
+    return normalizedTarget.slice(normalizedDirectory.length + 1);
+  }
+  if (normalizedTarget === normalizedDirectory) {
+    return ".";
+  }
+  if (normalizedTarget.startsWith("./")) {
+    return normalizedTarget.slice(2);
+  }
+  return normalizedTarget.replace(/^\/+/, "");
+}
+
+function collectStringPaths(input: unknown, output: string[]) {
+  if (typeof input === "string") {
+    const value = input.trim();
+    if (value.length > 0) {
+      output.push(value);
+    }
+    return;
+  }
+  if (!input || typeof input !== "object") {
+    return;
+  }
+  if (Array.isArray(input)) {
+    for (const item of input) {
+      collectStringPaths(item, output);
+    }
+    return;
+  }
+  const record = input as Record<string, unknown>;
+  const keys = [
+    "path",
+    "paths",
+    "filePath",
+    "filepath",
+    "file_path",
+    "relativePath",
+    "file",
+    "filename",
+    "target",
+    "targetPath",
+    "destination",
+    "from",
+    "to",
+    "oldPath",
+    "newPath",
+  ];
+  for (const key of keys) {
+    if (!(key in record)) {
+      continue;
+    }
+    collectStringPaths(record[key], output);
+  }
+  for (const value of Object.values(record)) {
+    if (value && typeof value === "object") {
+      collectStringPaths(value, output);
+    }
+  }
+}
+
+function parsePatchMutations(patchText: string, directory: string) {
+  const lines = patchText.split(/\r?\n/);
+  const mutations: Array<{ operation: "edit" | "create" | "delete"; filePath: string }> = [];
+  for (const line of lines) {
+    const match = line.match(/^\*\*\*\s+(Update|Add|Delete)\s+File:\s+(.+)$/i);
+    if (!match) {
+      continue;
+    }
+    const action = (match[1] ?? "").toLowerCase();
+    const file = (match[2] ?? "").trim();
+    if (!file) {
+      continue;
+    }
+    mutations.push({
+      operation: action === "add" ? "create" : action === "delete" ? "delete" : "edit",
+      filePath: toWorkspaceRelativePath(directory, file),
+    });
+  }
+  return mutations;
+}
+
+function classifyTool(
+  toolName: string,
+  stateInput: unknown,
+  directory: string,
+): {
+  kind: ExecutionEventKind;
+  operation?: "edit" | "create" | "delete";
+  summary: string;
+  paths: string[];
+} {
+  const normalizedTool = toolName.toLowerCase();
+  const gathered: string[] = [];
+  collectStringPaths(stateInput, gathered);
+  const paths = [...new Set(gathered.map((item) => toWorkspaceRelativePath(directory, item)))].filter(Boolean);
+  const patchMutations = typeof stateInput === "string" ? parsePatchMutations(stateInput, directory) : [];
+  const mutationPaths = patchMutations.map((item) => item.filePath);
+  const allPaths = [...new Set([...paths, ...mutationPaths])];
+
+  if (normalizedTool.includes("todo")) {
+    return { kind: "todo", summary: "Updated todo list", paths: [] };
+  }
+  if (normalizedTool.includes("git")) {
+    return { kind: "git", summary: "Checked git state", paths: allPaths };
+  }
+  if (normalizedTool.includes("read") || normalizedTool.includes("cat")) {
+    return { kind: "read", summary: `Read ${allPaths[0] ?? "workspace file"}`, paths: allPaths };
+  }
+  if (normalizedTool.includes("rg") || normalizedTool.includes("grep") || normalizedTool.includes("find") || normalizedTool.includes("search")) {
+    return { kind: "search", summary: `Searched ${allPaths[0] ?? "workspace"}`, paths: allPaths };
+  }
+  if (normalizedTool.includes("delete") || normalizedTool.includes("remove")) {
+    return { kind: "delete", operation: "delete", summary: `Deleted ${allPaths[0] ?? "file"}`, paths: allPaths };
+  }
+  if (normalizedTool.includes("create") || normalizedTool.includes("mkdir") || normalizedTool.includes("touch")) {
+    return { kind: "create", operation: "create", summary: `Created ${allPaths[0] ?? "file"}`, paths: allPaths };
+  }
+  if (normalizedTool.includes("write") || normalizedTool.includes("edit") || normalizedTool.includes("replace")) {
+    return { kind: "edit", operation: "edit", summary: `Edited ${allPaths[0] ?? "file"}`, paths: allPaths };
+  }
+  if (normalizedTool.includes("apply_patch")) {
+    const mutation = patchMutations[0];
+    if (mutation?.operation === "create") {
+      return { kind: "create", operation: "create", summary: `Created ${mutation.filePath}`, paths: allPaths };
+    }
+    if (mutation?.operation === "delete") {
+      return { kind: "delete", operation: "delete", summary: `Deleted ${mutation.filePath}`, paths: allPaths };
+    }
+    return { kind: "edit", operation: "edit", summary: `Edited ${mutation?.filePath ?? allPaths[0] ?? "file"}`, paths: allPaths };
+  }
+  return { kind: "run", summary: "Ran command", paths: allPaths };
+}
+
 export class OpencodeService {
   private profileStore = new ProfileStore();
   private projectStore = new ProjectStore();
   private passwordStore = new PasswordStore();
+  private ledgerStore = new ExecutionLedgerStore();
+  private provenanceIndex = new ProvenanceIndex();
 
   private managedProcess: ChildProcess | undefined;
   private state: RuntimeState = {
@@ -177,6 +349,9 @@ export class OpencodeService {
   private globalAbort: AbortController | undefined;
   private projectAbort: AbortController | undefined;
   private ptySockets = new Map<string, WebSocket>();
+  private sessionSyncFingerprint = new Map<string, string>();
+  private sessionSyncInFlight = new Map<string, Promise<void>>();
+  private promptFence = new Map<string, number>();
 
   onEvent?: (event: OrxaEvent) => void;
 
@@ -828,8 +1003,12 @@ export class OpencodeService {
     };
   }
 
-  async createSession(directory: string, title?: string) {
-    const response = await this.client(directory).session.create({ directory, title });
+  async createSession(directory: string, title?: string, permissionMode?: SessionPermissionMode) {
+    const response = await this.client(directory).session.create({
+      directory,
+      title,
+      permission: toSessionPermissionRules(permissionMode),
+    });
     return this.unwrap(response);
   }
 
@@ -919,7 +1098,38 @@ export class OpencodeService {
     return this.unwrap(response);
   }
 
+  async loadExecutionLedger(directory: string, sessionID: string, cursor = 0): Promise<ExecutionLedgerSnapshot> {
+    await this.syncSessionExecutionArtifacts(directory, sessionID);
+    return this.ledgerStore.loadSnapshot(directory, sessionID, cursor);
+  }
+
+  async clearExecutionLedger(directory: string, sessionID: string) {
+    await Promise.all([
+      this.ledgerStore.clear(directory, sessionID),
+      this.provenanceIndex.clear(directory, sessionID),
+    ]);
+    this.sessionSyncFingerprint.delete(`${directory}::${sessionID}`);
+    return true;
+  }
+
+  async loadChangeProvenance(directory: string, sessionID: string, cursor = 0): Promise<SessionProvenanceSnapshot> {
+    await this.syncSessionExecutionArtifacts(directory, sessionID);
+    return this.provenanceIndex.loadSnapshot(directory, sessionID, cursor);
+  }
+
+  async getFileProvenance(directory: string, sessionID: string, relativePath: string): Promise<ChangeProvenanceRecord[]> {
+    await this.syncSessionExecutionArtifacts(directory, sessionID);
+    return this.provenanceIndex.getFileHistory(directory, sessionID, toWorkspaceRelativePath(directory, relativePath));
+  }
+
   async sendPrompt(input: PromptRequest) {
+    const promptSentAt = Date.now();
+    const dedupeKey = `${input.directory}::${input.sessionID}::${input.text.trim()}`;
+    const lastAttemptAt = this.promptFence.get(dedupeKey);
+    if (lastAttemptAt && promptSentAt - lastAttemptAt < 8_000) {
+      return true;
+    }
+    this.promptFence.set(dedupeKey, promptSentAt);
     const parts: Array<
       | {
           type: "text";
@@ -950,14 +1160,36 @@ export class OpencodeService {
       });
     }
 
-    await this.client(input.directory).session.prompt({
+    const request = {
       directory: input.directory,
       sessionID: input.sessionID,
       agent: input.agent,
       model: input.model,
       variant: input.variant,
       parts,
-    });
+    };
+
+    try {
+      await this.client(input.directory).session.prompt(request);
+    } catch (error) {
+      if (!isTransientPromptError(error)) {
+        throw error;
+      }
+      const pollStartedAt = Date.now();
+      while (Date.now() - pollStartedAt < 2_400) {
+        const recentMessages = await this.loadMessages(input.directory, input.sessionID).catch(() => undefined);
+        if (recentMessages && hasRecentMatchingUserPrompt(recentMessages, input.text, promptSentAt)) {
+          return true;
+        }
+        await delay(280);
+      }
+      await delay(320);
+      await this.client(input.directory).session.prompt(request);
+    } finally {
+      setTimeout(() => {
+        this.promptFence.delete(dedupeKey);
+      }, 15_000);
+    }
     return true;
   }
 
@@ -988,6 +1220,11 @@ export class OpencodeService {
     const staged = await this.runCommandWithOutput("git", ["-C", repoRoot, "--no-pager", "diff", "--staged", "--", "."], cwd).catch(
       (error) => `Failed to load staged diff: ${sanitizeError(error)}`,
     );
+    const untracked = await this.runCommandWithOutput(
+      "git",
+      ["-C", repoRoot, "ls-files", "--others", "--exclude-standard"],
+      cwd,
+    ).catch((error) => `Failed to load untracked files: ${sanitizeError(error)}`);
 
     const sections: string[] = [];
     if (unstaged.trim().length > 0) {
@@ -995,6 +1232,19 @@ export class OpencodeService {
     }
     if (staged.trim().length > 0) {
       sections.push("## Staged\n", staged.trimEnd());
+    }
+    if (untracked.trim().length > 0) {
+      const files = untracked
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      if (files.length > 0) {
+        const rendered = await Promise.all(files.map((filePath) => this.renderUntrackedDiff(repoRoot, filePath)));
+        const output = rendered.filter((chunk) => chunk.trim().length > 0).join("\n\n");
+        if (output.trim().length > 0) {
+          sections.push("## Untracked\n", output);
+        }
+      }
     }
     if (sections.length === 0) {
       return "No local changes.";
@@ -1849,6 +2099,216 @@ export class OpencodeService {
     return true;
   }
 
+  private async syncSessionExecutionArtifacts(directory: string, sessionID: string) {
+    const syncKey = `${directory}::${sessionID}`;
+    const inFlight = this.sessionSyncInFlight.get(syncKey);
+    if (inFlight) {
+      await inFlight;
+      return;
+    }
+
+    const run = (async () => {
+      const bundles = await this.loadMessages(directory, sessionID).catch(() => []);
+      const sorted = [...bundles].sort((a, b) => a.info.time.created - b.info.time.created);
+      const fingerprint = sorted.map((item) => `${item.info.id}:${item.parts.length}:${item.info.time.created}`).join("|");
+      if (this.sessionSyncFingerprint.get(syncKey) === fingerprint) {
+        return;
+      }
+
+      const executionRecords: ExecutionEventRecord[] = [];
+      const provenanceRecords: ChangeProvenanceRecord[] = [];
+
+      for (const bundle of sorted) {
+        let actor: ExecutionEventActor = { type: "main", name: "Main agent" };
+        let delegationID: string | undefined;
+        const timestampBase = bundle.info.time.created;
+
+        for (let partIndex = 0; partIndex < bundle.parts.length; partIndex += 1) {
+          const part = bundle.parts[partIndex] as Record<string, unknown> & { id: string; type: string };
+          const timestamp = timestampBase + partIndex;
+
+          if (part.type === "agent") {
+            const name = typeof part.name === "string" ? part.name : "Agent";
+            const isMain = name.trim().toLowerCase() === "main agent" || name.trim().toLowerCase() === "main";
+            actor = { type: isMain ? "main" : "subagent", name };
+            if (isMain) {
+              delegationID = undefined;
+            }
+            continue;
+          }
+
+          if (part.type === "subtask") {
+            const agentName = typeof part.agent === "string" ? part.agent : "subagent";
+            const description = typeof part.description === "string" ? part.description : "Delegated task";
+            const recordID = `${bundle.info.id}:${part.id}:delegate`;
+            delegationID = part.id;
+            actor = { type: "subagent", name: agentName };
+            executionRecords.push({
+              id: recordID,
+              directory,
+              sessionID,
+              timestamp,
+              kind: "delegate",
+              summary: `Delegated to ${agentName}: ${description}`,
+              detail: typeof part.prompt === "string" ? part.prompt : undefined,
+              actor: { type: "main", name: "Main agent" },
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+            });
+            continue;
+          }
+
+          if (part.type === "tool") {
+            const state = (part.state ?? {}) as { status?: string; input?: unknown };
+            if (state.status === "pending") {
+              continue;
+            }
+            const toolName = typeof part.tool === "string" ? part.tool : "tool";
+            const classified = classifyTool(toolName, state.input, directory);
+            const recordID = `${bundle.info.id}:${part.id}:tool:${classified.kind}`;
+            executionRecords.push({
+              id: recordID,
+              directory,
+              sessionID,
+              timestamp,
+              kind: classified.kind,
+              summary: classified.summary,
+              actor,
+              tool: toolName,
+              operation: classified.operation,
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+              paths: classified.paths,
+            });
+
+            if (classified.operation) {
+              for (const filePath of classified.paths) {
+                if (!filePath || filePath === ".") {
+                  continue;
+                }
+                provenanceRecords.push({
+                  filePath,
+                  operation: classified.operation,
+                  actorType: actor.type,
+                  actorName: actor.name,
+                  tool: toolName,
+                  delegationID,
+                  turnID: bundle.info.id,
+                  eventID: `${recordID}:${filePath}`,
+                  timestamp,
+                  reason: classified.summary,
+                });
+              }
+            }
+            continue;
+          }
+
+          if (part.type === "patch") {
+            const files = Array.isArray(part.files)
+              ? part.files.filter((item): item is string => typeof item === "string")
+              : [];
+            const normalizedPaths = files.map((item) => toWorkspaceRelativePath(directory, item));
+            const recordID = `${bundle.info.id}:${part.id}:patch`;
+            executionRecords.push({
+              id: recordID,
+              directory,
+              sessionID,
+              timestamp,
+              kind: "edit",
+              summary: normalizedPaths.length > 0 ? `Edited ${normalizedPaths.length} files` : "Edited files",
+              actor,
+              operation: "edit",
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+              paths: normalizedPaths,
+            });
+            for (const filePath of normalizedPaths) {
+              provenanceRecords.push({
+                filePath,
+                operation: "edit",
+                actorType: actor.type,
+                actorName: actor.name,
+                delegationID,
+                turnID: bundle.info.id,
+                eventID: `${recordID}:${filePath}`,
+                timestamp,
+                reason: "Patch update",
+              });
+            }
+            continue;
+          }
+
+          if (part.type === "step-start") {
+            executionRecords.push({
+              id: `${bundle.info.id}:${part.id}:step-start`,
+              directory,
+              sessionID,
+              timestamp,
+              kind: "step",
+              summary: "Step started",
+              actor,
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+            });
+            continue;
+          }
+
+          if (part.type === "step-finish") {
+            const tokens = (part.tokens ?? {}) as { input?: number; output?: number; cache?: { read?: number } };
+            const reason = typeof part.reason === "string" ? part.reason : "completed";
+            executionRecords.push({
+              id: `${bundle.info.id}:${part.id}:step-finish`,
+              directory,
+              sessionID,
+              timestamp,
+              kind: "step",
+              summary: "Step finished",
+              detail: `reason: ${reason} | input: ${tokens.input ?? 0} | output: ${tokens.output ?? 0} | cache read: ${tokens.cache?.read ?? 0}`,
+              actor,
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+            });
+            continue;
+          }
+
+          if (part.type === "reasoning") {
+            const text = typeof part.text === "string" ? part.text.trim() : "";
+            executionRecords.push({
+              id: `${bundle.info.id}:${part.id}:reasoning`,
+              directory,
+              sessionID,
+              timestamp,
+              kind: "reasoning",
+              summary: "Reasoning update",
+              detail: text.length > 0 ? text.slice(0, 240) : undefined,
+              actor,
+              turnID: bundle.info.id,
+              delegationID,
+              eventID: part.id,
+            });
+            continue;
+          }
+        }
+      }
+
+      await this.ledgerStore.appendMany(directory, sessionID, executionRecords);
+      await this.provenanceIndex.appendMany(directory, sessionID, provenanceRecords);
+      this.sessionSyncFingerprint.set(syncKey, fingerprint);
+    })();
+
+    this.sessionSyncInFlight.set(syncKey, run);
+    try {
+      await run;
+    } finally {
+      this.sessionSyncInFlight.delete(syncKey);
+    }
+  }
+
   private setState(next: RuntimeState) {
     this.state = next;
     this.emit({
@@ -2271,6 +2731,37 @@ export class OpencodeService {
         reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${details ? `: ${details}` : ""}`));
       });
     });
+  }
+
+  private async renderUntrackedDiff(repoRoot: string, relativePath: string) {
+    const normalizedPath = relativePath.replace(/\\/g, "/");
+    const fullPath = path.resolve(repoRoot, relativePath);
+    const baseHeader = [`diff --git a/${normalizedPath} b/${normalizedPath}`, "new file mode 100644"];
+    try {
+      const content = await readFile(fullPath);
+      if (content.includes(0)) {
+        return [...baseHeader, `Binary files /dev/null and b/${normalizedPath} differ`].join("\n");
+      }
+
+      const text = content.toString("utf8").replace(/\r\n/g, "\n");
+      const hasTrailingNewline = text.endsWith("\n");
+      const rawLines = text.length === 0 ? [] : text.replace(/\n$/, "").split("\n");
+      const diffLines = [
+        ...baseHeader,
+        "--- /dev/null",
+        `+++ b/${normalizedPath}`,
+      ];
+      if (rawLines.length > 0) {
+        diffLines.push(`@@ -0,0 +1,${rawLines.length} @@`);
+        diffLines.push(...rawLines.map((line) => `+${line}`));
+      }
+      if (!hasTrailingNewline && rawLines.length > 0) {
+        diffLines.push("\\ No newline at end of file");
+      }
+      return diffLines.join("\n");
+    } catch {
+      return [...baseHeader, `Binary files /dev/null and b/${normalizedPath} differ`].join("\n");
+    }
   }
 
   private async runCommandAttempts(attempts: Array<{ command: string; args: string[]; label: string }>, cwd: string) {

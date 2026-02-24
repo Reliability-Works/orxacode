@@ -80,8 +80,8 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
     case "send":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-          <path d="m22 2-7 20-4-9-9-4Z" />
-          <path d="M22 2 11 13" />
+          <path d="M12 18V6" />
+          <path d="m7.5 10.5 4.5-4.5 4.5 4.5" />
         </svg>
       );
     case "image":
@@ -113,7 +113,7 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
     case "stop":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-          <rect x="6.5" y="6.5" width="11" height="11" rx="2" />
+          <rect x="6.2" y="6.2" width="11.6" height="11.6" rx="2.1" fill="currentColor" stroke="none" />
         </svg>
       );
     case "git":

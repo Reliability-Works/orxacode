@@ -1,5 +1,7 @@
 # Opencode Orxa
 
+![Opencode Orxa hero banner](assets/readme/opencode-orxa-hero-banner-16x9.svg)
+
 Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
 Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.

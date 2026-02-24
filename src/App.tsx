@@ -18,6 +18,7 @@ import {
 import type {
   AppMode,
   AgentsDocument,
+  ChangeProvenanceRecord,
   ProjectListItem,
   RuntimeProfile,
   RuntimeProfileInput,
@@ -47,12 +48,12 @@ import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import {
+  filterHiddenModelOptions,
   findFallbackModel,
   listAgentOptions,
-  listAllModelOptions,
-  listConfiguredProviderIDs,
   listModelOptions,
-  listModelOptionsFromConfig,
+  listModelOptionsFromConfigReferences,
+  mergeDiscoverableModelOptions,
   type ModelOption,
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
@@ -88,6 +89,7 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   showOperationsPane: true,
   autoOpenTerminalOnCreate: true,
   confirmDangerousActions: true,
+  permissionMode: "ask-write",
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
   codeFont: "IBM Plex Mono",
   hiddenModels: [],
@@ -107,6 +109,8 @@ type OrxaTodoItem = {
   status?: string;
   priority?: string;
 };
+
+const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
 
 type OpenTargetOption = {
   id: OpenTarget;
@@ -212,19 +216,47 @@ function extractOrxaTodos(messages: SessionMessageBundle[]) {
   return [];
 }
 
+function isTodoCompleted(todo: OrxaTodoItem) {
+  const status = todo.status?.trim().toLowerCase();
+  if (!status) {
+    return false;
+  }
+  return COMPLETED_TODO_STATUSES.has(status);
+}
+
+function isWritePermissionRequest(permission?: string) {
+  const normalized = (permission ?? "").trim().toLowerCase();
+  return normalized === "edit" || normalized === "write" || normalized.startsWith("edit.") || normalized.startsWith("write.");
+}
+
 export default function App() {
   const [appPreferences, setAppPreferences] = usePersistedState<AppPreferences>(APP_PREFERENCES_KEY, DEFAULT_APP_PREFERENCES, {
     deserialize: (raw) => {
       const parsed = JSON.parse(raw) as Partial<AppPreferences>;
-      return {
+      const merged: AppPreferences = {
         ...DEFAULT_APP_PREFERENCES,
         ...parsed,
       };
+      if (!Array.isArray(merged.hiddenModels)) {
+        merged.hiddenModels = [];
+      } else {
+        merged.hiddenModels = [
+          ...new Set(
+            merged.hiddenModels
+              .filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0),
+          ),
+        ];
+      }
+      if (merged.permissionMode !== "ask-write" && merged.permissionMode !== "yolo-write") {
+        merged.permissionMode = "ask-write";
+      }
+      return merged;
     },
   });
   const [appMode, setAppMode] = useState<AppMode>("standard");
   const [globalProviders, setGlobalProviders] = useState<ProviderListResponse>({ all: [], connected: [], default: {} });
-  const [configuredProviderIDs, setConfiguredProviderIDs] = useState<string[]>([]);
   const [modeSwitching, setModeSwitching] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
@@ -243,6 +275,7 @@ export default function App() {
   }, [appPreferences.codeFont]);
   const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
   const [, setStatusLine] = useState<string>("Ready");
+  const [sessionProvenanceByPath, setSessionProvenanceByPath] = useState<Record<string, ChangeProvenanceRecord>>({});
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
   const projectLastOpenedRef = useRef<Record<string, number>>({});
   const projectLastUpdatedRef = useRef<Record<string, number>>({});
@@ -256,7 +289,6 @@ export default function App() {
     setProjectData,
     activeSessionID,
     setActiveSessionID,
-    pendingSessionId,
     clearPendingSession,
     messages,
     setMessages,
@@ -423,6 +455,7 @@ export default function App() {
     checkoutBranch,
     openBranchCreateModal,
     submitBranchCreate,
+    scheduleGitRefresh,
   } = useGitPanel(activeProjectDir ?? null);
 
   const resizeStateRef = useRef<null | {
@@ -464,52 +497,21 @@ export default function App() {
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
   );
-  const allServerModelOptions = useMemo(
-    () => listAllModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
-    [projectData],
-  );
   const globalServerModelOptions = useMemo(() => {
-    const connected = listModelOptions(globalProviders);
-    if (configuredProviderIDs.length === 0) {
-      return connected;
-    }
-
-    const allowed = new Set(configuredProviderIDs);
-    return connected.filter((model) => allowed.has(model.providerID));
-  }, [configuredProviderIDs, globalProviders]);
-  const modelOptions = useMemo(() => {
-    const merged = [...serverModelOptions];
-    for (const model of configModelOptions) {
-      if (!merged.some((item) => item.key === model.key)) {
-        merged.push(model);
-      }
-    }
-    return merged.sort((a, b) => a.key.localeCompare(b.key));
-  }, [configModelOptions, serverModelOptions]);
-  const configuredProviderSet = useMemo(() => new Set(configuredProviderIDs), [configuredProviderIDs]);
+    return listModelOptions(globalProviders);
+  }, [globalProviders]);
+  const discoverableModelOptions = useMemo(
+    () => mergeDiscoverableModelOptions(configModelOptions, serverModelOptions, globalServerModelOptions),
+    [configModelOptions, globalServerModelOptions, serverModelOptions],
+  );
   const settingsModelsRef = useRef<ModelOption[]>([]);
   const settingsModelOptions = useMemo(() => {
-    const keySet = new Set<string>();
-    const merged: ModelOption[] = [];
-    const providerFilterEnabled = configuredProviderSet.size > 0;
-    const addModel = (m: ModelOption) => {
-      if (providerFilterEnabled && !configuredProviderSet.has(m.providerID)) {
-        return;
-      }
-      if (keySet.has(m.key)) return;
-      keySet.add(m.key);
-      merged.push(m);
-    };
-    for (const m of modelOptions) addModel(m);
-    for (const m of allServerModelOptions) addModel(m);
-    for (const m of globalServerModelOptions) addModel(m);
-    for (const m of configModelOptions) addModel(m);
-    merged.sort((a, b) => a.key.localeCompare(b.key));
+    const merged = discoverableModelOptions;
     if (merged.length > 0) {
       settingsModelsRef.current = merged;
     }
     return settingsModelsRef.current.length > 0 ? settingsModelsRef.current : merged;
-  }, [allServerModelOptions, configModelOptions, configuredProviderSet, globalServerModelOptions, modelOptions]);
+  }, [discoverableModelOptions]);
   const preferredAgentModel = useMemo(() => {
     if (selectedAgent === "plan") {
       return orxaModels.plan;
@@ -541,17 +543,6 @@ export default function App() {
       ? "Orxa"
       : "Assistant";
   const todosLabel = isOrxaMode ? "Orxa Todos" : "Todos";
-  const modelOptionsForAgent = useMemo(() => {
-    if (selectedAgent === "orxa" && orxaModels.orxa) {
-      const exact = modelOptions.filter((item) => item.key === orxaModels.orxa);
-      return exact.length > 0 ? exact : modelOptions;
-    }
-    if (selectedAgent === "plan" && orxaModels.plan) {
-      const exact = modelOptions.filter((item) => item.key === orxaModels.plan);
-      return exact.length > 0 ? exact : modelOptions;
-    }
-    return modelOptions;
-  }, [modelOptions, orxaModels.orxa, orxaModels.plan, selectedAgent]);
   const branchDisplayValue = useMemo(() => {
     if (branchLoading) {
       return "Loading branch...";
@@ -609,15 +600,22 @@ export default function App() {
 
   const refreshConfigModels = useCallback(async () => {
     try {
-      const doc = await window.orxa.opencode.readRawConfig("global");
-      const parsed = parseJsonc(doc.content) as unknown;
-      setConfigModelOptions(listModelOptionsFromConfig(parsed));
-      setConfiguredProviderIDs(listConfiguredProviderIDs(parsed));
+      const docs: Array<{ content: string }> = [];
+      if (activeProjectDir) {
+        const projectDoc = await window.orxa.opencode.readRawConfig("project", activeProjectDir).catch(() => undefined);
+        if (projectDoc) {
+          docs.push(projectDoc);
+        }
+      }
+      const globalDoc = await window.orxa.opencode.readRawConfig("global");
+      docs.push(globalDoc);
+      const parsed = docs.map((doc) => parseJsonc(doc.content) as unknown);
+      const merged = mergeDiscoverableModelOptions(...parsed.map((item) => listModelOptionsFromConfigReferences(item)));
+      setConfigModelOptions(merged);
     } catch {
       setConfigModelOptions([]);
-      setConfiguredProviderIDs([]);
     }
-  }, []);
+  }, [activeProjectDir]);
 
   const refreshGlobalProviders = useCallback(async () => {
     try {
@@ -648,6 +646,7 @@ export default function App() {
     composer,
     setComposer,
     composerAttachments,
+    isSendingPrompt,
     selectedModel,
     setSelectedModel,
     selectedVariant,
@@ -678,34 +677,11 @@ export default function App() {
     clearPendingSession,
   });
 
-  const allModelOptions = useMemo(() => {
-    const items = [...modelOptionsForAgent];
-    const extras = [preferredAgentModel, selectedModel].filter((value): value is string => Boolean(value));
-    for (const key of extras) {
-      if (items.some((item) => item.key === key)) {
-        continue;
-      }
-      const [providerID, ...modelParts] = key.split("/");
-      const modelID = modelParts.join("/");
-      if (!providerID || !modelID) {
-        continue;
-      }
-      items.unshift({
-        key,
-        providerID,
-        modelID,
-        providerName: providerID,
-        modelName: modelID,
-        variants: [],
-      });
-    }
-    return items;
-  }, [modelOptionsForAgent, preferredAgentModel, selectedModel]);
+  const allModelOptions = settingsModelOptions;
 
-  const hiddenModelsSet = useMemo(() => new Set(appPreferences.hiddenModels), [appPreferences.hiddenModels]);
   const modelSelectOptions = useMemo(
-    () => allModelOptions.filter((m) => !hiddenModelsSet.has(m.key)),
-    [allModelOptions, hiddenModelsSet],
+    () => filterHiddenModelOptions(allModelOptions, appPreferences.hiddenModels),
+    [allModelOptions, appPreferences.hiddenModels],
   );
   const variantOptions = useMemo(() => {
     const model = modelSelectOptions.find((item) => item.key === selectedModel);
@@ -745,6 +721,42 @@ export default function App() {
   }, [activeProjectDir, activeSessionID, refreshMessages]);
 
   useEffect(() => {
+    if (!activeProjectDir || !activeSessionID) {
+      setSessionProvenanceByPath({});
+      return;
+    }
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void opencodeClient
+        .loadChangeProvenance(activeProjectDir, activeSessionID, 0)
+        .then((snapshot) => {
+          if (cancelled) {
+            return;
+          }
+          const next: Record<string, ChangeProvenanceRecord> = {};
+          const ordered = [...snapshot.records].sort((a, b) => b.timestamp - a.timestamp);
+          for (const record of ordered) {
+            if (!record.filePath || next[record.filePath]) {
+              continue;
+            }
+            next[record.filePath] = record;
+          }
+          setSessionProvenanceByPath(next);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSessionProvenanceByPath({});
+          }
+        });
+    }, 140);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [activeProjectDir, activeSessionID, messages]);
+
+  useEffect(() => {
     const available = new Set(agentOptions.map((item) => item.name));
     if (hasOrxaAgent) available.add("orxa");
     if (hasPlanAgent) available.add("plan");
@@ -766,11 +778,14 @@ export default function App() {
 
     const savedModel = nextAgent ? agentModelPrefs[nextAgent] : undefined;
     const preferredModel = savedModel ?? selectedAgentDefinition?.model ?? preferredAgentModel ?? projectData?.config.model;
-    const fallback = findFallbackModel(modelSelectOptions, selectedModel ?? preferredModel);
+    const preferredVisibleModel = preferredModel && modelSelectOptions.some((item) => item.key === preferredModel)
+      ? preferredModel
+      : undefined;
+    const fallback = findFallbackModel(modelSelectOptions, selectedModel ?? preferredVisibleModel ?? preferredModel);
     if (!selectedModel || modeChanged || (nextAgent !== selectedAgent)) {
-      setSelectedModel(preferredModel ?? fallback?.key);
-    } else if (!modelSelectOptions.some((item) => item.key === selectedModel) && preferredModel) {
-      setSelectedModel(preferredModel);
+      setSelectedModel(preferredVisibleModel ?? fallback?.key);
+    } else if (!modelSelectOptions.some((item) => item.key === selectedModel)) {
+      setSelectedModel(preferredVisibleModel ?? fallback?.key);
     }
   }, [
     appMode,
@@ -875,6 +890,25 @@ export default function App() {
           queueRefresh(`Updated from event: ${kind}`, refreshDelay);
         }
 
+        if (
+          kind === "message.created" ||
+          kind === "message.updated" ||
+          kind === "message.part.added" ||
+          kind === "message.part.created" ||
+          kind === "message.part.delta" ||
+          kind === "message.part.updated" ||
+          kind === "message.part.removed" ||
+          kind === "message.removed" ||
+          kind === "session.updated" ||
+          kind === "session.deleted" ||
+          kind === "session.status" ||
+          kind === "session.idle" ||
+          kind === "session.error"
+        ) {
+          const delay = kind === "message.part.delta" ? 720 : 280;
+          scheduleGitRefresh(delay);
+        }
+
         if (kind === "session.error") {
           const eventValue = event.payload.event as unknown as { properties?: { error?: { message?: string } } };
           const message = eventValue.properties?.error?.message;
@@ -888,7 +922,7 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeProjectDir, bootstrap, queueRefresh]);
+  }, [activeProjectDir, bootstrap, queueRefresh, scheduleGitRefresh]);
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
@@ -1038,9 +1072,10 @@ export default function App() {
         selectedModelPayload,
         selectedVariant,
         serverAgentNames,
+        permissionMode: appPreferences.permissionMode,
       });
     },
-    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
+    [appPreferences.permissionMode, createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -1298,6 +1333,8 @@ export default function App() {
   );
 
   useEffect(() => {
+    const activeStatus = activeSessionID ? projectData?.sessionStatus[activeSessionID]?.type : undefined;
+    const canAbortSession = activeStatus === "busy" || activeStatus === "retry" || isSendingPrompt;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
         return;
@@ -1308,12 +1345,16 @@ export default function App() {
       setProjectSearchOpen(false);
       setProjectSortOpen(false);
       setBranchMenuOpen(false);
+      if (canAbortSession) {
+        event.preventDefault();
+        void abortActiveSession();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [abortActiveSession, activeSessionID, isSendingPrompt, projectData]);
 
   useEffect(() => {
     const onPointerDown = (event: globalThis.MouseEvent) => {
@@ -1460,6 +1501,7 @@ export default function App() {
   );
   const currentSessionStatus = activeSessionID ? projectData?.sessionStatus[activeSessionID] : undefined;
   const isSessionBusy = currentSessionStatus?.type === "busy" || currentSessionStatus?.type === "retry";
+  const isSessionInProgress = isSessionBusy || isSendingPrompt;
   const showingProjectDashboard = Boolean(activeProjectDir && !activeSessionID);
   const contentPaneTitle = showingProjectDashboard
     ? activeProject?.name || activeProjectDir?.split("/").at(-1) || "No workspace selected"
@@ -1468,7 +1510,71 @@ export default function App() {
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
   const orxaTodos = useMemo(() => extractOrxaTodos(messages), [messages]);
+  const completedTodoCount = useMemo(
+    () => orxaTodos.reduce((count, todo) => (isTodoCompleted(todo) ? count + 1 : count), 0),
+    [orxaTodos],
+  );
+  const allTodosCompleted = orxaTodos.length > 0 && completedTodoCount === orxaTodos.length;
+  const messageFeedBottomClearance = useMemo(() => {
+    if (orxaTodos.length === 0) {
+      return 24;
+    }
+    return todosOpen ? 286 : 78;
+  }, [orxaTodos.length, todosOpen]);
+  const todosDrawerStyle = useMemo(
+    () =>
+      ({
+        "--todos-anchor-bottom": `${132 + (terminalOpen ? 286 : 0)}px`,
+      }) as CSSProperties,
+    [terminalOpen],
+  );
   const pendingPermission = useMemo(() => (projectData?.permissions ?? [])[0], [projectData?.permissions]);
+  useEffect(() => {
+    if (appPreferences.permissionMode !== "yolo-write") {
+      return;
+    }
+    if (!activeProjectDir || !pendingPermission || permissionDecisionPending !== null) {
+      return;
+    }
+    if (!isWritePermissionRequest(pendingPermission.permission)) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        setPermissionDecisionPending("always");
+        await window.orxa.opencode.replyPermission(
+          activeProjectDir,
+          pendingPermission.id,
+          "always",
+          "Auto-approved in Yolo write mode",
+        );
+        if (!cancelled) {
+          await refreshProject(activeProjectDir);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStatusLine(error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setPermissionDecisionPending(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeProjectDir,
+    appPreferences.permissionMode,
+    pendingPermission,
+    permissionDecisionPending,
+    refreshProject,
+    setStatusLine,
+  ]);
   const pendingQuestion = useMemo(() => (projectData?.questions ?? [])[0] ?? null, [projectData?.questions]);
   const workspaceClassName = [
     "workspace",
@@ -1691,6 +1797,16 @@ export default function App() {
     [activeProjectDir],
   );
 
+  const openTodoReviewChanges = useCallback(() => {
+    setAppPreferences((current) => ({
+      ...current,
+      showOperationsPane: true,
+    }));
+    setRightSidebarTab("git");
+    setGitPanelTab("diff");
+    void loadGitDiff();
+  }, [loadGitDiff, setAppPreferences, setGitPanelTab, setRightSidebarTab]);
+
   const submitCommit = useCallback(async () => {
     if (!activeProjectDir) {
       return;
@@ -1869,7 +1985,6 @@ export default function App() {
             setCollapsedProjects={setCollapsedProjects}
             sessions={sessions}
             activeSessionID={activeSessionID ?? undefined}
-            pendingSessionId={pendingSessionId}
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionStatusType={getSessionStatusType}
             selectProject={selectProject}
@@ -1919,32 +2034,62 @@ export default function App() {
                 <>
                   <MessageFeed
                     messages={messages}
-                    showAssistantPlaceholder={isSessionBusy}
+                    showAssistantPlaceholder={isSessionInProgress}
                     assistantLabel={assistantLabel}
+                    workspaceDirectory={activeProjectDir ?? null}
+                    bottomClearance={messageFeedBottomClearance}
                   />
 
                   {orxaTodos.length > 0 ? (
-                    <section className={`todos-drawer ${todosOpen ? "open" : "closed"}`.trim()}>
+                    <section className={`todos-drawer ${todosOpen ? "open" : "closed"}`.trim()} style={todosDrawerStyle}>
                       <button type="button" className="todos-drawer-toggle" onClick={() => setTodosOpen((value) => !value)}>
-                        <span>{todosLabel}</span>
-                        <small>{orxaTodos.length}</small>
+                        <span className="todos-drawer-progress">
+                          {completedTodoCount} out of {orxaTodos.length} tasks completed
+                        </span>
+                        <small>{todosOpen ? "Hide" : "Show"}</small>
                       </button>
-                      {todosOpen ? (
-                        <div className="todos-drawer-body">
-                          <ul>
-                            {orxaTodos.map((todo) => (
-                              <li key={todo.id}>
-                                <span>{todo.content}</span>
-                                {todo.status || todo.priority ? (
-                                  <small>
-                                    {[todo.status, todo.priority].filter(Boolean).join(" • ")}
-                                  </small>
-                                ) : null}
-                              </li>
-                            ))}
-                          </ul>
+                      <div className="todos-drawer-body" aria-hidden={!todosOpen}>
+                        <div className="todos-drawer-body-inner">
+                          <ol>
+                            {orxaTodos.map((todo, index) => {
+                              const completed = isTodoCompleted(todo);
+                              return (
+                                <li key={todo.id} className={completed ? "completed" : ""}>
+                                  <div className="todo-item-main">
+                                    <span className={`todo-item-status ${completed ? "done" : "pending"}`.trim()}>{completed ? "✓" : ""}</span>
+                                    <span className="todo-item-index">{index + 1}.</span>
+                                    <span className="todo-item-content">{todo.content}</span>
+                                  </div>
+                                  {todo.status || todo.priority ? (
+                                    <small>
+                                      {[todo.status, todo.priority].filter(Boolean).join(" • ")}
+                                    </small>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ol>
+                          <div className="todos-drawer-footer">
+                            <span className="todos-drawer-diff">
+                              {gitDiffStats.hasChanges
+                                ? `${gitDiffStats.filesChanged} files changed`
+                                : "No local changes"}
+                              {gitDiffStats.hasChanges ? (
+                                <>
+                                  <strong className="todos-drawer-diff-add"> +{gitDiffStats.additions}</strong>
+                                  <strong className="todos-drawer-diff-del"> -{gitDiffStats.deletions}</strong>
+                                </>
+                              ) : null}
+                            </span>
+                            {allTodosCompleted ? (
+                              <button type="button" className="todos-review-btn" onClick={openTodoReviewChanges}>
+                                Review changes
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="todos-drawer-label">{todosLabel}</div>
                         </div>
-                      ) : null}
+                      </div>
                     </section>
                   ) : null}
 
@@ -1960,12 +2105,15 @@ export default function App() {
                     handleSlashKeyDown={handleSlashKeyDown}
                     sendPrompt={sendPrompt}
                     abortActiveSession={abortActiveSession}
-                    isSessionBusy={isSessionBusy}
+                    isSessionBusy={isSessionInProgress}
+                    isSendingPrompt={isSendingPrompt}
                     pickImageAttachment={pickImageAttachment}
                     hasActiveSession={Boolean(activeSessionID)}
                     isPlanMode={isPlanMode}
                     hasPlanAgent={hasPlanAgent}
                     togglePlanMode={togglePlanMode}
+                    permissionMode={appPreferences.permissionMode}
+                    onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                     branchMenuOpen={branchMenuOpen}
                     setBranchMenuOpen={setBranchMenuOpen}
                     branchControlWidthCh={branchControlWidthCh}
@@ -2078,6 +2226,7 @@ export default function App() {
               onStageFile={stageFile}
               onRestoreFile={restoreFile}
               onUnstageFile={unstageFile}
+              fileProvenanceByPath={sessionProvenanceByPath}
               onAddToChatPath={appendPathToComposer}
               onStatusChange={setStatusLine}
             />

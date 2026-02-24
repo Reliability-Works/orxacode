@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 import electron from "vite-plugin-electron/simple";
 import renderer from "vite-plugin-electron-renderer";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "~": resolve(__dirname, "src"),
@@ -14,23 +14,27 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    renderer(),
-    electron({
-      main: {
-        entry: "electron/main.ts",
-        vite: {
-          build: {
-            rollupOptions: {
-              external: ["keytar", "ws", "bufferutil", "utf-8-validate"],
+    ...(mode === "test"
+      ? []
+      : [
+          renderer(),
+          electron({
+            main: {
+              entry: "electron/main.ts",
+              vite: {
+                build: {
+                  rollupOptions: {
+                    external: ["keytar", "ws", "bufferutil", "utf-8-validate"],
+                  },
+                },
+              },
             },
-          },
-        },
-      },
-      preload: {
-        input: "electron/preload.ts",
-      },
-      renderer: {},
-    }),
+            preload: {
+              input: "electron/preload.ts",
+            },
+            renderer: {},
+          }),
+        ]),
   ],
   test: {
     environment: "jsdom",
@@ -58,4 +62,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

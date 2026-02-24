@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from "react";
-import type { ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
+import type { ProjectBootstrap, SessionMessageBundle, SessionPermissionMode } from "@shared/ipc";
 import type { TerminalTab } from "../components/TerminalPanel";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
@@ -42,6 +42,7 @@ type CreateSessionPromptOptions = {
   selectedModelPayload?: { providerID: string; modelID: string };
   selectedVariant?: string;
   serverAgentNames: Set<string>;
+  permissionMode?: SessionPermissionMode;
 };
 
 function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
@@ -63,6 +64,17 @@ function clampContextMenuPosition(x: number, y: number) {
     x: Math.max(padding, Math.min(x, window.innerWidth - menuWidth - padding)),
     y: Math.max(padding, Math.min(y, window.innerHeight - menuHeight - padding)),
   };
+}
+
+function normalizeMessageBundles(items: SessionMessageBundle[]) {
+  if (items.length <= 1) {
+    return items;
+  }
+  const byId = new Map<string, SessionMessageBundle>();
+  for (const item of items) {
+    byId.set(item.info.id, item);
+  }
+  return [...byId.values()].sort((a, b) => a.info.time.created - b.info.time.created);
 }
 
 export function useWorkspaceState(options: UseWorkspaceStateOptions) {
@@ -120,9 +132,13 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         const sortedSessions = [...data.sessions].sort((a, b) => b.time.updated - a.time.updated);
         let nextSessionID = activeSessionID;
         if (nextSessionID && !sortedSessions.some((item) => item.id === nextSessionID)) {
-          nextSessionID = undefined;
-          setActiveSessionID(undefined);
-          setMessages([]);
+          const previousStatus = projectDataCacheRef.current[directory]?.sessionStatus[nextSessionID]?.type;
+          const isPossiblyInFlight = previousStatus === "busy" || previousStatus === "retry";
+          if (!isPossiblyInFlight) {
+            nextSessionID = undefined;
+            setActiveSessionID(undefined);
+            setMessages([]);
+          }
         }
 
         const serverPtyIds = data.ptys.map((p) => p.id);
@@ -140,8 +156,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           }
           const latest = await window.orxa.opencode.loadMessages(directory, nextSessionID).catch(() => undefined);
           if (latest && activeSessionIDRef.current === nextSessionID) {
-            messageCacheRef.current[cacheKey] = latest;
-            setMessages(latest);
+            const normalized = normalizeMessageBundles(latest);
+            messageCacheRef.current[cacheKey] = normalized;
+            setMessages(normalized);
           }
         }
 
@@ -157,10 +174,6 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const selectProject = useCallback(
     async (directory: string) => {
       try {
-        if (pendingSessionId && activeProjectDir) {
-          void window.orxa.opencode.deleteSession(activeProjectDir, pendingSessionId).catch(() => undefined);
-          setPendingSessionId(undefined);
-        }
         setStatusLine(`Loading workspace ${directory}`);
         const cached = projectDataCacheRef.current[directory];
         setProjectData(cached ?? null);
@@ -189,14 +202,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeProjectDir, pendingSessionId, projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
+    [projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
   );
 
   const openWorkspaceDashboard = useCallback(() => {
-    if (pendingSessionId && activeProjectDir) {
-      void window.orxa.opencode.deleteSession(activeProjectDir, pendingSessionId).catch(() => undefined);
-      setPendingSessionId(undefined);
-    }
     setSidebarMode("projects");
     setActiveProjectDir(undefined);
     setProjectData(null);
@@ -206,7 +215,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     setTerminalTabs([]);
     setActiveTerminalId(undefined);
     setStatusLine("Workspace dashboard");
-  }, [activeProjectDir, pendingSessionId, setActiveTerminalId, setStatusLine, setTerminalOpen, setTerminalTabs]);
+  }, [setActiveTerminalId, setStatusLine, setTerminalOpen, setTerminalTabs]);
 
   const refreshMessages = useCallback(async () => {
     if (!activeProjectDir || !activeSessionID) {
@@ -223,13 +232,12 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       const cached = messageCacheRef.current[cacheKey];
       if (cached && activeSessionIDRef.current === sessionAtStart) {
         setMessages(cached);
-      } else if (activeSessionIDRef.current === sessionAtStart) {
-        setMessages([]);
       }
       const items = await window.orxa.opencode.loadMessages(activeProjectDir, sessionAtStart);
-      messageCacheRef.current[cacheKey] = items;
+      const normalized = normalizeMessageBundles(items);
+      messageCacheRef.current[cacheKey] = normalized;
       if (activeSessionIDRef.current === sessionAtStart) {
-        setMessages(items);
+        setMessages(normalized);
       }
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
@@ -241,10 +249,6 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       if (!activeProjectDir) {
         return;
       }
-      if (pendingSessionId && sessionID !== pendingSessionId) {
-        void window.orxa.opencode.deleteSession(activeProjectDir, pendingSessionId).catch(() => undefined);
-        setPendingSessionId(undefined);
-      }
       setActiveSessionID(sessionID);
       activeSessionIDRef.current = sessionID;
       setMessages([]);
@@ -254,14 +258,15 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       void window.orxa.opencode
         .loadMessages(activeProjectDir, sessionID)
         .then((items) => {
-          messageCacheRef.current[cacheKey] = items;
+          const normalized = normalizeMessageBundles(items);
+          messageCacheRef.current[cacheKey] = normalized;
           if (activeSessionIDRef.current === sessionID) {
-            setMessages(items);
+            setMessages(normalized);
           }
         })
         .catch(() => undefined);
     },
-    [activeProjectDir, messageCacheRef, pendingSessionId],
+    [activeProjectDir, messageCacheRef],
   );
 
   const stopResponsePolling = useCallback(() => {
@@ -340,16 +345,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       activeSessionIDRef.current = undefined;
       stopResponsePolling();
 
-      if (pendingSessionId && activeProjectDir) {
-        void window.orxa.opencode.deleteSession(activeProjectDir, pendingSessionId).catch(() => undefined);
-        setPendingSessionId(undefined);
-      }
-
       try {
         if (activeProjectDir !== targetDirectory) {
           await selectProject(targetDirectory);
         }
-        const createdSession = await window.orxa.opencode.createSession(targetDirectory, title);
+        const createdSession = await window.orxa.opencode.createSession(targetDirectory, title, promptOptions?.permissionMode);
         const nextSessionID = createdSession.id;
         activeSessionIDRef.current = nextSessionID;
         setActiveSessionID(nextSessionID);
@@ -386,7 +386,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeProjectDir, refreshProject, selectProject, setStatusLine, startResponsePolling, stopResponsePolling, pendingSessionId],
+    [activeProjectDir, refreshProject, selectProject, setStatusLine, startResponsePolling, stopResponsePolling],
   );
 
   const queueRefresh = useCallback(

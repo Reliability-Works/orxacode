@@ -116,6 +116,12 @@
   box-sizing: border-box;
 }
 
+/* Keep left sidebar typography non-bold across all states. */
+.workspace-left-pane .sidebar-inner,
+.workspace-left-pane .sidebar-inner * {
+  font-weight: 400 !important;
+}
+
 .workspace-left-pane.collapsed .sidebar-inner {
   opacity: 0;
   pointer-events: none;
@@ -1012,6 +1018,7 @@ body.is-resizing * {
   display: grid;
   gap: var(--space-3);
   position: relative;
+  z-index: 28;
 }
 
 .composer-zone textarea {
@@ -1055,6 +1062,68 @@ body.is-resizing * {
   display: flex;
   gap: var(--space-1);
   z-index: 2;
+}
+
+.composer-input-actions .composer-attach-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: hsl(220 18% 82%);
+  box-shadow: none;
+  padding: 0;
+}
+
+.composer-input-actions .composer-attach-button:hover:not(:disabled) {
+  border-color: transparent;
+  background: transparent;
+  transform: none;
+}
+
+.composer-input-actions .composer-attach-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer-input-actions .composer-send-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border-color: hsl(0 0% 90%);
+  background: hsl(0 0% 96%);
+  color: hsl(220 14% 16%);
+  padding: 0;
+}
+
+.composer-input-actions .composer-send-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer-input-actions .composer-send-button:hover:not(:disabled) {
+  border-color: hsl(0 0% 100%);
+  background: hsl(0 0% 100%);
+  transform: none;
+}
+
+.composer-input-actions .composer-stop-button {
+  border-color: hsl(220 10% 70%);
+  background: hsl(220 8% 74%);
+  color: hsl(220 14% 16%);
+}
+
+.composer-input-actions .composer-stop-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.composer-input-actions .composer-stop-button:hover:not(:disabled) {
+  border-color: hsl(220 12% 78%);
+  background: hsl(220 10% 79%);
+  transform: none;
 }
 
 .composer-attachments {
@@ -1366,12 +1435,13 @@ body.is-resizing * {
   top: 0;
   bottom: 0;
   right: 0;
-  left: calc(var(--left-pane-width, 300px) * var(--left-pane-visible, 1) + 4px * var(--left-pane-visible, 1));
+  left: 0;
   z-index: 300;
   background: hsl(220 20% 4% / 0.7);
   backdrop-filter: blur(4px);
   display: grid;
   place-items: center;
+  isolation: isolate;
 }
 
 .model-modal {
@@ -1384,6 +1454,8 @@ body.is-resizing * {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  background-clip: padding-box;
 }
 
 .model-modal-header {
@@ -1499,6 +1571,25 @@ body.is-resizing * {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--bg-raised);
+}
+
+.composer-permission-mode {
+  padding: 2px 6px 2px 9px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-raised);
+}
+
+.composer-permission-select {
+  min-width: 6.2ch;
+  max-width: 8ch;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  height: auto;
+  color: var(--text-main);
+  font-size: 0.76rem;
 }
 
 .agent-mode-toggle {
@@ -2347,6 +2438,25 @@ body.is-resizing * {
   color: var(--danger);
 }
 
+.git-diff-provenance-chip {
+  margin-left: 8px;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-family: var(--code-font);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(54%, 360px);
+}
+
+.git-diff-provenance-chip.unknown {
+  color: hsl(220 12% 52%);
+  font-style: italic;
+}
+
 .git-diff-file-actions {
   display: inline-flex;
   align-items: center;
@@ -2464,6 +2574,20 @@ body.is-resizing * {
   text-overflow: ellipsis;
 }
 
+.git-list-provenance {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-family: var(--code-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-list-provenance.unknown {
+  color: hsl(220 12% 52%);
+  font-style: italic;
+}
+
 .git-list-meta {
   display: flex;
   align-items: center;
@@ -2482,6 +2606,14 @@ body.is-resizing * {
   border-radius: 6px;
   padding: 3px 8px;
   transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.git-list-stats .added {
+  color: var(--success);
+}
+
+.git-list-stats .removed {
+  color: var(--danger);
 }
 
 .git-list-stats-sep {

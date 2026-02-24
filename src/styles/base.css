@@ -34,10 +34,35 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-7: 32px;
+  --scrollbar-size: 8px;
+  --scrollbar-track: hsl(220 8% 24% / 0.3);
+  --scrollbar-thumb: hsl(220 7% 72% / 0.72);
+  --scrollbar-thumb-hover: hsl(220 8% 80% / 0.85);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border: 1px solid hsl(220 8% 18% / 0.25);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 html,

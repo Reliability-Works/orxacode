@@ -40,6 +40,9 @@ type UseComposerStateOptions = {
 export function useComposerState(activeProjectDir: string | null, activeSessionID: string | null, options: UseComposerStateOptions) {
   const [composer, setComposer] = useState("");
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
+  const [isSendingPrompt, setIsSendingPrompt] = useState(false);
+  const sendingPromptRef = useRef(false);
+  const lastSendRef = useRef<{ token: string; at: number } | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | undefined>();
   const [selectedVariant, setSelectedVariant] = useState<string | undefined>();
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
@@ -155,6 +158,9 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
   }, [selectedModel]);
 
   const sendPrompt = useCallback(async () => {
+    if (sendingPromptRef.current) {
+      return;
+    }
     if (!activeProjectDir || !activeSessionID) {
       options.setStatusLine("Select a workspace and session first");
       return;
@@ -165,6 +171,12 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
+    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}`;
+    if (lastSendRef.current && lastSendRef.current.token === sendToken && Date.now() - lastSendRef.current.at < 6_000) {
+      return;
+    }
+    lastSendRef.current = { token: sendToken, at: Date.now() };
+
     const capturedAttachments = [...composerAttachments];
     setComposer("");
     setComposerAttachments([]);
@@ -174,6 +186,9 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     const shouldAutoTitle = text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title);
 
     try {
+      sendingPromptRef.current = true;
+      setIsSendingPrompt(true);
+      options.setStatusLine("Sending prompt...");
       options.stopResponsePolling();
       if (shouldAutoTitle) {
         const generatedTitle = options.deriveSessionTitleFromPrompt(text);
@@ -196,9 +211,10 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
 
       options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
+      void options.refreshMessages();
       window.setTimeout(() => {
         void options.refreshMessages();
-      }, 240);
+      }, 180);
       options.startResponsePolling(activeProjectDir, activeSessionID);
       if (shouldAutoTitle) {
         void options.refreshProject(activeProjectDir).catch(() => undefined);
@@ -207,6 +223,9 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       setComposer(text);
       setComposerAttachments(capturedAttachments);
       options.setStatusLine(error instanceof Error ? error.message : String(error));
+    } finally {
+      sendingPromptRef.current = false;
+      setIsSendingPrompt(false);
     }
   }, [
     activeProjectDir,
@@ -237,6 +256,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     composer,
     setComposer,
     composerAttachments,
+    isSendingPrompt,
     setComposerAttachments,
     selectedModel,
     setSelectedModel,

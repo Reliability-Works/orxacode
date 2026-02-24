@@ -1,4 +1,14 @@
-import type { GitBranchState, ProjectBootstrap, ProjectListItem, PromptRequest, SessionMessageBundle } from "@shared/ipc";
+import type {
+  ChangeProvenanceRecord,
+  ExecutionLedgerSnapshot,
+  GitBranchState,
+  ProjectBootstrap,
+  ProjectListItem,
+  PromptRequest,
+  SessionMessageBundle,
+  SessionPermissionMode,
+  SessionProvenanceSnapshot,
+} from "@shared/ipc";
 import type { Session } from "@opencode-ai/sdk/v2/client";
 
 export type BranchState = GitBranchState;
@@ -110,8 +120,8 @@ export const opencodeClient = {
     return withRetry("refreshProject", () => getBridge().refreshProject(directory), { retries: 2 });
   },
 
-  async createSession(directory: string, title?: string): Promise<Session> {
-    return withRetry("createSession", () => getBridge().createSession(directory, title), { retries: 0 });
+  async createSession(directory: string, title?: string, permissionMode?: SessionPermissionMode): Promise<Session> {
+    return withRetry("createSession", () => getBridge().createSession(directory, title, permissionMode), { retries: 0 });
   },
 
   async deleteSession(directory: string, sessionID: string): Promise<void> {
@@ -130,6 +140,25 @@ export const opencodeClient = {
 
   async loadMessages(directory: string, sessionID: string): Promise<SessionMessageBundle[]> {
     return withRetry("loadMessages", () => getBridge().loadMessages(directory, sessionID), { retries: 2 });
+  },
+
+  async loadExecutionLedger(directory: string, sessionID: string, cursor = 0): Promise<ExecutionLedgerSnapshot> {
+    return withRetry("loadExecutionLedger", () => getBridge().loadExecutionLedger(directory, sessionID, cursor), { retries: 1 });
+  },
+
+  async clearExecutionLedger(directory: string, sessionID: string): Promise<void> {
+    return withRetry("clearExecutionLedger", async () => {
+      const result = await getBridge().clearExecutionLedger(directory, sessionID);
+      expectTrue(result, "clearExecutionLedger");
+    }, { retries: 0 });
+  },
+
+  async loadChangeProvenance(directory: string, sessionID: string, cursor = 0): Promise<SessionProvenanceSnapshot> {
+    return withRetry("loadChangeProvenance", () => getBridge().loadChangeProvenance(directory, sessionID, cursor), { retries: 1 });
+  },
+
+  async getFileProvenance(directory: string, sessionID: string, relativePath: string): Promise<ChangeProvenanceRecord[]> {
+    return withRetry("getFileProvenance", () => getBridge().getFileProvenance(directory, sessionID, relativePath), { retries: 1 });
   },
 
   async sendPrompt(directory: string, sessionID: string, text: string, options?: SendOptions): Promise<void> {

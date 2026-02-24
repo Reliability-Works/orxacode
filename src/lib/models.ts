@@ -9,6 +9,26 @@ export type ModelOption = {
   variants: string[];
 };
 
+export function mergeDiscoverableModelOptions(...sources: Array<ModelOption[]>) {
+  const unique = new Map<string, ModelOption>();
+  for (const source of sources) {
+    for (const option of source) {
+      if (!unique.has(option.key)) {
+        unique.set(option.key, option);
+      }
+    }
+  }
+  return [...unique.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function filterHiddenModelOptions(options: ModelOption[], hiddenModelKeys: string[]) {
+  if (hiddenModelKeys.length === 0) {
+    return options;
+  }
+  const hidden = new Set(hiddenModelKeys);
+  return options.filter((item) => !hidden.has(item.key));
+}
+
 export function listAgentOptions(agents: Agent[]) {
   const resolveModel = (model: Agent["model"]): string | undefined => {
     if (!model) {
@@ -241,6 +261,60 @@ export function listModelOptionsFromConfig(config: unknown): ModelOption[] {
   }
 
   return [...optionMap.values()].sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export function listModelOptionsFromConfigReferences(config: unknown): ModelOption[] {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return [];
+  }
+
+  const options = new Map<string, ModelOption>();
+  const root = config as Record<string, unknown>;
+  const add = (raw: unknown) => {
+    if (typeof raw !== "string") {
+      return;
+    }
+    const value = raw.trim();
+    if (!value) {
+      return;
+    }
+    const [providerID, ...modelParts] = value.split("/");
+    const modelID = modelParts.join("/");
+    if (!providerID || !modelID) {
+      return;
+    }
+    const key = `${providerID}/${modelID}`;
+    if (options.has(key)) {
+      return;
+    }
+    options.set(key, {
+      key,
+      providerID,
+      modelID,
+      providerName: providerID,
+      modelName: modelID,
+      variants: [],
+    });
+  };
+
+  add(root.model);
+  add(root.small_model);
+  if (root.orxa && typeof root.orxa === "object" && !Array.isArray(root.orxa)) {
+    add((root.orxa as Record<string, unknown>).model);
+  }
+  if (root.plan && typeof root.plan === "object" && !Array.isArray(root.plan)) {
+    add((root.plan as Record<string, unknown>).model);
+  }
+  if (root.agent && typeof root.agent === "object" && !Array.isArray(root.agent)) {
+    for (const value of Object.values(root.agent as Record<string, unknown>)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        continue;
+      }
+      add((value as Record<string, unknown>).model);
+    }
+  }
+
+  return [...options.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 export function listConfiguredProviderIDs(config: unknown): string[] {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
+import type { PermissionMode } from "../types/app";
 import { IconButton } from "./IconButton";
 
 type Command = {
@@ -23,11 +24,14 @@ type ComposerPanelProps = {
   sendPrompt: () => void | Promise<void>;
   abortActiveSession: () => void | Promise<void>;
   isSessionBusy: boolean;
+  isSendingPrompt: boolean;
   pickImageAttachment: () => void | Promise<void>;
   hasActiveSession: boolean;
   isPlanMode: boolean;
   hasPlanAgent: boolean;
   togglePlanMode: (enabled: boolean) => void;
+  permissionMode: PermissionMode;
+  onPermissionModeChange: (mode: PermissionMode) => void;
   branchMenuOpen: boolean;
   setBranchMenuOpen: (updater: (value: boolean) => boolean) => void;
   branchControlWidthCh: number;
@@ -65,11 +69,14 @@ export function ComposerPanel(props: ComposerPanelProps) {
     sendPrompt,
     abortActiveSession,
     isSessionBusy,
+    isSendingPrompt,
     pickImageAttachment,
     hasActiveSession,
     isPlanMode,
     hasPlanAgent,
     togglePlanMode,
+    permissionMode,
+    onPermissionModeChange,
     branchMenuOpen,
     setBranchMenuOpen,
     branchControlWidthCh,
@@ -115,6 +122,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
               }
               if (isSessionBusy) {
                 void abortActiveSession();
+              } else if (isSendingPrompt) {
+                return;
               } else {
                 void sendPrompt();
               }
@@ -122,12 +131,13 @@ export function ComposerPanel(props: ComposerPanelProps) {
           }}
         />
         <div className="composer-input-actions">
-          <IconButton icon="image" label="Attach image" onClick={() => void pickImageAttachment()} />
+          <IconButton icon="plus" className="composer-attach-button" label="Add attachment" onClick={() => void pickImageAttachment()} />
           <IconButton
             icon={isSessionBusy ? "stop" : "send"}
+            className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}
             label={isSessionBusy ? "Stop" : "Send prompt"}
             onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
-            disabled={!hasActiveSession}
+            disabled={isSessionBusy ? false : !hasActiveSession}
           />
         </div>
       </div>
@@ -176,6 +186,17 @@ export function ComposerPanel(props: ComposerPanelProps) {
             onChange={(event) => togglePlanMode(event.target.checked)}
           />
           Plan mode
+        </label>
+        <label className="agent-mode-toggle composer-permission-mode" title="Write permission mode">
+          <span>Writes</span>
+          <select
+            className="composer-select composer-permission-select"
+            value={permissionMode}
+            onChange={(event) => onPermissionModeChange(event.target.value as PermissionMode)}
+          >
+            <option value="ask-write">Ask</option>
+            <option value="yolo-write">Yolo</option>
+          </select>
         </label>
         <div className={`composer-branch-wrap ${branchMenuOpen ? "open" : ""}`.trim()}>
           <button

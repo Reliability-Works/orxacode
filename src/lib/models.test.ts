@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
 import {
+  filterHiddenModelOptions,
   findFallbackModel,
   listAgentOptions,
   listAllModelOptions,
   listConfiguredProviderIDs,
   listModelOptions,
   listModelOptionsFromConfig,
+  listModelOptionsFromConfigReferences,
+  mergeDiscoverableModelOptions,
 } from "./models";
 
 describe("model discovery", () => {
@@ -221,6 +224,148 @@ describe("model discovery", () => {
     expect(listAllModelOptions(providers).map((item) => item.key)).toEqual(["one/alpha"]);
   });
 
+  it("includes runtime-connected env providers in connected model options", () => {
+    const providers: ProviderListResponse = {
+      all: [
+        {
+          id: "cloudflare",
+          name: "Cloudflare AI",
+          env: ["CLOUDFLARE_API_KEY"],
+          models: {
+            "@cf/meta/llama-3.1-8b-instruct": {
+              id: "@cf/meta/llama-3.1-8b-instruct",
+              name: "Llama 3.1 8B Instruct",
+              release_date: "2025-01-01",
+              attachment: true,
+              reasoning: true,
+              temperature: true,
+              tool_call: true,
+              limit: { context: 8192, output: 2048 },
+              options: {},
+            },
+          },
+        },
+        {
+          id: "openai",
+          name: "OpenAI",
+          env: [],
+          models: {
+            "gpt-5.2-codex": {
+              id: "gpt-5.2-codex",
+              name: "GPT-5.2 Codex",
+              release_date: "2026-01-01",
+              attachment: true,
+              reasoning: true,
+              temperature: true,
+              tool_call: true,
+              limit: { context: 200000, output: 8192 },
+              options: {},
+            },
+          },
+        },
+      ],
+      connected: ["cloudflare"],
+      default: {},
+    };
+
+    expect(listModelOptions(providers).map((item) => item.key)).toEqual(["cloudflare/@cf/meta/llama-3.1-8b-instruct"]);
+  });
+
+  it("merges discoverable options from configured and connected sources without catalog-only models", () => {
+    const configured = [
+      {
+        key: "openai/gpt-5.2",
+        providerID: "openai",
+        modelID: "gpt-5.2",
+        providerName: "OpenAI",
+        modelName: "GPT-5.2",
+        variants: [],
+      },
+    ];
+    const projectConnected = [
+      {
+        key: "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+        providerID: "cloudflare",
+        modelID: "@cf/meta/llama-3.1-8b-instruct",
+        providerName: "Cloudflare AI",
+        modelName: "Llama 3.1 8B Instruct",
+        variants: [],
+      },
+    ];
+    const globalConnected = [
+      {
+        key: "openai/gpt-5.2-codex",
+        providerID: "openai",
+        modelID: "gpt-5.2-codex",
+        providerName: "OpenAI",
+        modelName: "GPT-5.2 Codex",
+        variants: [],
+      },
+    ];
+
+    expect(mergeDiscoverableModelOptions(configured, projectConnected, globalConnected).map((item) => item.key)).toEqual([
+      "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+      "openai/gpt-5.2",
+      "openai/gpt-5.2-codex",
+    ]);
+  });
+
+  it("composer options match settings options exactly when no models are hidden", () => {
+    const settingsOptions = mergeDiscoverableModelOptions(
+      [
+        {
+          key: "openai/gpt-5.2",
+          providerID: "openai",
+          modelID: "gpt-5.2",
+          providerName: "OpenAI",
+          modelName: "GPT-5.2",
+          variants: [],
+        },
+      ],
+      [
+        {
+          key: "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+          providerID: "cloudflare",
+          modelID: "@cf/meta/llama-3.1-8b-instruct",
+          providerName: "Cloudflare AI",
+          modelName: "Llama 3.1 8B Instruct",
+          variants: [],
+        },
+      ],
+    );
+
+    expect(filterHiddenModelOptions(settingsOptions, []).map((item) => item.key)).toEqual(settingsOptions.map((item) => item.key));
+  });
+
+  it("filters hidden models from composer options while retaining settings discoverability", () => {
+    const settingsOptions = [
+      {
+        key: "openai/gpt-5.2",
+        providerID: "openai",
+        modelID: "gpt-5.2",
+        providerName: "OpenAI",
+        modelName: "GPT-5.2",
+        variants: [],
+      },
+      {
+        key: "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+        providerID: "cloudflare",
+        modelID: "@cf/meta/llama-3.1-8b-instruct",
+        providerName: "Cloudflare AI",
+        modelName: "Llama 3.1 8B Instruct",
+        variants: [],
+      },
+    ];
+
+    expect(filterHiddenModelOptions(settingsOptions, ["cloudflare/@cf/meta/llama-3.1-8b-instruct"]).map((item) => item.key)).toEqual([
+      "openai/gpt-5.2",
+    ]);
+    expect(settingsOptions.map((item) => item.key)).toEqual([
+      "openai/gpt-5.2",
+      "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+    ]);
+  });
+
   it("filters hidden and subagent definitions from agent list", () => {
     const options = listAgentOptions([
       {
@@ -255,5 +400,36 @@ describe("model discovery", () => {
     expect(listModelOptionsFromConfig([])).toEqual([]);
     expect(listModelOptionsFromConfig({ providers: { one: { models: false } } })).toEqual([]);
     expect(listConfiguredProviderIDs({ model: "invalid" })).toEqual([]);
+  });
+
+  it("extracts only explicit model references from config", () => {
+    const options = listModelOptionsFromConfigReferences({
+      model: "openai/gpt-5.2",
+      small_model: "openai/gpt-5.2-codex",
+      provider: {
+        openai: {
+          models: {
+            "gpt-5.2": true,
+            "gpt-5.2-codex": true,
+          },
+        },
+        alibaba: {
+          models: {
+            "qwen-max": true,
+          },
+        },
+      },
+      agent: {
+        reviewer: {
+          model: "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+        },
+      },
+    });
+
+    expect(options.map((item) => item.key)).toEqual([
+      "cloudflare/@cf/meta/llama-3.1-8b-instruct",
+      "openai/gpt-5.2",
+      "openai/gpt-5.2-codex",
+    ]);
   });
 });

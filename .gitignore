@@ -27,3 +27,6 @@ dist-ssr
 
 # OpenMemory - IDE/Assistant specific rules
 .cursor/rules/openmemory.mdc
+
+# Generated image outputs
+output/imagegen/final/

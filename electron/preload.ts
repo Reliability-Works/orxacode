@@ -29,7 +29,7 @@ const bridge: OrxaBridge = {
     removeProjectDirectory: (directory) => ipcRenderer.invoke(IPC.opencodeRemoveProjectDirectory, directory),
     selectProject: (directory) => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),
     refreshProject: (directory) => ipcRenderer.invoke(IPC.opencodeRefreshProject, directory),
-    createSession: (directory, title) => ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title),
+    createSession: (directory, title, permissionMode) => ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title, permissionMode),
     deleteSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeDeleteSession, directory, sessionID),
     abortSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeAbortSession, directory, sessionID),
     renameSession: (directory, sessionID, title) => ipcRenderer.invoke(IPC.opencodeRenameSession, directory, sessionID, title),
@@ -37,6 +37,13 @@ const bridge: OrxaBridge = {
     createWorktreeSession: (directory, sessionID, name) =>
       ipcRenderer.invoke(IPC.opencodeCreateWorktreeSession, directory, sessionID, name),
     loadMessages: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
+    loadExecutionLedger: (directory, sessionID, cursor) =>
+      ipcRenderer.invoke(IPC.opencodeLoadExecutionLedger, directory, sessionID, cursor),
+    clearExecutionLedger: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeClearExecutionLedger, directory, sessionID),
+    loadChangeProvenance: (directory, sessionID, cursor) =>
+      ipcRenderer.invoke(IPC.opencodeLoadChangeProvenance, directory, sessionID, cursor),
+    getFileProvenance: (directory, sessionID, relativePath) =>
+      ipcRenderer.invoke(IPC.opencodeGetFileProvenance, directory, sessionID, relativePath),
     sendPrompt: (input) => ipcRenderer.invoke(IPC.opencodeSendPrompt, input),
     replyPermission: (directory, requestID, reply, message) =>
       ipcRenderer.invoke(IPC.opencodeReplyPermission, directory, requestID, reply, message),

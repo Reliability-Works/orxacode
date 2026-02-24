@@ -1,7 +1,10 @@
+export type PermissionMode = "ask-write" | "yolo-write";
+
 export type AppPreferences = {
   showOperationsPane: boolean;
   autoOpenTerminalOnCreate: boolean;
   confirmDangerousActions: boolean;
+  permissionMode: PermissionMode;
   commitGuidancePrompt: string;
   codeFont: string;
   hiddenModels: string[];

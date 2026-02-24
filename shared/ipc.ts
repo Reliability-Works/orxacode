@@ -44,6 +44,10 @@ export const IPC = {
   opencodeArchiveSession: "orxa:opencode:archiveSession",
   opencodeCreateWorktreeSession: "orxa:opencode:createWorktreeSession",
   opencodeLoadMessages: "orxa:opencode:loadMessages",
+  opencodeLoadExecutionLedger: "orxa:opencode:loadExecutionLedger",
+  opencodeClearExecutionLedger: "orxa:opencode:clearExecutionLedger",
+  opencodeLoadChangeProvenance: "orxa:opencode:loadChangeProvenance",
+  opencodeGetFileProvenance: "orxa:opencode:getFileProvenance",
   opencodeSendPrompt: "orxa:opencode:sendPrompt",
   opencodeReplyPermission: "orxa:opencode:replyPermission",
   opencodeReplyQuestion: "orxa:opencode:replyQuestion",
@@ -204,6 +208,75 @@ export type PromptRequest = {
     modelID: string;
   };
   variant?: string;
+};
+
+export type SessionPermissionMode = "ask-write" | "yolo-write";
+
+export type ExecutionEventKind =
+  | "read"
+  | "search"
+  | "edit"
+  | "create"
+  | "delete"
+  | "run"
+  | "git"
+  | "todo"
+  | "delegate"
+  | "step"
+  | "reasoning"
+  | "error";
+
+export type ExecutionEventActorType = "main" | "subagent" | "user" | "system";
+
+export type ExecutionEventActor = {
+  type: ExecutionEventActorType;
+  name?: string;
+};
+
+export type ExecutionEventRecord = {
+  id: string;
+  directory: string;
+  sessionID: string;
+  timestamp: number;
+  kind: ExecutionEventKind;
+  summary: string;
+  detail?: string;
+  actor: ExecutionEventActor;
+  model?: string;
+  tool?: string;
+  operation?: string;
+  turnID?: string;
+  delegationID?: string;
+  eventID?: string;
+  paths?: string[];
+};
+
+export type ExecutionLedgerSnapshot = {
+  cursor: number;
+  records: ExecutionEventRecord[];
+};
+
+export type ProvenanceActorType = "main" | "subagent" | "user" | "system";
+export type ProvenanceOperation = "edit" | "create" | "delete";
+
+export type ChangeProvenanceRecord = {
+  filePath: string;
+  operation: ProvenanceOperation;
+  actorType: ProvenanceActorType;
+  actorName?: string;
+  model?: string;
+  tool?: string;
+  todoID?: string;
+  delegationID?: string;
+  turnID?: string;
+  eventID: string;
+  timestamp: number;
+  reason?: string;
+};
+
+export type SessionProvenanceSnapshot = {
+  cursor: number;
+  records: ChangeProvenanceRecord[];
 };
 
 export type RawConfigDocument = {
@@ -444,13 +517,17 @@ export interface OrxaBridge {
     removeProjectDirectory: (directory: string) => Promise<boolean>;
     selectProject: (directory: string) => Promise<ProjectBootstrap>;
     refreshProject: (directory: string) => Promise<ProjectBootstrap>;
-    createSession: (directory: string, title?: string) => Promise<Session>;
+    createSession: (directory: string, title?: string, permissionMode?: SessionPermissionMode) => Promise<Session>;
     deleteSession: (directory: string, sessionID: string) => Promise<boolean>;
     abortSession: (directory: string, sessionID: string) => Promise<boolean>;
     renameSession: (directory: string, sessionID: string, title: string) => Promise<Session>;
     archiveSession: (directory: string, sessionID: string) => Promise<Session>;
     createWorktreeSession: (directory: string, sessionID: string, name?: string) => Promise<WorktreeSessionResult>;
     loadMessages: (directory: string, sessionID: string) => Promise<SessionMessageBundle[]>;
+    loadExecutionLedger: (directory: string, sessionID: string, cursor?: number) => Promise<ExecutionLedgerSnapshot>;
+    clearExecutionLedger: (directory: string, sessionID: string) => Promise<boolean>;
+    loadChangeProvenance: (directory: string, sessionID: string, cursor?: number) => Promise<SessionProvenanceSnapshot>;
+    getFileProvenance: (directory: string, sessionID: string, relativePath: string) => Promise<ChangeProvenanceRecord[]>;
     sendPrompt: (input: PromptRequest) => Promise<boolean>;
     replyPermission: (
       directory: string,

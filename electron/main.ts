@@ -445,8 +445,12 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeRefreshProject, async (_event, directory: unknown) =>
     service.refreshProject(assertString(directory, "directory")),
   );
-  ipcMain.handle(IPC.opencodeCreateSession, async (_event, directory: unknown, title?: unknown) =>
-    service.createSession(assertString(directory, "directory"), typeof title === "string" ? title : undefined),
+  ipcMain.handle(IPC.opencodeCreateSession, async (_event, directory: unknown, title?: unknown, permissionMode?: unknown) =>
+    service.createSession(
+      assertString(directory, "directory"),
+      typeof title === "string" ? title : undefined,
+      permissionMode === "ask-write" || permissionMode === "yolo-write" ? permissionMode : undefined,
+    ),
   );
   ipcMain.handle(IPC.opencodeDeleteSession, async (_event, directory: unknown, sessionID: unknown) =>
     service.deleteSession(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
@@ -469,6 +473,30 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(IPC.opencodeLoadMessages, async (_event, directory: unknown, sessionID: unknown) =>
     service.loadMessages(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
+  );
+  ipcMain.handle(IPC.opencodeLoadExecutionLedger, async (_event, directory: unknown, sessionID: unknown, cursor?: unknown) =>
+    service.loadExecutionLedger(
+      assertString(directory, "directory"),
+      assertString(sessionID, "sessionID"),
+      typeof cursor === "number" ? cursor : 0,
+    ),
+  );
+  ipcMain.handle(IPC.opencodeClearExecutionLedger, async (_event, directory: unknown, sessionID: unknown) =>
+    service.clearExecutionLedger(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
+  );
+  ipcMain.handle(IPC.opencodeLoadChangeProvenance, async (_event, directory: unknown, sessionID: unknown, cursor?: unknown) =>
+    service.loadChangeProvenance(
+      assertString(directory, "directory"),
+      assertString(sessionID, "sessionID"),
+      typeof cursor === "number" ? cursor : 0,
+    ),
+  );
+  ipcMain.handle(IPC.opencodeGetFileProvenance, async (_event, directory: unknown, sessionID: unknown, relativePath: unknown) =>
+    service.getFileProvenance(
+      assertString(directory, "directory"),
+      assertString(sessionID, "sessionID"),
+      assertString(relativePath, "relativePath"),
+    ),
   );
   ipcMain.handle(IPC.opencodeSendPrompt, async (_event, request: unknown) => service.sendPrompt(assertPromptRequestInput(request)));
   ipcMain.handle(
