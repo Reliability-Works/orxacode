@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { Part } from "@opencode-ai/sdk/v2/client";
-import type { ProjectBootstrap, ProjectListItem } from "@shared/ipc";
+import type { ProjectBootstrap, ProjectListItem, SessionMessageBundle } from "@shared/ipc";
 
 export type Project = ProjectListItem;
 export type ProjectData = ProjectBootstrap;
@@ -57,6 +57,24 @@ export type ProjectDashboardState = {
     title: string;
     updatedAt: number;
     status: string;
+  }>;
+};
+
+const HOME_TELEMETRY_SESSION_LIMIT = 24;
+const PROJECT_TELEMETRY_SESSION_LIMIT = 20;
+const TELEMETRY_BATCH_SIZE = 6;
+const TELEMETRY_CACHE_TTL_MS = 2 * 60 * 1000;
+const PROJECT_DASHBOARD_CACHE_TTL_MS = 45_000;
+
+type SessionTelemetrySummary = {
+  tokenInput: number;
+  tokenOutput: number;
+  tokenCacheRead: number;
+  totalCost: number;
+  modelUsage: Map<string, number>;
+  tokenSeriesPoints: Array<{
+    timestamp: number;
+    value: number;
   }>;
 };
 
@@ -124,6 +142,44 @@ function topModelsFromUsage(modelUsage: Map<string, number>) {
     .slice(0, 6);
 }
 
+function summarizeMessagesTelemetry(messages: SessionMessageBundle[], fallbackTimestamp: number): SessionTelemetrySummary {
+  const modelUsage = new Map<string, number>();
+  const tokenSeriesPoints: Array<{ timestamp: number; value: number }> = [];
+  let tokenInput = 0;
+  let tokenOutput = 0;
+  let tokenCacheRead = 0;
+  let totalCost = 0;
+
+  for (const message of messages) {
+    const info = message.info as { role?: string; providerID?: string; modelID?: string; time?: { created?: number } };
+    if (info.role === "assistant" && info.providerID && info.modelID) {
+      const modelKey = `${info.providerID}/${info.modelID}`;
+      modelUsage.set(modelKey, (modelUsage.get(modelKey) ?? 0) + 1);
+    }
+
+    const summary = summarizeStepFinishParts(message.parts);
+    tokenInput += summary.tokenInput;
+    tokenOutput += summary.tokenOutput;
+    tokenCacheRead += summary.tokenCacheRead;
+    totalCost += summary.cost;
+    if (summary.totalTokens > 0) {
+      tokenSeriesPoints.push({
+        timestamp: typeof info.time?.created === "number" ? info.time.created : fallbackTimestamp,
+        value: summary.totalTokens,
+      });
+    }
+  }
+
+  return {
+    tokenInput,
+    tokenOutput,
+    tokenCacheRead,
+    totalCost,
+    modelUsage,
+    tokenSeriesPoints,
+  };
+}
+
 export function useDashboards(projects: Project[], activeProjectDir: string | null, projectData: ProjectData | null) {
   const [dashboard, setDashboard] = useState<HomeDashboardState>({
     loading: false,
@@ -155,6 +211,37 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
   });
 
   const projectDashboardCacheRef = useRef<Record<string, ProjectDashboardState>>({});
+  const sessionTelemetryCacheRef = useRef<
+    Record<
+      string,
+      {
+        sessionUpdatedAt: number;
+        cachedAt: number;
+        summary: SessionTelemetrySummary;
+      }
+    >
+  >({});
+
+  const loadSessionTelemetry = useCallback(async (directory: string, sessionID: string, updatedAt: number) => {
+    const cacheKey = `${directory}:${sessionID}`;
+    const cached = sessionTelemetryCacheRef.current[cacheKey];
+    const isFresh =
+      cached &&
+      cached.sessionUpdatedAt === updatedAt &&
+      Date.now() - cached.cachedAt <= TELEMETRY_CACHE_TTL_MS;
+    if (isFresh && cached) {
+      return cached.summary;
+    }
+
+    const payload = await window.orxa.opencode.loadMessages(directory, sessionID).catch(() => []);
+    const summary = summarizeMessagesTelemetry(payload, updatedAt);
+    sessionTelemetryCacheRef.current[cacheKey] = {
+      sessionUpdatedAt: updatedAt,
+      cachedAt: Date.now(),
+      summary,
+    };
+    return summary;
+  }, []);
 
   const refreshDashboard = useCallback(async () => {
     setDashboard((current) => ({ ...current, loading: true, error: undefined, projects: projects.length }));
@@ -237,40 +324,23 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
 
       const recentTelemetrySessions = telemetryCandidates
         .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, 60);
+        .slice(0, HOME_TELEMETRY_SESSION_LIMIT);
 
       if (recentTelemetrySessions.length > 0) {
-        const telemetryMessages = await Promise.all(
-          recentTelemetrySessions.map(async (candidate) => {
-            try {
-              return await window.orxa.opencode.loadMessages(candidate.directory, candidate.sessionID);
-            } catch {
-              return [];
-            }
-          }),
-        );
-
-        for (let index = 0; index < telemetryMessages.length; index += 1) {
-          const sessionMessages = telemetryMessages[index] ?? [];
-          const fallbackTimestamp = recentTelemetrySessions[index]?.updatedAt ?? now;
-          for (const message of sessionMessages) {
-            const info = message.info as { role?: string; providerID?: string; modelID?: string };
-            if (info.role === "assistant" && info.providerID && info.modelID) {
-              const modelKey = `${info.providerID}/${info.modelID}`;
-              modelUsage.set(modelKey, (modelUsage.get(modelKey) ?? 0) + 1);
-            }
-            const summary = summarizeStepFinishParts(message.parts);
+        for (let index = 0; index < recentTelemetrySessions.length; index += TELEMETRY_BATCH_SIZE) {
+          const batch = recentTelemetrySessions.slice(index, index + TELEMETRY_BATCH_SIZE);
+          const summaries = await Promise.all(
+            batch.map((candidate) => loadSessionTelemetry(candidate.directory, candidate.sessionID, candidate.updatedAt)),
+          );
+          for (const summary of summaries) {
             tokenInput30d += summary.tokenInput;
             tokenOutput30d += summary.tokenOutput;
             tokenCacheRead30d += summary.tokenCacheRead;
-            totalCost30d += summary.cost;
-            if (summary.totalTokens > 0) {
-              const created = (message.info as { time?: { created?: number } }).time?.created;
-              tokenSeriesPoints.push({
-                timestamp: typeof created === "number" ? created : fallbackTimestamp,
-                value: summary.totalTokens,
-              });
+            totalCost30d += summary.totalCost;
+            for (const [modelKey, count] of summary.modelUsage.entries()) {
+              modelUsage.set(modelKey, (modelUsage.get(modelKey) ?? 0) + count);
             }
+            tokenSeriesPoints.push(...summary.tokenSeriesPoints);
           }
         }
       }
@@ -301,7 +371,7 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [projects]);
+  }, [loadSessionTelemetry, projects]);
 
   const refreshProjectDashboard = useCallback(async () => {
     if (!activeProjectDir || !projectData) {
@@ -332,6 +402,16 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
       const sessionsAll = [...projectData.sessions]
         .filter((item) => !item.time.archived)
         .sort((a, b) => b.time.updated - a.time.updated);
+      const latestSessionUpdatedAt = sessionsAll[0]?.time.updated ?? 0;
+      if (
+        cached?.updatedAt &&
+        Date.now() - cached.updatedAt <= PROJECT_DASHBOARD_CACHE_TTL_MS &&
+        cached.sessionCount === sessionsAll.length &&
+        (cached.recentSessions[0]?.updatedAt ?? 0) === latestSessionUpdatedAt
+      ) {
+        setProjectDashboard({ ...cached, loading: false, error: undefined });
+        return;
+      }
       const now = Date.now();
       const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
       const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
@@ -343,9 +423,7 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
         status: projectData.sessionStatus[session.id]?.type ?? "idle",
       }));
 
-      const telemetryCandidates = sessionsAll
-        .filter((session) => session.time.updated >= thirtyDaysAgo)
-        .slice(0, 40);
+      const telemetryCandidates = sessionsAll.filter((session) => session.time.updated >= thirtyDaysAgo).slice(0, PROJECT_TELEMETRY_SESSION_LIMIT);
 
       let tokenInput30d = 0;
       let tokenOutput30d = 0;
@@ -354,25 +432,20 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
       const modelUsage = new Map<string, number>();
       const tokenSeriesPoints: Array<{ timestamp: number; value: number }> = [];
 
-      for (const session of telemetryCandidates) {
-        const payload = await window.orxa.opencode.loadMessages(activeProjectDir, session.id).catch(() => []);
-        for (const message of payload) {
-          const info = message.info as { role?: string; providerID?: string; modelID?: string; time?: { created?: number } };
-          if (info.role === "assistant" && info.providerID && info.modelID) {
-            const key = `${info.providerID}/${info.modelID}`;
-            modelUsage.set(key, (modelUsage.get(key) ?? 0) + 1);
-          }
-          const summary = summarizeStepFinishParts(message.parts);
+      for (let index = 0; index < telemetryCandidates.length; index += TELEMETRY_BATCH_SIZE) {
+        const batch = telemetryCandidates.slice(index, index + TELEMETRY_BATCH_SIZE);
+        const summaries = await Promise.all(
+          batch.map((session) => loadSessionTelemetry(activeProjectDir, session.id, session.time.updated)),
+        );
+        for (const summary of summaries) {
           tokenInput30d += summary.tokenInput;
           tokenOutput30d += summary.tokenOutput;
           tokenCacheRead30d += summary.tokenCacheRead;
-          totalCost30d += summary.cost;
-          if (summary.totalTokens > 0) {
-            tokenSeriesPoints.push({
-              timestamp: typeof info.time?.created === "number" ? info.time.created : session.time.updated,
-              value: summary.totalTokens,
-            });
+          totalCost30d += summary.totalCost;
+          for (const [key, count] of summary.modelUsage.entries()) {
+            modelUsage.set(key, (modelUsage.get(key) ?? 0) + count);
           }
+          tokenSeriesPoints.push(...summary.tokenSeriesPoints);
         }
       }
 
@@ -399,7 +472,7 @@ export function useDashboards(projects: Project[], activeProjectDir: string | nu
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [activeProjectDir, projectData]);
+  }, [activeProjectDir, loadSessionTelemetry, projectData]);
 
   return {
     dashboard,

@@ -195,6 +195,8 @@
 .project-dashboard {
   padding: 0;
   gap: var(--space-4);
+  align-content: start;
+  grid-auto-rows: max-content;
 }
 
 .project-dashboard .dashboard-section {
@@ -203,6 +205,8 @@
   background: transparent;
   padding: 0;
   gap: var(--space-3);
+  align-content: start;
+  min-height: 0;
 }
 
 .project-dashboard .dashboard-section:first-of-type {
@@ -225,6 +229,7 @@
   padding: var(--space-4);
   display: grid;
   gap: var(--space-3);
+  container-type: inline-size;
 }
 
 .dashboard-section-title {
@@ -360,6 +365,8 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
+  align-items: stretch;
+  align-content: start;
 }
 
 .dashboard-metric-grid article {
@@ -369,6 +376,9 @@
   padding: var(--space-3);
   display: grid;
   gap: 4px;
+  align-content: start;
+  min-height: 114px;
+  min-width: 0;
 }
 
 .dashboard-metric-grid span {
@@ -379,7 +389,10 @@
 }
 
 .dashboard-metric-grid strong {
-  font-size: 1.45rem;
+  font-size: clamp(1.1rem, 1.4vw + 0.65rem, 1.45rem);
+  line-height: 1.16;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .dashboard-chart {
@@ -445,21 +458,26 @@
 
 .dashboard-models span {
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 16px;
   background: var(--bg-raised);
-  padding: 5px 10px;
+  padding: 7px 12px;
+  min-height: 34px;
+  min-width: 0;
+  max-width: 100%;
   font-size: 0.78rem;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  flex: 0 1 auto;
   white-space: nowrap;
 }
 
 .dashboard-models span small {
   color: var(--text-dim);
-  margin-left: 6px;
+  margin-left: 4px;
+  flex-shrink: 0;
 }
 
 .dashboard-empty {
@@ -2181,6 +2199,34 @@
 .dashboard-icon-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+@container (max-width: 1000px) {
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 760px) {
+  .dashboard-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-section-title {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .project-usage-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
+
+@container (max-width: 520px) {
+  .dashboard-metric-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @keyframes spin {

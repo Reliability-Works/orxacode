@@ -217,6 +217,9 @@ export function WorkspaceSidebar({
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
               const isExpanded = isActiveProject && !collapsedProjects[project.worktree];
+              const visibleSessions = isExpanded
+                ? sessions.filter((session) => session.id !== pendingSessionId || session.id === activeSessionID)
+                : [];
               return (
                 <article
                   key={project.id}
@@ -263,8 +266,8 @@ export function WorkspaceSidebar({
                   </div>
                   {isExpanded ? (
                     <div className="project-session-list">
-                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).length === 0 ? <p>No sessions yet</p> : null}
-                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).slice(0, 4).map((session) => {
+                      {visibleSessions.length === 0 ? <p>No sessions yet</p> : null}
+                      {visibleSessions.slice(0, 4).map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
                         const busy = status === "busy" || status === "retry";
                         return (
@@ -283,7 +286,7 @@ export function WorkspaceSidebar({
                           </button>
                         );
                       })}
-                      {sessions.filter((s) => s.id !== pendingSessionId || s.id === activeSessionID).length > 4 ? (
+                      {visibleSessions.length > 4 ? (
                         <button type="button" className="project-sessions-more" onClick={() => setAllSessionsModalOpen(true)}>
                           View all
                         </button>

@@ -1,38 +1,47 @@
 # OrxaCode
 
-Electron desktop app for monitoring and operating a local OpenCode server with a CodexMonitor-inspired UI.
+OrxaCode is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
-## Features in this build
+Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.
+Homage: [OpenCode on GitHub](https://github.com/sst/opencode).
 
-- Local runtime profiles (attach to running server or start `opencode serve` from app)
-- Multi-project switcher
-- Session list, message stream view, and prompt composer
-- Model/agent/variant selection from OpenCode discovery APIs
-- Permission and question action panel
-- Config management:
-  - Guided editor (`model`, `small_model`, `default_agent`, `plugin`)
-  - Raw JSON/JSONC editor for project/global config files
-  - Dedicated `~/.config/opencode/orxa/orxa.json` editor in settings
-- Integrated terminal panel under composer powered by OpenCode PTY APIs
-- Built-in Orxa plugin setup:
-  - Non-destructive scaffold of `~/.config/opencode/orxa/*`
-  - Automatic registration of `@reliabilityworks/opencode-orxa` in global OpenCode config
-  - Automatic best-effort plugin installation (`bun` → `pnpm` → `npm`)
+## What It Includes
 
-## Development
+- Runtime profile management (attach to existing server or start local runtime)
+- Multi-workspace switcher with dashboards
+- Session/message workflow with prompt composer
+- Permission/question handling for agent actions
+- Terminal integration (OpenCode PTY APIs)
+- Config editing:
+  - guided settings for common fields
+  - raw JSON/JSONC editor for project and global config
+  - dedicated Orxa config editor
+- Built-in Orxa plugin bootstrap/registration
+- Auto-update checks for packaged builds via GitHub Releases
+
+## Local Development
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
+Mac dev icon sync variant:
+
+```bash
+pnpm dev:mac
+```
+
 ## Validation
 
 ```bash
+pnpm lint
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm test:coverage
 ```
+
+Coverage gate is enforced in CI for core shared logic (80% statements/functions/lines, 75% branches).
 
 ## Packaging
 
@@ -40,4 +49,45 @@ pnpm build
 pnpm dist
 ```
 
-Targets configured: macOS (`dmg`) and Linux (`AppImage`).
+Configured targets:
+
+- macOS: `dmg`, `zip`
+- Linux: `AppImage`
+
+## Auto Updates
+
+Packaged builds check GitHub Releases periodically and prompt users when an update is available.
+
+- Prompt 1: download update now or later
+- Prompt 2: restart now to apply downloaded update or later
+
+Notes:
+
+- Auto-update runs only in packaged builds (`app.isPackaged`)
+- For private releases, provide a token with repo read access via environment (`GH_TOKEN`)
+
+## GitHub Workflows
+
+- `CI` workflow (`.github/workflows/ci.yml`):
+  - runs on PRs and pushes to `main`
+  - lint + typecheck + test coverage
+- `Release` workflow (`.github/workflows/release.yml`):
+  - runs on pushed tags matching `v*`
+  - builds and publishes Electron artifacts to GitHub Releases
+
+## Release Process
+
+1. Bump `package.json` version.
+2. Commit and push.
+3. Create and push a version tag, for example:
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+4. Wait for the `Release` workflow to publish artifacts.
+5. Users on installed packaged builds get update prompts on the next check cycle.
+
+## Notes
+
+- This repository customizes UX, workflows, and operational defaults for OrxaCode.
+- It is not the upstream OpenCode project; see the upstream repo link above.

@@ -13,7 +13,7 @@ export function preferredAgentForMode(params: {
       return "build";
     }
     const firstNonPlan = firstAgentName !== "plan" ? firstAgentName : [...serverAgentNames].find((n) => n !== "plan");
-    return firstNonPlan;
+    return firstNonPlan ?? (hasPlanAgent ? "plan" : undefined);
   }
   if (hasOrxaAgent) {
     return "orxa";

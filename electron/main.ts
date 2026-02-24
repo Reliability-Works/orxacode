@@ -1,12 +1,20 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs";
+import { access } from "node:fs/promises";
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
-import { IPC, type AppMode, type GitCommitRequest, type OpenDirectoryTarget, type RuntimeProfileInput } from "../shared/ipc";
+import {
+  IPC,
+  type AppMode,
+  type GitCommitRequest,
+  type OpenDirectoryTarget,
+  type OrxaEvent,
+  type RuntimeProfileInput,
+} from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
+import { setupAutoUpdates } from "./services/auto-updater";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +22,11 @@ const __dirname = path.dirname(__filename);
 const service = new OpencodeService();
 const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
+let autoUpdateCleanup: (() => void) | undefined;
+let startupOrxaBootstrap: Promise<void> | undefined;
+const PTY_OUTPUT_FLUSH_MS = 16;
+const ptyOutputBuffer = new Map<string, { directory: string; ptyID: string; chunks: string[] }>();
+const ptyOutputFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function assertString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
@@ -92,7 +105,7 @@ function resolveOrxaTemplateDir() {
   return path.join(process.cwd(), "assets", "orxa-template");
 }
 
-function configureMacAppIdentity() {
+async function configureMacAppIdentity() {
   if (process.platform !== "darwin") {
     return;
   }
@@ -100,14 +113,18 @@ function configureMacAppIdentity() {
   app.setName("OrxaCode");
 
   const dockIconPath = path.join(process.cwd(), "build", "icon.png");
-  if (!fs.existsSync(dockIconPath)) {
+  try {
+    await access(dockIconPath);
+  } catch {
     return;
   }
 
-  const dockIcon = nativeImage.createFromPath(dockIconPath);
-  if (!dockIcon.isEmpty()) {
-    app.dock?.setIcon(dockIcon);
-  }
+  setTimeout(() => {
+    const dockIcon = nativeImage.createFromPath(dockIconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock?.setIcon(dockIcon);
+    }
+  }, 0);
 }
 
 function inferMimeFromPath(filePath: string) {
@@ -134,11 +151,16 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.modeGet, async () => modeStore.getMode());
   ipcMain.handle(IPC.modeSet, async (_event, modeInput: unknown) => {
     const mode = assertAppMode(modeInput);
+    const currentMode = modeStore.getMode();
+    if (mode === currentMode) {
+      return currentMode;
+    }
     if (mode === "orxa") {
       await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
       await service.ensureOrxaPluginRegistration();
       return modeStore.setMode(mode);
     }
+    startupOrxaBootstrap = undefined;
     await service.removeOrxaPluginFromConfig();
     return modeStore.setMode(mode);
   });
@@ -155,7 +177,12 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(IPC.runtimeStopLocal, async () => service.stopLocal());
 
-  ipcMain.handle(IPC.opencodeBootstrap, async () => service.bootstrap());
+  ipcMain.handle(IPC.opencodeBootstrap, async () => {
+    if (startupOrxaBootstrap) {
+      await startupOrxaBootstrap;
+    }
+    return service.bootstrap();
+  });
   ipcMain.handle(IPC.opencodeAddProjectDirectory, async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
@@ -445,33 +472,96 @@ function registerIpcHandlers() {
   );
 }
 
+function flushBufferedPtyOutput(key: string) {
+  const timer = ptyOutputFlushTimers.get(key);
+  if (timer) {
+    clearTimeout(timer);
+    ptyOutputFlushTimers.delete(key);
+  }
+  const pending = ptyOutputBuffer.get(key);
+  if (!pending) {
+    return;
+  }
+  ptyOutputBuffer.delete(key);
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  mainWindow.webContents.send(IPC.events, {
+    type: "pty.output",
+    payload: {
+      directory: pending.directory,
+      ptyID: pending.ptyID,
+      chunk: pending.chunks.join(""),
+    },
+  } satisfies OrxaEvent);
+}
+
+function flushAllPtyOutput() {
+  const keys = [...ptyOutputBuffer.keys()];
+  for (const key of keys) {
+    flushBufferedPtyOutput(key);
+  }
+}
+
+function publishEvent(event: OrxaEvent) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (event.type !== "pty.output") {
+    mainWindow.webContents.send(IPC.events, event);
+    return;
+  }
+
+  const key = `${event.payload.directory}::${event.payload.ptyID}`;
+  const existing = ptyOutputBuffer.get(key);
+  if (existing) {
+    existing.chunks.push(event.payload.chunk);
+  } else {
+    ptyOutputBuffer.set(key, {
+      directory: event.payload.directory,
+      ptyID: event.payload.ptyID,
+      chunks: [event.payload.chunk],
+    });
+  }
+
+  if (!ptyOutputFlushTimers.has(key)) {
+    const timer = setTimeout(() => {
+      flushBufferedPtyOutput(key);
+    }, PTY_OUTPUT_FLUSH_MS);
+    ptyOutputFlushTimers.set(key, timer);
+  }
+}
+
 async function boot() {
   await app.whenReady();
-  configureMacAppIdentity();
-  const startupMode = modeStore.getMode();
-  if (shouldRunOrxaBootstrap(startupMode)) {
-    await service.ensureOrxaWorkspace(resolveOrxaTemplateDir()).catch((error) => {
-      console.error("Failed to initialize Orxa workspace:", error);
-    });
-    await service.ensureOrxaPluginRegistration().catch((error) => {
-      console.error("Failed to register/install Orxa plugin:", error);
-    });
-  }
   registerIpcHandlers();
 
-  service.onEvent = (event) => {
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      return;
-    }
-    mainWindow.webContents.send(IPC.events, event);
-  };
+  service.onEvent = (event) => publishEvent(event);
 
   mainWindow = createWindow();
+  void configureMacAppIdentity();
+  autoUpdateCleanup = setupAutoUpdates(() => mainWindow);
 
-  const runtime = await service.initializeFromStoredProfile();
-  if (runtime.status === "error" && runtime.lastError) {
-    service.setErrorStatus(runtime.lastError);
+  const startupMode = modeStore.getMode();
+  if (shouldRunOrxaBootstrap(startupMode)) {
+    startupOrxaBootstrap = (async () => {
+      await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
+      await service.ensureOrxaPluginRegistration();
+    })()
+      .catch((error) => {
+        console.error("Failed to initialize Orxa workspace/plugin:", error);
+      })
+      .finally(() => {
+        startupOrxaBootstrap = undefined;
+      });
   }
+
+  void service.initializeFromStoredProfile().then((runtime) => {
+    if (runtime.status === "error" && runtime.lastError) {
+      service.setErrorStatus(runtime.lastError);
+    }
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -486,6 +576,8 @@ async function boot() {
   });
 
   app.on("before-quit", () => {
+    autoUpdateCleanup?.();
+    flushAllPtyOutput();
     void service.stopLocal();
   });
 }

@@ -3,6 +3,8 @@ import type { ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
 import type { TerminalTab } from "../components/TerminalPanel";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
+const RESPONSE_POLL_BASE_DELAY_MS = 900;
+const RESPONSE_POLL_MAX_DELAY_MS = 5_400;
 
 type SidebarMode = "projects" | "jobs" | "skills";
 
@@ -101,6 +103,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
 
   const refreshTimer = useRef<number | undefined>(undefined);
   const responsePollTimer = useRef<number | undefined>(undefined);
+  const eventRefreshInFlight = useRef(false);
   const activeProjectDirRef = useRef<string | undefined>(undefined);
   const activeSessionIDRef = useRef<string | undefined>(undefined);
   const projectDataCacheRef = useRef<Record<string, ProjectBootstrap>>({});
@@ -272,15 +275,32 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     (directory: string, sessionID: string) => {
       stopResponsePolling();
       const startedAt = Date.now();
+      let nextDelayMs = RESPONSE_POLL_BASE_DELAY_MS;
+      let unchangedPolls = 0;
+      let previousStatus = projectDataCacheRef.current[directory]?.sessionStatus[sessionID]?.type;
+      let previousUpdatedAt =
+        projectDataCacheRef.current[directory]?.sessions.find((session) => session.id === sessionID)?.time.updated ?? 0;
       const tick = () => {
         if (activeProjectDirRef.current !== directory) {
           stopResponsePolling();
           return;
         }
 
-        void refreshProject(directory)
+        void refreshProject(directory, true)
           .then((next) => {
-            void refreshMessages();
+            const latestStatus = next.sessionStatus[sessionID]?.type;
+            const latestUpdatedAt = next.sessions.find((session) => session.id === sessionID)?.time.updated ?? 0;
+            const changed = latestStatus !== previousStatus || latestUpdatedAt !== previousUpdatedAt;
+            previousStatus = latestStatus;
+            previousUpdatedAt = latestUpdatedAt;
+            if (changed || latestStatus === "idle") {
+              void refreshMessages();
+              unchangedPolls = 0;
+              nextDelayMs = RESPONSE_POLL_BASE_DELAY_MS;
+            } else {
+              unchangedPolls += 1;
+              nextDelayMs = Math.min(RESPONSE_POLL_MAX_DELAY_MS, RESPONSE_POLL_BASE_DELAY_MS + unchangedPolls * 450);
+            }
             const status = next.sessionStatus[sessionID];
             const done = status?.type === "idle";
             const timedOut = Date.now() - startedAt > 120_000;
@@ -288,7 +308,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
               stopResponsePolling();
               return;
             }
-            responsePollTimer.current = window.setTimeout(tick, 900);
+            responsePollTimer.current = window.setTimeout(tick, nextDelayMs);
           })
           .catch(() => {
             const timedOut = Date.now() - startedAt > 30_000;
@@ -296,11 +316,12 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
               stopResponsePolling();
               return;
             }
-            responsePollTimer.current = window.setTimeout(tick, 1300);
+            nextDelayMs = Math.min(RESPONSE_POLL_MAX_DELAY_MS, nextDelayMs + 700);
+            responsePollTimer.current = window.setTimeout(tick, nextDelayMs);
           });
       };
 
-      responsePollTimer.current = window.setTimeout(tick, 900);
+      responsePollTimer.current = window.setTimeout(tick, RESPONSE_POLL_BASE_DELAY_MS);
     },
     [refreshMessages, refreshProject, stopResponsePolling],
   );
@@ -369,7 +390,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   );
 
   const queueRefresh = useCallback(
-    (reason: string) => {
+    (reason: string, delayMs = 180) => {
       if (!activeProjectDir) {
         return;
       }
@@ -378,13 +399,20 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         window.clearTimeout(refreshTimer.current);
       }
       refreshTimer.current = window.setTimeout(() => {
-        void refreshProject(activeProjectDir)
+        if (eventRefreshInFlight.current) {
+          return;
+        }
+        eventRefreshInFlight.current = true;
+        void refreshProject(activeProjectDir, true)
           .then(() => {
             void refreshMessages();
             setStatusLine(reason);
           })
-          .catch(() => undefined);
-      }, 180);
+          .catch(() => undefined)
+          .finally(() => {
+            eventRefreshInFlight.current = false;
+          });
+      }, delayMs);
     },
     [activeProjectDir, refreshProject, refreshMessages, setStatusLine],
   );

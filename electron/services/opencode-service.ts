@@ -7,6 +7,7 @@ import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import {
   createOpencodeClient,
   type Config,
+  type Event,
   type OpencodeClient,
   type ProviderListResponse,
   type QuestionAnswer,
@@ -1868,6 +1869,21 @@ export class OpencodeService {
     this.onEvent?.(event);
   }
 
+  private summarizeStreamEvent(event: Event) {
+    if (event.type === "session.error") {
+      const properties = (event as { properties?: { error?: { message?: string } } }).properties;
+      return {
+        type: String(event.type),
+        properties: {
+          error: {
+            message: properties?.error?.message,
+          },
+        },
+      };
+    }
+    return { type: String(event.type) };
+  }
+
   private baseUrl(profile: RuntimeProfile) {
     const protocol = profile.https ? "https" : "http";
     return `${protocol}://${profile.host}:${profile.port}`;
@@ -1989,7 +2005,7 @@ export class OpencodeService {
               type: "opencode.global",
               payload: {
                 directory,
-                event,
+                event: this.summarizeStreamEvent(event),
               },
             });
           }
@@ -2024,7 +2040,7 @@ export class OpencodeService {
               type: "opencode.project",
               payload: {
                 directory,
-                event,
+                event: this.summarizeStreamEvent(event),
               },
             });
           }

@@ -2,7 +2,6 @@ import type {
   Agent,
   Command,
   Config,
-  Event,
   FormatterStatus,
   LspStatus,
   Message,
@@ -352,14 +351,28 @@ export type OrxaEvent =
       type: "opencode.global";
       payload: {
         directory?: string;
-        event: Event;
+        event: {
+          type: string;
+          properties?: {
+            error?: {
+              message?: string;
+            };
+          };
+        };
       };
     }
   | {
       type: "opencode.project";
       payload: {
         directory: string;
-        event: Event;
+        event: {
+          type: string;
+          properties?: {
+            error?: {
+              message?: string;
+            };
+          };
+        };
       };
     }
   | {

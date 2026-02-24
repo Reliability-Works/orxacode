@@ -851,7 +851,11 @@ export default function App() {
           kind === "pty.created" ||
           kind === "pty.deleted"
         ) {
-          queueRefresh(`Updated from event: ${kind}`);
+          const refreshDelay =
+            kind === "message.part.delta" || kind === "message.part.updated" || kind === "message.part.added"
+              ? 600
+              : 180;
+          queueRefresh(`Updated from event: ${kind}`, refreshDelay);
         }
 
         if (kind === "session.error") {

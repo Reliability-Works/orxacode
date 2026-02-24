@@ -1,6 +1,25 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC, type OrxaBridge, type OrxaEvent } from "../shared/ipc";
 
+const eventListeners = new Set<(event: OrxaEvent) => void>();
+const onEvents = (_event: Electron.IpcRendererEvent, payload: OrxaEvent) => {
+  for (const listener of eventListeners) {
+    listener(payload);
+  }
+};
+
+function ensureEventSubscription() {
+  if (eventListeners.size === 1) {
+    ipcRenderer.on(IPC.events, onEvents);
+  }
+}
+
+function teardownEventSubscriptionIfIdle() {
+  if (eventListeners.size === 0) {
+    ipcRenderer.removeListener(IPC.events, onEvents);
+  }
+}
+
 const bridge: OrxaBridge = {
   mode: {
     get: () => ipcRenderer.invoke(IPC.modeGet),
@@ -89,10 +108,11 @@ const bridge: OrxaBridge = {
   },
   events: {
     subscribe: (listener) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: OrxaEvent) => listener(payload);
-      ipcRenderer.on(IPC.events, handler);
+      eventListeners.add(listener);
+      ensureEventSubscription();
       return () => {
-        ipcRenderer.removeListener(IPC.events, handler);
+        eventListeners.delete(listener);
+        teardownEventSubscriptionIfIdle();
       };
     },
   },

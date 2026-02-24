@@ -39,6 +39,14 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
+      include: ["electron/services/app-mode.ts", "electron/services/plugin-config.ts", "src/lib/**/*.ts"],
+      exclude: ["**/*.test.ts", "**/*.test.tsx", "src/lib/services/**"],
+      thresholds: {
+        statements: 80,
+        branches: 75,
+        functions: 80,
+        lines: 80,
+      },
     },
   },
 });
