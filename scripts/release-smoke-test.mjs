@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 
 const DIST_DIR = path.resolve(process.cwd(), "dist");
 const APP_NAME = "Opencode Orxa";
+const APP_FALLBACK_LINUX_BINARY = "opencode-orxa";
 
 async function pathExists(targetPath) {
   try {
@@ -56,16 +57,20 @@ async function resolveExecutablePath() {
 
   const linuxDir = path.join(DIST_DIR, "linux-unpacked");
   if (await pathExists(linuxDir)) {
-    const primaryBinary = path.join(linuxDir, APP_NAME);
-    if (await pathExists(primaryBinary)) {
-      return primaryBinary;
+    const preferredCandidates = [APP_NAME, APP_FALLBACK_LINUX_BINARY];
+    for (const candidateName of preferredCandidates) {
+      const candidate = path.join(linuxDir, candidateName);
+      if (await pathExists(candidate)) {
+        return candidate;
+      }
     }
     const executable = await firstMatchingFile(
       linuxDir,
       (entry, mode) => {
         const lower = entry.toLowerCase();
         return (
-          !entry.endsWith(".so") &&
+          !lower.includes(".so") &&
+          !lower.startsWith("lib") &&
           !lower.startsWith("chrome") &&
           !lower.includes("crashpad") &&
           !lower.includes("sandbox") &&
