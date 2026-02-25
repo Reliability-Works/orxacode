@@ -35,24 +35,6 @@ Checks:
 3. Use `Check for updates now` for a manual check.
 4. Verify release channel (`stable` vs `prerelease`) matches the published tag type.
 
-## Update publish issues (CI)
-
-Symptoms:
-- macOS release job fails during signing/notarization.
-
-Checks:
-1. Confirm all required GitHub secrets exist:
-   - `MACOS_CERT_P12_BASE64`
-   - `MACOS_CERT_PASSWORD`
-   - `APPLE_ID`
-   - `APPLE_APP_SPECIFIC_PASSWORD`
-   - `APPLE_TEAM_ID`
-2. Validate certificate is a valid Developer ID Application cert exported as `.p12`.
-3. Confirm tag naming:
-   - `v1.2.3` for stable
-   - `v1.2.3-beta.1` / `v1.2.3-rc.1` for prerelease
-4. Re-run release workflow after correcting secrets/cert.
-
 ## Release smoke-test failures
 
 Symptoms:
@@ -62,4 +44,3 @@ Checks:
 1. Verify unpacked artifact was built (`electron-builder --dir`).
 2. Ensure binary exists under expected `dist/*-unpacked` path.
 3. Confirm app accepts `--smoke-test` and exits cleanly.
-

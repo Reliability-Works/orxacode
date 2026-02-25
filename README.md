@@ -1,6 +1,6 @@
 # Opencode Orxa
 
-![Opencode Orxa hero banner](assets/readme/opencode-orxa-hero-banner-16x9.svg)
+![Opencode Orxa workspace dashboard](assets/readme/workspace-dashboard.png)
 
 ## UI Preview
 
@@ -16,6 +16,10 @@ Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with 
 
 Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.
 Source of truth: [anomalyco/opencode](https://github.com/anomalyco/opencode).
+
+Quick links:
+- Contribution guide: [`contributor.md`](contributor.md)
+- License: [`LICENSE`](LICENSE)
 
 ## Runtime Requirements
 
@@ -41,20 +45,53 @@ npm install -g @reliabilityworks/opencode-orxa
 
 On startup, the app runs a dependency check and shows an install helper modal if either dependency is missing.
 
-## What It Includes
+## Feature Breakdown
 
-- Runtime profile management (attach to existing server or start local runtime)
-- Multi-workspace switcher with dashboards
-- Session/message workflow with prompt composer
-- Permission/question handling for agent actions
-- Terminal integration (OpenCode PTY APIs)
-- Config editing:
-  - guided settings for common fields
-  - raw JSON/JSONC editor for project and global config
-  - dedicated Orxa config editor
-- Built-in Orxa plugin bootstrap/registration
-- Auto-update checks for packaged builds via GitHub Releases
-- Update controls in Settings and Help menu (`Check for updates`)
+### Workspace Operations
+
+- Multi-workspace sidebar with per-project session grouping.
+- Workspace dashboard with high-level project metrics and operational state.
+- One-click add/select workspace flow with active-workspace context preserved across views.
+
+### Sessions and Message Feed
+
+- Session-first workflow with prompt composer and live response streaming.
+- Structured timeline rendering for reads/searches/edits/runs so execution activity is traceable.
+- Subagent delegation bubbles with a dedicated live-output modal for delegated tasks.
+- In-feed system notices for explicit stop/error states and recovery guidance.
+
+### Permission and Safety UX
+
+- Runtime permission prompts for tool actions requiring approval.
+- Mid-session permission mode switching (`Default Permissions` / `Yolo Mode`).
+- Visible session-state indicator when a session is waiting for permission input.
+
+### Skills and Prompt Preparation
+
+- Built-in skill discovery from local OpenCode skill directories.
+- Skill modal for choosing workspace target and preparing a structured seed prompt.
+- Session targeting during prepare flow (current session or new session).
+
+### Jobs and Automation
+
+- Job templates for common recurring workflows.
+- Configurable schedules (daily with days/time, or interval-based).
+- Job run inbox with completion/failure visibility and per-run output viewer.
+
+### Runtime, Terminal, and Config
+
+- Runtime profile management (attach existing server or run local runtime).
+- Integrated terminal tabs via OpenCode PTY APIs.
+- Config management:
+  - guided UI for common fields
+  - raw JSON/JSONC editor for project/global config
+  - dedicated Orxa config and agent prompt editing
+
+### Plugin and Updater Support
+
+- Built-in Orxa plugin bootstrap/registration path in app flow.
+- Auto-update checks for packaged builds via GitHub Releases.
+- Manual update trigger in Settings and Help menu (`Check for updates`).
 
 ## Local Development
 
@@ -102,44 +139,9 @@ Packaged builds check GitHub Releases periodically and prompt users when an upda
 Notes:
 
 - Auto-update runs only in packaged builds (`app.isPackaged`)
-- For private releases, provide a token with repo read access via environment (`GH_TOKEN`)
 - Users can choose update channel in Settings:
   - `stable`: only stable tags (e.g. `v1.2.3`)
   - `prerelease`: includes prerelease tags (e.g. `v1.2.3-beta.1`)
-
-## GitHub Workflows
-
-- `CI` workflow (`.github/workflows/ci.yml`):
-  - runs on PRs and pushes to `main`
-  - lint + typecheck + test coverage
-- `Secret Scan` workflow (`.github/workflows/secret-scan.yml`):
-  - runs on PRs and pushes to `main`
-  - scans repository history for leaked secrets using Gitleaks
-- `Release` workflow (`.github/workflows/release.yml`):
-  - runs on pushed tags matching `v*`
-  - runs artifact smoke tests on macOS/Linux/Windows
-  - builds and publishes Electron artifacts to GitHub Releases
-  - signs + notarizes macOS artifacts
-
-### Required Secrets for Signed macOS Releases
-
-- `MACOS_CERT_P12_BASE64`: base64-encoded `.p12` Developer ID Application certificate
-- `MACOS_CERT_PASSWORD`: password for the `.p12` certificate
-- `APPLE_ID`: Apple Developer account email
-- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
-- `APPLE_TEAM_ID`: Apple team identifier
-
-## Release Process
-
-1. Bump `package.json` version.
-2. Commit and push.
-3. Create and push a version tag, for example:
-   ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
-   ```
-4. Wait for the `Release` workflow to publish artifacts.
-5. Users on installed packaged builds get update prompts on the next check cycle.
 
 ## Architecture + Troubleshooting
 
