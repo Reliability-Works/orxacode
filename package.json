@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0-beta",
   "description": "Opencode Orxa Electron desktop app",
+  "author": "Reliability Works",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -73,7 +74,6 @@
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "clsx": "^2.1.1",
-    "electron": "^40.6.0",
     "electron-updater": "^6.6.2",
     "electron-store": "^11.0.2",
     "jsonc-parser": "^3.3.1",
@@ -99,6 +99,7 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.4",
     "@vitest/coverage-v8": "^4.0.18",
+    "electron": "^40.6.0",
     "electron-builder": "^26.8.1",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^7.0.1",
