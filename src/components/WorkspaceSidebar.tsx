@@ -1,4 +1,4 @@
-import { type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
+import { useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { AppMode, ProjectListItem } from "@shared/ipc";
 import { IconButton } from "./IconButton";
@@ -21,6 +21,9 @@ export type WorkspaceSidebarProps = {
   sidebarMode: SidebarMode;
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
+  updateAvailableVersion: string | null;
+  updateInstallPending: boolean;
+  onDownloadAndInstallUpdate: () => Promise<void> | void;
   openWorkspaceDashboard: () => void;
   projectSearchOpen: boolean;
   setProjectSearchOpen: Dispatch<SetStateAction<boolean>>;
@@ -55,6 +58,9 @@ export function WorkspaceSidebar({
   sidebarMode,
   setSidebarMode,
   unreadJobRunsCount,
+  updateAvailableVersion,
+  updateInstallPending,
+  onDownloadAndInstallUpdate,
   openWorkspaceDashboard,
   projectSearchOpen,
   setProjectSearchOpen,
@@ -82,10 +88,26 @@ export function WorkspaceSidebar({
   setProfileModalOpen,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
+  const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
+
   return (
     <aside className="sidebar projects-pane">
       <div className="sidebar-inner">
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
+          {updateAvailableVersion ? (
+            <button
+              type="button"
+              className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
+              onMouseEnter={() => setUpdateButtonHovered(true)}
+              onMouseLeave={() => setUpdateButtonHovered(false)}
+              onClick={() => void onDownloadAndInstallUpdate()}
+              disabled={updateInstallPending}
+              title={`Version ${updateAvailableVersion}`}
+            >
+              <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
+              <small>{updateAvailableVersion}</small>
+            </button>
+          ) : null}
           <button
             type="button"
             className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}

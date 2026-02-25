@@ -13,6 +13,7 @@ const bridge: OrxaBridge = {
     getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),
     setPreferences: (input) => ipcRenderer.invoke(IPC.updatesSetPreferences, input),
     checkNow: () => ipcRenderer.invoke(IPC.updatesCheckNow),
+    downloadAndInstall: () => ipcRenderer.invoke(IPC.updatesDownloadAndInstall),
   },
   runtime: {
     getState: () => ipcRenderer.invoke(IPC.runtimeGetState),

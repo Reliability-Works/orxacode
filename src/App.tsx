@@ -62,6 +62,7 @@ import {
   type ModelOption,
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
+import { syncAgentModelPreference } from "./lib/agent-model-preferences";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import { CODE_FONT_OPTIONS } from "~/types/app";
@@ -129,6 +130,13 @@ type CommitFlowState = {
   phase: "running" | "success" | "error";
   nextStep: CommitNextStep;
   message: string;
+};
+
+type UpdateProgressState = {
+  phase: "downloading" | "installing" | "error";
+  message: string;
+  percent?: number;
+  version?: string;
 };
 
 const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
@@ -608,6 +616,9 @@ export default function App() {
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [commitFlowState, setCommitFlowState] = useState<CommitFlowState | null>(null);
   const [pendingPrUrl, setPendingPrUrl] = useState<string | null>(null);
+  const [availableUpdateVersion, setAvailableUpdateVersion] = useState<string | null>(null);
+  const [updateInstallPending, setUpdateInstallPending] = useState(false);
+  const [updateProgressState, setUpdateProgressState] = useState<UpdateProgressState | null>(null);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
   const [permissionDecisionPendingRequestID, setPermissionDecisionPendingRequestID] = useState<string | null>(null);
@@ -1089,17 +1100,54 @@ export default function App() {
       if (event.type === "updater.telemetry") {
         if (event.payload.phase === "check.start") {
           setStatusLine("Checking for updates...");
+        } else if (event.payload.phase === "update.available") {
+          if (event.payload.version) {
+            setAvailableUpdateVersion(event.payload.version);
+            setStatusLine(`Update available: ${event.payload.version}`);
+          }
         } else if (event.payload.phase === "check.success") {
           const timing = typeof event.payload.durationMs === "number" ? ` (${Math.round(event.payload.durationMs)}ms)` : "";
           if (event.payload.version) {
+            setAvailableUpdateVersion(event.payload.version);
             setStatusLine(`Update available: ${event.payload.version}${timing}`);
           } else if (event.payload.manual) {
             setStatusLine(`Update check complete${timing}`);
           }
         } else if (event.payload.phase === "check.error") {
           setStatusLine(event.payload.message ? `Update check failed: ${event.payload.message}` : "Update check failed");
+          if (updateInstallPending) {
+            setUpdateInstallPending(false);
+            setUpdateProgressState({
+              phase: "error",
+              message: event.payload.message ?? "Unable to update right now.",
+            });
+          }
+        } else if (event.payload.phase === "download.start") {
+          setUpdateProgressState({
+            phase: "downloading",
+            message: "Downloading update...",
+            percent: 0,
+            version: event.payload.version,
+          });
+        } else if (event.payload.phase === "download.progress") {
+          setUpdateProgressState({
+            phase: "downloading",
+            message: "Downloading update...",
+            percent: event.payload.percent,
+            version: event.payload.version,
+          });
         } else if (event.payload.phase === "download.complete") {
-          setStatusLine("Update downloaded. Restart when ready.");
+          setStatusLine("Update downloaded.");
+        } else if (event.payload.phase === "install.start") {
+          setUpdateInstallPending(false);
+          setAvailableUpdateVersion(null);
+          setUpdateProgressState({
+            phase: "installing",
+            message: "Installing update...",
+            percent: 100,
+            version: event.payload.version,
+          });
+          setStatusLine("Installing update...");
         }
       }
 
@@ -1244,7 +1292,59 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, loadMemoryGraph, queueRefresh, scheduleGitRefresh, sidebarMode, stopResponsePolling]);
+  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, loadMemoryGraph, queueRefresh, scheduleGitRefresh, sidebarMode, stopResponsePolling, updateInstallPending]);
+
+  const downloadAndInstallUpdate = useCallback(async () => {
+    if (updateInstallPending) {
+      return;
+    }
+    setUpdateInstallPending(true);
+    setUpdateProgressState((current) => current ?? { phase: "downloading", message: "Preparing update download...", percent: 0 });
+    try {
+      const result = await window.orxa.updates.downloadAndInstall();
+      if (result.status === "error") {
+        setUpdateInstallPending(false);
+        setUpdateProgressState({
+          phase: "error",
+          message: result.message ?? "Unable to start update.",
+        });
+      } else if (result.status === "skipped") {
+        const detail = result.message ?? "Unable to start update.";
+        if (/already in progress/i.test(detail)) {
+          setUpdateProgressState({
+            phase: "downloading",
+            message: "Downloading update...",
+            percent: undefined,
+            version: availableUpdateVersion ?? undefined,
+          });
+        } else {
+          setUpdateInstallPending(false);
+          setUpdateProgressState({
+            phase: "error",
+            message: detail,
+          });
+        }
+      } else {
+        setUpdateProgressState({
+          phase: "downloading",
+          message: "Downloading update...",
+          percent: 0,
+          version: availableUpdateVersion ?? undefined,
+        });
+      }
+      if (result.message) {
+        setStatusLine(result.message);
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setUpdateInstallPending(false);
+      setUpdateProgressState({
+        phase: "error",
+        message: detail,
+      });
+      setStatusLine(detail);
+    }
+  }, [availableUpdateVersion, updateInstallPending]);
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
@@ -2338,7 +2438,7 @@ export default function App() {
         nextStep: selectedNextStep,
         message: detail,
       });
-      scheduleCommitFlowDismiss(2200);
+      clearCommitFlowDismissTimer();
     } finally {
       setCommitSubmitting(false);
     }
@@ -2486,6 +2586,9 @@ export default function App() {
             sidebarMode={sidebarMode}
             setSidebarMode={setSidebarMode}
             unreadJobRunsCount={unreadJobRunsCount}
+            updateAvailableVersion={availableUpdateVersion}
+            updateInstallPending={updateInstallPending}
+            onDownloadAndInstallUpdate={downloadAndInstallUpdate}
             openWorkspaceDashboard={openWorkspaceDashboard}
             projectSearchOpen={projectSearchOpen}
             setProjectSearchOpen={setProjectSearchOpen}
@@ -2838,6 +2941,46 @@ export default function App() {
         </div>
       ) : null}
 
+      {updateProgressState ? (
+        <div className="overlay" onClick={updateProgressState.phase === "error" ? () => setUpdateProgressState(null) : undefined}>
+          <section className="modal update-progress-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="update-progress-body">
+              {updateProgressState.phase === "error" ? (
+                <>
+                  <h2>Update failed</h2>
+                  <p>{updateProgressState.message}</p>
+                  <button type="button" onClick={() => setUpdateProgressState(null)}>
+                    Dismiss
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="session-status-indicator busy commit-progress-spinner" aria-hidden="true" />
+                  <h2>
+                    {updateProgressState.phase === "installing" ? "Installing update" : "Downloading update"}
+                    {updateProgressState.version ? ` ${updateProgressState.version}` : ""}
+                  </h2>
+                  <p>{updateProgressState.message}</p>
+                  {updateProgressState.phase === "downloading" ? (
+                    <div className="update-progress-meter" aria-label="Update download progress">
+                      <div
+                        className="update-progress-meter-fill"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, updateProgressState.percent ?? 0))}%`,
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                  {updateProgressState.phase === "downloading" ? (
+                    <small>{typeof updateProgressState.percent === "number" ? `${Math.round(updateProgressState.percent)}%` : "Starting..."}</small>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <ConfirmDialog
         isOpen={Boolean(confirmDialogRequest)}
         title={confirmDialogRequest?.title ?? "Confirm"}
@@ -3017,7 +3160,16 @@ export default function App() {
         onListOrxaAgents={() => window.orxa.opencode.listOrxaAgents()}
         onSaveOrxaAgent={async (input) => {
           const saved = await window.orxa.opencode.saveOrxaAgent(input);
-          await refreshOrxaState();
+          const savedModel = saved.model?.trim();
+          setAgentModelPrefs((current) => syncAgentModelPreference(current, saved.name, savedModel));
+          if (selectedAgent === saved.name) {
+            const fallback = findFallbackModel(modelSelectOptions, savedModel ?? projectData?.config.model);
+            setSelectedModel(fallback?.key);
+          }
+          await Promise.all([refreshOrxaState(), refreshConfigModels()]);
+          if (activeProjectDir) {
+            await refreshProject(activeProjectDir);
+          }
           setStatusLine(`Saved agent ${saved.name}`);
           return saved;
         }}

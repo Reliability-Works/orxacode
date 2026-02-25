@@ -510,6 +510,16 @@ function registerIpcHandlers() {
     }
     return autoUpdaterController.checkNow();
   });
+  ipcMain.handle(IPC.updatesDownloadAndInstall, async () => {
+    if (!autoUpdaterController) {
+      return {
+        ok: true,
+        status: "skipped",
+        message: "Updater not initialized",
+      };
+    }
+    return autoUpdaterController.downloadAndInstall();
+  });
 
   ipcMain.handle(IPC.runtimeGetState, async () => service.runtimeState());
   ipcMain.handle(IPC.runtimeListProfiles, async () => service.listProfiles());

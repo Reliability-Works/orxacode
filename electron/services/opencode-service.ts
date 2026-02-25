@@ -106,6 +106,15 @@ function sanitizeError(error: unknown) {
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[server]");
 }
 
+function isMissingGhCliError(error: unknown) {
+  const normalized = sanitizeError(error).toLowerCase();
+  return (
+    /spawn\s+gh\b.*\benoent\b/.test(normalized) ||
+    normalized.includes("gh: command not found") ||
+    normalized.includes("'gh' is not recognized as an internal or external command")
+  );
+}
+
 function isTransientPromptError(error: unknown) {
   const normalized = sanitizeError(error).toLowerCase();
   return (
@@ -1488,7 +1497,7 @@ export class OpencodeService {
     }
     const output = await this.runCommandWithOutput("gh", ["issue", "list", "--limit", "30"], repoRoot).catch((error) => {
       const message = sanitizeError(error);
-      if (message.toLowerCase().includes("enoent") || message.includes("gh ")) {
+      if (isMissingGhCliError(error)) {
         return "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
       }
       return `Unable to load issues: ${message}`;
@@ -1504,7 +1513,7 @@ export class OpencodeService {
     }
     const output = await this.runCommandWithOutput("gh", ["pr", "list", "--limit", "30"], repoRoot).catch((error) => {
       const message = sanitizeError(error);
-      if (message.toLowerCase().includes("enoent") || message.includes("gh ")) {
+      if (isMissingGhCliError(error)) {
         return "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
       }
       return `Unable to load pull requests: ${message}`;
@@ -1823,17 +1832,42 @@ export class OpencodeService {
         });
       }
 
-      const prArgs = ["pr", "create", "--fill"];
+      const prArgs = ["pr", "create", "--fill", "--head", branch];
       if (baseBranch) {
         prArgs.push("--base", baseBranch);
       }
-      const output = await this.runCommandWithOutput("gh", prArgs, repoRoot).catch((error) => {
+      let output: string;
+      try {
+        output = await this.runCommandWithOutput("gh", prArgs, repoRoot);
+      } catch (error) {
         const detail = sanitizeError(error);
-        if (detail.toLowerCase().includes("enoent") || detail.includes("gh ")) {
+        if (isMissingGhCliError(error)) {
           throw new Error("GitHub CLI is not available. Install `gh` and run `gh auth login`.");
         }
-        throw new Error(`Unable to create PR: ${detail}`);
-      });
+        const normalized = detail.toLowerCase();
+        const canRetryWithoutFill =
+          normalized.includes("could not compute title or body defaults") ||
+          normalized.includes("unknown revision or path not in the working tree") ||
+          normalized.includes("ambiguous argument");
+        if (!canRetryWithoutFill) {
+          throw new Error(`Unable to create PR: ${detail}`);
+        }
+
+        const [titleLine, ...bodyLines] = message.trim().split(/\r?\n/);
+        const fallbackTitle = titleLine.trim().length > 0 ? titleLine.trim() : `chore: open PR from ${branch}`;
+        const fallbackBody = bodyLines.join("\n").trim() || `Automated PR created from ${branch}.`;
+        const fallbackArgs = ["pr", "create", "--title", fallbackTitle, "--body", fallbackBody, "--head", branch];
+        if (baseBranch) {
+          fallbackArgs.push("--base", baseBranch);
+        }
+        output = await this.runCommandWithOutput("gh", fallbackArgs, repoRoot).catch((fallbackError) => {
+          const fallbackDetail = sanitizeError(fallbackError);
+          if (isMissingGhCliError(fallbackError)) {
+            throw new Error("GitHub CLI is not available. Install `gh` and run `gh auth login`.");
+          }
+          throw new Error(`Unable to create PR: ${fallbackDetail}`);
+        });
+      }
       const urlMatch = output.match(/https?:\/\/[^\s]+/i);
       prUrl = urlMatch ? urlMatch[0] : undefined;
     }

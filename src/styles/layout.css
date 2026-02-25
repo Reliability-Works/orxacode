@@ -325,6 +325,38 @@
   width: 100%;
 }
 
+.sidebar-mode-links .sidebar-update-cta {
+  border: 1px solid hsl(146 48% 38% / 0.7);
+  background: hsl(146 42% 16% / 0.7);
+  color: hsl(146 66% 82%);
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.82rem;
+  margin-left: 0;
+  padding: 8px 10px;
+}
+
+.sidebar-mode-links .sidebar-update-cta:hover {
+  border-color: hsl(146 56% 46% / 0.8);
+  background: hsl(146 44% 20% / 0.85);
+  color: hsl(146 76% 90%);
+}
+
+.sidebar-mode-links .sidebar-update-cta:disabled {
+  cursor: progress;
+  opacity: 0.9;
+}
+
+.sidebar-mode-links .sidebar-update-cta small {
+  color: hsl(146 42% 68%);
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .sidebar-mode-links button:hover {
   transform: none;
   color: var(--text-main);

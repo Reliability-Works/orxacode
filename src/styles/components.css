@@ -1437,6 +1437,51 @@
   border-width: 2px;
 }
 
+.update-progress-modal {
+  width: min(380px, 90vw);
+}
+
+.update-progress-body {
+  padding: var(--space-5);
+  min-height: 184px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: var(--space-2);
+}
+
+.update-progress-body h2 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.update-progress-body p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+
+.update-progress-body small {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.update-progress-meter {
+  width: min(300px, 72vw);
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+.update-progress-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, hsl(148 75% 40%), hsl(158 82% 52%));
+  transition: width 180ms ease;
+}
+
 .branch-create-modal {
   width: min(480px, 92vw);
 }

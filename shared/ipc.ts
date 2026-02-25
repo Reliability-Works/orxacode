@@ -25,6 +25,7 @@ export const IPC = {
   updatesGetPreferences: "orxa:updates:getPreferences",
   updatesSetPreferences: "orxa:updates:setPreferences",
   updatesCheckNow: "orxa:updates:checkNow",
+  updatesDownloadAndInstall: "orxa:updates:downloadAndInstall",
   runtimeGetState: "orxa:runtime:getState",
   runtimeListProfiles: "orxa:runtime:listProfiles",
   runtimeSaveProfile: "orxa:runtime:saveProfile",
@@ -587,7 +588,15 @@ export type OrxaEvent =
   | {
       type: "updater.telemetry";
       payload: {
-        phase: "check.start" | "check.success" | "check.error" | "download.progress" | "download.complete";
+        phase:
+          | "check.start"
+          | "check.success"
+          | "check.error"
+          | "update.available"
+          | "download.start"
+          | "download.progress"
+          | "download.complete"
+          | "install.start";
         manual: boolean;
         releaseChannel: UpdateReleaseChannel;
         durationMs?: number;
@@ -610,6 +619,7 @@ export interface OrxaBridge {
     getPreferences: () => Promise<UpdatePreferences>;
     setPreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
     checkNow: () => Promise<UpdateCheckResult>;
+    downloadAndInstall: () => Promise<UpdateCheckResult>;
   };
   runtime: {
     getState: () => Promise<RuntimeState>;
