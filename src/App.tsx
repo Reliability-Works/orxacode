@@ -62,6 +62,7 @@ import {
   type ModelOption,
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
+import { syncAgentModelPreference } from "./lib/agent-model-preferences";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import { CODE_FONT_OPTIONS } from "~/types/app";
@@ -3159,7 +3160,16 @@ export default function App() {
         onListOrxaAgents={() => window.orxa.opencode.listOrxaAgents()}
         onSaveOrxaAgent={async (input) => {
           const saved = await window.orxa.opencode.saveOrxaAgent(input);
-          await refreshOrxaState();
+          const savedModel = saved.model?.trim();
+          setAgentModelPrefs((current) => syncAgentModelPreference(current, saved.name, savedModel));
+          if (selectedAgent === saved.name) {
+            const fallback = findFallbackModel(modelSelectOptions, savedModel ?? projectData?.config.model);
+            setSelectedModel(fallback?.key);
+          }
+          await Promise.all([refreshOrxaState(), refreshConfigModels()]);
+          if (activeProjectDir) {
+            await refreshProject(activeProjectDir);
+          }
           setStatusLine(`Saved agent ${saved.name}`);
           return saved;
         }}
