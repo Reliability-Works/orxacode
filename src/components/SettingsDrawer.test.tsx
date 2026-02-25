@@ -320,6 +320,7 @@ describe("SettingsDrawer", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "App" })[0]!);
     expect(screen.getByText(`Version: v${__APP_VERSION__}`)).toBeInTheDocument();
+    expect(screen.getByText(/Last checked:/)).toBeInTheDocument();
   });
 
   it("places git settings on the dedicated Git page", () => {

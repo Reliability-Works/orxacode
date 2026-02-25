@@ -75,6 +75,13 @@ type EditorKind = "opencode" | "orxa";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
   | { kind: "duplicate"; title: string; content: string };
+type UpdateCheckStatus = {
+  checkedAt: number;
+  state: "started" | "skipped" | "error";
+  message?: string;
+};
+
+const UPDATE_CHECK_STATUS_KEY = "orxa:updateCheckStatus:v1";
 
 function buildSimpleDiff(baseText: string, currentText: string) {
   const base = baseText.split("\n");
@@ -96,6 +103,24 @@ function buildSimpleDiff(baseText: string, currentText: string) {
     }
   }
   return lines.join("\n");
+}
+
+function formatUpdateCheckStatus(status: UpdateCheckStatus | null): string {
+  if (!status) {
+    return "Last checked: Never";
+  }
+  const checkedAt = new Date(status.checkedAt);
+  const timestamp = Number.isNaN(checkedAt.getTime()) ? "unknown time" : checkedAt.toLocaleString();
+  if (status.message && status.message.trim().length > 0) {
+    return `Last checked: ${timestamp} (${status.message.trim()})`;
+  }
+  if (status.state === "started") {
+    return `Last checked: ${timestamp} (Update check started)`;
+  }
+  if (status.state === "error") {
+    return `Last checked: ${timestamp} (Update check failed)`;
+  }
+  return `Last checked: ${timestamp} (Update check skipped)`;
 }
 
 export function SettingsDrawer({
@@ -160,6 +185,31 @@ export function SettingsDrawer({
     releaseChannel: "stable",
   });
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [updateCheckStatus, setUpdateCheckStatus] = useState<UpdateCheckStatus | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    try {
+      const raw = window.localStorage.getItem(UPDATE_CHECK_STATUS_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as Partial<UpdateCheckStatus>;
+      if (typeof parsed.checkedAt !== "number" || !Number.isFinite(parsed.checkedAt)) {
+        return null;
+      }
+      if (parsed.state !== "started" && parsed.state !== "skipped" && parsed.state !== "error") {
+        return null;
+      }
+      return {
+        checkedAt: parsed.checkedAt,
+        state: parsed.state,
+        message: typeof parsed.message === "string" ? parsed.message : undefined,
+      };
+    } catch {
+      return null;
+    }
+  });
   const [memorySettings, setMemorySettings] = useState<MemorySettings | null>(null);
   const [memoryTemplates, setMemoryTemplates] = useState<MemoryTemplate[]>([]);
   const [memoryLoading, setMemoryLoading] = useState(false);
@@ -179,6 +229,18 @@ export function SettingsDrawer({
   const [ocFilenameDialog, setOcFilenameDialog] = useState<OcAgentFilenameDialog | null>(null);
   const [ocFilenameValue, setOcFilenameValue] = useState("");
   const [ocFilenameError, setOcFilenameError] = useState<string | null>(null);
+
+  const updateUpdateCheckStatus = useCallback((status: UpdateCheckStatus) => {
+    setUpdateCheckStatus(status);
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(UPDATE_CHECK_STATUS_KEY, JSON.stringify(status));
+    } catch {
+      // ignore persistence failures
+    }
+  }, []);
 
   const effectiveScope = useMemo(() => {
     if (scope === "project" && !directory) {
@@ -495,6 +557,11 @@ export function SettingsDrawer({
                 setCheckingForUpdates(true);
                 void onCheckForUpdates()
                   .then((result) => {
+                    updateUpdateCheckStatus({
+                      checkedAt: Date.now(),
+                      state: result.status,
+                      message: result.message,
+                    });
                     if (result.status === "started") {
                       setFeedback("Update check started");
                     } else if (result.message) {
@@ -503,13 +570,22 @@ export function SettingsDrawer({
                       setFeedback("Update check skipped");
                     }
                   })
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .catch((error: unknown) => {
+                    const message = error instanceof Error ? error.message : String(error);
+                    updateUpdateCheckStatus({
+                      checkedAt: Date.now(),
+                      state: "error",
+                      message,
+                    });
+                    setFeedback(message);
+                  })
                   .finally(() => setCheckingForUpdates(false));
               }}
             >
               {checkingForUpdates ? "Checking..." : "Check for updates now"}
             </button>
           </div>
+          <p className="raw-path settings-update-last-checked">{formatUpdateCheckStatus(updateCheckStatus)}</p>
         </section>
       );
     }

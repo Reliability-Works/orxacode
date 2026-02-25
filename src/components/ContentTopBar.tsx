@@ -38,6 +38,7 @@ type ContentTopBarProps = {
   onCopySessionId: () => void;
   activeOpenTarget: OpenTargetOption;
   openTargets: OpenTargetOption[];
+  onSelectOpenTarget: (targetID: OpenTargetOption["id"]) => void;
   openDirectoryInTarget: (targetID: OpenTargetOption["id"]) => Promise<void>;
   openCommitModal: (nextStep?: CommitNextStep) => void;
   pendingPrUrl: string | null;
@@ -74,6 +75,7 @@ export function ContentTopBar({
   onCopySessionId,
   activeOpenTarget,
   openTargets,
+  onSelectOpenTarget,
   openDirectoryInTarget,
   openCommitModal,
   pendingPrUrl,
@@ -193,7 +195,7 @@ export function ContentTopBar({
             <div className="titlebar-menu">
               <small>Open in</small>
               {openTargets.map((target) => (
-                <button key={target.id} type="button" onClick={() => void openDirectoryInTarget(target.id)}>
+                <button key={target.id} type="button" onClick={() => onSelectOpenTarget(target.id)}>
                   <span className="menu-item-logo menu-item-logo-app">
                     <img src={target.logo} alt="" aria-hidden="true" />
                   </span>

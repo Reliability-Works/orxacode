@@ -1751,6 +1751,12 @@
   padding: var(--space-4) var(--space-4) 0;
 }
 
+.settings-section-card.settings-pad > h3,
+.settings-section-card.settings-pad > h4 {
+  padding: 0;
+  margin: 0 0 var(--space-2);
+}
+
 .settings-controls {
   padding: var(--space-4);
   display: grid;
@@ -1800,12 +1806,18 @@
 }
 
 .settings-update-channel {
+  display: grid;
+  gap: 6px;
   min-width: 260px;
   flex: 1 1 360px;
 }
 
 .settings-update-check-btn {
   white-space: nowrap;
+}
+
+.settings-update-last-checked {
+  padding: 0 var(--space-4) var(--space-4);
 }
 
 .settings-section-card > .settings-actions {
