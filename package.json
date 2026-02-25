@@ -1,7 +1,7 @@
 {
   "name": "opencode-orxa",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-beta",
   "description": "Opencode Orxa Electron desktop app",
   "type": "module",
   "main": "dist-electron/main.js",

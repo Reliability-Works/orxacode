@@ -1,5 +1,6 @@
 /** @vitest-environment node */
 
+import type { BrowserWindow, MessageBoxOptions } from "electron";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UpdatePreferences } from "../../shared/ipc";
 import { createAutoUpdaterController } from "./auto-updater";
@@ -53,180 +54,258 @@ function createMemoryStore(initial?: Partial<UpdatePreferences>) {
   };
 }
 
+type HarnessOptions = {
+  isPackaged?: boolean;
+  initial?: Partial<UpdatePreferences>;
+  checkForUpdates?: () => Promise<unknown>;
+  downloadUpdate?: () => Promise<unknown>;
+  showMessageBox?: (window: BrowserWindow | null, options: MessageBoxOptions) => Promise<{ response: number }>;
+  now?: () => number;
+  getWindow?: () => BrowserWindow | null;
+  publishTelemetry?: (payload: unknown) => void;
+};
+
+function createHarness(options: HarnessOptions = {}) {
+  const emitter = new TinyEmitter();
+  const checkForUpdates = options.checkForUpdates ?? vi.fn<() => Promise<unknown>>(async () => ({}));
+  const downloadUpdate = options.downloadUpdate ?? vi.fn<() => Promise<unknown>>(async () => ({}));
+  const showMessageBox =
+    options.showMessageBox ??
+    vi.fn<(window: BrowserWindow | null, options: MessageBoxOptions) => Promise<{ response: number }>>(async () => ({
+      response: 0,
+    }));
+  const quitAndInstall = vi.fn();
+  const publishTelemetry = options.publishTelemetry ?? vi.fn<(payload: unknown) => void>();
+
+  const updater = {
+    autoDownload: true,
+    autoInstallOnAppQuit: false,
+    allowPrerelease: false,
+    checkForUpdates,
+    downloadUpdate,
+    quitAndInstall,
+    on: (event: string, listener: (...args: unknown[]) => void) => {
+      emitter.on(event, listener);
+    },
+    removeListener: (event: string, listener: (...args: unknown[]) => void) => {
+      emitter.removeListener(event, listener);
+    },
+  };
+
+  const controller = createAutoUpdaterController({
+    deps: {
+      isPackaged: options.isPackaged ?? true,
+      updater,
+      showMessageBox,
+      now: options.now ?? (() => Date.now()),
+      setTimeoutFn: (fn, ms) => setTimeout(fn, ms),
+      setIntervalFn: (fn, ms) => setInterval(fn, ms),
+      clearTimeoutFn: (timer) => clearTimeout(timer),
+      clearIntervalFn: (timer) => clearInterval(timer),
+    },
+    getWindow: options.getWindow ?? (() => null),
+    store: createMemoryStore(options.initial),
+    publishTelemetry,
+  });
+
+  return { emitter, checkForUpdates, downloadUpdate, showMessageBox, quitAndInstall, publishTelemetry, updater, controller };
+}
+
 describe("createAutoUpdaterController", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
-  it("runs scheduled checks only when auto-check is enabled", async () => {
-    const emitter = new TinyEmitter();
-    const checkForUpdates = vi.fn(async () => {
-      emitter.emit("update-not-available", {});
-      return {};
-    });
-
-    const controller = createAutoUpdaterController({
-      deps: {
-        isPackaged: true,
-        updater: {
-          autoDownload: false,
-          autoInstallOnAppQuit: false,
-          allowPrerelease: false,
-          checkForUpdates,
-          downloadUpdate: vi.fn(async () => ({})),
-          quitAndInstall: vi.fn(),
-          on: (event, listener) => {
-            emitter.on(event, listener as (...args: unknown[]) => void);
-          },
-          removeListener: (event, listener) => {
-            emitter.removeListener(event, listener as (...args: unknown[]) => void);
-          },
-        },
-        showMessageBox: vi.fn(async () => ({ response: 0 })),
-        now: () => Date.now(),
-        setTimeoutFn: (fn, ms) => setTimeout(fn, ms),
-        setIntervalFn: (fn, ms) => setInterval(fn, ms),
-        clearTimeoutFn: (timer) => clearTimeout(timer),
-        clearIntervalFn: (timer) => clearInterval(timer),
-      },
-      getWindow: () => null,
-      store: createMemoryStore({ autoCheckEnabled: true }),
+  it("runs scheduled checks on startup and interval when auto-check is enabled", async () => {
+    const harness = createHarness({
+      initial: { autoCheckEnabled: true },
+      checkForUpdates: vi.fn(async () => {
+        harness.emitter.emit("update-not-available", {});
+        return {};
+      }),
     });
 
     await vi.advanceTimersByTimeAsync(12_100);
-    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000 + 50);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(2);
 
-    controller.setPreferences({ autoCheckEnabled: false });
+    harness.controller.setPreferences({ autoCheckEnabled: false });
 
     await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000 + 50);
-    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(2);
 
-    controller.cleanup();
+    harness.controller.cleanup();
   });
 
   it("supports manual check-now and shows no-update dialog", async () => {
-    const emitter = new TinyEmitter();
-    const showMessageBox = vi.fn(async () => ({ response: 0 }));
-
-    const controller = createAutoUpdaterController({
-      deps: {
-        isPackaged: true,
-        updater: {
-          autoDownload: false,
-          autoInstallOnAppQuit: false,
-          allowPrerelease: false,
-          checkForUpdates: vi.fn(async () => {
-            emitter.emit("update-not-available", { version: "1.0.0" });
-            return {};
-          }),
-          downloadUpdate: vi.fn(async () => ({})),
-          quitAndInstall: vi.fn(),
-          on: (event, listener) => {
-            emitter.on(event, listener as (...args: unknown[]) => void);
-          },
-          removeListener: (event, listener) => {
-            emitter.removeListener(event, listener as (...args: unknown[]) => void);
-          },
-        },
-        showMessageBox,
-        now: () => Date.now(),
-        setTimeoutFn: (fn, ms) => setTimeout(fn, ms),
-        setIntervalFn: (fn, ms) => setInterval(fn, ms),
-        clearTimeoutFn: (timer) => clearTimeout(timer),
-        clearIntervalFn: (timer) => clearInterval(timer),
-      },
-      getWindow: () => null,
-      store: createMemoryStore(),
+    const harness = createHarness({
+      checkForUpdates: vi.fn(async () => {
+        harness.emitter.emit("update-not-available", { version: "1.0.0" });
+        return {};
+      }),
     });
-
-    const result = await controller.checkNow();
+    const result = await harness.controller.checkNow();
     await Promise.resolve();
 
     expect(result.ok).toBe(true);
     expect(result.status).toBe("started");
-    expect(showMessageBox).toHaveBeenCalled();
+    expect(harness.showMessageBox).toHaveBeenCalled();
+    expect(harness.controller.getPreferences().releaseChannel).toBe("stable");
 
-    controller.cleanup();
+    harness.controller.cleanup();
   });
 
   it("updates release channel and updater prerelease flag", () => {
-    const emitter = new TinyEmitter();
-    const updater = {
-      autoDownload: false,
-      autoInstallOnAppQuit: false,
-      allowPrerelease: false,
-      checkForUpdates: vi.fn(async () => ({})),
-      downloadUpdate: vi.fn(async () => ({})),
-      quitAndInstall: vi.fn(),
-      on: (event: string, listener: (...args: unknown[]) => void) => {
-        emitter.on(event, listener);
-      },
-      removeListener: (event: string, listener: (...args: unknown[]) => void) => {
-        emitter.removeListener(event, listener);
-      },
-    };
-
-    const controller = createAutoUpdaterController({
-      deps: {
-        isPackaged: true,
-        updater,
-        showMessageBox: vi.fn(async () => ({ response: 0 })),
-        now: () => Date.now(),
-        setTimeoutFn: (fn, ms) => setTimeout(fn, ms),
-        setIntervalFn: (fn, ms) => setInterval(fn, ms),
-        clearTimeoutFn: (timer) => clearTimeout(timer),
-        clearIntervalFn: (timer) => clearInterval(timer),
-      },
-      getWindow: () => null,
-      store: createMemoryStore(),
-    });
-
-    const next = controller.setPreferences({ releaseChannel: "prerelease" });
+    const harness = createHarness();
+    const next = harness.controller.setPreferences({ releaseChannel: "prerelease" });
 
     expect(next.releaseChannel).toBe("prerelease");
-    expect(updater.allowPrerelease).toBe(true);
+    expect(harness.updater.allowPrerelease).toBe(true);
 
-    controller.cleanup();
+    harness.controller.cleanup();
   });
 
   it("returns skipped in unpackaged mode", async () => {
-    const emitter = new TinyEmitter();
-    const controller = createAutoUpdaterController({
-      deps: {
-        isPackaged: false,
-        updater: {
-          autoDownload: false,
-          autoInstallOnAppQuit: false,
-          allowPrerelease: false,
-          checkForUpdates: vi.fn(async () => ({})),
-          downloadUpdate: vi.fn(async () => ({})),
-          quitAndInstall: vi.fn(),
-          on: (event, listener) => {
-            emitter.on(event, listener as (...args: unknown[]) => void);
-          },
-          removeListener: (event, listener) => {
-            emitter.removeListener(event, listener as (...args: unknown[]) => void);
-          },
-        },
-        showMessageBox: vi.fn(async () => ({ response: 0 })),
-        now: () => Date.now(),
-        setTimeoutFn: (fn, ms) => setTimeout(fn, ms),
-        setIntervalFn: (fn, ms) => setInterval(fn, ms),
-        clearTimeoutFn: (timer) => clearTimeout(timer),
-        clearIntervalFn: (timer) => clearInterval(timer),
-      },
-      getWindow: () => null,
-      store: createMemoryStore(),
-    });
-
-    const result = await controller.checkNow();
+    const harness = createHarness({ isPackaged: false });
+    const result = await harness.controller.checkNow();
 
     expect(result.status).toBe("skipped");
+    expect(result.message).toMatch(/packaged builds/i);
+    harness.controller.cleanup();
+  });
 
-    controller.cleanup();
+  it("downloads update when user accepts prompt", async () => {
+    const showMessageBox = vi
+      .fn()
+      .mockResolvedValueOnce({ response: 0 });
+    const harness = createHarness({
+      initial: { autoCheckEnabled: false },
+      showMessageBox,
+      checkForUpdates: vi.fn(async () => {
+        harness.emitter.emit("update-available", { version: "2.0.0" });
+        return {};
+      }),
+    });
+
+    const result = await harness.controller.checkNow();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(result.status).toBe("started");
+    expect(harness.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "check.success", version: "2.0.0" }));
+    harness.controller.cleanup();
+  });
+
+  it("emits completion telemetry and prompts restart when update is downloaded", async () => {
+    const harness = createHarness({
+      initial: { autoCheckEnabled: false },
+      showMessageBox: vi.fn(async () => ({ response: 0 })),
+    });
+    harness.emitter.emit("update-downloaded", { version: "2.0.0" });
+    vi.runAllTicks();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(console.error).not.toHaveBeenCalled();
+    expect(harness.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "download.complete", version: "2.0.0" }));
+    harness.controller.cleanup();
+  });
+
+  it("does not download when update is available but user chooses later", async () => {
+    const harness = createHarness({
+      showMessageBox: vi.fn(async () => ({ response: 1 })),
+      checkForUpdates: vi.fn(async () => {
+        harness.emitter.emit("update-available", { version: "2.0.0" });
+        return {};
+      }),
+    });
+    await harness.controller.checkNow();
+    await Promise.resolve();
+    expect(harness.downloadUpdate).not.toHaveBeenCalled();
+    harness.controller.cleanup();
+  });
+
+  it("reports progress and handles non-finite progress values", async () => {
+    const setProgressBar = vi.fn();
+    const harness = createHarness({
+      getWindow: () => ({
+        isDestroyed: () => false,
+        setProgressBar,
+      } as unknown as BrowserWindow),
+    });
+
+    harness.emitter.emit("download-progress", { percent: 135 });
+    harness.emitter.emit("download-progress", { percent: Number.NaN });
+
+    expect(setProgressBar).toHaveBeenCalledWith(1);
+    expect(setProgressBar).toHaveBeenCalledWith(0);
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "download.progress" }));
+    harness.controller.cleanup();
+  });
+
+  it("returns skipped when a check is already in progress", async () => {
+    let resolveCheck = () => undefined;
+    let hasResolveCheck = false;
+    const harness = createHarness({
+      checkForUpdates: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveCheck = () => {
+              harness.emitter.emit("update-not-available", {});
+              resolve({});
+            };
+            hasResolveCheck = true;
+          }),
+      ),
+    });
+
+    const first = harness.controller.checkNow();
+    const second = await harness.controller.checkNow();
+    expect(second.status).toBe("skipped");
+    if (hasResolveCheck) {
+      resolveCheck();
+    }
+    await first;
+    harness.controller.cleanup();
+  });
+
+  it("surfaces manual check errors with dialog and error result", async () => {
+    const harness = createHarness({
+      checkForUpdates: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+    const result = await harness.controller.checkNow();
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("network down");
+    expect(harness.showMessageBox).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        title: "Update check failed",
+      }),
+    );
+    expect(console.error).toHaveBeenCalled();
+    harness.controller.cleanup();
+  });
+
+  it("handles non-manual updater errors without dialog", async () => {
+    const harness = createHarness();
+    harness.emitter.emit("error", "raw failure");
+    await Promise.resolve();
+
+    expect(harness.showMessageBox).not.toHaveBeenCalled();
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "check.error", message: "Unknown updater error" }));
+    harness.controller.cleanup();
   });
 });

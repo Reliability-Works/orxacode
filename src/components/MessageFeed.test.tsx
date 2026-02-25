@@ -145,6 +145,40 @@ describe("MessageFeed", () => {
     expect(screen.getByText(/Live events \(1\)/i)).toBeInTheDocument();
   });
 
+  it("cleans up thinking timer when placeholder is turned off", () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-thinking-cleanup",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-text-thinking-cleanup",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-thinking-cleanup",
+            text: "Working...",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    try {
+      const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+      expect(view.container.querySelector(".message-thinking")).not.toBeNull();
+      vi.advanceTimersByTime(500);
+      view.rerender(<MessageFeed messages={messages} showAssistantPlaceholder={false} />);
+      expect(view.container.querySelector(".message-thinking")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps full live event history instead of truncating to 5 entries", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
@@ -741,6 +775,42 @@ describe("MessageFeed", () => {
     expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
   });
 
+  it("keeps delegation modal open on inner click and closes via close button", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-delegation-inner-click",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "subtask-inner-click",
+            type: "subtask",
+            sessionID: "session-1",
+            messageID: "msg-assistant-delegation-inner-click",
+            prompt: "Do work.",
+            description: "Inner click behavior",
+            agent: "build",
+            model: { providerID: "openai", modelID: "gpt-5-codex" },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
+    fireEvent.click(buildButtons[buildButtons.length - 1]!);
+
+    const dialog = within(view.container).getByRole("dialog", { name: /delegation: build/i });
+    fireEvent.click(dialog);
+    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /close/i }));
+    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
+  });
+
   it("shows in-place activity with current file target from tool calls", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
@@ -1008,6 +1078,39 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} />);
     expect(screen.getByText("Read .")).toBeInTheDocument();
     expect(screen.queryByText(/^Ran command$/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render low-signal completed action rows without command context", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-no-completed-action-noise",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-run-generic",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-no-completed-action-noise",
+            callID: "call-run-generic",
+            tool: "run",
+            state: {
+              status: "completed",
+              input: {},
+              output: "",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+    const view = render(<MessageFeed messages={messages} />);
+    expect(within(view.container).queryByText(/^Completed action$/i)).not.toBeInTheDocument();
   });
 
   it("renders loaded skill label without synthetic command line", () => {

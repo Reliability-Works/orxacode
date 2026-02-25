@@ -1,10 +1,17 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 import electron from "vite-plugin-electron/simple";
 import renderer from "vite-plugin-electron-renderer";
 
+const packageJson = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as { version?: string };
+const appVersion = packageJson.version ?? "0.0.0-dev";
+
 export default defineConfig(({ mode }) => ({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   resolve: {
     alias: {
       "~": resolve(__dirname, "src"),

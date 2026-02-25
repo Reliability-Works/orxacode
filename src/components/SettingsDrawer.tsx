@@ -99,6 +99,7 @@ export function SettingsDrawer({
   onChangeMode,
   allModelOptions,
 }: Props) {
+  const appVersion = __APP_VERSION__?.trim().length ? __APP_VERSION__ : "dev";
   const [section, setSection] = useState<SettingsSection>("config");
   const [scope, setScope] = useState<"project" | "global">("global");
   const [nextMode, setNextMode] = useState<AppMode>(mode);
@@ -372,6 +373,7 @@ export function SettingsDrawer({
       return (
         <section className="settings-section-card settings-pad">
           <h3>App Preferences</h3>
+          <p className="raw-path">Version: v{appVersion}</p>
           <div className="settings-controls">
             <label>
               Application mode
@@ -433,21 +435,22 @@ export function SettingsDrawer({
             />
             Automatically check for updates (packaged app builds only)
           </label>
-          <label>
-            Release channel
-            <select
-              value={updatePreferences.releaseChannel}
-              onChange={(event) =>
-                applyUpdatePreferences({ releaseChannel: event.target.value as UpdatePreferences["releaseChannel"] })
-              }
-            >
-              <option value="stable">Stable (production releases)</option>
-              <option value="prerelease">Prerelease (beta/RC releases)</option>
-            </select>
-          </label>
-          <div className="settings-actions">
+          <div className="settings-update-row">
+            <label className="settings-update-channel">
+              Release channel
+              <select
+                value={updatePreferences.releaseChannel}
+                onChange={(event) =>
+                  applyUpdatePreferences({ releaseChannel: event.target.value as UpdatePreferences["releaseChannel"] })
+                }
+              >
+                <option value="stable">Stable (production releases)</option>
+                <option value="prerelease">Prerelease (beta/RC releases)</option>
+              </select>
+            </label>
             <button
               type="button"
+              className="settings-update-check-btn"
               disabled={checkingForUpdates}
               onClick={() => {
                 setCheckingForUpdates(true);

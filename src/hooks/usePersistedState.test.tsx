@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { usePersistedState } from "./usePersistedState";
 
 describe("usePersistedState", () => {
@@ -69,5 +69,30 @@ describe("usePersistedState", () => {
 
     const second = renderHook(() => usePersistedState(key, initial));
     expect(second.result.current[0].hiddenModels).toEqual(["cloudflare/@cf/meta/llama-3.1-8b-instruct"]);
+  });
+
+  it("falls back to default when storage getItem throws", () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+
+    const { result } = renderHook(() => usePersistedState("persist:throws:get", 42));
+    expect(result.current[0]).toBe(42);
+
+    getItemSpy.mockRestore();
+  });
+
+  it("keeps state updates when storage setItem throws", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    const { result } = renderHook(() => usePersistedState("persist:throws:set", { count: 1 }));
+    act(() => {
+      result.current[1]({ count: 2 });
+    });
+
+    expect(result.current[0]).toEqual({ count: 2 });
+    setItemSpy.mockRestore();
   });
 });
