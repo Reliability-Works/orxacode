@@ -39,8 +39,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build application bundles
+        run: pnpm build
+
       - name: Build unpacked artifact
-        run: pnpm exec electron-builder --dir
+        run: pnpm exec electron-builder --dir --publish never
 
       - name: Run release smoke test
         run: pnpm smoke:artifact
@@ -74,6 +77,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build application bundles
+        run: pnpm build
 
       - name: Validate macOS signing credentials
         if: matrix.os == 'macos-latest'
