@@ -7,6 +7,8 @@ import {
   IPC,
   type AppMode,
   type GitCommitRequest,
+  type MemoryGraphQuery,
+  type MemorySettingsUpdateInput,
   type OpenDirectoryTarget,
   type OrxaEvent,
   type UpdatePreferences,
@@ -180,6 +182,7 @@ function assertPromptRequestInput(value: unknown): Parameters<typeof service.sen
     agent?: unknown;
     model?: unknown;
     variant?: unknown;
+    system?: unknown;
   };
 
   const text = assertString(payload.text, "text");
@@ -246,7 +249,107 @@ function assertPromptRequestInput(value: unknown): Parameters<typeof service.sen
     result.variant = payload.variant;
   }
 
+  if (payload.system !== undefined) {
+    if (typeof payload.system !== "string" || payload.system.length > 32_000) {
+      throw new Error("system must be a string with max length 32000");
+    }
+    result.system = payload.system;
+  }
+
   return result;
+}
+
+function assertMemoryPolicyPatch(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Memory policy patch must be an object");
+  }
+  const payload = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (payload.enabled !== undefined) {
+    if (typeof payload.enabled !== "boolean") {
+      throw new Error("memory policy enabled must be a boolean");
+    }
+    out.enabled = payload.enabled;
+  }
+  if (payload.mode !== undefined) {
+    if (typeof payload.mode !== "string") {
+      throw new Error("memory policy mode must be a string");
+    }
+    out.mode = payload.mode;
+  }
+  if (payload.guidance !== undefined) {
+    if (typeof payload.guidance !== "string" || payload.guidance.length > 4_000) {
+      throw new Error("memory policy guidance must be a string (max 4000 chars)");
+    }
+    out.guidance = payload.guidance;
+  }
+  if (payload.maxPromptMemories !== undefined) {
+    if (typeof payload.maxPromptMemories !== "number" || !Number.isFinite(payload.maxPromptMemories)) {
+      throw new Error("memory policy maxPromptMemories must be a number");
+    }
+    out.maxPromptMemories = payload.maxPromptMemories;
+  }
+  if (payload.maxCapturePerSession !== undefined) {
+    if (typeof payload.maxCapturePerSession !== "number" || !Number.isFinite(payload.maxCapturePerSession)) {
+      throw new Error("memory policy maxCapturePerSession must be a number");
+    }
+    out.maxCapturePerSession = payload.maxCapturePerSession;
+  }
+  return out;
+}
+
+function assertMemorySettingsUpdateInput(value: unknown): MemorySettingsUpdateInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Memory settings update payload is required");
+  }
+  const payload = value as Record<string, unknown>;
+  const output: MemorySettingsUpdateInput = {};
+  if (payload.directory !== undefined) {
+    output.directory = assertString(payload.directory, "directory");
+  }
+  if (payload.global !== undefined) {
+    output.global = assertMemoryPolicyPatch(payload.global) as MemorySettingsUpdateInput["global"];
+  }
+  if (payload.workspace !== undefined) {
+    output.workspace = assertMemoryPolicyPatch(payload.workspace) as MemorySettingsUpdateInput["workspace"];
+  }
+  if (payload.clearWorkspaceOverride !== undefined) {
+    output.clearWorkspaceOverride = assertBoolean(payload.clearWorkspaceOverride, "clearWorkspaceOverride");
+  }
+  return output;
+}
+
+function assertMemoryGraphQuery(value: unknown): MemoryGraphQuery {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Memory graph query must be an object");
+  }
+  const payload = value as Record<string, unknown>;
+  const output: MemoryGraphQuery = {};
+  if (payload.workspace !== undefined) {
+    output.workspace = assertString(payload.workspace, "workspace");
+  }
+  if (payload.query !== undefined) {
+    if (typeof payload.query !== "string" || payload.query.length > 512) {
+      throw new Error("query must be a string with max length 512");
+    }
+    output.query = payload.query;
+  }
+  if (payload.relation !== undefined) {
+    if (typeof payload.relation !== "string" || payload.relation.length > 64) {
+      throw new Error("relation must be a string with max length 64");
+    }
+    output.relation = payload.relation;
+  }
+  if (payload.limit !== undefined) {
+    if (typeof payload.limit !== "number" || !Number.isFinite(payload.limit)) {
+      throw new Error("limit must be a number");
+    }
+    output.limit = payload.limit;
+  }
+  return output;
 }
 
 function createWindow() {
@@ -668,6 +771,36 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(IPC.opencodeReadProjectFile, async (_event, directory: unknown, relativePath: unknown) =>
     service.readProjectFile(assertString(directory, "directory"), assertString(relativePath, "relativePath")),
+  );
+  ipcMain.handle(IPC.opencodeMemoryGetSettings, async (_event, directory?: unknown) =>
+    service.getMemorySettings(typeof directory === "string" ? directory : undefined),
+  );
+  ipcMain.handle(IPC.opencodeMemoryUpdateSettings, async (_event, input: unknown) =>
+    service.updateMemorySettings(assertMemorySettingsUpdateInput(input)),
+  );
+  ipcMain.handle(IPC.opencodeMemoryListTemplates, async () => service.listMemoryTemplates());
+  ipcMain.handle(IPC.opencodeMemoryApplyTemplate, async (_event, templateID: unknown, directory?: unknown, scope?: unknown) => {
+    const parsedScope = scope === undefined
+      ? undefined
+      : scope === "global" || scope === "workspace"
+        ? scope
+        : (() => {
+            throw new Error("Invalid memory template scope");
+          })();
+    return service.applyMemoryTemplate(
+      assertString(templateID, "templateID"),
+      typeof directory === "string" ? directory : undefined,
+      parsedScope,
+    );
+  });
+  ipcMain.handle(IPC.opencodeMemoryGetGraph, async (_event, query?: unknown) =>
+    service.getMemoryGraph(assertMemoryGraphQuery(query)),
+  );
+  ipcMain.handle(IPC.opencodeMemoryBackfill, async (_event, directory?: unknown) =>
+    service.backfillMemory(typeof directory === "string" ? directory : undefined),
+  );
+  ipcMain.handle(IPC.opencodeMemoryClearWorkspace, async (_event, directory: unknown) =>
+    service.clearWorkspaceMemory(assertString(directory, "directory")),
   );
   ipcMain.handle(IPC.orxaReadConfig, async () => service.readOrxaConfig());
   ipcMain.handle(IPC.orxaWriteConfig, async (_event, content: unknown) => service.writeOrxaConfig(assertString(content, "content")));

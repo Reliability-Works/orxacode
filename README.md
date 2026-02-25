@@ -2,6 +2,28 @@
 
 ![Opencode Orxa workspace dashboard](assets/readme/workspace-dashboard.png)
 
+## Table of Contents
+
+- [UI Preview](#ui-preview)
+- [Runtime Requirements](#runtime-requirements)
+  - [Required: OpenCode](#required-opencode)
+  - [Optional: Orxa Package (for Orxa mode)](#optional-orxa-package-for-orxa-mode)
+- [Feature Breakdown](#feature-breakdown)
+  - [Workspace Operations](#workspace-operations)
+  - [Sessions and Message Feed](#sessions-and-message-feed)
+  - [Memory System](#memory-system)
+  - [Permission and Safety UX](#permission-and-safety-ux)
+  - [Skills and Prompt Preparation](#skills-and-prompt-preparation)
+  - [Jobs and Automation](#jobs-and-automation)
+  - [Runtime, Terminal, and Config](#runtime-terminal-and-config)
+  - [Plugin and Updater Support](#plugin-and-updater-support)
+- [Local Development](#local-development)
+- [Validation](#validation)
+- [Packaging](#packaging)
+- [Auto Updates](#auto-updates)
+- [Architecture + Troubleshooting](#architecture--troubleshooting)
+- [Notes](#notes)
+
 ## UI Preview
 
 Main session view:
@@ -11,6 +33,16 @@ Main session view:
 Subagent live output with unified diff:
 
 ![Subagent unified diff view](assets/readme/subagent-unified-diff.png)
+
+Memory backfill prompt workflow:
+
+![Memory backfill prompt workflow](assets/readme/backfill-memory.png)
+[Open full-size: memory backfill prompt workflow](assets/readme/backfill-memory.png)
+
+Memory graph with workspace hub and typed memory nodes:
+
+![Memory graph with typed nodes](assets/readme/orxa-memory.png)
+[Open full-size: memory graph with typed nodes](assets/readme/orxa-memory.png)
 
 Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
@@ -59,6 +91,33 @@ On startup, the app runs a dependency check and shows an install helper modal if
 - Structured timeline rendering for reads/searches/edits/runs so execution activity is traceable.
 - Subagent delegation bubbles with a dedicated live-output modal for delegated tasks.
 - In-feed system notices for explicit stop/error states and recovery guidance.
+
+### Memory System
+
+- Local-first, bundled memory subsystem stored in-app (no external hosted memory API required).
+- Per-workspace retrieval isolation for session-time memory context.
+- Memory graph view with workspace hubs, memory nodes, and relationship links.
+- Tag-based node coloring for quick visual parsing of memory types.
+
+How it is used:
+
+1. Backfill historical memories:
+   - Open `Memory` in the sidebar.
+   - Click `Prepare Backfill Session`.
+   - The app creates a new prefilled session prompt containing workspace context.
+   - Select model/agent as normal and press `Send`.
+   - The app ingests structured memory lines into local memory and updates the graph.
+2. Ongoing sessions:
+   - When memory is enabled, the app retrieves relevant memory for the current workspace during prompt assembly.
+   - The app can proactively capture new durable memories from session history and append relationships.
+   - Retrieval remains scoped to the active workspace even when graph visualization spans multiple workspaces.
+
+Memory controls are available in Settings:
+
+- Global enable/disable.
+- Workspace override.
+- Guidance for proactive memory capture.
+- Template import (Conservative, Balanced, Aggressive, Codebase Facts).
 
 ### Permission and Safety UX
 

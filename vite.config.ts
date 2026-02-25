@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => ({
               vite: {
                 build: {
                   rollupOptions: {
-                    external: ["keytar", "ws", "bufferutil", "utf-8-validate"],
+                    external: ["keytar", "ws", "bufferutil", "utf-8-validate", "node:sqlite"],
                   },
                 },
               },

@@ -55,6 +55,46 @@ describe("SettingsDrawer", () => {
         onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onUpdateMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onListMemoryTemplates={vi.fn(async () => [])}
+        onApplyMemoryTemplate={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onBackfillMemory={vi.fn(async () => ({
+          running: false,
+          progress: 1,
+          scannedSessions: 0,
+          totalSessions: 0,
+          inserted: 0,
+          updated: 0,
+        }))}
+        onClearWorkspaceMemory={vi.fn(async () => true)}
         onChangeMode={vi.fn(async () => undefined)}
         allModelOptions={[]}
       />,
@@ -111,6 +151,46 @@ describe("SettingsDrawer", () => {
         onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onUpdateMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onListMemoryTemplates={vi.fn(async () => [])}
+        onApplyMemoryTemplate={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onBackfillMemory={vi.fn(async () => ({
+          running: false,
+          progress: 1,
+          scannedSessions: 0,
+          totalSessions: 0,
+          inserted: 0,
+          updated: 0,
+        }))}
+        onClearWorkspaceMemory={vi.fn(async () => true)}
         onChangeMode={vi.fn(async () => undefined)}
         allModelOptions={[
           {
@@ -187,6 +267,46 @@ describe("SettingsDrawer", () => {
         onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
         onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onUpdateMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onListMemoryTemplates={vi.fn(async () => [])}
+        onApplyMemoryTemplate={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onBackfillMemory={vi.fn(async () => ({
+          running: false,
+          progress: 1,
+          scannedSessions: 0,
+          totalSessions: 0,
+          inserted: 0,
+          updated: 0,
+        }))}
+        onClearWorkspaceMemory={vi.fn(async () => true)}
         onChangeMode={vi.fn(async () => undefined)}
         allModelOptions={[]}
       />,
@@ -194,5 +314,118 @@ describe("SettingsDrawer", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "App" })[0]!);
     expect(screen.getByText(`Version: v${__APP_VERSION__}`)).toBeInTheDocument();
+  });
+
+  it("renders memory settings section with template controls", async () => {
+    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
+    const orxaDoc: RawConfigDocument = { scope: "global", path: "orxa.json", content: "{}" };
+    const savedAgent: OrxaAgentDocument = { name: "orxa", mode: "primary", path: "orxa.yaml", source: "override" };
+    const diagnostics: ServerDiagnostics = {
+      runtime: { status: "disconnected", managedServer: false },
+      health: "disconnected",
+      plugin: {
+        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
+        configPath: "opencode.jsonc",
+        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
+        configured: false,
+        installed: false,
+      },
+    };
+
+    render(
+      <SettingsDrawer
+        open
+        mode="standard"
+        modeSwitching={false}
+        directory="/repo"
+        onClose={() => undefined}
+        onReadRaw={vi.fn(async () => rawDoc)}
+        onWriteRaw={vi.fn(async () => rawDoc)}
+        onReadOrxa={vi.fn(async () => orxaDoc)}
+        onWriteOrxa={vi.fn(async () => orxaDoc)}
+        onListOrxaAgents={vi.fn(async () => [])}
+        onSaveOrxaAgent={vi.fn(async () => savedAgent)}
+        onGetOrxaAgentDetails={vi.fn(async () => ({ history: [] }))}
+        onResetOrxaAgent={vi.fn(async () => undefined)}
+        onRestoreOrxaAgentHistory={vi.fn(async () => undefined)}
+        appPreferences={{
+          showOperationsPane: true,
+          autoOpenTerminalOnCreate: true,
+          confirmDangerousActions: true,
+          permissionMode: "ask-write",
+          commitGuidancePrompt: "",
+          codeFont: "IBM Plex Mono",
+          hiddenModels: [],
+        }}
+        onAppPreferencesChange={() => undefined}
+        onGetServerDiagnostics={vi.fn(async () => diagnostics)}
+        onRepairRuntime={vi.fn(async () => diagnostics)}
+        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: true,
+            mode: "balanced" as const,
+            guidance: "Capture durable facts.",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          directory: "/repo",
+          hasWorkspaceOverride: false,
+        }))}
+        onUpdateMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: true,
+            mode: "balanced" as const,
+            guidance: "Capture durable facts.",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          directory: "/repo",
+          hasWorkspaceOverride: false,
+        }))}
+        onListMemoryTemplates={vi.fn(async () => [
+          {
+            id: "balanced",
+            name: "Balanced",
+            description: "Balanced memory capture",
+            policy: {
+              enabled: true,
+              mode: "balanced" as const,
+              guidance: "Capture durable facts.",
+              maxPromptMemories: 6,
+              maxCapturePerSession: 24,
+            },
+          },
+        ])}
+        onApplyMemoryTemplate={vi.fn(async () => ({
+          global: {
+            enabled: true,
+            mode: "balanced" as const,
+            guidance: "Capture durable facts.",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          directory: "/repo",
+          hasWorkspaceOverride: false,
+        }))}
+        onBackfillMemory={vi.fn(async () => ({
+          running: false,
+          progress: 1,
+          scannedSessions: 1,
+          totalSessions: 1,
+          inserted: 2,
+          updated: 0,
+        }))}
+        onClearWorkspaceMemory={vi.fn(async () => true)}
+        onChangeMode={vi.fn(async () => undefined)}
+        allModelOptions={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Memory" })[0]!);
+    expect(screen.getByText("Template Import")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Import Balanced" })).toBeInTheDocument();
   });
 });

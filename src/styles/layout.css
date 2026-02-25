@@ -1022,8 +1022,8 @@ body.is-resizing * {
 }
 
 .composer-zone textarea {
-  min-height: 72px;
-  max-height: 180px;
+  min-height: 96px;
+  max-height: none;
   line-height: 1.45;
   padding: 8px 100px 8px 4px;
   border: 0;
@@ -1031,9 +1031,10 @@ body.is-resizing * {
   background: transparent;
   box-shadow: none;
   resize: none;
+  overflow: auto;
 }
 
- .composer-input-wrap {
+.composer-input-wrap {
   position: relative;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1052,6 +1053,38 @@ body.is-resizing * {
   border: 0;
   box-shadow: none;
   outline: none;
+}
+
+.composer-resize-handle {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--bg-raised) 72%, transparent);
+  color: var(--text-dim);
+  cursor: nesw-resize;
+  z-index: 4;
+  padding: 0;
+  transform: none;
+}
+
+.composer-resize-handle::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  opacity: 0.8;
+}
+
+.composer-resize-handle:hover,
+.composer-resize-handle.is-active {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .composer-input-actions {

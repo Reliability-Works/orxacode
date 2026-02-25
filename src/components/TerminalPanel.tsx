@@ -124,12 +124,13 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
   }, [tabs]);
 
   useEffect(() => {
+    const instances = instancesRef.current;
     return () => {
-      for (const inst of instancesRef.current.values()) {
+      for (const inst of instances.values()) {
         for (const c of inst.cleanups) c();
         inst.terminal.dispose();
       }
-      instancesRef.current.clear();
+      instances.clear();
     };
   }, []);
 

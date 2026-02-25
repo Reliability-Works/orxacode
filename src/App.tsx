@@ -19,6 +19,8 @@ import type {
   AppMode,
   AgentsDocument,
   ChangeProvenanceRecord,
+  MemoryBackfillStatus,
+  MemoryGraphSnapshot,
   ProjectListItem,
   RuntimeProfile,
   RuntimeProfileInput,
@@ -27,7 +29,7 @@ import type {
   SkillEntry,
   SessionMessageBundle,
 } from "@shared/ipc";
-import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
+import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar } from "./components/ContentTopBar";
@@ -40,6 +42,7 @@ import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { JobsBoard } from "./components/JobsBoard";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
+import { MemoryBoard } from "./components/MemoryBoard";
 import { ConfirmDialog, type ConfirmDialogProps } from "./components/ConfirmDialog";
 import { TextInputDialog, type TextInputDialogProps } from "./components/TextInputDialog";
 import { useJobsScheduler } from "./hooks/useJobsScheduler";
@@ -102,6 +105,8 @@ const OPEN_TARGET_KEY = "orxa:openTarget:v1";
 const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
+const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
+const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
@@ -162,6 +167,55 @@ function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
     return "New session";
   }
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
+}
+
+function formatMemoryGraphError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("No handler registered for 'orxa:opencode:memory:getGraph'")) {
+    return "Memory IPC handlers are unavailable in the current desktop process. Restart the app to load memory routes.";
+  }
+  return message;
+}
+
+function buildMemoryBackfillSeedPrompt(workspaces: ProjectListItem[]) {
+  const workspaceLines = workspaces
+    .map((project, index) => {
+      const label = project.name?.trim();
+      return `${index + 1}. ${project.worktree}${label ? ` (${label})` : ""}`;
+    })
+    .join("\n");
+
+  return [
+    "Goal: backfill OpencodeOrxa in-app local memory across all registered workspaces in this app.",
+    "",
+    "Critical constraints:",
+    "- Use ONLY this app's local OpencodeOrxa memory system.",
+    "- Do NOT use any external memory service, third-party memory tool, or out-of-app memory integration.",
+    "- Do NOT pause to ask for memory tool access; you can complete this task with filesystem/session analysis only.",
+    "- The app ingests structured memory lines from your reply automatically.",
+    "",
+    "Registered workspaces:",
+    workspaceLines || "(none)",
+    "",
+    "Required output format (one memory per line):",
+    '[ORXA_MEMORY] workspace="<absolute workspace path>" type="<preference|constraint|decision|fact>" tags="<comma,separated,tags>" content="<single-line durable memory>"',
+    "",
+    "Execution plan:",
+    "1. Iterate each workspace path above.",
+    "2. For each workspace, enumerate sessions and inspect message history.",
+    "3. Extract durable memories only (preferences, constraints, decisions, and stable codebase facts) and output them ONLY in the required format.",
+    "4. Keep retrieval isolation per workspace. Do not mix memory from different workspaces.",
+    "5. Build useful relationships between related memories and avoid duplicates.",
+    "6. Summarize what was backfilled, what was skipped, and why.",
+    "",
+    "Safety constraints:",
+    "- Skip noisy conversational filler.",
+    "- Do not store secrets or credentials.",
+    "- Preserve workspace boundaries when writing memory.",
+    "- Do not propose alternative memory systems or tooling in this task.",
+    "",
+    "After preparing the plan, ask me to confirm before running bulk changes.",
+  ].join("\n");
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
@@ -504,6 +558,13 @@ export default function App() {
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | undefined>();
   const [skillUseModal, setSkillUseModal] = useState<{ skill: SkillEntry; projectDir: string } | null>(null);
+  const [memoryGraph, setMemoryGraph] = useState<MemoryGraphSnapshot | null>(null);
+  const [memoryGraphLoading, setMemoryGraphLoading] = useState(false);
+  const [memoryGraphError, setMemoryGraphError] = useState<string | undefined>();
+  const [memoryWorkspaceFilter, setMemoryWorkspaceFilter] = useState("all");
+  const [memoryBackfillStatus, setMemoryBackfillStatus] = useState<MemoryBackfillStatus | null>(null);
+  const [memoryBackfillSessionPreparing, setMemoryBackfillSessionPreparing] = useState(false);
+  const [composerLayoutHeight, setComposerLayoutHeight] = useState(DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
@@ -777,7 +838,7 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [activeProjectDir]);
+  }, [activeProjectDir, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData]);
 
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
     manualSessionStopsRef.current[`${directory}::${sessionID}`] = { requestedAt: Date.now(), noticeEmitted: false };
@@ -864,7 +925,7 @@ export default function App() {
 
     setMessages([]);
     void refreshMessages();
-  }, [activeProjectDir, activeSessionID, refreshMessages]);
+  }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
 
   useEffect(() => {
     if (!activeProjectDir || !activeSessionID) {
@@ -945,6 +1006,7 @@ export default function App() {
     selectedAgent,
     selectedAgentDefinition?.model,
     selectedModel,
+    setSelectedModel,
     serverAgentNames,
   ]);
 
@@ -960,6 +1022,21 @@ export default function App() {
     }
     prevSelectedAgentRef.current = selectedAgent;
   }, [selectedModel, selectedAgent, modelSelectOptions, setAgentModelPrefs]);
+
+  const loadMemoryGraph = useCallback(async () => {
+    try {
+      setMemoryGraphLoading(true);
+      setMemoryGraphError(undefined);
+      const snapshot = await window.orxa.opencode.getMemoryGraph(
+        memoryWorkspaceFilter === "all" ? {} : { workspace: memoryWorkspaceFilter },
+      );
+      setMemoryGraph(snapshot);
+    } catch (error) {
+      setMemoryGraphError(formatMemoryGraphError(error));
+    } finally {
+      setMemoryGraphLoading(false);
+    }
+  }, [memoryWorkspaceFilter]);
 
   useEffect(() => {
     const events = window.orxa?.events;
@@ -991,6 +1068,13 @@ export default function App() {
           setStatusLine(event.payload.message ? `Update check failed: ${event.payload.message}` : "Update check failed");
         } else if (event.payload.phase === "download.complete") {
           setStatusLine("Update downloaded. Restart when ready.");
+        }
+      }
+
+      if (event.type === "memory.backfill") {
+        setMemoryBackfillStatus(event.payload);
+        if (!event.payload.running && sidebarMode === "memory") {
+          void loadMemoryGraph();
         }
       }
 
@@ -1128,7 +1212,7 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, queueRefresh, scheduleGitRefresh, stopResponsePolling]);
+  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, loadMemoryGraph, queueRefresh, scheduleGitRefresh, sidebarMode, stopResponsePolling]);
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
@@ -1325,6 +1409,70 @@ export default function App() {
     void loadSkills();
   }, [loadSkills, sidebarMode]);
 
+  useEffect(() => {
+    if (sidebarMode !== "memory") {
+      return;
+    }
+    void loadMemoryGraph();
+  }, [loadMemoryGraph, sidebarMode]);
+
+  const prepareMemoryBackfillSession = useCallback(async () => {
+    if (memoryBackfillSessionPreparing) {
+      return;
+    }
+    if (projects.length === 0) {
+      setStatusLine("Add at least one workspace before preparing a memory backfill session.");
+      return;
+    }
+    const targetProject = projects.find((item) => item.worktree === activeProjectDir) ?? projects[0];
+    if (!targetProject) {
+      setStatusLine("Select a workspace to prepare a memory backfill session.");
+      return;
+    }
+    try {
+      setMemoryBackfillSessionPreparing(true);
+      const seedPrompt = buildMemoryBackfillSeedPrompt(projects);
+      const memorySettings = await window.orxa.opencode.getMemorySettings(targetProject.worktree);
+      const memoryEnabled = memorySettings.workspace?.enabled ?? memorySettings.global.enabled;
+      if (!memoryEnabled) {
+        await window.orxa.opencode.updateMemorySettings({
+          directory: targetProject.worktree,
+          workspace: {
+            enabled: true,
+          },
+        });
+      }
+      await selectProject(targetProject.worktree);
+      const created = await opencodeClient.createSession(targetProject.worktree, "Memory Backfill");
+      const latest = await opencodeClient.refreshProject(targetProject.worktree);
+      setProjectData(latest);
+      setActiveSessionID(created.id);
+      setMessages([]);
+      setComposer(seedPrompt);
+      setSidebarMode("projects");
+      const targetLabel = targetProject.name || targetProject.worktree.split("/").at(-1) || targetProject.worktree;
+      if (!memoryEnabled) {
+        setStatusLine(`Prepared backfill session for ${targetLabel}. Memory was enabled for this workspace; review prompt and press Send.`);
+      } else {
+        setStatusLine(`Prepared backfill session for ${targetLabel}. Review prompt and press Send.`);
+      }
+    } catch (error) {
+      setMemoryGraphError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryBackfillSessionPreparing(false);
+    }
+  }, [
+    activeProjectDir,
+    memoryBackfillSessionPreparing,
+    projects,
+    selectProject,
+    setActiveSessionID,
+    setComposer,
+    setMessages,
+    setProjectData,
+    setSidebarMode,
+  ]);
+
   const openSkillUseModal = useCallback(
     (skill: SkillEntry) => {
       setSkillUseModal({
@@ -1386,7 +1534,7 @@ export default function App() {
       const targetLabel = usedCurrentSession ? "current session" : "new session";
       setStatusLine(`Prepared skill prompt for ${projectLabel} (${targetLabel})`);
     },
-    [activeProjectDir, activeSessionID, projects, selectProject],
+    [activeProjectDir, activeSessionID, projects, selectProject, setActiveSessionID, setComposer, setMessages, setProjectData, setSidebarMode],
   );
 
   useEffect(() => {
@@ -1445,7 +1593,7 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeProjectDir, bootstrap, requestConfirmation],
+    [activeProjectDir, bootstrap, requestConfirmation, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData],
   );
 
   const renameSession = useCallback(
@@ -1493,7 +1641,7 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeSessionID, refreshProject],
+    [activeSessionID, refreshProject, setActiveSessionID],
   );
 
   const copySessionID = useCallback(async (sessionID: string) => {
@@ -1550,7 +1698,7 @@ export default function App() {
         },
       });
     },
-    [bootstrap, selectProject],
+    [bootstrap, selectProject, setActiveSessionID],
   );
 
   useEffect(() => {
@@ -1575,7 +1723,7 @@ export default function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [abortActiveSession, activeSessionID, isSendingPrompt, projectData]);
+  }, [abortActiveSession, activeSessionID, isSendingPrompt, projectData, setBranchMenuOpen]);
 
   useEffect(() => {
     const onPointerDown = (event: globalThis.MouseEvent) => {
@@ -1606,7 +1754,7 @@ export default function App() {
     return () => {
       window.removeEventListener("mousedown", onPointerDown);
     };
-  }, []);
+  }, [setBranchMenuOpen]);
 
   const startSidebarResize = useCallback((side: "left" | "right", event: ReactMouseEvent) => {
     event.preventDefault();
@@ -1674,14 +1822,14 @@ export default function App() {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, []);
+  }, [setLeftPaneWidth, setRightPaneWidth]);
 
   useEffect(() => {
     setTitleMenuOpen(false);
     setOpenMenuOpen(false);
     setCommitMenuOpen(false);
     setBranchMenuOpen(false);
-  }, [activeProjectDir, activeSessionID]);
+  }, [activeProjectDir, activeSessionID, setBranchMenuOpen]);
 
   useEffect(() => {
     if (!branchMenuOpen) {
@@ -1713,7 +1861,7 @@ export default function App() {
       const nonPlanAgent = agentOptions.find((a) => a.name !== "plan" && a.name !== "orxa");
       setSelectedAgent(nonPlanAgent?.name ?? agentOptions.find((a) => a.name !== "plan")?.name ?? agentOptions[0]?.name);
     },
-    [agentOptions, appMode, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan],
+    [agentOptions, appMode, hasOrxaAgent, hasPlanAgent, orxaModels.orxa, orxaModels.plan, setSelectedModel],
   );
 
   const activeSession = useMemo(
@@ -1741,18 +1889,20 @@ export default function App() {
     [orxaTodos],
   );
   const allTodosCompleted = orxaTodos.length > 0 && completedTodoCount === orxaTodos.length;
+  const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const messageFeedBottomClearance = useMemo(() => {
     if (orxaTodos.length === 0) {
       return 24;
     }
-    return todosOpen ? 286 : 78;
-  }, [orxaTodos.length, todosOpen]);
+    const base = todosOpen ? 286 : 78;
+    return base + composerOffsetLift;
+  }, [composerOffsetLift, orxaTodos.length, todosOpen]);
   const todosDrawerStyle = useMemo(
     () =>
       ({
-        "--todos-anchor-bottom": `${132 + (terminalOpen ? 286 : 0)}px`,
+        "--todos-anchor-bottom": `${Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) + (terminalOpen ? 286 : 0)}px`,
       }) as CSSProperties,
-    [terminalOpen],
+    [composerLayoutHeight, terminalOpen],
   );
   const pendingPermission = useMemo(() => (projectData?.permissions ?? [])[0], [projectData?.permissions]);
   const isPermissionDecisionInFlight = Boolean(
@@ -1931,13 +2081,6 @@ export default function App() {
         }
       }
       try {
-        setPermissionDecisionPending(reply);
-        setPermissionDecisionPendingRequestID(pendingPermission.id);
-        await withTimeout(
-          window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply),
-          PERMISSION_REPLY_TIMEOUT_MS,
-          "Permission response timed out. Please try again.",
-        );
         if (reply === "always") {
           setAppPreferences((current) =>
             current.permissionMode === "yolo-write"
@@ -1948,6 +2091,13 @@ export default function App() {
                 },
           );
         }
+        setPermissionDecisionPending(reply);
+        setPermissionDecisionPendingRequestID(pendingPermission.id);
+        await withTimeout(
+          window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply),
+          PERMISSION_REPLY_TIMEOUT_MS,
+          "Permission response timed out. Please try again.",
+        );
         await refreshProject(activeProjectDir);
         setStatusLine(`Permission ${reply === "reject" ? "rejected" : "approved"}`);
       } catch (error) {
@@ -1969,17 +2119,16 @@ export default function App() {
   );
 
   const replyPendingQuestion = useCallback(
-    async (answer: string) => {
+    async (answers: QuestionAnswer[]) => {
       if (!activeProjectDir || !pendingQuestion) {
         return;
       }
-      const trimmed = answer.trim();
-      if (!trimmed) {
+      const normalized = answers.map((item) => item.map((value) => value.trim()).filter((value) => value.length > 0));
+      if (!normalized.some((item) => item.length > 0)) {
         return;
       }
       try {
-        const answers = [[trimmed]] as unknown as Parameters<typeof window.orxa.opencode.replyQuestion>[2];
-        await window.orxa.opencode.replyQuestion(activeProjectDir, pendingQuestion.id, answers);
+        await window.orxa.opencode.replyQuestion(activeProjectDir, pendingQuestion.id, normalized);
         await refreshProject(activeProjectDir);
         setStatusLine("Question answered");
       } catch (error) {
@@ -2048,7 +2197,7 @@ export default function App() {
         setOpenMenuOpen(false);
       }
     },
-    [activeProjectDir],
+    [activeProjectDir, setPreferredOpenTarget],
   );
 
   const openCommitModal = useCallback(
@@ -2062,7 +2211,7 @@ export default function App() {
       setCommitModalOpen(true);
       setCommitMenuOpen(false);
     },
-    [activeProjectDir],
+    [activeProjectDir, setCommitModalOpen, setCommitNextStep],
   );
 
   const openTodoReviewChanges = useCallback(() => {
@@ -2074,6 +2223,10 @@ export default function App() {
     setGitPanelTab("diff");
     void loadGitDiff();
   }, [loadGitDiff, setAppPreferences, setGitPanelTab, setRightSidebarTab]);
+
+  const handleComposerLayoutHeightChange = useCallback((height: number) => {
+    setComposerLayoutHeight((current) => (current === height ? current : height));
+  }, []);
 
   const submitCommit = useCallback(async () => {
     if (!activeProjectDir) {
@@ -2110,11 +2263,14 @@ export default function App() {
     loadGitDiff,
     rightSidebarTab,
     refreshProject,
+    setCommitMessageDraft,
+    setCommitModalOpen,
+    setCommitSubmitting,
   ]);
 
   const appendPathToComposer = useCallback((filePath: string) => {
     setComposer((current) => (current.trim().length > 0 ? `${current}\n${filePath}` : filePath));
-  }, []);
+  }, [setComposer]);
 
   useEffect(() => {
     if (!activeProjectDir) {
@@ -2296,6 +2452,19 @@ export default function App() {
               onRefresh={() => void loadSkills()}
               onUseSkill={openSkillUseModal}
             />
+          ) : sidebarMode === "memory" ? (
+            <MemoryBoard
+              snapshot={memoryGraph}
+              loading={memoryGraphLoading}
+              error={memoryGraphError}
+              workspaceFilter={memoryWorkspaceFilter}
+              workspaceOptions={projects.map((project) => project.worktree)}
+              onWorkspaceFilterChange={setMemoryWorkspaceFilter}
+              onRefresh={() => void loadMemoryGraph()}
+              onPrepareBackfillSession={() => void prepareMemoryBackfillSession()}
+              preparingBackfillSession={memoryBackfillSessionPreparing}
+              backfillStatus={memoryBackfillStatus}
+            />
           ) : activeProjectDir ? (
             <>
               {!showingProjectDashboard ? (
@@ -2407,6 +2576,7 @@ export default function App() {
                     setSelectedVariant={setSelectedVariant}
                     variantOptions={variantOptions}
                     placeholder={composerPlaceholder}
+                    onLayoutHeightChange={handleComposerLayoutHeightChange}
                   />
 
                 </>
@@ -2607,6 +2777,7 @@ export default function App() {
 
       <GlobalModalsHost
         activeProjectDir={activeProjectDir}
+        permissionMode={appPreferences.permissionMode}
         dependencyReport={dependencyReport}
         dependencyModalOpen={dependencyModalOpen}
         setDependencyModalOpen={setDependencyModalOpen}
@@ -2749,6 +2920,12 @@ export default function App() {
         onGetUpdatePreferences={() => window.orxa.updates.getPreferences()}
         onSetUpdatePreferences={(input) => window.orxa.updates.setPreferences(input)}
         onCheckForUpdates={() => window.orxa.updates.checkNow()}
+        onGetMemorySettings={(directory) => window.orxa.opencode.getMemorySettings(directory)}
+        onUpdateMemorySettings={(input) => window.orxa.opencode.updateMemorySettings(input)}
+        onListMemoryTemplates={() => window.orxa.opencode.listMemoryTemplates()}
+        onApplyMemoryTemplate={(templateID, directory, scope) => window.orxa.opencode.applyMemoryTemplate(templateID, directory, scope)}
+        onBackfillMemory={(directory) => window.orxa.opencode.backfillMemory(directory)}
+        onClearWorkspaceMemory={(directory) => window.orxa.opencode.clearWorkspaceMemory(directory)}
         onGetOrxaAgentDetails={(name) => window.orxa.opencode.getOrxaAgentDetails(name)}
         onResetOrxaAgent={(name) => window.orxa.opencode.resetOrxaAgent(name)}
         onRestoreOrxaAgentHistory={(name, historyID) => window.orxa.opencode.restoreOrxaAgentHistory(name, historyID)}

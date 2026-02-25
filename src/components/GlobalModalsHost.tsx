@@ -1,5 +1,5 @@
-import { useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
-import type { PermissionRequest, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client";
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import type { PermissionRequest, QuestionAnswer, QuestionRequest, Session } from "@opencode-ai/sdk/v2/client";
 import type {
   ProjectListItem,
   RuntimeDependencyReport,
@@ -13,6 +13,7 @@ import { JobEditorModal, type JobRecord, type JobRunRecord } from "./JobsBoard";
 import { MessageFeed } from "./MessageFeed";
 import { ProfileModal } from "./ProfileModal";
 import type { CommitNextStep } from "../hooks/useGitPanel";
+import type { PermissionMode } from "../types/app";
 
 type SkillUseModalState = { skill: SkillEntry; projectDir: string } | null;
 export type SkillPromptTarget = "current" | "new";
@@ -27,6 +28,7 @@ type CommitSummary = {
 
 export type GlobalModalsHostProps = {
   activeProjectDir?: string;
+  permissionMode: PermissionMode;
   dependencyReport: RuntimeDependencyReport | null;
   dependencyModalOpen: boolean;
   setDependencyModalOpen: Dispatch<SetStateAction<boolean>>;
@@ -35,7 +37,7 @@ export type GlobalModalsHostProps = {
   permissionDecisionInFlight: boolean;
   replyPermission: (decision: "once" | "always" | "reject") => void | Promise<void>;
   questionRequest: QuestionRequest | null;
-  replyQuestion: (answer: string) => void | Promise<void>;
+  replyQuestion: (answers: QuestionAnswer[]) => void | Promise<void>;
   rejectQuestion: () => void | Promise<void>;
   allSessionsModalOpen: boolean;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
@@ -123,6 +125,7 @@ function formatPermissionDescription(permissionRequest: PermissionRequest) {
 
 export function GlobalModalsHost({
   activeProjectDir,
+  permissionMode,
   dependencyReport,
   dependencyModalOpen,
   setDependencyModalOpen,
@@ -184,13 +187,17 @@ export function GlobalModalsHost({
   onStartLocalProfile,
   onStopLocalProfile,
 }: GlobalModalsHostProps) {
-  const [questionDraft, setQuestionDraft] = useState("");
+  const [questionFallbackDraft, setQuestionFallbackDraft] = useState("");
+  const [questionSelections, setQuestionSelections] = useState<Record<number, string[]>>({});
+  const [questionCustomDrafts, setQuestionCustomDrafts] = useState<Record<number, string>>({});
   const [copiedDependencyKey, setCopiedDependencyKey] = useState<string | null>(null);
   const [skillTargetSelectorOpen, setSkillTargetSelectorOpen] = useState(false);
   const [skillPreparing, setSkillPreparing] = useState(false);
 
   useEffect(() => {
-    setQuestionDraft("");
+    setQuestionFallbackDraft("");
+    setQuestionSelections({});
+    setQuestionCustomDrafts({});
   }, [questionRequest?.id]);
 
   useEffect(() => {
@@ -205,6 +212,75 @@ export function GlobalModalsHost({
     setSkillTargetSelectorOpen(false);
     setSkillPreparing(false);
   }, [skillUseModal?.skill.id, skillUseModal?.projectDir]);
+
+  const questionItems = useMemo(() => questionRequest?.questions ?? [], [questionRequest?.questions]);
+  const isStructuredQuestion = questionItems.length > 0;
+  const isSingleChoiceQuestion = questionItems.length === 1 && questionItems[0]?.multiple !== true;
+
+  const setSingleSelection = (questionIndex: number, optionLabel: string) => {
+    setQuestionSelections((current) => ({
+      ...current,
+      [questionIndex]: [optionLabel],
+    }));
+  };
+
+  const toggleSelection = (questionIndex: number, optionLabel: string) => {
+    setQuestionSelections((current) => {
+      const previous = current[questionIndex] ?? [];
+      const exists = previous.includes(optionLabel);
+      return {
+        ...current,
+        [questionIndex]: exists ? previous.filter((item) => item !== optionLabel) : [...previous, optionLabel],
+      };
+    });
+  };
+
+  const updateCustomAnswer = (questionIndex: number, value: string) => {
+    setQuestionCustomDrafts((current) => ({
+      ...current,
+      [questionIndex]: value,
+    }));
+  };
+
+  const buildStructuredAnswers = (): QuestionAnswer[] =>
+    questionItems.map((question, index) => {
+      const selected = questionSelections[index] ?? [];
+      const customEnabled = question.custom !== false;
+      const customText = customEnabled ? (questionCustomDrafts[index] ?? "").trim() : "";
+      if (question.multiple === true) {
+        const combined = customText ? [...selected, customText] : selected;
+        return Array.from(new Set(combined.map((item) => item.trim()).filter((item) => item.length > 0)));
+      }
+      if (customText) {
+        return [customText];
+      }
+      return selected.length > 0 ? [selected[0]!] : [];
+    });
+
+  const canSubmitStructuredQuestion = isStructuredQuestion && buildStructuredAnswers().every((answers) => answers.length > 0);
+
+  const submitStructuredAnswers = async () => {
+    const answers = buildStructuredAnswers();
+    if (!answers.every((item) => item.length > 0)) {
+      return;
+    }
+    await replyQuestion(answers);
+  };
+
+  const selectQuestionOption = async (questionIndex: number, optionLabel: string) => {
+    const question = questionItems[questionIndex];
+    if (!question) {
+      return;
+    }
+    if (question.multiple === true) {
+      toggleSelection(questionIndex, optionLabel);
+      return;
+    }
+    setSingleSelection(questionIndex, optionLabel);
+    if (isSingleChoiceQuestion) {
+      await replyQuestion([[optionLabel]]);
+    }
+  };
 
   const copyDependencyCommand = async (installCommand: string, key: string) => {
     try {
@@ -304,7 +380,7 @@ export function GlobalModalsHost({
         </div>
       ) : null}
 
-      {permissionRequest && activeProjectDir ? (
+      {permissionRequest && activeProjectDir && permissionMode !== "yolo-write" ? (
         <div className="overlay permission-overlay">
           <section className="modal permission-modal">
             <header className="modal-header">
@@ -354,16 +430,65 @@ export function GlobalModalsHost({
               <h2>Question</h2>
             </header>
             <div className="permission-modal-body">
-              <p className="permission-title">{formatQuestionPrompt(questionRequest)}</p>
-              <label className="commit-message-field">
-                Your answer
-                <textarea
-                  rows={4}
-                  value={questionDraft}
-                  placeholder="Type your answer"
-                  onChange={(event) => setQuestionDraft(event.target.value)}
-                />
-              </label>
+              {isStructuredQuestion ? (
+                <div className="question-modal-content">
+                  {questionItems.map((question, index) => {
+                    const selected = questionSelections[index] ?? [];
+                    const customEnabled = question.custom !== false;
+                    const customDraft = questionCustomDrafts[index] ?? "";
+                    return (
+                      <section key={`${question.header}-${index}`} className="question-block">
+                        <h3>{question.header}</h3>
+                        <p className="permission-title">
+                          {question.question}
+                          {question.multiple === true ? " (select all that apply)" : ""}
+                        </p>
+                        <div className="question-options">
+                          {question.options.map((option) => {
+                            const active = selected.includes(option.label);
+                            return (
+                              <button
+                                key={option.label}
+                                type="button"
+                                className={`question-option ${active ? "active" : ""}`.trim()}
+                                onClick={() => void selectQuestionOption(index, option.label)}
+                              >
+                                <strong>{option.label}</strong>
+                                <small>{option.description}</small>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {customEnabled ? (
+                          <label className="commit-message-field">
+                            Custom answer
+                            <textarea
+                              rows={2}
+                              value={customDraft}
+                              placeholder="Type your own answer"
+                              onChange={(event) => updateCustomAnswer(index, event.target.value)}
+                            />
+                          </label>
+                        ) : null}
+                      </section>
+                    );
+                  })}
+                  {isSingleChoiceQuestion ? <p className="raw-path">Selecting an option will submit immediately.</p> : null}
+                </div>
+              ) : (
+                <>
+                  <p className="permission-title">{formatQuestionPrompt(questionRequest)}</p>
+                  <label className="commit-message-field">
+                    Your answer
+                    <textarea
+                      rows={4}
+                      value={questionFallbackDraft}
+                      placeholder="Type your answer"
+                      onChange={(event) => setQuestionFallbackDraft(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
               <div className="permission-actions">
                 <button type="button" className="danger" onClick={() => void rejectQuestion()}>
                   Reject
@@ -371,8 +496,12 @@ export function GlobalModalsHost({
                 <button
                   type="button"
                   className="primary"
-                  disabled={!questionDraft.trim()}
-                  onClick={() => void replyQuestion(questionDraft)}
+                  disabled={
+                    isStructuredQuestion
+                      ? !canSubmitStructuredQuestion || isSingleChoiceQuestion
+                      : !questionFallbackDraft.trim()
+                  }
+                  onClick={() => void (isStructuredQuestion ? submitStructuredAnswers() : replyQuestion([[questionFallbackDraft.trim()]]))}
                 >
                   Submit
                 </button>
