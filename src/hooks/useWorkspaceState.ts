@@ -6,7 +6,7 @@ const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 const RESPONSE_POLL_BASE_DELAY_MS = 900;
 const RESPONSE_POLL_MAX_DELAY_MS = 5_400;
 
-type SidebarMode = "projects" | "jobs" | "skills";
+type SidebarMode = "projects" | "jobs" | "skills" | "memory";
 
 type ContextMenuState =
   | {

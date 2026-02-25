@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   AppMode,
+  MemoryBackfillStatus,
+  MemoryPolicyMode,
+  MemorySettings,
+  MemorySettingsUpdateInput,
+  MemoryTemplate,
   OpenCodeAgentFile,
   OpenDirectoryTarget,
   OrxaAgentDetails,
@@ -42,11 +47,17 @@ type Props = {
   onGetUpdatePreferences: () => Promise<UpdatePreferences>;
   onSetUpdatePreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
   onCheckForUpdates: () => Promise<{ ok: boolean; status: "started" | "skipped" | "error"; message?: string }>;
+  onGetMemorySettings: (directory?: string) => Promise<MemorySettings>;
+  onUpdateMemorySettings: (input: MemorySettingsUpdateInput) => Promise<MemorySettings>;
+  onListMemoryTemplates: () => Promise<MemoryTemplate[]>;
+  onApplyMemoryTemplate: (templateID: string, directory?: string, scope?: "global" | "workspace") => Promise<MemorySettings>;
+  onBackfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
+  onClearWorkspaceMemory: (directory: string) => Promise<boolean>;
   onChangeMode: (mode: AppMode) => Promise<void>;
   allModelOptions: ModelOption[];
 };
 
-type SettingsSection = "config" | "agents" | "provider-models" | "opencode-agents" | "app" | "server" | "preferences";
+type SettingsSection = "config" | "agents" | "provider-models" | "opencode-agents" | "app" | "server" | "preferences" | "memory";
 type EditorKind = "opencode" | "orxa";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
@@ -96,6 +107,12 @@ export function SettingsDrawer({
   onGetUpdatePreferences,
   onSetUpdatePreferences,
   onCheckForUpdates,
+  onGetMemorySettings,
+  onUpdateMemorySettings,
+  onListMemoryTemplates,
+  onApplyMemoryTemplate,
+  onBackfillMemory,
+  onClearWorkspaceMemory,
   onChangeMode,
   allModelOptions,
 }: Props) {
@@ -126,6 +143,10 @@ export function SettingsDrawer({
     releaseChannel: "stable",
   });
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [memorySettings, setMemorySettings] = useState<MemorySettings | null>(null);
+  const [memoryTemplates, setMemoryTemplates] = useState<MemoryTemplate[]>([]);
+  const [memoryLoading, setMemoryLoading] = useState(false);
+  const [memoryBackfillStatus, setMemoryBackfillStatus] = useState<MemoryBackfillStatus | null>(null);
 
   const [ocAgents, setOcAgents] = useState<OpenCodeAgentFile[]>([]);
   const [selectedOcAgent, setSelectedOcAgent] = useState<string | undefined>();
@@ -155,9 +176,9 @@ export function SettingsDrawer({
   );
   const availableSections = useMemo<SettingsSection[]>(() => {
     if (mode === "standard") {
-      return ["config", "provider-models", "opencode-agents", "app", "preferences", "server"];
+      return ["config", "provider-models", "opencode-agents", "memory", "app", "preferences", "server"];
     }
-    return ["config", "agents", "provider-models", "opencode-agents", "app", "preferences", "server"];
+    return ["config", "agents", "provider-models", "opencode-agents", "memory", "app", "preferences", "server"];
   }, [mode]);
 
   useEffect(() => {
@@ -176,12 +197,14 @@ export function SettingsDrawer({
       return;
     }
     const load = async () => {
-      const [raw, diagnostics, orxa, nextAgents, updaterPrefs] = await Promise.all([
+      const [raw, diagnostics, orxa, nextAgents, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
         onReadRaw(effectiveScope, directory),
         onGetServerDiagnostics(),
         mode === "orxa" ? onReadOrxa() : Promise.resolve(null),
         mode === "orxa" ? onListOrxaAgents() : Promise.resolve([]),
         onGetUpdatePreferences(),
+        onGetMemorySettings(directory),
+        onListMemoryTemplates(),
       ]);
       setRawDoc(raw);
       setRawText(raw.content);
@@ -189,6 +212,9 @@ export function SettingsDrawer({
       setOrxaText(orxa?.content ?? "");
       setAgents(nextAgents);
       setUpdatePreferences(updaterPrefs);
+      setMemorySettings(nextMemorySettings);
+      setMemoryTemplates(templates);
+      setMemoryBackfillStatus(null);
       setSelectedAgentPath((current) => current ?? nextAgents[0]?.path);
       setServerDiagnostics(diagnostics);
       setFeedback(null);
@@ -206,6 +232,8 @@ export function SettingsDrawer({
     onListOrxaAgents,
     onGetServerDiagnostics,
     onGetUpdatePreferences,
+    onGetMemorySettings,
+    onListMemoryTemplates,
   ]);
 
   useEffect(() => {
@@ -508,6 +536,234 @@ export function SettingsDrawer({
               );
             })}
           </div>
+        </section>
+      );
+    }
+
+    if (section === "memory") {
+      const settings = memorySettings;
+      const globalPolicy = settings?.global;
+      const workspacePolicy = settings?.workspace;
+      const hasWorkspaceOverride = Boolean(settings?.hasWorkspaceOverride);
+
+      const applyGlobalPatch = (patch: MemorySettingsUpdateInput["global"]) => {
+        setMemoryLoading(true);
+        void onUpdateMemorySettings({
+          directory,
+          global: patch,
+        })
+          .then((next) => {
+            setMemorySettings(next);
+            setFeedback("Memory settings updated");
+          })
+          .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+          .finally(() => setMemoryLoading(false));
+      };
+
+      const applyWorkspacePatch = (patch: MemorySettingsUpdateInput["workspace"]) => {
+        if (!directory) {
+          setFeedback("Select a workspace to edit workspace memory settings.");
+          return;
+        }
+        setMemoryLoading(true);
+        void onUpdateMemorySettings({
+          directory,
+          workspace: patch,
+        })
+          .then((next) => {
+            setMemorySettings(next);
+            setFeedback("Workspace memory settings updated");
+          })
+          .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+          .finally(() => setMemoryLoading(false));
+      };
+
+      return (
+        <section className="settings-section-card settings-pad">
+          <h3>Memory</h3>
+          <p className="raw-path">
+            Memory is scoped by workspace for retrieval. Graph view can aggregate all workspaces.
+          </p>
+          <div className="settings-controls">
+            <label>
+              Global mode
+              <select
+                value={globalPolicy?.mode ?? "balanced"}
+                onChange={(event) => applyGlobalPatch({ mode: event.target.value as MemoryPolicyMode })}
+                disabled={memoryLoading}
+              >
+                <option value="conservative">conservative</option>
+                <option value="balanced">balanced</option>
+                <option value="aggressive">aggressive</option>
+                <option value="codebase-facts">codebase-facts</option>
+              </select>
+            </label>
+            <label className="settings-inline-toggle">
+              <input
+                type="checkbox"
+                checked={globalPolicy?.enabled ?? false}
+                onChange={(event) => applyGlobalPatch({ enabled: event.target.checked })}
+                disabled={memoryLoading}
+              />
+              Enable memory globally
+            </label>
+            <label>
+              Prompt memory limit
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={globalPolicy?.maxPromptMemories ?? 6}
+                onChange={(event) => applyGlobalPatch({ maxPromptMemories: Number(event.target.value) })}
+                disabled={memoryLoading}
+              />
+            </label>
+          </div>
+          <label className="settings-textarea-label">
+            Global memory guidance
+            <textarea
+              rows={6}
+              value={globalPolicy?.guidance ?? ""}
+              onChange={(event) => applyGlobalPatch({ guidance: event.target.value })}
+              disabled={memoryLoading}
+            />
+          </label>
+
+          <h4>Workspace Override</h4>
+          <p className="raw-path">{directory ?? "No workspace selected"}</p>
+          <div className="settings-controls">
+            <label>
+              Workspace mode
+              <select
+                value={workspacePolicy?.mode ?? globalPolicy?.mode ?? "balanced"}
+                onChange={(event) => applyWorkspacePatch({ mode: event.target.value as MemoryPolicyMode })}
+                disabled={!directory || memoryLoading}
+              >
+                <option value="conservative">conservative</option>
+                <option value="balanced">balanced</option>
+                <option value="aggressive">aggressive</option>
+                <option value="codebase-facts">codebase-facts</option>
+              </select>
+            </label>
+            <label className="settings-inline-toggle">
+              <input
+                type="checkbox"
+                checked={workspacePolicy?.enabled ?? globalPolicy?.enabled ?? false}
+                onChange={(event) => applyWorkspacePatch({ enabled: event.target.checked })}
+                disabled={!directory || memoryLoading}
+              />
+              Enable memory for workspace
+            </label>
+            <label>
+              Capture limit/session
+              <input
+                type="number"
+                min={1}
+                max={60}
+                value={workspacePolicy?.maxCapturePerSession ?? globalPolicy?.maxCapturePerSession ?? 24}
+                onChange={(event) => applyWorkspacePatch({ maxCapturePerSession: Number(event.target.value) })}
+                disabled={!directory || memoryLoading}
+              />
+            </label>
+          </div>
+          <label className="settings-textarea-label">
+            Workspace guidance
+            <textarea
+              rows={5}
+              value={workspacePolicy?.guidance ?? ""}
+              onChange={(event) => applyWorkspacePatch({ guidance: event.target.value })}
+              disabled={!directory || memoryLoading}
+            />
+          </label>
+          <div className="settings-actions">
+            <button
+              type="button"
+              disabled={!directory || !hasWorkspaceOverride || memoryLoading}
+              onClick={() => {
+                if (!directory) {
+                  return;
+                }
+                setMemoryLoading(true);
+                void onUpdateMemorySettings({ directory, clearWorkspaceOverride: true })
+                  .then((next) => {
+                    setMemorySettings(next);
+                    setFeedback("Workspace override cleared");
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setMemoryLoading(false));
+              }}
+            >
+              Clear workspace override
+            </button>
+          </div>
+
+          <h4>Template Import</h4>
+          <div className="settings-actions">
+            {memoryTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                disabled={memoryLoading}
+                onClick={() => {
+                  setMemoryLoading(true);
+                  void onApplyMemoryTemplate(template.id, directory, directory ? "workspace" : "global")
+                    .then((next) => {
+                      setMemorySettings(next);
+                      setFeedback(`Applied ${template.name} template`);
+                    })
+                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                    .finally(() => setMemoryLoading(false));
+                }}
+              >
+                Import {template.name}
+              </button>
+            ))}
+          </div>
+
+          <h4>Maintenance</h4>
+          <div className="settings-actions">
+            <button
+              type="button"
+              disabled={memoryLoading}
+              onClick={() => {
+                setMemoryLoading(true);
+                void onBackfillMemory(directory)
+                  .then((status) => {
+                    setMemoryBackfillStatus(status);
+                    setFeedback(status.message ?? "Memory backfill completed");
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setMemoryLoading(false));
+              }}
+            >
+              Backfill now
+            </button>
+            <button
+              type="button"
+              disabled={!directory || memoryLoading}
+              onClick={() => {
+                if (!directory) {
+                  return;
+                }
+                if (!window.confirm(`Clear all stored memory for ${directory}?`)) {
+                  return;
+                }
+                setMemoryLoading(true);
+                void onClearWorkspaceMemory(directory)
+                  .then(() => setFeedback("Workspace memory cleared"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setMemoryLoading(false));
+              }}
+            >
+              Clear workspace memory
+            </button>
+          </div>
+          {memoryBackfillStatus ? (
+            <p className="raw-path">
+              {memoryBackfillStatus.message ?? "Backfill"} ({Math.round(memoryBackfillStatus.progress * 100)}% •{" "}
+              {memoryBackfillStatus.scannedSessions}/{memoryBackfillStatus.totalSessions})
+            </p>
+          ) : null}
         </section>
       );
     }
@@ -1093,6 +1349,9 @@ export function SettingsDrawer({
               </button>
               <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
                 Agents
+              </button>
+              <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
+                Memory
               </button>
               <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                 App

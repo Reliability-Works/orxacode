@@ -31,6 +31,12 @@ import type {
   OpenCodeAgentFile,
   OpenDirectoryResult,
   OpenDirectoryTarget,
+  MemoryBackfillStatus,
+  MemoryGraphQuery,
+  MemoryGraphSnapshot,
+  MemorySettings,
+  MemorySettingsUpdateInput,
+  MemoryTemplate,
   OrxaEvent,
   OrxaAgentDetails,
   OrxaAgentHistoryDocument,
@@ -66,6 +72,7 @@ import { ProjectStore } from "./project-store";
 import { ProfileStore } from "./profile-store";
 import { ProvenanceIndex } from "./provenance-index";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
+import { MemoryStore } from "./memory-store";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
@@ -349,6 +356,7 @@ export class OpencodeService {
   private passwordStore = new PasswordStore();
   private ledgerStore = new ExecutionLedgerStore();
   private provenanceIndex = new ProvenanceIndex();
+  private memoryStore = new MemoryStore();
 
   private managedProcess: ChildProcess | undefined;
   private state: RuntimeState = {
@@ -364,6 +372,16 @@ export class OpencodeService {
   private sessionSyncFingerprint = new Map<string, string>();
   private sessionSyncInFlight = new Map<string, Promise<void>>();
   private promptFence = new Map<string, number>();
+  private memoryIngestInFlight = new Map<string, Promise<void>>();
+  private memoryIngestAt = new Map<string, number>();
+  private memoryBackfill: MemoryBackfillStatus = {
+    running: false,
+    progress: 0,
+    scannedSessions: 0,
+    totalSessions: 0,
+    inserted: 0,
+    updated: 0,
+  };
 
   onEvent?: (event: OrxaEvent) => void;
 
@@ -1178,6 +1196,141 @@ export class OpencodeService {
     return this.provenanceIndex.getFileHistory(directory, sessionID, toWorkspaceRelativePath(directory, relativePath));
   }
 
+  async getMemorySettings(directory?: string): Promise<MemorySettings> {
+    const normalized = directory ? path.resolve(directory) : undefined;
+    return this.memoryStore.getSettings(normalized);
+  }
+
+  async updateMemorySettings(input: MemorySettingsUpdateInput): Promise<MemorySettings> {
+    const normalized: MemorySettingsUpdateInput = {
+      ...input,
+      directory: input.directory ? path.resolve(input.directory) : undefined,
+    };
+    return this.memoryStore.updateSettings(normalized);
+  }
+
+  async listMemoryTemplates(): Promise<MemoryTemplate[]> {
+    return this.memoryStore.getTemplates();
+  }
+
+  async applyMemoryTemplate(templateID: string, directory?: string, scope?: "global" | "workspace"): Promise<MemorySettings> {
+    const normalized = directory ? path.resolve(directory) : undefined;
+    return this.memoryStore.applyTemplate(templateID, normalized, scope);
+  }
+
+  async getMemoryGraph(input?: MemoryGraphQuery): Promise<MemoryGraphSnapshot> {
+    const normalized: MemoryGraphQuery | undefined = input
+      ? {
+          ...input,
+          workspace: input.workspace ? path.resolve(input.workspace) : undefined,
+        }
+      : undefined;
+    return this.memoryStore.getGraph(normalized);
+  }
+
+  async clearWorkspaceMemory(directory: string): Promise<boolean> {
+    return this.memoryStore.clearWorkspace(path.resolve(directory));
+  }
+
+  private emitMemoryBackfill(status: MemoryBackfillStatus) {
+    this.memoryBackfill = status;
+    this.emit({
+      type: "memory.backfill",
+      payload: status,
+    });
+  }
+
+  async backfillMemory(directory?: string): Promise<MemoryBackfillStatus> {
+    if (this.memoryBackfill.running) {
+      return this.memoryBackfill;
+    }
+
+    const workspaces = directory
+      ? [path.resolve(directory)]
+      : this.listStoredProjects().map((item) => path.resolve(item.worktree));
+    const workspaceAllowlist = [...new Set(workspaces.map((item) => path.resolve(item)))];
+
+    const initial: MemoryBackfillStatus = {
+      running: true,
+      progress: 0,
+      scannedSessions: 0,
+      totalSessions: 0,
+      inserted: 0,
+      updated: 0,
+      startedAt: Date.now(),
+      message: "Starting memory backfill",
+    };
+    this.emitMemoryBackfill(initial);
+
+    try {
+      const queue: Array<{ workspace: string; sessionID: string; updatedAt: number }> = [];
+      for (const workspace of workspaces) {
+        const sessions = await this.unwrap(this.client(workspace).session.list({ directory: workspace, limit: 180 })).catch(() => []);
+        for (const session of sessions) {
+          queue.push({
+            workspace,
+            sessionID: session.id,
+            updatedAt: session.time.updated,
+          });
+        }
+      }
+
+      const totalSessions = queue.length;
+      this.emitMemoryBackfill({
+        ...initial,
+        totalSessions,
+        message: totalSessions === 0 ? "No sessions found for backfill" : "Backfilling session history",
+      });
+
+      let scannedSessions = 0;
+      let inserted = 0;
+      let updated = 0;
+      for (const item of queue.sort((a, b) => a.updatedAt - b.updatedAt)) {
+        const bundles = await this.loadMessages(item.workspace, item.sessionID).catch(() => []);
+        const ingest = await this.memoryStore.ingestSessionMessages(item.workspace, item.sessionID, bundles, {
+          workspaceAllowlist,
+        });
+        inserted += ingest.inserted;
+        updated += ingest.updated;
+        scannedSessions += 1;
+        await this.memoryStore.setIngestCursor(item.workspace, String(item.updatedAt));
+        this.emitMemoryBackfill({
+          running: true,
+          progress: totalSessions > 0 ? scannedSessions / totalSessions : 1,
+          scannedSessions,
+          totalSessions,
+          inserted,
+          updated,
+          startedAt: initial.startedAt,
+          message: `Backfilled ${scannedSessions} / ${totalSessions} sessions`,
+        });
+      }
+
+      const done: MemoryBackfillStatus = {
+        running: false,
+        progress: 1,
+        scannedSessions,
+        totalSessions,
+        inserted,
+        updated,
+        startedAt: initial.startedAt,
+        completedAt: Date.now(),
+        message: "Memory backfill completed",
+      };
+      this.emitMemoryBackfill(done);
+      return done;
+    } catch (error) {
+      const failed: MemoryBackfillStatus = {
+        ...this.memoryBackfill,
+        running: false,
+        completedAt: Date.now(),
+        message: `Memory backfill failed: ${sanitizeError(error)}`,
+      };
+      this.emitMemoryBackfill(failed);
+      return failed;
+    }
+  }
+
   async sendPrompt(input: PromptRequest) {
     const promptSentAt = Date.now();
     const dedupeKey = `${input.directory}::${input.sessionID}::${input.text.trim()}`;
@@ -1216,12 +1369,19 @@ export class OpencodeService {
       });
     }
 
+    const memoryContext = await this.memoryStore.buildPromptContext(input.directory, input.text).catch(() => "");
+    const systemPrompt = [input.system, memoryContext]
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item.length > 0)
+      .join("\n\n");
+
     const request = {
       directory: input.directory,
       sessionID: input.sessionID,
       agent: input.agent,
       model: input.model,
       variant: input.variant,
+      system: systemPrompt.length > 0 ? systemPrompt : undefined,
       parts,
     };
 
@@ -1246,6 +1406,7 @@ export class OpencodeService {
         this.promptFence.delete(dedupeKey);
       }, 15_000);
     }
+    void this.scheduleSessionMemoryIngest(input.directory, input.sessionID, "prompt.sent");
     return true;
   }
 
@@ -2365,6 +2526,83 @@ export class OpencodeService {
     }
   }
 
+  private extractSessionIDFromStreamEvent(event: Event) {
+    const asRecord = event as unknown as { properties?: Record<string, unknown> };
+    const properties = asRecord.properties;
+    if (!properties || typeof properties !== "object") {
+      return undefined;
+    }
+    if (typeof properties.sessionID === "string") {
+      return properties.sessionID;
+    }
+    const info = properties.info;
+    if (info && typeof info === "object") {
+      const infoRecord = info as Record<string, unknown>;
+      if (typeof infoRecord.sessionID === "string") {
+        return infoRecord.sessionID;
+      }
+    }
+    const part = properties.part;
+    if (part && typeof part === "object") {
+      const partRecord = part as Record<string, unknown>;
+      if (typeof partRecord.sessionID === "string") {
+        return partRecord.sessionID;
+      }
+    }
+    const message = properties.message;
+    if (message && typeof message === "object") {
+      const messageRecord = message as Record<string, unknown>;
+      if (typeof messageRecord.sessionID === "string") {
+        return messageRecord.sessionID;
+      }
+    }
+    return undefined;
+  }
+
+  private shouldIngestMemoryForEventType(type: string) {
+    return (
+      type === "session.idle" ||
+      type === "session.status" ||
+      type === "message.created" ||
+      type === "message.updated" ||
+      type === "message.part.created" ||
+      type === "message.part.updated" ||
+      type === "message.part.added"
+    );
+  }
+
+  private async scheduleSessionMemoryIngest(directoryInput: string, sessionID: string, reason: string) {
+    const directory = path.resolve(directoryInput);
+    const key = `${directory}::${sessionID}`;
+    const inFlight = this.memoryIngestInFlight.get(key);
+    if (inFlight) {
+      return inFlight;
+    }
+    const lastAt = this.memoryIngestAt.get(key) ?? 0;
+    const nowAt = Date.now();
+    if (reason !== "session.idle" && nowAt - lastAt < 1_800) {
+      return;
+    }
+    const run = (async () => {
+      try {
+        const bundles = await this.loadMessages(directory, sessionID).catch(() => []);
+        const workspaceAllowlist = this.listStoredProjects().map((item) => path.resolve(item.worktree));
+        await this.memoryStore.ingestSessionMessages(directory, sessionID, bundles, {
+          workspaceAllowlist,
+        });
+        this.memoryIngestAt.set(key, Date.now());
+      } catch {
+        // Best-effort memory ingestion should never break session operations.
+      }
+    })();
+    this.memoryIngestInFlight.set(key, run);
+    try {
+      await run;
+    } finally {
+      this.memoryIngestInFlight.delete(key);
+    }
+  }
+
   private setState(next: RuntimeState) {
     this.state = next;
     this.emit({
@@ -2580,6 +2818,12 @@ export class OpencodeService {
           for await (const event of stream.stream) {
             if (abort.signal.aborted) {
               break;
+            }
+
+            const eventType = String(event.type);
+            const eventSessionID = this.extractSessionIDFromStreamEvent(event);
+            if (eventSessionID && this.shouldIngestMemoryForEventType(eventType)) {
+              void this.scheduleSessionMemoryIngest(directory, eventSessionID, eventType);
             }
 
             this.emit({

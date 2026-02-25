@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { AppMode, ProjectListItem } from "@shared/ipc";
 import { IconButton } from "./IconButton";
 
-type SidebarMode = "projects" | "jobs" | "skills";
+type SidebarMode = "projects" | "jobs" | "skills" | "memory";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
 type SessionListItem = {
@@ -88,6 +88,13 @@ export function WorkspaceSidebar({
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
           <button
             type="button"
+            className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}
+            onClick={openWorkspaceDashboard}
+          >
+            Dashboard
+          </button>
+          <button
+            type="button"
             className={sidebarMode === "jobs" ? "active" : ""}
             onClick={() => setSidebarMode("jobs")}
           >
@@ -96,17 +103,17 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
+            className={sidebarMode === "memory" ? "active" : ""}
+            onClick={() => setSidebarMode("memory")}
+          >
+            Memory
+          </button>
+          <button
+            type="button"
             className={sidebarMode === "skills" ? "active" : ""}
             onClick={() => setSidebarMode("skills")}
           >
             Skills
-          </button>
-          <button
-            type="button"
-            className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}
-            onClick={openWorkspaceDashboard}
-          >
-            Dashboard
           </button>
         </nav>
       <>

@@ -85,6 +85,13 @@ export const IPC = {
   opencodeListFiles: "orxa:opencode:listFiles",
   opencodeCountProjectFiles: "orxa:opencode:countProjectFiles",
   opencodeReadProjectFile: "orxa:opencode:readProjectFile",
+  opencodeMemoryGetSettings: "orxa:opencode:memory:getSettings",
+  opencodeMemoryUpdateSettings: "orxa:opencode:memory:updateSettings",
+  opencodeMemoryListTemplates: "orxa:opencode:memory:listTemplates",
+  opencodeMemoryApplyTemplate: "orxa:opencode:memory:applyTemplate",
+  opencodeMemoryGetGraph: "orxa:opencode:memory:getGraph",
+  opencodeMemoryBackfill: "orxa:opencode:memory:backfill",
+  opencodeMemoryClearWorkspace: "orxa:opencode:memory:clearWorkspace",
   orxaReadConfig: "orxa:orxa:readConfig",
   orxaWriteConfig: "orxa:orxa:writeConfig",
   orxaReadAgentPrompt: "orxa:orxa:readAgentPrompt",
@@ -209,9 +216,94 @@ export type PromptRequest = {
     modelID: string;
   };
   variant?: string;
+  system?: string;
 };
 
 export type SessionPermissionMode = "ask-write" | "yolo-write";
+
+export type MemoryPolicyMode = "conservative" | "balanced" | "aggressive" | "codebase-facts";
+
+export type MemoryPolicy = {
+  enabled: boolean;
+  mode: MemoryPolicyMode;
+  guidance: string;
+  maxPromptMemories: number;
+  maxCapturePerSession: number;
+};
+
+export type MemorySettings = {
+  global: MemoryPolicy;
+  directory?: string;
+  workspace?: MemoryPolicy;
+  hasWorkspaceOverride: boolean;
+};
+
+export type MemorySettingsUpdateInput = {
+  directory?: string;
+  global?: Partial<MemoryPolicy>;
+  workspace?: Partial<MemoryPolicy>;
+  clearWorkspaceOverride?: boolean;
+};
+
+export type MemoryTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  policy: MemoryPolicy;
+};
+
+export type MemoryNode = {
+  id: string;
+  workspace: string;
+  summary: string;
+  content: string;
+  confidence: number;
+  tags: string[];
+  source: {
+    sessionID?: string;
+    messageID?: string;
+    actor?: string;
+  };
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MemoryEdge = {
+  id: string;
+  workspace: string;
+  from: string;
+  to: string;
+  relation: string;
+  weight: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type MemoryGraphQuery = {
+  workspace?: string;
+  query?: string;
+  relation?: string;
+  limit?: number;
+};
+
+export type MemoryGraphSnapshot = {
+  nodes: MemoryNode[];
+  edges: MemoryEdge[];
+  workspaces: string[];
+  updatedAt: number;
+};
+
+export type MemoryBackfillStatus = {
+  running: boolean;
+  progress: number;
+  scannedSessions: number;
+  totalSessions: number;
+  inserted: number;
+  updated: number;
+  startedAt?: number;
+  completedAt?: number;
+  message?: string;
+};
 
 export type ExecutionEventKind =
   | "read"
@@ -500,6 +592,10 @@ export type OrxaEvent =
         message?: string;
         version?: string;
       };
+    }
+  | {
+      type: "memory.backfill";
+      payload: MemoryBackfillStatus;
     };
 
 export interface OrxaBridge {
@@ -580,6 +676,13 @@ export interface OrxaBridge {
     listFiles: (directory: string, relativePath?: string) => Promise<ProjectFileEntry[]>;
     countProjectFiles: (directory: string) => Promise<number>;
     readProjectFile: (directory: string, relativePath: string) => Promise<ProjectFileDocument>;
+    getMemorySettings: (directory?: string) => Promise<MemorySettings>;
+    updateMemorySettings: (input: MemorySettingsUpdateInput) => Promise<MemorySettings>;
+    listMemoryTemplates: () => Promise<MemoryTemplate[]>;
+    applyMemoryTemplate: (templateID: string, directory?: string, scope?: "global" | "workspace") => Promise<MemorySettings>;
+    getMemoryGraph: (input?: MemoryGraphQuery) => Promise<MemoryGraphSnapshot>;
+    backfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
+    clearWorkspaceMemory: (directory: string) => Promise<boolean>;
     readOrxaConfig: () => Promise<RawConfigDocument>;
     writeOrxaConfig: (content: string) => Promise<RawConfigDocument>;
     readOrxaAgentPrompt: (agent: "orxa" | "plan") => Promise<string | undefined>;

@@ -1,4 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type RefObject,
+} from "react";
 import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
@@ -55,7 +66,12 @@ type ComposerPanelProps = {
   selectedVariant?: string;
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
+  onLayoutHeightChange?: (height: number) => void;
 };
+
+const COMPOSER_MIN_HEIGHT = 96;
+const COMPOSER_MAX_HEIGHT = 360;
+const COMPOSER_DEFAULT_HEIGHT = 118;
 
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
@@ -103,9 +119,14 @@ export function ComposerPanel(props: ComposerPanelProps) {
     selectedVariant,
     setSelectedVariant,
     variantOptions,
+    onLayoutHeightChange,
   } = props;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
+  const [composerResizeActive, setComposerResizeActive] = useState(false);
   const permissionMenuRef = useRef<HTMLDivElement | null>(null);
+  const composerZoneRef = useRef<HTMLElement | null>(null);
+  const composerResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const clampedCompactionProgress = Math.max(0, Math.min(1, compactionProgress));
   const compactionProgressStyle = useMemo(
     () =>
@@ -146,12 +167,102 @@ export function ComposerPanel(props: ComposerPanelProps) {
     };
   }, [permissionMenuOpen]);
 
+  useEffect(() => {
+    if (!composerResizeActive) {
+      return;
+    }
+    const onPointerMove = (event: MouseEvent) => {
+      const state = composerResizeRef.current;
+      if (!state) {
+        return;
+      }
+      const nextHeight = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, state.startHeight + (state.startY - event.clientY)));
+      setComposerHeight(nextHeight);
+    };
+    const onPointerUp = () => {
+      setComposerResizeActive(false);
+      composerResizeRef.current = null;
+    };
+    window.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("mouseup", onPointerUp);
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "ns-resize";
+    return () => {
+      window.removeEventListener("mousemove", onPointerMove);
+      window.removeEventListener("mouseup", onPointerUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+    };
+  }, [composerResizeActive]);
+
+  const startComposerResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    composerResizeRef.current = {
+      startY: event.clientY,
+      startHeight: composerHeight,
+    };
+    setComposerResizeActive(true);
+  }, [composerHeight]);
+
+  useLayoutEffect(() => {
+    if (!onLayoutHeightChange) {
+      return;
+    }
+    const element = composerZoneRef.current;
+    if (!element) {
+      return;
+    }
+    let frameId: number | null = null;
+    const report = () => {
+      const nextHeight = Math.max(0, Math.round(element.getBoundingClientRect().height));
+      onLayoutHeightChange(nextHeight);
+    };
+    const scheduleReport = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        report();
+      });
+    };
+
+    report();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", scheduleReport);
+      return () => {
+        window.removeEventListener("resize", scheduleReport);
+        if (frameId !== null) {
+          window.cancelAnimationFrame(frameId);
+        }
+      };
+    }
+    const observer = new ResizeObserver(() => {
+      scheduleReport();
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [onLayoutHeightChange]);
+
   return (
-    <section className="composer-zone">
+    <section ref={composerZoneRef} className="composer-zone">
       <div className="composer-input-wrap">
+        <button
+          type="button"
+          className={`composer-resize-handle ${composerResizeActive ? "is-active" : ""}`.trim()}
+          aria-label="Resize composer"
+          onMouseDown={startComposerResize}
+        />
         <textarea
           placeholder={placeholder}
           value={composer}
+          style={{ height: `${composerHeight}px` }}
           onChange={(event) => setComposer(event.target.value)}
           onKeyDown={(event) => {
             if (slashMenuOpen && (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab" || event.key === "Escape")) {
