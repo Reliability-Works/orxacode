@@ -720,6 +720,7 @@ function registerIpcHandlers() {
       includeUnstaged: assertBoolean(input.includeUnstaged, "includeUnstaged"),
       message: typeof input.message === "string" ? input.message : undefined,
       guidancePrompt: typeof input.guidancePrompt === "string" ? input.guidancePrompt : undefined,
+      baseBranch: typeof input.baseBranch === "string" ? input.baseBranch : undefined,
       nextStep: input.nextStep,
     });
   });
@@ -750,6 +751,10 @@ function registerIpcHandlers() {
   );
   ipcMain.handle(IPC.opencodeWriteAgentsMd, async (_event, directory: unknown, content: unknown) =>
     service.writeAgentsMd(assertString(directory, "directory"), assertString(content, "content")),
+  );
+  ipcMain.handle(IPC.opencodeReadGlobalAgentsMd, async () => service.readGlobalAgentsMd());
+  ipcMain.handle(IPC.opencodeWriteGlobalAgentsMd, async (_event, content: unknown) =>
+    service.writeGlobalAgentsMd(assertString(content, "content")),
   );
   ipcMain.handle(IPC.opencodeListAgentFiles, async () => service.listOpenCodeAgentFiles());
   ipcMain.handle(IPC.opencodeReadAgentFile, async (_event, filename: unknown) =>

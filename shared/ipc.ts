@@ -77,6 +77,8 @@ export const IPC = {
   opencodeListSkills: "orxa:opencode:listSkills",
   opencodeReadAgentsMd: "orxa:opencode:readAgentsMd",
   opencodeWriteAgentsMd: "orxa:opencode:writeAgentsMd",
+  opencodeReadGlobalAgentsMd: "orxa:opencode:readGlobalAgentsMd",
+  opencodeWriteGlobalAgentsMd: "orxa:opencode:writeGlobalAgentsMd",
   opencodeListAgentFiles: "orxa:opencode:listAgentFiles",
   opencodeReadAgentFile: "orxa:opencode:readAgentFile",
   opencodeWriteAgentFile: "orxa:opencode:writeAgentFile",
@@ -442,6 +444,7 @@ export type GitCommitRequest = {
   includeUnstaged: boolean;
   message?: string;
   guidancePrompt?: string;
+  baseBranch?: string;
   nextStep: GitCommitNextStep;
 };
 
@@ -668,6 +671,8 @@ export interface OrxaBridge {
     listSkills: () => Promise<SkillEntry[]>;
     readAgentsMd: (directory: string) => Promise<AgentsDocument>;
     writeAgentsMd: (directory: string, content: string) => Promise<AgentsDocument>;
+    readGlobalAgentsMd: () => Promise<AgentsDocument>;
+    writeGlobalAgentsMd: (content: string) => Promise<AgentsDocument>;
     listAgentFiles: () => Promise<OpenCodeAgentFile[]>;
     readAgentFile: (filename: string) => Promise<OpenCodeAgentFile>;
     writeAgentFile: (filename: string, content: string) => Promise<OpenCodeAgentFile>;

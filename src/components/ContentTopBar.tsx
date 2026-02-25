@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, LayoutDashboard, Pencil, Pin, PinOff } from "lucide-react";
+import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, LayoutDashboard, Pencil, Pin, PinOff, Send } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
@@ -40,6 +40,8 @@ type ContentTopBarProps = {
   openTargets: OpenTargetOption[];
   openDirectoryInTarget: (targetID: OpenTargetOption["id"]) => Promise<void>;
   openCommitModal: (nextStep?: CommitNextStep) => void;
+  pendingPrUrl: string | null;
+  onOpenPendingPullRequest: () => void;
   commitNextStepOptions: Array<{ id: CommitNextStep; label: string; icon: ReactNode }>;
   setCommitNextStep: (nextStep: CommitNextStep) => void;
 };
@@ -74,6 +76,8 @@ export function ContentTopBar({
   openTargets,
   openDirectoryInTarget,
   openCommitModal,
+  pendingPrUrl,
+  onOpenPendingPullRequest,
   commitNextStepOptions,
   setCommitNextStep,
 }: ContentTopBarProps) {
@@ -205,16 +209,20 @@ export function ContentTopBar({
             type="button"
             className="titlebar-action"
             onClick={() => {
-              openCommitModal();
+              if (pendingPrUrl) {
+                onOpenPendingPullRequest();
+              } else {
+                openCommitModal();
+              }
               setOpenMenuOpen(false);
               setTitleMenuOpen(false);
             }}
-            disabled={!hasProjectContext}
+            disabled={!hasProjectContext && !pendingPrUrl}
           >
             <span className="titlebar-action-logo">
-              <GitCommitHorizontal size={13} aria-hidden="true" />
+              {pendingPrUrl ? <Send size={13} aria-hidden="true" /> : <GitCommitHorizontal size={13} aria-hidden="true" />}
             </span>
-            <span>Commit</span>
+            <span>{pendingPrUrl ? "View PR" : "Commit"}</span>
           </button>
           <button
             type="button"

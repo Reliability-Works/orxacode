@@ -111,6 +111,7 @@ export function useGitPanel(activeProjectDir: string | null) {
   } | null>(null);
   const [commitSummaryLoading, setCommitSummaryLoading] = useState(false);
   const [commitSubmitting, setCommitSubmitting] = useState(false);
+  const [commitBaseBranch, setCommitBaseBranch] = useState("");
 
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
@@ -306,6 +307,27 @@ export function useGitPanel(activeProjectDir: string | null) {
     await checkoutBranch(candidate);
   }, [branchCreateName, branchState?.branches, checkoutBranch]);
 
+  const commitBaseBranchOptions = (() => {
+    if (!branchState) {
+      return [];
+    }
+    const current = commitSummary?.branch ?? branchState.current;
+    return branchState.branches.filter((branch) => branch !== current);
+  })();
+
+  const pickDefaultBaseBranch = useCallback((branches: string[], currentValue: string) => {
+    if (currentValue && branches.includes(currentValue)) {
+      return currentValue;
+    }
+    if (branches.includes("main")) {
+      return "main";
+    }
+    if (branches.includes("master")) {
+      return "master";
+    }
+    return branches[0] ?? "";
+  }, []);
+
   const loadCommitSummary = useCallback(
     async (includeUnstaged: boolean) => {
       if (!activeProjectDir) {
@@ -404,7 +426,15 @@ export function useGitPanel(activeProjectDir: string | null) {
       return;
     }
     void loadCommitSummary(commitIncludeUnstaged);
-  }, [activeProjectDir, commitIncludeUnstaged, commitModalOpen, loadCommitSummary]);
+    void refreshBranchState();
+  }, [activeProjectDir, commitIncludeUnstaged, commitModalOpen, loadCommitSummary, refreshBranchState]);
+
+  useEffect(() => {
+    if (!commitModalOpen) {
+      return;
+    }
+    setCommitBaseBranch((current) => pickDefaultBaseBranch(commitBaseBranchOptions, current));
+  }, [commitBaseBranchOptions, commitModalOpen, pickDefaultBaseBranch]);
 
   return {
     branchState,
@@ -433,6 +463,9 @@ export function useGitPanel(activeProjectDir: string | null) {
     commitSummaryLoading,
     commitSubmitting,
     setCommitSubmitting,
+    commitBaseBranch,
+    setCommitBaseBranch,
+    commitBaseBranchOptions,
     branchMenuOpen,
     setBranchMenuOpen,
     branchQuery,
