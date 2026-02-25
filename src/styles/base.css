@@ -144,8 +144,12 @@ textarea {
   font-family: "IBM Plex Mono", monospace;
 }
 
-:focus,
-:focus-visible {
-  outline: none !important;
-  box-shadow: none !important;
+:focus {
+  outline: 2px solid var(--border-active);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
 }
