@@ -32,9 +32,15 @@ async function firstMatchingFile(directory, predicate) {
 
 async function resolveExecutablePath() {
   if (process.platform === "darwin") {
-    const macAppBinary = path.join(DIST_DIR, "mac", `${APP_NAME}.app`, "Contents", "MacOS", APP_NAME);
-    if (await pathExists(macAppBinary)) {
-      return macAppBinary;
+    const entries = await readdir(DIST_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith("mac")) {
+        continue;
+      }
+      const macAppBinary = path.join(DIST_DIR, entry.name, `${APP_NAME}.app`, "Contents", "MacOS", APP_NAME);
+      if (await pathExists(macAppBinary)) {
+        return macAppBinary;
+      }
     }
   }
 
@@ -50,9 +56,17 @@ async function resolveExecutablePath() {
 
   const linuxDir = path.join(DIST_DIR, "linux-unpacked");
   if (await pathExists(linuxDir)) {
+    const primaryBinary = path.join(linuxDir, APP_NAME);
+    if (await pathExists(primaryBinary)) {
+      return primaryBinary;
+    }
     const executable = await firstMatchingFile(
       linuxDir,
-      (entry, mode) => !entry.endsWith(".so") && (mode & 0o111) !== 0,
+      (entry, mode) =>
+        !entry.endsWith(".so") &&
+        entry !== "chrome-sandbox" &&
+        entry !== "crashpad_handler" &&
+        (mode & 0o111) !== 0,
     );
     if (executable) {
       return executable;
@@ -65,12 +79,14 @@ async function resolveExecutablePath() {
 async function runSmokeTest() {
   const executablePath = await resolveExecutablePath();
   console.log(`Running smoke test with executable: ${executablePath}`);
+  const launchArgs = process.platform === "linux" ? ["--smoke-test", "--no-sandbox", "--disable-setuid-sandbox"] : ["--smoke-test"];
 
   await new Promise((resolve, reject) => {
-    const child = spawn(executablePath, ["--smoke-test"], {
+    const child = spawn(executablePath, launchArgs, {
       env: {
         ...process.env,
         ORXA_SMOKE_TEST: "1",
+        ...(process.platform === "linux" ? { ELECTRON_DISABLE_SANDBOX: "1" } : {}),
       },
       stdio: "inherit",
     });
