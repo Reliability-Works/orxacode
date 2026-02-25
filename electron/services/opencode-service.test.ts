@@ -189,6 +189,93 @@ describe("OpencodeService memory prompt integration", () => {
   });
 });
 
+describe("OpencodeService git flows", () => {
+  it("includes untracked file line counts in commit summary", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommitSummary: (directory: string, includeUnstaged: boolean) => Promise<{
+        filesChanged: number;
+        insertions: number;
+        deletions: number;
+      }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      gitDiff: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/new-file");
+    service.gitDiff = vi.fn(async () =>
+      [
+        "## Untracked",
+        "",
+        "diff --git a/src/new.ts b/src/new.ts",
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/src/new.ts",
+        "@@ -0,0 +1,3 @@",
+        "+const a = 1;",
+        "+const b = 2;",
+        "+const c = 3;",
+      ].join("\n"),
+    );
+    service.runCommandWithOutput = vi.fn(async () => "");
+
+    const summary = await service.gitCommitSummary("/repo", true);
+
+    expect(summary.filesChanged).toBe(1);
+    expect(summary.insertions).toBe(3);
+    expect(summary.deletions).toBe(0);
+  });
+
+  it("passes requested base branch to gh when creating pull requests", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommit: (directory: string, request: {
+        includeUnstaged: boolean;
+        message?: string;
+        guidancePrompt?: string;
+        baseBranch?: string;
+        nextStep: "commit" | "commit_and_push" | "commit_and_create_pr";
+      }) => Promise<{ prUrl?: string }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.runCommand = vi.fn(async () => undefined);
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("diff --cached --name-only")) {
+        return "src/app.ts\n";
+      }
+      if (full.includes("rev-parse HEAD")) {
+        return "abc1234\n";
+      }
+      if (full.includes("pr create")) {
+        return "https://github.com/anomalyco/opencode/pull/42\n";
+      }
+      return "";
+    });
+
+    const result = await service.gitCommit("/repo", {
+      includeUnstaged: false,
+      message: "feat: improve commit modal",
+      nextStep: "commit_and_create_pr",
+      baseBranch: "main",
+    });
+
+    expect(result.prUrl).toBe("https://github.com/anomalyco/opencode/pull/42");
+    expect(service.runCommandWithOutput).toHaveBeenCalledWith(
+      "gh",
+      ["pr", "create", "--fill", "--base", "main"],
+      "/repo",
+    );
+  });
+});
+
 describe("OpencodeService runtime dependency detection", () => {
   it("marks opencode installed when shell fallback succeeds", async () => {
     const service = Object.create(OpencodeService.prototype) as {

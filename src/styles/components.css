@@ -1319,6 +1319,20 @@
   font-size: 0.88rem;
 }
 
+.commit-summary-values {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.commit-summary-values .added {
+  color: var(--success);
+}
+
+.commit-summary-values .removed {
+  color: var(--danger);
+}
+
 .commit-include-toggle {
   display: inline-flex !important;
   align-items: center;
@@ -1341,6 +1355,13 @@
 
 .commit-message-field textarea {
   min-height: 110px;
+}
+
+.commit-base-branch-field {
+  display: grid;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--text-muted);
 }
 
 .commit-next-steps {
@@ -1383,6 +1404,37 @@
 
 .commit-continue {
   width: 100%;
+}
+
+.commit-progress-modal {
+  width: min(360px, 88vw);
+}
+
+.commit-progress-body {
+  padding: var(--space-5);
+  min-height: 164px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+  gap: var(--space-2);
+}
+
+.commit-progress-body h2 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.commit-progress-body p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+
+.commit-progress-spinner {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
 }
 
 .branch-create-modal {
