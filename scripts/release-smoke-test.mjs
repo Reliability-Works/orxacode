@@ -62,11 +62,16 @@ async function resolveExecutablePath() {
     }
     const executable = await firstMatchingFile(
       linuxDir,
-      (entry, mode) =>
-        !entry.endsWith(".so") &&
-        entry !== "chrome-sandbox" &&
-        entry !== "crashpad_handler" &&
-        (mode & 0o111) !== 0,
+      (entry, mode) => {
+        const lower = entry.toLowerCase();
+        return (
+          !entry.endsWith(".so") &&
+          !lower.startsWith("chrome") &&
+          !lower.includes("crashpad") &&
+          !lower.includes("sandbox") &&
+          (mode & 0o111) !== 0
+        );
+      },
     );
     if (executable) {
       return executable;
