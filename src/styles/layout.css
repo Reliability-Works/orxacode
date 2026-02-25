@@ -497,8 +497,8 @@
 }
 
 .project-select.active {
-  border-color: var(--border);
-  background: var(--bg-raised);
+  border-color: transparent;
+  background: transparent;
   color: var(--text-main);
   font-weight: 600;
 }

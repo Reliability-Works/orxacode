@@ -1,0 +1,73 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { ContentTopBar } from "./ContentTopBar";
+
+function buildProps() {
+  const onSelectOpenTarget = vi.fn();
+  const openDirectoryInTarget = vi.fn(async () => undefined);
+
+  return {
+    props: {
+      projectsPaneVisible: true,
+      toggleProjectsPane: vi.fn(),
+      showGitPane: true,
+      setGitPaneVisible: vi.fn(),
+      gitDiffStats: { additions: 0, deletions: 0, filesChanged: 0, hasChanges: false },
+      contentPaneTitle: "Workspace",
+      showingProjectDashboard: true,
+      activeProjectDir: "/tmp/workspace",
+      projectData: null,
+      terminalOpen: false,
+      toggleTerminal: vi.fn(async () => undefined),
+      titleMenuOpen: false,
+      openMenuOpen: false,
+      setOpenMenuOpen: vi.fn(),
+      commitMenuOpen: false,
+      setCommitMenuOpen: vi.fn(),
+      setTitleMenuOpen: vi.fn(),
+      hasActiveSession: true,
+      isActiveSessionPinned: false,
+      onTogglePinSession: vi.fn(),
+      onRenameSession: vi.fn(),
+      onArchiveSession: vi.fn(),
+      onViewWorkspace: vi.fn(),
+      onCopyPath: vi.fn(),
+      onCopySessionId: vi.fn(),
+      activeOpenTarget: { id: "finder" as const, label: "Finder", logo: "/finder.png" },
+      openTargets: [
+        { id: "cursor" as const, label: "Cursor", logo: "/cursor.png" },
+        { id: "finder" as const, label: "Finder", logo: "/finder.png" },
+      ],
+      onSelectOpenTarget,
+      openDirectoryInTarget,
+      openCommitModal: vi.fn(),
+      pendingPrUrl: null,
+      onOpenPendingPullRequest: vi.fn(),
+      commitNextStepOptions: [],
+      setCommitNextStep: vi.fn(),
+    },
+    onSelectOpenTarget,
+    openDirectoryInTarget,
+  };
+}
+
+describe("ContentTopBar open target control", () => {
+  it("selects target from menu without launching app", () => {
+    const { props, onSelectOpenTarget, openDirectoryInTarget } = buildProps();
+    render(<ContentTopBar {...props} openMenuOpen setOpenMenuOpen={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Cursor" }));
+
+    expect(onSelectOpenTarget).toHaveBeenCalledWith("cursor");
+    expect(openDirectoryInTarget).not.toHaveBeenCalled();
+  });
+
+  it("launches active target when main open button is clicked", () => {
+    const { props, openDirectoryInTarget } = buildProps();
+    render(<ContentTopBar {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finder" }));
+
+    expect(openDirectoryInTarget).toHaveBeenCalledWith("finder");
+  });
+});

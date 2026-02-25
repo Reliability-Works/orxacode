@@ -608,7 +608,18 @@ export default function App() {
   const [preferredOpenTarget, setPreferredOpenTarget] = usePersistedState<OpenTarget>(OPEN_TARGET_KEY, "finder", {
     deserialize: (raw) => {
       const available = new Set<OpenTarget>(OPEN_TARGETS.map((target) => target.id));
-      return available.has(raw as OpenTarget) ? (raw as OpenTarget) : "finder";
+      if (available.has(raw as OpenTarget)) {
+        return raw as OpenTarget;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (available.has(parsed as OpenTarget)) {
+          return parsed as OpenTarget;
+        }
+      } catch {
+        // keep fallback
+      }
+      return "finder";
     },
     serialize: (value) => value,
   });
@@ -2319,7 +2330,6 @@ export default function App() {
       if (!activeProjectDir) {
         return;
       }
-      setPreferredOpenTarget(target);
       try {
         const result = await window.orxa.opencode.openDirectoryIn(activeProjectDir, target);
         setStatusLine(result.detail);
@@ -2329,7 +2339,15 @@ export default function App() {
         setOpenMenuOpen(false);
       }
     },
-    [activeProjectDir, setPreferredOpenTarget],
+    [activeProjectDir],
+  );
+
+  const selectOpenTarget = useCallback(
+    (target: OpenTarget) => {
+      setPreferredOpenTarget(target);
+      setOpenMenuOpen(false);
+    },
+    [setPreferredOpenTarget],
   );
 
   const clearCommitFlowDismissTimer = useCallback(() => {
@@ -2570,6 +2588,7 @@ export default function App() {
           }}
           activeOpenTarget={activeOpenTarget}
           openTargets={openTargets}
+          onSelectOpenTarget={selectOpenTarget}
           openDirectoryInTarget={openDirectoryInTarget}
           openCommitModal={openCommitModal}
           pendingPrUrl={pendingPrUrl}
