@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
+  AgentsDocument,
   AppMode,
   MemoryBackfillStatus,
   MemoryPolicyMode,
@@ -27,6 +28,8 @@ type Props = {
   onClose: () => void;
   onReadRaw: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
   onWriteRaw: (scope: "project" | "global", content: string, directory?: string) => Promise<RawConfigDocument>;
+  onReadGlobalAgentsMd: () => Promise<AgentsDocument>;
+  onWriteGlobalAgentsMd: (content: string) => Promise<AgentsDocument>;
   onReadOrxa: () => Promise<RawConfigDocument>;
   onWriteOrxa: (content: string) => Promise<RawConfigDocument>;
   onListOrxaAgents: () => Promise<OrxaAgentDocument[]>;
@@ -57,7 +60,17 @@ type Props = {
   allModelOptions: ModelOption[];
 };
 
-type SettingsSection = "config" | "agents" | "provider-models" | "opencode-agents" | "app" | "server" | "preferences" | "memory";
+type SettingsSection =
+  | "config"
+  | "agents"
+  | "provider-models"
+  | "opencode-agents"
+  | "memory"
+  | "personalization"
+  | "git"
+  | "app"
+  | "preferences"
+  | "server";
 type EditorKind = "opencode" | "orxa";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
@@ -93,6 +106,8 @@ export function SettingsDrawer({
   onClose,
   onReadRaw,
   onWriteRaw,
+  onReadGlobalAgentsMd,
+  onWriteGlobalAgentsMd,
   onReadOrxa,
   onWriteOrxa,
   onListOrxaAgents,
@@ -123,6 +138,8 @@ export function SettingsDrawer({
 
   const [rawDoc, setRawDoc] = useState<RawConfigDocument | null>(null);
   const [rawText, setRawText] = useState("");
+  const [globalAgentsDoc, setGlobalAgentsDoc] = useState<AgentsDocument | null>(null);
+  const [globalAgentsText, setGlobalAgentsText] = useState("");
   const [orxaDoc, setOrxaDoc] = useState<RawConfigDocument | null>(null);
   const [orxaText, setOrxaText] = useState("");
 
@@ -176,9 +193,9 @@ export function SettingsDrawer({
   );
   const availableSections = useMemo<SettingsSection[]>(() => {
     if (mode === "standard") {
-      return ["config", "provider-models", "opencode-agents", "memory", "app", "preferences", "server"];
+      return ["config", "provider-models", "opencode-agents", "memory", "personalization", "git", "app", "preferences", "server"];
     }
-    return ["config", "agents", "provider-models", "opencode-agents", "memory", "app", "preferences", "server"];
+    return ["config", "agents", "provider-models", "opencode-agents", "memory", "personalization", "git", "app", "preferences", "server"];
   }, [mode]);
 
   useEffect(() => {
@@ -197,8 +214,9 @@ export function SettingsDrawer({
       return;
     }
     const load = async () => {
-      const [raw, diagnostics, orxa, nextAgents, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
+      const [raw, globalAgents, diagnostics, orxa, nextAgents, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
         onReadRaw(effectiveScope, directory),
+        onReadGlobalAgentsMd(),
         onGetServerDiagnostics(),
         mode === "orxa" ? onReadOrxa() : Promise.resolve(null),
         mode === "orxa" ? onListOrxaAgents() : Promise.resolve([]),
@@ -208,6 +226,8 @@ export function SettingsDrawer({
       ]);
       setRawDoc(raw);
       setRawText(raw.content);
+      setGlobalAgentsDoc(globalAgents);
+      setGlobalAgentsText(globalAgents.content);
       setOrxaDoc(orxa);
       setOrxaText(orxa?.content ?? "");
       setAgents(nextAgents);
@@ -227,6 +247,7 @@ export function SettingsDrawer({
     effectiveScope,
     directory,
     onReadRaw,
+    onReadGlobalAgentsMd,
     mode,
     onReadOrxa,
     onListOrxaAgents,
@@ -428,16 +449,6 @@ export function SettingsDrawer({
           <label className="settings-inline-toggle">
             <input
               type="checkbox"
-              checked={appPreferences.showOperationsPane}
-              onChange={(event) =>
-                onAppPreferencesChange({ ...appPreferences, showOperationsPane: event.target.checked })
-              }
-            />
-            Show Git sidebar
-          </label>
-          <label className="settings-inline-toggle">
-            <input
-              type="checkbox"
               checked={appPreferences.autoOpenTerminalOnCreate}
               onChange={(event) =>
                 onAppPreferencesChange({ ...appPreferences, autoOpenTerminalOnCreate: event.target.checked })
@@ -499,6 +510,24 @@ export function SettingsDrawer({
               {checkingForUpdates ? "Checking..." : "Check for updates now"}
             </button>
           </div>
+        </section>
+      );
+    }
+
+    if (section === "git") {
+      return (
+        <section className="settings-section-card settings-pad">
+          <h3>Git</h3>
+          <label className="settings-inline-toggle">
+            <input
+              type="checkbox"
+              checked={appPreferences.showOperationsPane}
+              onChange={(event) =>
+                onAppPreferencesChange({ ...appPreferences, showOperationsPane: event.target.checked })
+              }
+            />
+            Show Git sidebar
+          </label>
           <label className="settings-textarea-label">
             Commit message guidance prompt
             <textarea
@@ -509,6 +538,55 @@ export function SettingsDrawer({
               }
             />
           </label>
+        </section>
+      );
+    }
+
+    if (section === "personalization") {
+      return (
+        <section className="settings-section-card settings-pad">
+          <h3>Personalization</h3>
+          <p className="raw-path">Your global AGENTS.md which will apply to all workspace sessions.</p>
+          <p className="raw-path">{globalAgentsDoc?.path ?? "~/.config/opencode/AGENTS.md"}</p>
+          <label className="settings-textarea-label">
+            Global AGENTS.md
+            <textarea
+              rows={16}
+              value={globalAgentsText}
+              placeholder="Add personal agent rules for all workspaces..."
+              onChange={(event) => setGlobalAgentsText(event.target.value)}
+            />
+          </label>
+          <div className="settings-actions">
+            <button
+              type="button"
+              onClick={() =>
+                void onWriteGlobalAgentsMd(globalAgentsText)
+                  .then((doc) => {
+                    setGlobalAgentsDoc(doc);
+                    setGlobalAgentsText(doc.content);
+                    setFeedback("Global AGENTS.md saved");
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+              }
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                void onReadGlobalAgentsMd()
+                  .then((doc) => {
+                    setGlobalAgentsDoc(doc);
+                    setGlobalAgentsText(doc.content);
+                    setFeedback("Global AGENTS.md reloaded");
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+              }
+            >
+              Reload
+            </button>
+          </div>
         </section>
       );
     }
@@ -1352,6 +1430,16 @@ export function SettingsDrawer({
               </button>
               <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
                 Memory
+              </button>
+              <button
+                type="button"
+                className={section === "personalization" ? "active" : ""}
+                onClick={() => setSection("personalization")}
+              >
+                Personalization
+              </button>
+              <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
+                Git
               </button>
               <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                 App

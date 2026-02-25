@@ -1813,7 +1813,21 @@ export class OpencodeService {
     }
 
     if (request.nextStep === "commit_and_create_pr") {
-      const output = await this.runCommandWithOutput("gh", ["pr", "create", "--fill"], repoRoot).catch((error) => {
+      const baseBranch = request.baseBranch?.trim();
+      if (baseBranch && baseBranch === branch) {
+        throw new Error("Base branch must be different from the current branch.");
+      }
+      if (baseBranch) {
+        await this.runCommand("git", ["-C", repoRoot, "check-ref-format", "--branch", baseBranch], repoRoot).catch(() => {
+          throw new Error("Invalid PR base branch name.");
+        });
+      }
+
+      const prArgs = ["pr", "create", "--fill"];
+      if (baseBranch) {
+        prArgs.push("--base", baseBranch);
+      }
+      const output = await this.runCommandWithOutput("gh", prArgs, repoRoot).catch((error) => {
         const detail = sanitizeError(error);
         if (detail.toLowerCase().includes("enoent") || detail.includes("gh ")) {
           throw new Error("GitHub CLI is not available. Install `gh` and run `gh auth login`.");
@@ -2033,6 +2047,37 @@ export class OpencodeService {
   async writeAgentsMd(directory: string, content: string): Promise<AgentsDocument> {
     const root = path.resolve(directory);
     const agentsPath = path.join(root, "AGENTS.md");
+    const normalized = content.endsWith("\n") ? content : `${content}\n`;
+    await mkdir(path.dirname(agentsPath), { recursive: true });
+    await writeFile(agentsPath, normalized, "utf8");
+    return {
+      path: agentsPath,
+      content: normalized,
+      exists: true,
+    };
+  }
+
+  async readGlobalAgentsMd(): Promise<AgentsDocument> {
+    const agentsPath = path.join(homedir(), ".config", "opencode", "AGENTS.md");
+    const info = await stat(agentsPath).catch(() => undefined);
+    if (!info?.isFile()) {
+      return {
+        path: agentsPath,
+        content: "",
+        exists: false,
+      };
+    }
+
+    const content = await readFile(agentsPath, "utf8").catch(() => "");
+    return {
+      path: agentsPath,
+      content,
+      exists: true,
+    };
+  }
+
+  async writeGlobalAgentsMd(content: string): Promise<AgentsDocument> {
+    const agentsPath = path.join(homedir(), ".config", "opencode", "AGENTS.md");
     const normalized = content.endsWith("\n") ? content : `${content}\n`;
     await mkdir(path.dirname(agentsPath), { recursive: true });
     await writeFile(agentsPath, normalized, "utf8");
@@ -3230,55 +3275,84 @@ export class OpencodeService {
   }
 
   private async collectGitStats(repoRoot: string, includeUnstaged: boolean) {
-    const namesArgs = includeUnstaged
-      ? ["-C", repoRoot, "status", "--porcelain"]
-      : ["-C", repoRoot, "diff", "--cached", "--name-only"];
-    const statsArgs = includeUnstaged
-      ? ["-C", repoRoot, "diff", "--numstat", "HEAD", "--", "."]
-      : ["-C", repoRoot, "diff", "--cached", "--numstat", "--", "."];
+    if (includeUnstaged) {
+      const combined = await this.gitDiff(repoRoot);
+      return this.parseGitPatchStats(combined);
+    }
 
-    const names = await this.runCommandWithOutput("git", namesArgs, repoRoot).catch(() => "");
-    const numstat = await this.runCommandWithOutput("git", statsArgs, repoRoot).catch(() => "");
-    const parsed = this.sumNumstat(numstat);
-
-    const filesChanged = includeUnstaged
-      ? names
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0).length
-      : names
-          .split("\n")
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0).length;
-
-    return {
-      filesChanged,
-      insertions: parsed.insertions,
-      deletions: parsed.deletions,
-    };
+    const staged = await this.runCommandWithOutput("git", ["-C", repoRoot, "--no-pager", "diff", "--staged", "--", "."], repoRoot).catch(
+      () => "",
+    );
+    return this.parseGitPatchStats(staged);
   }
 
-  private sumNumstat(output: string) {
+  private parseGitPatchStats(output: string) {
+    const trimmed = output.trim();
+    if (
+      !trimmed ||
+      trimmed === "No local changes." ||
+      trimmed === "Not a git repository." ||
+      trimmed.startsWith("Loading diff")
+    ) {
+      return { filesChanged: 0, insertions: 0, deletions: 0 };
+    }
+
     let insertions = 0;
     let deletions = 0;
-    const lines = output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+    const changedFiles = new Set<string>();
+    const lines = output.split(/\r?\n/);
 
     for (const line of lines) {
-      const [addedRaw, removedRaw] = line.split(/\s+/);
-      const added = Number.parseInt(addedRaw ?? "0", 10);
-      const removed = Number.parseInt(removedRaw ?? "0", 10);
-      if (!Number.isNaN(added)) {
-        insertions += added;
+      const diffHeaderMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      if (diffHeaderMatch) {
+        const filePath = diffHeaderMatch[2] ?? diffHeaderMatch[1];
+        if (filePath) {
+          changedFiles.add(filePath);
+        }
+        continue;
       }
-      if (!Number.isNaN(removed)) {
-        deletions += removed;
+
+      const untrackedMatch = line.match(/^\?\?\s+(.+)$/);
+      if (untrackedMatch) {
+        const filePath = untrackedMatch[1]?.trim();
+        if (filePath) {
+          changedFiles.add(filePath);
+          insertions += 1;
+        }
+        continue;
+      }
+
+      const inlineUntracked = [...line.matchAll(/\?\?\s+([^?]+?)(?=\s+\?\?|$)/g)];
+      if (inlineUntracked.length > 0) {
+        for (const match of inlineUntracked) {
+          const filePath = (match[1] ?? "").trim();
+          if (!filePath) {
+            continue;
+          }
+          changedFiles.add(filePath);
+          insertions += 1;
+        }
+        continue;
+      }
+
+      if (line.startsWith("+++") || line.startsWith("---")) {
+        continue;
+      }
+
+      if (line.startsWith("+")) {
+        insertions += 1;
+        continue;
+      }
+      if (line.startsWith("-")) {
+        deletions += 1;
       }
     }
 
-    return { insertions, deletions };
+    return {
+      filesChanged: changedFiles.size,
+      insertions,
+      deletions,
+    };
   }
 
   private async currentBranch(repoRoot: string) {

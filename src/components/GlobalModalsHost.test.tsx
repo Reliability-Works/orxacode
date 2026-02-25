@@ -64,6 +64,12 @@ function buildProps(overrides?: Partial<GlobalModalsHostProps>): GlobalModalsHos
     commitNextStep: "commit",
     setCommitNextStep: vi.fn(),
     commitSubmitting: false,
+    commitBaseBranch: "",
+    setCommitBaseBranch: vi.fn(),
+    commitBaseBranchOptions: [],
+    commitBaseBranchLoading: false,
+    commitFlowState: null,
+    dismissCommitFlowState: vi.fn(),
     submitCommit: vi.fn(async () => undefined),
     jobEditorOpen: false,
     jobDraft: {} as GlobalModalsHostProps["jobDraft"],
@@ -241,5 +247,46 @@ describe("GlobalModalsHost", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
 
     expect(replyQuestion).toHaveBeenCalledWith([["Bug fixes", "Regression tests"]]);
+  });
+
+  it("renders commit stats and base branch selector for PR commits", () => {
+    render(
+      <GlobalModalsHost
+        {...buildProps({
+          commitModalOpen: true,
+          commitSummaryLoading: false,
+          commitSummary: {
+            branch: "feature/alpha",
+            filesChanged: 3,
+            insertions: 22,
+            deletions: 5,
+            repoRoot: "/tmp/project",
+          },
+          commitNextStep: "commit_and_create_pr",
+          commitBaseBranch: "main",
+          commitBaseBranchOptions: ["main", "staging"],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("+22")).toBeInTheDocument();
+    expect(screen.getByText("-5")).toBeInTheDocument();
+    expect(screen.getByLabelText("Base branch for PR")).toBeInTheDocument();
+  });
+
+  it("shows commit execution progress modal while running", () => {
+    render(
+      <GlobalModalsHost
+        {...buildProps({
+          commitFlowState: {
+            phase: "running",
+            nextStep: "commit_and_push",
+            message: "Committing changes and pushing",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Committing changes and pushing")).toBeInTheDocument();
   });
 });

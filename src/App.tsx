@@ -125,6 +125,12 @@ type SessionFeedNotice = {
   tone?: "info" | "error";
 };
 
+type CommitFlowState = {
+  phase: "running" | "success" | "error";
+  nextStep: CommitNextStep;
+  message: string;
+};
+
 const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
 
 type OpenTargetOption = {
@@ -146,6 +152,26 @@ const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "xcode", label: "Xcode", logo: xcodeLogo },
   { id: "zed", label: "Zed", logo: zedLogo },
 ];
+
+function commitFlowRunningMessage(nextStep: CommitNextStep) {
+  if (nextStep === "commit_and_push") {
+    return "Committing changes and pushing";
+  }
+  if (nextStep === "commit_and_create_pr") {
+    return "Creating Pull Request";
+  }
+  return "Committing changes";
+}
+
+function commitFlowSuccessMessage(nextStep: CommitNextStep) {
+  if (nextStep === "commit_and_push") {
+    return "Changes committed and pushed";
+  }
+  if (nextStep === "commit_and_create_pr") {
+    return "Pull request created";
+  }
+  return "Changes committed";
+}
 const DEFAULT_COMPACTION_THRESHOLD = 120_000;
 const MIN_COMPACTION_THRESHOLD = 24_000;
 const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
@@ -580,6 +606,8 @@ export default function App() {
   });
   const [agentModelPrefs, setAgentModelPrefs] = usePersistedState<Record<string, string>>(AGENT_MODEL_PREFS_KEY, {});
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
+  const [commitFlowState, setCommitFlowState] = useState<CommitFlowState | null>(null);
+  const [pendingPrUrl, setPendingPrUrl] = useState<string | null>(null);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
   const [permissionDecisionPendingRequestID, setPermissionDecisionPendingRequestID] = useState<string | null>(null);
@@ -618,6 +646,9 @@ export default function App() {
     commitSummaryLoading,
     commitSubmitting,
     setCommitSubmitting,
+    commitBaseBranch,
+    setCommitBaseBranch,
+    commitBaseBranchOptions,
     branchMenuOpen,
     setBranchMenuOpen,
     branchQuery,
@@ -657,6 +688,7 @@ export default function App() {
   const projectSearchInputRef = useRef<HTMLInputElement | null>(null);
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAutoCreateTried = useRef(false);
+  const commitFlowDismissTimerRef = useRef<number | null>(null);
 
   const sessions = useMemo(() => {
     if (!projectData) {
@@ -2200,6 +2232,26 @@ export default function App() {
     [activeProjectDir, setPreferredOpenTarget],
   );
 
+  const clearCommitFlowDismissTimer = useCallback(() => {
+    if (commitFlowDismissTimerRef.current !== null) {
+      window.clearTimeout(commitFlowDismissTimerRef.current);
+      commitFlowDismissTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleCommitFlowDismiss = useCallback(
+    (delayMs: number) => {
+      clearCommitFlowDismissTimer();
+      commitFlowDismissTimerRef.current = window.setTimeout(() => {
+        setCommitFlowState(null);
+        commitFlowDismissTimerRef.current = null;
+      }, delayMs);
+    },
+    [clearCommitFlowDismissTimer],
+  );
+
+  useEffect(() => () => clearCommitFlowDismissTimer(), [clearCommitFlowDismissTimer]);
+
   const openCommitModal = useCallback(
     (nextStep?: CommitNextStep) => {
       if (!activeProjectDir) {
@@ -2228,41 +2280,80 @@ export default function App() {
     setComposerLayoutHeight((current) => (current === height ? current : height));
   }, []);
 
+  const openPendingPullRequest = useCallback(() => {
+    if (!pendingPrUrl) {
+      return;
+    }
+    window.open(pendingPrUrl, "_blank", "noopener,noreferrer");
+    setPendingPrUrl(null);
+    setStatusLine("Opened pull request");
+    setCommitMenuOpen(false);
+    setOpenMenuOpen(false);
+    setTitleMenuOpen(false);
+  }, [pendingPrUrl, setStatusLine]);
+
   const submitCommit = useCallback(async () => {
     if (!activeProjectDir) {
       return;
     }
+    const selectedNextStep = commitNextStep;
+    clearCommitFlowDismissTimer();
     try {
+      setCommitModalOpen(false);
       setCommitSubmitting(true);
+      setCommitFlowState({
+        phase: "running",
+        nextStep: selectedNextStep,
+        message: commitFlowRunningMessage(selectedNextStep),
+      });
       const result = await window.orxa.opencode.gitCommit(activeProjectDir, {
         includeUnstaged: commitIncludeUnstaged,
         message: commitMessageDraft.trim().length > 0 ? commitMessageDraft.trim() : undefined,
         guidancePrompt: appPreferences.commitGuidancePrompt,
-        nextStep: commitNextStep,
+        baseBranch: selectedNextStep === "commit_and_create_pr" ? commitBaseBranch || undefined : undefined,
+        nextStep: selectedNextStep,
       });
-      setCommitModalOpen(false);
       setCommitMessageDraft("");
       const prSuffix = result.prUrl ? ` • PR ${result.prUrl}` : "";
       const pushSuffix = result.pushed ? " • pushed" : "";
       setStatusLine(`Committed ${result.commitHash.slice(0, 7)}${pushSuffix}${prSuffix}`);
+      if (result.prUrl) {
+        setPendingPrUrl(result.prUrl);
+      }
+      setCommitFlowState({
+        phase: "success",
+        nextStep: selectedNextStep,
+        message: commitFlowSuccessMessage(selectedNextStep),
+      });
+      scheduleCommitFlowDismiss(1150);
       await refreshProject(activeProjectDir);
       if (rightSidebarTab === "git") {
         void loadGitDiff();
       }
     } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      setStatusLine(detail);
+      setCommitFlowState({
+        phase: "error",
+        nextStep: selectedNextStep,
+        message: detail,
+      });
+      scheduleCommitFlowDismiss(2200);
     } finally {
       setCommitSubmitting(false);
     }
   }, [
     activeProjectDir,
     appPreferences.commitGuidancePrompt,
+    clearCommitFlowDismissTimer,
+    commitBaseBranch,
     commitIncludeUnstaged,
     commitMessageDraft,
     commitNextStep,
     loadGitDiff,
     rightSidebarTab,
     refreshProject,
+    scheduleCommitFlowDismiss,
     setCommitMessageDraft,
     setCommitModalOpen,
     setCommitSubmitting,
@@ -2381,6 +2472,8 @@ export default function App() {
           openTargets={openTargets}
           openDirectoryInTarget={openDirectoryInTarget}
           openCommitModal={openCommitModal}
+          pendingPrUrl={pendingPrUrl}
+          onOpenPendingPullRequest={openPendingPullRequest}
           commitNextStepOptions={commitNextStepOptions}
           setCommitNextStep={setCommitNextStep}
         />
@@ -2819,6 +2912,15 @@ export default function App() {
         commitNextStep={commitNextStep}
         setCommitNextStep={setCommitNextStep}
         commitSubmitting={commitSubmitting}
+        commitBaseBranch={commitBaseBranch}
+        setCommitBaseBranch={setCommitBaseBranch}
+        commitBaseBranchOptions={commitBaseBranchOptions}
+        commitBaseBranchLoading={branchLoading}
+        commitFlowState={commitFlowState}
+        dismissCommitFlowState={() => {
+          clearCommitFlowDismissTimer();
+          setCommitFlowState(null);
+        }}
         submitCommit={submitCommit}
         jobEditorOpen={jobEditorOpen}
         jobDraft={jobDraft}
@@ -2878,6 +2980,12 @@ export default function App() {
             await refreshProject(directory);
           }
           setStatusLine("Raw config saved");
+          return doc;
+        }}
+        onReadGlobalAgentsMd={() => window.orxa.opencode.readGlobalAgentsMd()}
+        onWriteGlobalAgentsMd={async (content) => {
+          const doc = await window.orxa.opencode.writeGlobalAgentsMd(content);
+          setStatusLine("Global AGENTS.md saved");
           return doc;
         }}
         onReadOrxa={() => window.orxa.opencode.readOrxaConfig()}

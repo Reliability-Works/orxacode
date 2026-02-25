@@ -26,6 +26,12 @@ type CommitSummary = {
   repoRoot: string;
 } | null;
 
+type CommitFlowState = {
+  phase: "running" | "success" | "error";
+  nextStep: CommitNextStep;
+  message: string;
+} | null;
+
 export type GlobalModalsHostProps = {
   activeProjectDir?: string;
   permissionMode: PermissionMode;
@@ -70,6 +76,12 @@ export type GlobalModalsHostProps = {
   commitNextStep: CommitNextStep;
   setCommitNextStep: Dispatch<SetStateAction<CommitNextStep>>;
   commitSubmitting: boolean;
+  commitBaseBranch: string;
+  setCommitBaseBranch: Dispatch<SetStateAction<string>>;
+  commitBaseBranchOptions: string[];
+  commitBaseBranchLoading: boolean;
+  commitFlowState: CommitFlowState;
+  dismissCommitFlowState: () => void;
   submitCommit: () => Promise<void>;
   jobEditorOpen: boolean;
   jobDraft: JobRecord;
@@ -123,6 +135,16 @@ function formatPermissionDescription(permissionRequest: PermissionRequest) {
   return "OpenCode is requesting additional access.";
 }
 
+function formatCommitStepLabel(step: CommitNextStep) {
+  if (step === "commit_and_push") {
+    return "Committing changes and pushing";
+  }
+  if (step === "commit_and_create_pr") {
+    return "Creating Pull Request";
+  }
+  return "Committing changes";
+}
+
 export function GlobalModalsHost({
   activeProjectDir,
   permissionMode,
@@ -167,6 +189,12 @@ export function GlobalModalsHost({
   commitNextStep,
   setCommitNextStep,
   commitSubmitting,
+  commitBaseBranch,
+  setCommitBaseBranch,
+  commitBaseBranchOptions,
+  commitBaseBranchLoading,
+  commitFlowState,
+  dismissCommitFlowState,
   submitCommit,
   jobEditorOpen,
   jobDraft,
@@ -643,10 +671,16 @@ export function GlobalModalsHost({
                 </div>
                 <div>
                   <small>Changes</small>
-                  <strong>
+                  <strong className="commit-summary-values">
                     {commitSummaryLoading
                       ? "Loading..."
-                      : `${commitSummary?.filesChanged ?? 0} files   +${commitSummary?.insertions ?? 0}  -${commitSummary?.deletions ?? 0}`}
+                      : (
+                          <>
+                            <span>{`${commitSummary?.filesChanged ?? 0} files`}</span>
+                            <span className="added">+{commitSummary?.insertions ?? 0}</span>
+                            <span className="removed">-{commitSummary?.deletions ?? 0}</span>
+                          </>
+                        )}
                   </strong>
                 </div>
               </div>
@@ -686,6 +720,24 @@ export function GlobalModalsHost({
                 ))}
               </section>
 
+              {commitNextStep === "commit_and_create_pr" ? (
+                <label className="commit-base-branch-field">
+                  Base branch for PR
+                  <select
+                    value={commitBaseBranch}
+                    onChange={(event) => setCommitBaseBranch(event.target.value)}
+                    disabled={commitBaseBranchLoading}
+                  >
+                    <option value="">Use repository default</option>
+                    {commitBaseBranchOptions.map((branch) => (
+                      <option key={`commit-base-${branch}`} value={branch}>
+                        {branch}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
               <button
                 type="button"
                 className="commit-continue"
@@ -694,6 +746,31 @@ export function GlobalModalsHost({
               >
                 {commitSubmitting ? "Committing..." : "Continue"}
               </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {commitFlowState ? (
+        <div className="overlay" onClick={commitFlowState.phase === "running" ? undefined : dismissCommitFlowState}>
+          <section className="modal commit-progress-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="commit-progress-body">
+              {commitFlowState.phase === "running" ? (
+                <>
+                  <span className="session-status-indicator busy commit-progress-spinner" aria-hidden="true" />
+                  <h2>{formatCommitStepLabel(commitFlowState.nextStep)}</h2>
+                </>
+              ) : commitFlowState.phase === "success" ? (
+                <>
+                  <h2>{commitFlowState.message}</h2>
+                  <p>Complete</p>
+                </>
+              ) : (
+                <>
+                  <h2>Commit flow failed</h2>
+                  <p>{commitFlowState.message}</p>
+                </>
+              )}
             </div>
           </section>
         </div>
