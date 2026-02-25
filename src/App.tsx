@@ -32,7 +32,7 @@ import type {
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
-import { ContentTopBar } from "./components/ContentTopBar";
+import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
@@ -106,6 +106,7 @@ const OPEN_TARGET_KEY = "orxa:openTarget:v1";
 const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
+const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 
@@ -209,6 +210,52 @@ function formatMemoryGraphError(error: unknown) {
     return "Memory IPC handlers are unavailable in the current desktop process. Restart the app to load memory routes.";
   }
   return message;
+}
+
+function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+  const result: CustomRunCommandPreset[] = [];
+  const seenIDs = new Set<string>();
+  for (let index = 0; index < parsed.length; index += 1) {
+    const item = parsed[index];
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const candidate = item as Partial<CustomRunCommandPreset>;
+    const title = typeof candidate.title === "string" ? candidate.title.trim() : "";
+    const commands = typeof candidate.commands === "string" ? candidate.commands.trim() : "";
+    if (!title || !commands) {
+      continue;
+    }
+    const rawID = typeof candidate.id === "string" && candidate.id.trim().length > 0
+      ? candidate.id.trim()
+      : `legacy-${index}`;
+    if (seenIDs.has(rawID)) {
+      continue;
+    }
+    seenIDs.add(rawID);
+    const updatedAt = typeof candidate.updatedAt === "number" && Number.isFinite(candidate.updatedAt)
+      ? candidate.updatedAt
+      : Date.now() - index;
+    result.push({
+      id: rawID,
+      title,
+      commands: commands.replace(/\r\n/g, "\n"),
+      updatedAt,
+    });
+  }
+  return result.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function splitCommandLines(commands: string) {
+  return commands
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
 }
 
 function buildMemoryBackfillSeedPrompt(workspaces: ProjectListItem[]) {
@@ -623,6 +670,13 @@ export default function App() {
     },
     serialize: (value) => value,
   });
+  const [customRunCommands, setCustomRunCommands] = usePersistedState<CustomRunCommandPreset[]>(
+    CUSTOM_RUN_COMMANDS_KEY,
+    [],
+    {
+      deserialize: parseCustomRunCommands,
+    },
+  );
   const [agentModelPrefs, setAgentModelPrefs] = usePersistedState<Record<string, string>>(AGENT_MODEL_PREFS_KEY, {});
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [commitFlowState, setCommitFlowState] = useState<CommitFlowState | null>(null);
@@ -2154,24 +2208,29 @@ export default function App() {
     setTodosOpen(false);
   }, [activeSessionID]);
 
-  const createTerminal = useCallback(async () => {
+  const createTerminalTab = useCallback(async (): Promise<string> => {
     if (!activeProjectDir) {
-      return;
+      throw new Error("No active workspace selected.");
     }
 
     const cwd = projectData?.path.directory ?? activeProjectDir;
+    const tabNum = terminalTabs.length + 1;
+    const pty = await window.orxa.terminal.create(activeProjectDir, cwd, `Tab ${tabNum}`);
+    const newTab = { id: pty.id, label: `Tab ${tabNum}` };
+    setTerminalTabs((prev) => [...prev, newTab]);
+    setActiveTerminalId(pty.id);
+    setTerminalOpen(true);
+    return pty.id;
+  }, [activeProjectDir, projectData?.path.directory, terminalTabs.length]);
+
+  const createTerminal = useCallback(async () => {
     try {
-      const tabNum = terminalTabs.length + 1;
-      const pty = await window.orxa.terminal.create(activeProjectDir, cwd, `Tab ${tabNum}`);
-      const newTab = { id: pty.id, label: `Tab ${tabNum}` };
-      setTerminalTabs((prev) => [...prev, newTab]);
-      setActiveTerminalId(pty.id);
-      setTerminalOpen(true);
+      await createTerminalTab();
       setStatusLine("Terminal created");
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [activeProjectDir, projectData?.path.directory, terminalTabs.length]);
+  }, [createTerminalTab]);
 
   const toggleTerminal = useCallback(async () => {
     if (terminalOpen) {
@@ -2187,6 +2246,77 @@ export default function App() {
     }
     setTerminalOpen(true);
   }, [activeProjectDir, createTerminal, terminalOpen, terminalTabs.length]);
+
+  const upsertCustomRunCommand = useCallback(
+    (input: CustomRunCommandInput): CustomRunCommandPreset => {
+      const title = input.title.trim();
+      const commands = input.commands.replace(/\r\n/g, "\n").trim();
+      if (!title) {
+        throw new Error("Name is required.");
+      }
+      if (!commands) {
+        throw new Error("Add at least one command.");
+      }
+
+      const normalizedID = input.id?.trim();
+      const next: CustomRunCommandPreset = {
+        id: normalizedID && normalizedID.length > 0 ? normalizedID : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        commands,
+        updatedAt: Date.now(),
+      };
+      setCustomRunCommands((current) => {
+        const remaining = current.filter((item) => item.id !== next.id);
+        return [next, ...remaining].sort((a, b) => b.updatedAt - a.updatedAt);
+      });
+      return next;
+    },
+    [setCustomRunCommands],
+  );
+
+  const runCustomRunCommand = useCallback(
+    async (preset: CustomRunCommandPreset) => {
+      if (!activeProjectDir) {
+        setStatusLine("Select a workspace before running commands.");
+        return;
+      }
+      const commandLines = splitCommandLines(preset.commands);
+      if (commandLines.length === 0) {
+        setStatusLine(`No commands found for ${preset.title}.`);
+        return;
+      }
+
+      let targetPtyID = activeTerminalId ?? terminalTabs[0]?.id;
+      try {
+        if (!targetPtyID) {
+          targetPtyID = await createTerminalTab();
+        }
+
+        if (activeTerminalId !== targetPtyID) {
+          setActiveTerminalId(targetPtyID);
+        }
+        setTerminalOpen(true);
+        await window.orxa.terminal.connect(activeProjectDir, targetPtyID);
+        for (const command of commandLines) {
+          await window.orxa.terminal.write(activeProjectDir, targetPtyID, `${command}\n`);
+        }
+        setStatusLine(
+          `Ran ${commandLines.length} command${commandLines.length === 1 ? "" : "s"} from ${preset.title}.`,
+        );
+      } catch (error) {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [activeProjectDir, activeTerminalId, createTerminalTab, terminalTabs],
+  );
+
+  const deleteCustomRunCommand = useCallback(
+    (id: string) => {
+      setCustomRunCommands((current) => current.filter((item) => item.id !== id));
+      setStatusLine("Custom run command deleted.");
+    },
+    [setCustomRunCommands],
+  );
 
   const closeTerminalTab = useCallback(
     async (ptyId: string) => {
@@ -2595,6 +2725,10 @@ export default function App() {
           onOpenPendingPullRequest={openPendingPullRequest}
           commitNextStepOptions={commitNextStepOptions}
           setCommitNextStep={setCommitNextStep}
+          customRunCommands={customRunCommands}
+          onUpsertCustomRunCommand={upsertCustomRunCommand}
+          onRunCustomRunCommand={runCustomRunCommand}
+          onDeleteCustomRunCommand={deleteCustomRunCommand}
         />
       ) : null}
       <div ref={workspaceRef} className={workspaceClassName} style={workspaceStyle}>

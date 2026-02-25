@@ -45,6 +45,15 @@ function buildProps() {
       onOpenPendingPullRequest: vi.fn(),
       commitNextStepOptions: [],
       setCommitNextStep: vi.fn(),
+      customRunCommands: [],
+      onUpsertCustomRunCommand: vi.fn((input) => ({
+        id: "custom-run",
+        title: input.title,
+        commands: input.commands,
+        updatedAt: Date.now(),
+      })),
+      onRunCustomRunCommand: vi.fn(async () => undefined),
+      onDeleteCustomRunCommand: vi.fn(),
     },
     onSelectOpenTarget,
     openDirectoryInTarget,
@@ -69,5 +78,60 @@ describe("ContentTopBar open target control", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finder" }));
 
     expect(openDirectoryInTarget).toHaveBeenCalledWith("finder");
+  });
+
+  it("opens run editor when no custom command exists", () => {
+    const { props } = buildProps();
+    render(<ContentTopBar {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
+
+    expect(screen.getByRole("dialog", { name: "Run" })).toBeInTheDocument();
+  });
+
+  it("renders saved commands in menu and allows running one", () => {
+    const { props } = buildProps();
+    const runMock = vi.fn(async () => undefined);
+    render(
+      <ContentTopBar
+        {...props}
+        customRunCommands={[
+          { id: "install-run", title: "Install + Run", commands: "npm install\nnpm run dev", updatedAt: Date.now() },
+        ]}
+        onRunCustomRunCommand={runMock}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run Install + Run" }));
+
+    expect(runMock).toHaveBeenCalledWith({
+      id: "install-run",
+      title: "Install + Run",
+      commands: "npm install\nnpm run dev",
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it("deletes a saved command from the run menu", () => {
+    const { props } = buildProps();
+    const deleteMock = vi.fn();
+    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(
+      <ContentTopBar
+        {...props}
+        customRunCommands={[
+          { id: "install-run", title: "Install + Run", commands: "npm install\nnpm run dev", updatedAt: Date.now() },
+        ]}
+        onDeleteCustomRunCommand={deleteMock}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete Install + Run" }));
+
+    expect(confirmMock).toHaveBeenCalledWith('Delete custom run command "Install + Run"?');
+    expect(deleteMock).toHaveBeenCalledWith("install-run");
+    confirmMock.mockRestore();
   });
 });
