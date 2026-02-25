@@ -145,6 +145,29 @@ describe("createAutoUpdaterController", () => {
     harness.controller.cleanup();
   });
 
+  it("starts periodic background checks after auto-check is enabled in preferences", async () => {
+    const harness = createHarness({
+      initial: { autoCheckEnabled: false },
+      checkForUpdates: vi.fn(async () => {
+        harness.emitter.emit("update-not-available", {});
+        return {};
+      }),
+    });
+
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(0);
+
+    harness.controller.setPreferences({ autoCheckEnabled: true });
+
+    await vi.advanceTimersByTimeAsync(12_100);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000 + 50);
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(2);
+
+    harness.controller.cleanup();
+  });
+
   it("supports manual check-now and shows no-update dialog", async () => {
     const harness = createHarness({
       checkForUpdates: vi.fn(async () => {
@@ -182,13 +205,9 @@ describe("createAutoUpdaterController", () => {
     harness.controller.cleanup();
   });
 
-  it("downloads update when user accepts prompt", async () => {
-    const showMessageBox = vi
-      .fn()
-      .mockResolvedValueOnce({ response: 0 });
+  it("downloads and installs when update is available and user triggers update", async () => {
     const harness = createHarness({
       initial: { autoCheckEnabled: false },
-      showMessageBox,
       checkForUpdates: vi.fn(async () => {
         harness.emitter.emit("update-available", { version: "2.0.0" });
         return {};
@@ -196,41 +215,44 @@ describe("createAutoUpdaterController", () => {
     });
 
     const result = await harness.controller.checkNow();
-    await Promise.resolve();
-    await Promise.resolve();
+    const startUpdate = await harness.controller.downloadAndInstall();
 
     expect(result.status).toBe("started");
+    expect(startUpdate.status).toBe("started");
     expect(harness.downloadUpdate).toHaveBeenCalledTimes(1);
-    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "check.success", version: "2.0.0" }));
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "update.available", version: "2.0.0" }));
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "download.start", version: "2.0.0" }));
     harness.controller.cleanup();
   });
 
-  it("emits completion telemetry and prompts restart when update is downloaded", async () => {
+  it("emits completion telemetry and starts install when update download completes", async () => {
     const harness = createHarness({
       initial: { autoCheckEnabled: false },
       showMessageBox: vi.fn(async () => ({ response: 0 })),
     });
+    harness.emitter.emit("update-available", { version: "2.0.0" });
+    const startUpdate = await harness.controller.downloadAndInstall();
+    expect(startUpdate.status).toBe("started");
     harness.emitter.emit("update-downloaded", { version: "2.0.0" });
     vi.runAllTicks();
     await Promise.resolve();
     await Promise.resolve();
 
     expect(console.error).not.toHaveBeenCalled();
-    expect(harness.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(harness.showMessageBox).not.toHaveBeenCalled();
     expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "download.complete", version: "2.0.0" }));
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(expect.objectContaining({ phase: "install.start", version: "2.0.0" }));
+    expect(harness.quitAndInstall).toHaveBeenCalledTimes(1);
     harness.controller.cleanup();
   });
 
-  it("does not download when update is available but user chooses later", async () => {
-    const harness = createHarness({
-      showMessageBox: vi.fn(async () => ({ response: 1 })),
-      checkForUpdates: vi.fn(async () => {
-        harness.emitter.emit("update-available", { version: "2.0.0" });
-        return {};
-      }),
-    });
-    await harness.controller.checkNow();
-    await Promise.resolve();
+  it("returns skipped when no update is currently available for download/install", async () => {
+    const harness = createHarness({ initial: { autoCheckEnabled: false } });
+    const result = await harness.controller.downloadAndInstall();
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("skipped");
+    expect(result.message).toMatch(/no update is currently available/i);
     expect(harness.downloadUpdate).not.toHaveBeenCalled();
     harness.controller.cleanup();
   });

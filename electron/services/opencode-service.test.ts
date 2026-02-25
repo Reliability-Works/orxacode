@@ -270,9 +270,103 @@ describe("OpencodeService git flows", () => {
     expect(result.prUrl).toBe("https://github.com/anomalyco/opencode/pull/42");
     expect(service.runCommandWithOutput).toHaveBeenCalledWith(
       "gh",
-      ["pr", "create", "--fill", "--base", "main"],
+      ["pr", "create", "--fill", "--head", "feature/commit-flow", "--base", "main"],
       "/repo",
     );
+  });
+
+  it("retries PR creation without --fill when git range defaults cannot be computed", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommit: (directory: string, request: {
+        includeUnstaged: boolean;
+        message?: string;
+        guidancePrompt?: string;
+        baseBranch?: string;
+        nextStep: "commit" | "commit_and_push" | "commit_and_create_pr";
+      }) => Promise<{ prUrl?: string }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.runCommand = vi.fn(async () => undefined);
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("diff --cached --name-only")) {
+        return "src/app.ts\n";
+      }
+      if (full.includes("rev-parse HEAD")) {
+        return "abc1234\n";
+      }
+      if (full.startsWith("pr create --fill")) {
+        throw new Error(
+          "gh pr create --fill --head feature/commit-flow --base main exited with code 1: could not compute title or body defaults: failed to run git: fatal: ambiguous argument 'main...feature/commit-flow': unknown revision or path not in the working tree.",
+        );
+      }
+      if (full.startsWith("pr create --title")) {
+        return "https://github.com/anomalyco/opencode/pull/43\n";
+      }
+      return "";
+    });
+
+    const result = await service.gitCommit("/repo", {
+      includeUnstaged: false,
+      message: "feat: improve commit modal\n\n- handle fallback for PR creation",
+      nextStep: "commit_and_create_pr",
+      baseBranch: "main",
+    });
+
+    expect(result.prUrl).toBe("https://github.com/anomalyco/opencode/pull/43");
+    expect(service.runCommandWithOutput).toHaveBeenCalledWith(
+      "gh",
+      ["pr", "create", "--title", "feat: improve commit modal", "--body", "- handle fallback for PR creation", "--head", "feature/commit-flow", "--base", "main"],
+      "/repo",
+    );
+  });
+
+  it("surfaces real gh failures instead of misreporting missing CLI", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommit: (directory: string, request: {
+        includeUnstaged: boolean;
+        message?: string;
+        guidancePrompt?: string;
+        baseBranch?: string;
+        nextStep: "commit" | "commit_and_push" | "commit_and_create_pr";
+      }) => Promise<{ prUrl?: string }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.runCommand = vi.fn(async () => undefined);
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("diff --cached --name-only")) {
+        return "src/app.ts\n";
+      }
+      if (full.includes("rev-parse HEAD")) {
+        return "abc1234\n";
+      }
+      if (full.startsWith("pr create --fill")) {
+        throw new Error("gh pr create --fill --head feature/commit-flow --base main exited with code 1: pull request create failed: GraphQL: No commits between base and head");
+      }
+      return "";
+    });
+
+    await expect(
+      service.gitCommit("/repo", {
+        includeUnstaged: false,
+        message: "feat: improve commit modal",
+        nextStep: "commit_and_create_pr",
+        baseBranch: "main",
+      }),
+    ).rejects.toThrow("Unable to create PR: gh pr create --fill --head feature/commit-flow --base main exited with code 1: pull request create failed: GraphQL: No commits between base and head");
   });
 });
 
