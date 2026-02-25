@@ -106,6 +106,17 @@ function formatErrorMessage(error: unknown) {
   return "Unknown updater error";
 }
 
+function isMissingStableReleaseError(error: unknown, releaseChannel: UpdateReleaseChannel): boolean {
+  if (releaseChannel !== "stable") {
+    return false;
+  }
+  const message = formatErrorMessage(error).toLowerCase();
+  if (message.includes("unable to find latest version on github")) {
+    return true;
+  }
+  return message.includes("/releases/latest") && message.includes("httperror: 406");
+}
+
 async function showMessage(
   deps: AutoUpdaterDeps,
   getWindow: () => BrowserWindow | null,
@@ -301,14 +312,43 @@ export function createAutoUpdaterController(options: {
     }
   };
 
-  const onError = async (error: unknown) => {
+  const onError = async (error: unknown): Promise<"fatal" | "nonfatal"> => {
     resetProgressBar();
     const manual = activeCheckManual || pendingManualResult;
     const message = formatErrorMessage(error);
+    const durationMs = activeCheckStartedAt > 0 ? deps.now() - activeCheckStartedAt : undefined;
+    if (isMissingStableReleaseError(error, preferences.releaseChannel)) {
+      emitTelemetry({
+        phase: "check.success",
+        manual,
+        durationMs,
+        message: "No stable release has been published yet.",
+      });
+
+      pendingManualResult = false;
+      isCheckingForUpdates = false;
+      activeCheckManual = false;
+
+      if (manual) {
+        await showMessage(deps, getWindow, {
+          type: "info",
+          title: "No stable updates available",
+          message: "You're on the stable channel and no stable release is published yet.",
+          detail: "Switch release channel to Prerelease to receive beta updates.",
+          buttons: ["OK"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+      }
+
+      console.info("Auto update check skipped: no stable release published yet for the stable channel.");
+      return "nonfatal";
+    }
+
     emitTelemetry({
       phase: "check.error",
       manual,
-      durationMs: activeCheckStartedAt > 0 ? deps.now() - activeCheckStartedAt : undefined,
+      durationMs,
       message,
     });
 
@@ -329,6 +369,7 @@ export function createAutoUpdaterController(options: {
     }
 
     console.error("Auto update error:", error);
+    return "fatal";
   };
 
   const checkForUpdates = async (manual: boolean): Promise<UpdateCheckResult> => {
@@ -361,7 +402,14 @@ export function createAutoUpdaterController(options: {
         status: "started",
       };
     } catch (error) {
-      await onError(error);
+      const outcome = await onError(error);
+      if (outcome === "nonfatal") {
+        return {
+          ok: true,
+          status: "skipped",
+          message: "No stable release has been published yet.",
+        };
+      }
       return {
         ok: false,
         status: "error",
