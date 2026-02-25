@@ -188,3 +188,46 @@ describe("OpencodeService memory prompt integration", () => {
     expect(payload?.system).toBeUndefined();
   });
 });
+
+describe("OpencodeService runtime dependency detection", () => {
+  it("marks opencode installed when shell fallback succeeds", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      checkRuntimeDependencies: () => Promise<{
+        dependencies: Array<{ key: "opencode" | "orxa"; installed: boolean }>;
+      }>;
+      canRunCommand: ReturnType<typeof vi.fn>;
+      commandPathCandidates: ReturnType<typeof vi.fn>;
+      canRunCommandViaLoginShell: ReturnType<typeof vi.fn>;
+    };
+
+    service.canRunCommand = vi.fn(async () => false);
+    service.commandPathCandidates = vi.fn(async () => []);
+    service.canRunCommandViaLoginShell = vi.fn(async (command: string) => command === "opencode");
+
+    const report = await service.checkRuntimeDependencies();
+    const opencode = report.dependencies.find((item) => item.key === "opencode");
+
+    expect(opencode?.installed).toBe(true);
+    expect(service.canRunCommandViaLoginShell).toHaveBeenCalledWith("opencode", ["--version"], expect.any(String));
+  });
+
+  it("marks opencode missing when direct and shell checks fail", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      checkRuntimeDependencies: () => Promise<{
+        dependencies: Array<{ key: "opencode" | "orxa"; installed: boolean }>;
+      }>;
+      canRunCommand: ReturnType<typeof vi.fn>;
+      commandPathCandidates: ReturnType<typeof vi.fn>;
+      canRunCommandViaLoginShell: ReturnType<typeof vi.fn>;
+    };
+
+    service.canRunCommand = vi.fn(async () => false);
+    service.commandPathCandidates = vi.fn(async () => []);
+    service.canRunCommandViaLoginShell = vi.fn(async () => false);
+
+    const report = await service.checkRuntimeDependencies();
+    const opencode = report.dependencies.find((item) => item.key === "opencode");
+
+    expect(opencode?.installed).toBe(false);
+  });
+});
