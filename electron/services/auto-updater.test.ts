@@ -115,6 +115,7 @@ describe("createAutoUpdaterController", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -296,6 +297,56 @@ describe("createAutoUpdaterController", () => {
       }),
     );
     expect(console.error).toHaveBeenCalled();
+    harness.controller.cleanup();
+  });
+
+  it("treats missing stable release as non-fatal on manual checks", async () => {
+    const harness = createHarness({
+      initial: { autoCheckEnabled: false, releaseChannel: "stable" },
+      checkForUpdates: vi.fn(async () => {
+        throw new Error("Unable to find latest version on GitHub (/releases/latest) HttpError: 406");
+      }),
+    });
+    const result = await harness.controller.checkNow();
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("skipped");
+    expect(result.message).toContain("No stable release");
+    expect(harness.showMessageBox).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        title: "No stable updates available",
+      }),
+    );
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "check.success",
+        message: "No stable release has been published yet.",
+      }),
+    );
+    expect(console.error).not.toHaveBeenCalled();
+    harness.controller.cleanup();
+  });
+
+  it("suppresses noisy errors for scheduled checks when no stable release exists", async () => {
+    const harness = createHarness({
+      initial: { autoCheckEnabled: true, releaseChannel: "stable" },
+      checkForUpdates: vi.fn(async () => {
+        throw new Error("Unable to find latest version on GitHub (/releases/latest) HttpError: 406");
+      }),
+    });
+
+    await vi.advanceTimersByTimeAsync(12_100);
+
+    expect(harness.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(harness.showMessageBox).not.toHaveBeenCalled();
+    expect(harness.publishTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "check.success",
+        message: "No stable release has been published yet.",
+      }),
+    );
+    expect(console.error).not.toHaveBeenCalled();
     harness.controller.cleanup();
   });
 

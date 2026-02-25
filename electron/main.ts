@@ -19,6 +19,7 @@ import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
+import { resolveRendererHtmlPath } from "./services/renderer-entry";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -386,7 +387,7 @@ function createWindow() {
   if (devServerUrl) {
     void window.loadURL(devServerUrl);
   } else {
-    const htmlPath = path.join(__dirname, "../../dist/index.html");
+    const htmlPath = resolveRendererHtmlPath(__dirname);
     void window.loadFile(htmlPath);
   }
 
