@@ -602,7 +602,7 @@ export class OpencodeService {
     const orxaInstalledPath = path.join(configDir, "node_modules", "@reliabilityworks", "opencode-orxa");
 
     const [opencodeInstalled, orxaInstalledLocal, orxaInstalledGlobal] = await Promise.all([
-      this.canRunCommand("opencode", ["--version"], homedir()),
+      this.canRunCommandWithFallbacks("opencode", ["--version"], homedir()),
       stat(orxaInstalledPath).then((item) => item.isDirectory()).catch(() => false),
       this.canRunCommand("npm", ["ls", "-g", ORXA_PLUGIN_PACKAGE, "--depth=0"], homedir()),
     ]);
@@ -3058,6 +3058,95 @@ export class OpencodeService {
         finish(code === 0);
       });
     });
+  }
+
+  private async canRunCommandWithFallbacks(command: string, args: string[], cwd: string) {
+    const direct = await this.canRunCommand(command, args, cwd);
+    if (direct) {
+      return true;
+    }
+    const candidates = await this.commandPathCandidates(command);
+    for (const candidate of candidates) {
+      if (await this.canRunCommand(candidate, args, cwd)) {
+        return true;
+      }
+    }
+    return this.canRunCommandViaLoginShell(command, args, cwd);
+  }
+
+  private async commandPathCandidates(command: string) {
+    const base = [
+      path.join("/opt/homebrew/bin", command),
+      path.join("/usr/local/bin", command),
+      path.join(homedir(), ".volta", "bin", command),
+      path.join(homedir(), ".asdf", "shims", command),
+      path.join(homedir(), ".local", "share", "mise", "shims", command),
+      path.join(homedir(), ".fnm", "current", "bin", command),
+    ];
+
+    const nvmDir = path.join(homedir(), ".nvm", "versions", "node");
+    const nvmEntries = await readdir(nvmDir, { withFileTypes: true }).catch(() => []);
+    for (const entry of nvmEntries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      base.push(path.join(nvmDir, entry.name, "bin", command));
+    }
+
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const candidate of base) {
+      if (seen.has(candidate)) {
+        continue;
+      }
+      seen.add(candidate);
+      if (existsSync(candidate)) {
+        unique.push(candidate);
+      }
+    }
+    return unique;
+  }
+
+  private async canRunCommandViaLoginShell(command: string, args: string[], cwd: string) {
+    const shell = process.env.SHELL || "/bin/zsh";
+    const quotedCommand = this.shellQuote(command);
+    const quotedArgs = args.map((item) => this.shellQuote(item)).join(" ");
+    const probe = `cmd_path="$(command -v ${quotedCommand})" || exit 127; "$cmd_path" ${quotedArgs} >/dev/null 2>&1`;
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      };
+
+      const child = spawn(shell, ["-ilc", probe], {
+        cwd,
+        env: process.env,
+        stdio: "ignore",
+      });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(false);
+      }, DEPENDENCY_CHECK_TIMEOUT_MS);
+
+      child.on("error", () => {
+        clearTimeout(timer);
+        finish(false);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        finish(code === 0);
+      });
+    });
+  }
+
+  private shellQuote(value: string) {
+    return `'${value.replace(/'/g, "'\\''")}'`;
   }
 
   private async runCommandWithOutput(command: string, args: string[], cwd: string) {
