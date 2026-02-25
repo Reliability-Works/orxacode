@@ -2,6 +2,16 @@
 
 ![Opencode Orxa hero banner](assets/readme/opencode-orxa-hero-banner-16x9.svg)
 
+## UI Preview
+
+Main session view:
+
+![Main session view](assets/readme/session.png)
+
+Subagent live output with unified diff:
+
+![Subagent unified diff view](assets/readme/subagent-unified-diff.png)
+
 Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
 Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.

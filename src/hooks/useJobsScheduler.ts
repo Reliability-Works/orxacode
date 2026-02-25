@@ -291,7 +291,6 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
           directory: job.projectDir,
           sessionID: created.id,
           text: job.prompt,
-          agent: "orxa",
         });
 
         setJobs((current) =>

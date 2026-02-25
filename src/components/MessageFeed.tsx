@@ -24,6 +24,9 @@ type InternalEvent = {
   summary: string;
   details?: string;
   actor?: string;
+  kind?: TimelineKind;
+  command?: string;
+  failure?: string;
 };
 
 type ActivityEvent = {
@@ -53,6 +56,19 @@ type TimelineBlock =
       id: string;
       type: "event";
       entry: TimelineEvent;
+    };
+
+type DelegationEventBlock =
+  | {
+      id: string;
+      type: "exploration";
+      summary: string;
+      entries: InternalEvent[];
+    }
+  | {
+      id: string;
+      type: "event";
+      entry: InternalEvent;
     };
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -110,7 +126,50 @@ function buildTimelineBlocks(events: TimelineEvent[]): TimelineBlock[] {
   }
   flushExploration();
   return blocks;
-};
+}
+
+function buildDelegationEventBlocks(events: InternalEvent[]): DelegationEventBlock[] {
+  const blocks: DelegationEventBlock[] = [];
+  let activeExploration: InternalEvent[] = [];
+
+  const flushExploration = () => {
+    if (activeExploration.length === 0) {
+      return;
+    }
+    const reads = activeExploration.filter((entry) => entry.kind === "read").length;
+    const searches = activeExploration.filter((entry) => entry.kind === "search").length;
+    const lists = activeExploration.filter((entry) => entry.kind === "list").length;
+    const parts: string[] = [];
+    if (reads > 0) {
+      parts.push(pluralize(reads, "file"));
+    }
+    if (searches > 0) {
+      parts.push(pluralize(searches, "search"));
+    }
+    if (lists > 0) {
+      parts.push(pluralize(lists, "list"));
+    }
+    const summary = `Explored ${parts.length > 0 ? parts.join(", ") : pluralize(activeExploration.length, "step")}`;
+    blocks.push({
+      id: `exploration:${activeExploration[0]?.id ?? blocks.length}`,
+      type: "exploration",
+      summary,
+      entries: activeExploration,
+    });
+    activeExploration = [];
+  };
+
+  for (const entry of events) {
+    if (entry.kind && isExplorationKind(entry.kind)) {
+      activeExploration.push(entry);
+      continue;
+    }
+    flushExploration();
+    blocks.push({ id: `event:${entry.id}`, type: "event", entry });
+  }
+  flushExploration();
+  return blocks;
+}
 
 type DelegationTrace = {
   id: string;
@@ -575,22 +634,70 @@ function countContentLines(value: string) {
   return normalized.split("\n").length;
 }
 
+function collectMetadataFileDiffStats(
+  value: unknown,
+  workspaceDirectory: string | null | undefined,
+  depth = 0,
+): PatchFileStat[] {
+  if (!value || depth > 4) {
+    return [];
+  }
+  const toStat = (record: Record<string, unknown>): PatchFileStat | null => {
+    const rawFile = ["file", "filepath", "filePath", "path"]
+      .map((key) => record[key])
+      .find((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (!rawFile) {
+      return null;
+    }
+    const additionsRaw = ["additions", "added", "insertions"]
+      .map((key) => record[key])
+      .find((item) => typeof item === "number");
+    const deletionsRaw = ["deletions", "removed", "removals"]
+      .map((key) => record[key])
+      .find((item) => typeof item === "number");
+    return {
+      filePath: formatTarget(rawFile, workspaceDirectory, 96),
+      additions: typeof additionsRaw === "number" ? Math.max(0, Math.round(additionsRaw)) : 0,
+      deletions: typeof deletionsRaw === "number" ? Math.max(0, Math.round(deletionsRaw)) : 0,
+    };
+  };
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectMetadataFileDiffStats(entry, workspaceDirectory, depth + 1));
+  }
+  if (typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  const found: PatchFileStat[] = [];
+  const direct = toStat(record);
+  if (direct) {
+    found.push(direct);
+  }
+  for (const nestedKey of ["filediff", "filediffs", "files", "changes", "diff", "result", "output", "metadata"]) {
+    if (nestedKey in record) {
+      found.push(...collectMetadataFileDiffStats(record[nestedKey], workspaceDirectory, depth + 1));
+    }
+  }
+  return found;
+}
+
 function extractMetaFileDiffSummary(metadata: unknown, workspaceDirectory?: string | null) {
-  const record = toObjectRecord(metadata);
-  if (!record) {
+  const stats = collectMetadataFileDiffStats(metadata, workspaceDirectory);
+  if (stats.length === 0) {
     return null;
   }
-  const filediff = toObjectRecord(record.filediff);
-  if (!filediff) {
-    return null;
+  const merged = new Map<string, PatchFileStat>();
+  for (const stat of stats) {
+    const existing = merged.get(stat.filePath);
+    if (!existing) {
+      merged.set(stat.filePath, { ...stat });
+      continue;
+    }
+    existing.additions += stat.additions;
+    existing.deletions += stat.deletions;
   }
-  const rawFile = typeof filediff.file === "string" ? filediff.file : "";
-  if (!rawFile) {
-    return null;
-  }
-  const additions = typeof filediff.additions === "number" ? Math.max(0, Math.round(filediff.additions)) : 0;
-  const deletions = typeof filediff.deletions === "number" ? Math.max(0, Math.round(filediff.deletions)) : 0;
-  return `${formatTarget(rawFile, workspaceDirectory, 96)} +${additions} | -${deletions}`;
+  return summarizePatchFileStats([...merged.values()]);
 }
 
 function extractWriteFileSummary(input: unknown, metadata: unknown, workspaceDirectory?: string | null) {
@@ -625,6 +732,16 @@ function extractPatchSummary(input: unknown, output: unknown, workspaceDirectory
     return null;
   }
   return summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
+}
+
+function isBareCommandLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "ran command" || normalized.startsWith("ran command on ");
+}
+
+function isLowSignalCompletedLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "completed action" || normalized.startsWith("completed action on ");
 }
 
 function extractTaskResultText(output: string, maxLength = 2200) {
@@ -889,7 +1006,7 @@ function toToolActivityLabel(
   }
   if (name.includes("apply_patch")) {
     const patch = extractPatchTarget(input, workspaceDirectory);
-    const patchSummary = extractPatchSummary(input, output, workspaceDirectory);
+    const patchSummary = extractPatchSummary(input, output, workspaceDirectory) ?? extractMetaFileDiffSummary(metadata, workspaceDirectory);
     if (patch) {
       if (isActive) {
         return `${patch.verb === "Deleted" ? "Deleting" : patch.verb === "Created" ? "Creating" : "Editing"} ${patch.target}...`;
@@ -898,6 +1015,9 @@ function toToolActivityLabel(
         return patchSummary ? `Patch failed on ${patch.target} (${patchSummary})` : `Patch failed on ${patch.target}`;
       }
       return patchSummary ? `${patch.verb} ${patchSummary}` : `${patch.verb} ${patch.target}`;
+    }
+    if (patchSummary) {
+      return isActive ? `Applying patch (${patchSummary})...` : isError ? `Patch failed (${patchSummary})` : `Applied patch ${patchSummary}`;
     }
     return isActive ? "Applying patch..." : isError ? "Patch failed" : "Applied patch";
   }
@@ -964,11 +1084,17 @@ function toToolActivityLabel(
         ? `Editing ${commandTarget}...`
         : `Edited ${commandTarget}`;
     }
+    if (commandPreview && /^loaded skill:/i.test(commandPreview)) {
+      return isActive ? `Loading ${compactText(commandPreview.replace(/^loaded skill:/i, "skill"), 72)}...` : commandPreview;
+    }
+    if (commandPreview && !isLikelyShellCommand(commandPreview)) {
+      return isActive ? `${compactText(commandPreview, 72)}...` : compactText(commandPreview, 92);
+    }
     if (commandPreview) {
       return isActive ? `Running ${commandPreview}...` : `Ran ${commandPreview}`;
     }
     if (commandTarget) {
-      return isActive ? `Running command on ${commandTarget}...` : `Ran command on ${commandTarget}`;
+      return isActive ? `Running command...` : "Ran command";
     }
     return isActive ? "Running command..." : "Ran command";
   }
@@ -976,9 +1102,9 @@ function toToolActivityLabel(
     return withTarget("Checking git", "Checked git");
   }
   if (target) {
-    return isActive ? `Working on ${target}...` : `Ran on ${target}`;
+    return isActive ? `Working on ${target}...` : `Completed action on ${target}`;
   }
-  return isActive ? "Working..." : "Ran command";
+  return isActive ? "Working..." : "Completed action";
 }
 
 function modelLabel(model: { providerID: string; modelID: string } | undefined) {
@@ -1058,7 +1184,7 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
   return null;
 }
 
-function summarizeDelegationEvent(part: Part, actor?: string): InternalEvent | null {
+function summarizeDelegationEvent(part: Part, actor?: string, workspaceDirectory?: string | null): InternalEvent | null {
   if (part.type === "step-start") {
     return { id: part.id, summary: "Step started", actor };
   }
@@ -1068,24 +1194,56 @@ function summarizeDelegationEvent(part: Part, actor?: string): InternalEvent | n
     return { id: part.id, summary: "Step finished", details, actor };
   }
   if (part.type === "tool") {
+    const stateRecord = part.state as unknown as Record<string, unknown>;
+    const stateMetadata = stateRecord.metadata;
+    const stateOutput = stateRecord.output;
+    const status = part.state.status;
+    const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+    const isCommandTool =
+      part.tool.trim().toLowerCase().includes("exec_command") ||
+      part.tool.trim().toLowerCase().includes("bash") ||
+      part.tool.trim().toLowerCase().includes("run");
+    const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
+    const commandPreview = showCommand ? extractCommandPreview(part.state.input) : null;
+    const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : undefined;
+    const failure = status === "error" ? (typeof stateRecord.error === "string" ? compactText(stateRecord.error, 220) : "Tool execution failed") : undefined;
+    let label = toToolActivityLabel(part.tool, status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
+
+    if (part.tool.trim().toLowerCase().includes("apply_patch") || part.tool.trim().toLowerCase().includes("patch")) {
+      const patchSummary = extractPatchSummary(stateRecord.input, stateRecord.output, workspaceDirectory) ?? extractMetaFileDiffSummary(stateMetadata, workspaceDirectory);
+      if (patchSummary && /applied patch$/i.test(label.trim())) {
+        label = `${label} ${patchSummary}`;
+      }
+    }
+
+    if (kind === "run" && !command && !failure && isBareCommandLabel(label)) {
+      return null;
+    }
+    if (isLowSignalCompletedLabel(label) && !command && !failure) {
+      return null;
+    }
+
     if (isTaskToolName(part.tool)) {
-      const stateRecord = part.state as unknown as Record<string, unknown>;
       const output = typeof stateRecord.output === "string" ? stateRecord.output : "";
       const taskResult = output ? extractTaskResultText(output) : null;
       return {
         id: part.id,
-        summary: `${part.tool} (${part.state.status})`,
+        summary: label,
         details: taskResult ?? undefined,
         actor,
+        kind,
+        command,
+        failure,
       };
     }
-    const stateRecord = part.state as unknown as Record<string, unknown>;
-    const error = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
     return {
       id: part.id,
-      summary: `${part.tool} (${part.state.status})`,
-      details: error,
+      summary: label,
+      details: failure,
       actor,
+      kind,
+      command,
+      failure,
     };
   }
   if (part.type === "reasoning") {
@@ -1141,8 +1299,8 @@ function summarizeDelegationSessionMessages(messages: SessionMessageBundle[], wo
         }
         events.push({
           id: `${bundle.info.id}:${part.id}:text`,
-          summary: "assistant",
-          details: text,
+          summary: compactText(text, 220),
+          details: text.length > 220 ? text : undefined,
         });
         continue;
       }
@@ -1150,28 +1308,46 @@ function summarizeDelegationSessionMessages(messages: SessionMessageBundle[], wo
         const stateRecord = part.state as unknown as Record<string, unknown>;
         const stateMetadata = stateRecord.metadata;
         const stateOutput = stateRecord.output;
+        const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
+        const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+        const isCommandTool =
+          part.tool.trim().toLowerCase().includes("exec_command") ||
+          part.tool.trim().toLowerCase().includes("bash") ||
+          part.tool.trim().toLowerCase().includes("run");
+        const showCommand =
+          (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") ||
+          kind === "run" ||
+          kind === "git";
+        const commandPreview = showCommand ? extractCommandPreview(part.state.input) : null;
+        const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : undefined;
+        const failure = part.state.status === "error" ? compactText(stateError ?? "Tool execution failed", 220) : undefined;
         let label = toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
-        const toolEvent = summarizeDelegationEvent(part);
         const toolName = part.tool.trim().toLowerCase();
         if (toolName.includes("apply_patch") || toolName.includes("patch")) {
-          const patchText = extractPatchText(stateRecord.input, stateRecord.output);
-          if (patchText) {
-            const summary = summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
-            if (summary) {
-              if (part.state.status === "completed") {
-                label = `Applied patch ${summary}`;
-              } else if (/applied patch/i.test(label)) {
-                label = `${label} ${summary}`;
-              } else {
-                label = `${label} (${summary})`;
-              }
+          const summary = extractPatchSummary(stateRecord.input, stateRecord.output, workspaceDirectory) ?? extractMetaFileDiffSummary(stateMetadata, workspaceDirectory);
+          if (summary) {
+            if (part.state.status === "completed") {
+              label = `Applied patch ${summary}`;
+            } else if (/applied patch/i.test(label)) {
+              label = `${label} ${summary}`;
+            } else {
+              label = `${label} (${summary})`;
             }
           }
+        }
+        if (kind === "run" && !command && !failure && isBareCommandLabel(label)) {
+          continue;
+        }
+        if (isLowSignalCompletedLabel(label) && !command && !failure) {
+          continue;
         }
         events.push({
           id: `${bundle.info.id}:${part.id}:tool`,
           summary: label,
-          details: toolEvent?.details,
+          details: failure,
+          kind,
+          command,
+          failure,
         });
       }
     }
@@ -1221,7 +1397,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
           internal.push(telemetryEvent);
         }
         if (activeDelegation) {
-          const delegationEvent = summarizeDelegationEvent(part, currentActor);
+          const delegationEvent = summarizeDelegationEvent(part, currentActor, workspaceDirectory);
           if (delegationEvent) {
             activeDelegation.events.push(delegationEvent);
           }
@@ -1269,7 +1445,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         } else {
           label = compactText(stateTitle, 92);
         }
-      } else if ((label === "Ran command" || label === "Running command...") && stateTitle) {
+      } else if ((isBareCommandLabel(label) || label === "Running command...") && stateTitle) {
         label = isToolStatusActive(status) ? `Running ${compactText(stateTitle, 72)}...` : `Ran ${compactText(stateTitle, 72)}`;
       }
       const taskDelegation = isTaskToolName(toolName)
@@ -1306,7 +1482,10 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
               : null)
           : null;
         const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : null;
-        if (kind === "run" && !command && !stateError && label.trim().toLowerCase() === "ran command") {
+        if (kind === "run" && !command && !stateError && isBareCommandLabel(label)) {
+          continue;
+        }
+        if (isLowSignalCompletedLabel(label) && !command && !stateError) {
           continue;
         }
         timeline.push({
@@ -1326,7 +1505,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
     }
 
     if (activeDelegation) {
-      const delegationEvent = summarizeDelegationEvent(part, currentActor);
+      const delegationEvent = summarizeDelegationEvent(part, currentActor, workspaceDirectory);
       if (delegationEvent) {
         activeDelegation.events.push(delegationEvent);
       }
@@ -1452,6 +1631,10 @@ export function MessageFeed({
     }
     return [...selectedDelegation.events, ...delegationSessionEvents];
   }, [selectedDelegation, delegationSessionEvents]);
+  const selectedDelegationEventBlocks = useMemo(
+    () => buildDelegationEventBlocks(selectedDelegationEvents),
+    [selectedDelegationEvents],
+  );
   const delegationOverlayStyle = useMemo(() => {
     if (!delegationOverlayBounds) {
       return undefined;
@@ -1550,13 +1733,14 @@ export function MessageFeed({
     }
     const updateOverlayBounds = () => {
       const paneElement = messageFeedRef.current?.closest(".content-pane") as HTMLElement | null;
-      const rect = paneElement?.getBoundingClientRect() ?? messageFeedRef.current?.getBoundingClientRect();
+      const feedRect = messageFeedRef.current?.getBoundingClientRect();
+      const rect = feedRect ?? paneElement?.getBoundingClientRect();
       if (!rect) {
         return;
       }
       const horizontalPadding = 8;
-      const topPadding = 8;
-      const bottomPadding = Math.max(24, Math.round(bottomClearance + 24));
+      const topPadding = 4;
+      const bottomPadding = Math.max(16, Math.round(bottomClearance + 12));
       if (!(rect.width > 0) || !(rect.height > 0)) {
         setDelegationOverlayBounds((current) => {
           if (current) {
@@ -1770,17 +1954,34 @@ export function MessageFeed({
               </details>
               <div className="delegation-modal-events">
                 <h3>Live output</h3>
-                {selectedDelegationEvents.length === 0 ? (
+                {selectedDelegationEventBlocks.length === 0 ? (
                   <p>No live output yet.</p>
                 ) : (
-                  <ul>
-                    {selectedDelegationEvents.map((event) => (
-                      <li key={event.id}>
-                        <span>{event.summary}</span>
-                        {event.details ? <pre className="delegation-event-details">{event.details}</pre> : null}
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="delegation-modal-events-list">
+                    {selectedDelegationEventBlocks.map((block, blockIndex) =>
+                      block.type === "exploration" ? (
+                        <details key={`${block.id}:${blockIndex}`} className="message-exploration delegation-event-exploration">
+                          <summary className="message-exploration-summary">{block.summary}</summary>
+                          <div className="message-exploration-entries">
+                            {block.entries.map((entry, entryIndex) => (
+                              <span key={`${entry.id}:${entryIndex}`} className="message-exploration-entry">
+                                {renderLabelWithDiff(entry.summary)}
+                              </span>
+                            ))}
+                          </div>
+                        </details>
+                      ) : (
+                        <div key={`${block.id}:${blockIndex}`} className="delegation-modal-event-row">
+                          <span className="delegation-modal-event-label">{renderLabelWithDiff(block.entry.summary)}</span>
+                          {block.entry.command ? <small className="delegation-modal-event-command">Command: {block.entry.command}</small> : null}
+                          {block.entry.failure ? <small className="delegation-modal-event-error">Error: {block.entry.failure}</small> : null}
+                          {block.entry.details && !block.entry.failure ? (
+                            <small className="delegation-event-details">{block.entry.details}</small>
+                          ) : null}
+                        </div>
+                      ),
+                    )}
+                  </div>
                 )}
                 <p className={`delegation-modal-session-status${delegationSessionError ? " error" : ""}`}>
                   {delegationSessionError ? delegationSessionError : delegationSessionLoading ? "Fetching subagent session..." : ""}

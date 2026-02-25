@@ -15,6 +15,7 @@ import { ProfileModal } from "./ProfileModal";
 import type { CommitNextStep } from "../hooks/useGitPanel";
 
 type SkillUseModalState = { skill: SkillEntry; projectDir: string } | null;
+export type SkillPromptTarget = "current" | "new";
 
 type CommitSummary = {
   branch: string;
@@ -31,7 +32,7 @@ export type GlobalModalsHostProps = {
   setDependencyModalOpen: Dispatch<SetStateAction<boolean>>;
   onCheckDependencies: () => void | Promise<void>;
   permissionRequest: PermissionRequest | null;
-  permissionDecisionPending: "once" | "always" | "reject" | null;
+  permissionDecisionInFlight: boolean;
   replyPermission: (decision: "once" | "always" | "reject") => void | Promise<void>;
   questionRequest: QuestionRequest | null;
   replyQuestion: (answer: string) => void | Promise<void>;
@@ -76,7 +77,7 @@ export type GlobalModalsHostProps = {
   addProjectDirectory: (options?: { select?: boolean }) => Promise<string | undefined>;
   skillUseModal: SkillUseModalState;
   setSkillUseModal: Dispatch<SetStateAction<SkillUseModalState>>;
-  applySkillToProject: (skill: SkillEntry, targetProjectDir: string) => Promise<void>;
+  applySkillToProject: (skill: SkillEntry, targetProjectDir: string, sessionTarget: SkillPromptTarget) => Promise<void>;
   profileModalOpen: boolean;
   setProfileModalOpen: Dispatch<SetStateAction<boolean>>;
   profiles: RuntimeProfile[];
@@ -100,6 +101,26 @@ function formatQuestionPrompt(questionRequest: QuestionRequest | null) {
   return "OpenCode requires additional input to continue.";
 }
 
+function compactPermissionPattern(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function formatPermissionDescription(permissionRequest: PermissionRequest) {
+  const firstPattern = (permissionRequest.patterns ?? []).find((pattern) => pattern.trim().length > 0);
+  const permissionName = permissionRequest.permission.trim();
+  const isCommandRequest = /\b(bash|command|exec|run)\b/i.test(permissionName);
+  if (firstPattern && isCommandRequest) {
+    return `OpenCode is requesting access to run: ${compactPermissionPattern(firstPattern)}`;
+  }
+  if (firstPattern) {
+    return `OpenCode is requesting access for: ${compactPermissionPattern(firstPattern)}`;
+  }
+  if (permissionName) {
+    return `OpenCode is requesting access for "${permissionName}".`;
+  }
+  return "OpenCode is requesting additional access.";
+}
+
 export function GlobalModalsHost({
   activeProjectDir,
   dependencyReport,
@@ -107,7 +128,7 @@ export function GlobalModalsHost({
   setDependencyModalOpen,
   onCheckDependencies,
   permissionRequest,
-  permissionDecisionPending,
+  permissionDecisionInFlight,
   replyPermission,
   questionRequest,
   replyQuestion,
@@ -165,6 +186,8 @@ export function GlobalModalsHost({
 }: GlobalModalsHostProps) {
   const [questionDraft, setQuestionDraft] = useState("");
   const [copiedDependencyKey, setCopiedDependencyKey] = useState<string | null>(null);
+  const [skillTargetSelectorOpen, setSkillTargetSelectorOpen] = useState(false);
+  const [skillPreparing, setSkillPreparing] = useState(false);
 
   useEffect(() => {
     setQuestionDraft("");
@@ -177,6 +200,11 @@ export function GlobalModalsHost({
     const timer = window.setTimeout(() => setCopiedDependencyKey(null), 1200);
     return () => window.clearTimeout(timer);
   }, [copiedDependencyKey]);
+
+  useEffect(() => {
+    setSkillTargetSelectorOpen(false);
+    setSkillPreparing(false);
+  }, [skillUseModal?.skill.id, skillUseModal?.projectDir]);
 
   const copyDependencyCommand = async (installCommand: string, key: string) => {
     try {
@@ -192,6 +220,19 @@ export function GlobalModalsHost({
       return;
     }
     setDependencyModalOpen(false);
+  };
+
+  const submitSkillPrompt = async (sessionTarget: SkillPromptTarget) => {
+    if (!skillUseModal?.projectDir) {
+      return;
+    }
+    try {
+      setSkillPreparing(true);
+      await applySkillToProject(skillUseModal.skill, skillUseModal.projectDir, sessionTarget);
+    } finally {
+      setSkillPreparing(false);
+      setSkillTargetSelectorOpen(false);
+    }
   };
 
   return (
@@ -271,7 +312,7 @@ export function GlobalModalsHost({
             </header>
             <div className="permission-modal-body">
               <p className="permission-title">{permissionRequest.permission}</p>
-              <p className="permission-description">OpenCode is requesting edit access for the selected project.</p>
+              <p className="permission-description">{formatPermissionDescription(permissionRequest)}</p>
               <div className="permission-patterns">
                 {(permissionRequest.patterns ?? []).map((pattern) => (
                   <code key={pattern}>{pattern}</code>
@@ -280,14 +321,14 @@ export function GlobalModalsHost({
               <div className="permission-actions">
                 <button
                   type="button"
-                  disabled={permissionDecisionPending !== null}
+                  disabled={permissionDecisionInFlight}
                   onClick={() => void replyPermission("once")}
                 >
                   Allow once
                 </button>
                 <button
                   type="button"
-                  disabled={permissionDecisionPending !== null}
+                  disabled={permissionDecisionInFlight}
                   onClick={() => void replyPermission("always")}
                 >
                   Allow session
@@ -295,7 +336,7 @@ export function GlobalModalsHost({
                 <button
                   type="button"
                   className="danger"
-                  disabled={permissionDecisionPending !== null}
+                  disabled={permissionDecisionInFlight}
                   onClick={() => void replyPermission("reject")}
                 >
                   Reject
@@ -354,6 +395,7 @@ export function GlobalModalsHost({
               {sessions.map((session) => {
                 const status = getSessionStatusType(session.id, activeProjectDir);
                 const busy = status === "busy" || status === "retry";
+                const awaitingPermission = status === "permission";
                 return (
                   <button
                     key={session.id}
@@ -365,7 +407,12 @@ export function GlobalModalsHost({
                     }}
                     title={session.title || session.slug}
                   >
-                    <span className={`session-status-indicator ${busy ? "busy" : "idle"}`} aria-hidden="true" />
+                    <span
+                      className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
+                      aria-hidden="true"
+                    >
+                      {awaitingPermission ? "!" : null}
+                    </span>
                     <strong>{session.title || session.slug}</strong>
                     <span>{status}</span>
                     <small>{new Date(session.time.updated).toLocaleString()}</small>
@@ -572,21 +619,50 @@ export function GlobalModalsHost({
                       })
                     }
                   >
-                    Add workspace
+                    Add new workspace
                   </button>
                 </div>
               </label>
+              {skillTargetSelectorOpen ? (
+                <section className="skill-use-target-selector">
+                  <p>Add this prepared prompt to:</p>
+                  <div className="skill-use-target-actions">
+                    <button
+                      type="button"
+                      disabled={skillPreparing}
+                      onClick={() => void submitSkillPrompt("current")}
+                    >
+                      Current session
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={skillPreparing}
+                      onClick={() => void submitSkillPrompt("new")}
+                    >
+                      New session
+                    </button>
+                    <button
+                      type="button"
+                      disabled={skillPreparing}
+                      onClick={() => setSkillTargetSelectorOpen(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </section>
+              ) : null}
               <footer className="skill-use-actions">
-                <button type="button" onClick={() => setSkillUseModal(null)}>
+                <button type="button" disabled={skillPreparing} onClick={() => setSkillUseModal(null)}>
                   Cancel
                 </button>
                 <button
                   type="button"
                   className="primary"
-                  disabled={!skillUseModal.projectDir}
-                  onClick={() => void applySkillToProject(skillUseModal.skill, skillUseModal.projectDir)}
+                  disabled={!skillUseModal.projectDir || skillPreparing}
+                  onClick={() => setSkillTargetSelectorOpen(true)}
                 >
-                  Prepare prompt
+                  {skillPreparing ? "Preparing..." : "Prepare prompt"}
                 </button>
               </footer>
             </div>

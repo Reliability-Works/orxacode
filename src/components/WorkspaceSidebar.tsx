@@ -277,6 +277,7 @@ export function WorkspaceSidebar({
                       {displayedSessions.map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
                         const busy = status === "busy" || status === "retry";
+                        const awaitingPermission = status === "permission";
                         return (
                           <button
                             type="button"
@@ -288,7 +289,12 @@ export function WorkspaceSidebar({
                             }
                             title={session.title || session.slug}
                           >
-                            <span className={`session-status-indicator ${busy ? "busy" : "idle"}`} aria-hidden="true" />
+                            <span
+                              className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
+                              aria-hidden="true"
+                            >
+                              {awaitingPermission ? "!" : null}
+                            </span>
                             <span>{session.title || session.slug}</span>
                           </button>
                         );

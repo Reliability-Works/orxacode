@@ -523,6 +523,8 @@
   margin: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  border-radius: var(--radius-lg);
+  clip-path: inset(0 round var(--radius-lg));
   overflow: hidden;
   transform: translateZ(0);
 }
@@ -573,37 +575,54 @@
   font-size: 0.82rem;
 }
 
-.delegation-modal-events ul {
-  margin: 0;
-  padding-left: 18px;
+.delegation-modal-events-list {
   min-height: 0;
-  max-height: none;
-  height: 100%;
   overflow: auto;
   display: grid;
-  gap: 8px;
+  align-content: start;
+  gap: 6px;
 }
 
-.delegation-modal-events li {
+.delegation-event-exploration {
+  margin: 0;
+}
+
+.delegation-modal-event-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
   display: grid;
   gap: 3px;
-  font-size: 0.8rem;
+  background: hsl(220 12% 15% / 0.56);
+  font-size: 0.77rem;
+  font-family: var(--code-font);
 }
 
-.delegation-modal-events li > span {
+.delegation-modal-event-label {
+  color: var(--text-main);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.delegation-modal-events li small {
-  color: var(--text-dim);
+.delegation-modal-event-command {
+  color: hsl(220 13% 72%);
+  font-size: 0.71rem;
+  font-family: var(--code-font);
+  word-break: break-word;
+}
+
+.delegation-modal-event-error {
+  color: hsl(347 89% 72%);
+  font-size: 0.71rem;
+  font-family: var(--code-font);
+  word-break: break-word;
 }
 
 .delegation-event-details {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   color: var(--text-dim);
   font-family: var(--code-font);
 }
@@ -779,6 +798,21 @@
   border-radius: 999px;
   transform-origin: center;
   animation: session-status-spin 740ms linear infinite;
+}
+
+.session-status-indicator.attention {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: hsl(44 96% 56%);
+  color: hsl(223 30% 10%);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 1px hsl(40 95% 34% / 0.45);
 }
 
 @keyframes session-status-spin {
@@ -979,6 +1013,10 @@
   background: hsl(220 20% 4% / 0.8);
   backdrop-filter: blur(4px);
   z-index: 45;
+}
+
+.permission-overlay {
+  z-index: 320;
 }
 
 .settings-modal-overlay {
@@ -2669,6 +2707,27 @@
 .skill-use-actions {
   display: flex;
   justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.skill-use-target-selector {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  padding: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.skill-use-target-selector p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.skill-use-target-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 

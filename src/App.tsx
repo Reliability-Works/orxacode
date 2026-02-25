@@ -32,6 +32,7 @@ import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
+import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
 import { GitSidebar } from "./components/GitSidebar";
 import { ProjectDashboard } from "./components/ProjectDashboard";
@@ -142,6 +143,7 @@ const OPEN_TARGETS: OpenTargetOption[] = [
 ];
 const DEFAULT_COMPACTION_THRESHOLD = 120_000;
 const MIN_COMPACTION_THRESHOLD = 24_000;
+const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
 
 function shouldAutoRenameSessionTitle(title: string | undefined) {
   if (!title) {
@@ -160,6 +162,22 @@ function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
     return "New session";
   }
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
+  let timeoutId: number | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
 }
 
 function parseTodoItemsFromValue(value: unknown): OrxaTodoItem[] {
@@ -383,7 +401,7 @@ export default function App() {
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
   const projectLastOpenedRef = useRef<Record<string, number>>({});
   const projectLastUpdatedRef = useRef<Record<string, number>>({});
-  const manualSessionStopsRef = useRef<Record<string, number>>({});
+  const manualSessionStopsRef = useRef<Record<string, { requestedAt: number; noticeEmitted: boolean }>>({});
   const prevAppModeRef = useRef<typeof appMode>(appMode);
   const {
     sidebarMode,
@@ -503,6 +521,7 @@ export default function App() {
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
   const [todosOpen, setTodosOpen] = useState(false);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
+  const [permissionDecisionPendingRequestID, setPermissionDecisionPendingRequestID] = useState<string | null>(null);
   const [dependencyReport, setDependencyReport] = useState<RuntimeDependencyReport | null>(null);
   const [dependencyModalOpen, setDependencyModalOpen] = useState(false);
   const [textInputDialog, setTextInputDialog] = useState<TextInputDialogState | null>(null);
@@ -761,7 +780,7 @@ export default function App() {
   }, [activeProjectDir]);
 
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
-    manualSessionStopsRef.current[`${directory}::${sessionID}`] = Date.now();
+    manualSessionStopsRef.current[`${directory}::${sessionID}`] = { requestedAt: Date.now(), noticeEmitted: false };
   }, []);
 
   const {
@@ -996,14 +1015,15 @@ export default function App() {
             ? eventProperties.sessionID
             : undefined;
         const eventSessionKey = eventSessionID ? `${event.payload.directory}::${eventSessionID}` : null;
-        const manualStopAt =
-          eventSessionKey && typeof manualSessionStopsRef.current[eventSessionKey] === "number"
-            ? manualSessionStopsRef.current[eventSessionKey]
-            : undefined;
-        const isRecentManualStop = typeof manualStopAt === "number" && Date.now() - manualStopAt < 30_000;
-        if (isRecentManualStop && eventSessionKey && (kind === "session.error" || kind === "session.idle")) {
-          delete manualSessionStopsRef.current[eventSessionKey];
+        const now = Date.now();
+        for (const [key, state] of Object.entries(manualSessionStopsRef.current)) {
+          if (now - state.requestedAt > 120_000) {
+            delete manualSessionStopsRef.current[key];
+          }
         }
+        const manualStopState = eventSessionKey ? manualSessionStopsRef.current[eventSessionKey] : undefined;
+        const manualStopAt = manualStopState?.requestedAt;
+        const isRecentManualStop = typeof manualStopAt === "number" && now - manualStopAt < 30_000;
         if (
           kind === "message.created" ||
           kind === "session.created" ||
@@ -1062,6 +1082,13 @@ export default function App() {
           const sessionID = eventSessionID ?? activeSessionID;
           const interruptedDetail = "User interrupted. Send a new message to continue.";
           const useInterruptedReason = isRecentManualStop;
+          const interruptedAlreadyNoticed = Boolean(manualStopState?.noticeEmitted);
+          if (useInterruptedReason && interruptedAlreadyNoticed) {
+            if (sessionID && sessionID === activeSessionID) {
+              stopResponsePolling();
+            }
+            return;
+          }
           if (sessionID) {
             addSessionFeedNotice(event.payload.directory, sessionID, {
               label: useInterruptedReason ? "Session stopped by user" : "Session stopped due to an error",
@@ -1071,18 +1098,26 @@ export default function App() {
               tone: useInterruptedReason ? "info" : "error",
             });
           }
+          if (useInterruptedReason && eventSessionKey) {
+            manualSessionStopsRef.current[eventSessionKey] = { requestedAt: manualStopAt ?? now, noticeEmitted: true };
+          }
           setStatusLine(useInterruptedReason ? interruptedDetail : message || "Session stopped due to an error.");
           if (sessionID && sessionID === activeSessionID) {
             stopResponsePolling();
           }
         }
         if (kind === "session.idle" && isRecentManualStop && eventSessionID) {
-          addSessionFeedNotice(event.payload.directory, eventSessionID, {
-            label: "Session stopped by user",
-            detail: "User interrupted. Send a new message to continue.",
-            tone: "info",
-          });
-          setStatusLine("User interrupted. Send a new message to continue.");
+          if (!manualStopState?.noticeEmitted) {
+            addSessionFeedNotice(event.payload.directory, eventSessionID, {
+              label: "Session stopped by user",
+              detail: "User interrupted. Send a new message to continue.",
+              tone: "info",
+            });
+            setStatusLine("User interrupted. Send a new message to continue.");
+            if (eventSessionKey) {
+              manualSessionStopsRef.current[eventSessionKey] = { requestedAt: manualStopAt ?? now, noticeEmitted: true };
+            }
+          }
           if (eventSessionID === activeSessionID) {
             stopResponsePolling();
           }
@@ -1135,6 +1170,9 @@ export default function App() {
     (sessionID: string, directory?: string) => {
       if (!directory || !projectData || projectData.directory !== directory) {
         return "idle";
+      }
+      if (projectData.permissions.some((request) => request.sessionID === sessionID)) {
+        return "permission";
       }
       return projectData.sessionStatus[sessionID]?.type ?? "idle";
     },
@@ -1298,7 +1336,7 @@ export default function App() {
   );
 
   const applySkillToProject = useCallback(
-    async (skill: SkillEntry, targetProjectDir: string) => {
+    async (skill: SkillEntry, targetProjectDir: string, sessionTarget: SkillPromptTarget) => {
       const project = projects.find((item) => item.worktree === targetProjectDir);
       if (!project) {
         setStatusLine("Select a valid workspace");
@@ -1317,25 +1355,38 @@ export default function App() {
       await selectProject(targetProjectDir);
       const latest = await opencodeClient.refreshProject(targetProjectDir);
       setProjectData(latest);
-      const session = [...latest.sessions]
-        .filter((item) => !item.time.archived)
-        .sort((left, right) => right.time.updated - left.time.updated)[0];
-      if (session) {
-        setActiveSessionID(session.id);
-        const msgs = await opencodeClient.loadMessages(targetProjectDir, session.id).catch(() => []);
-        messageCacheRef.current[`${targetProjectDir}:${session.id}`] = msgs;
-        setMessages(msgs);
-      } else {
-        const created = await opencodeClient.createSession(targetProjectDir, `Skill: ${skill.name}`);
-        setActiveSessionID(created.id);
-        setMessages([]);
+
+      let targetSessionID: string | null = null;
+      let usedCurrentSession = false;
+      if (sessionTarget === "current" && activeProjectDir === targetProjectDir && activeSessionID) {
+        const currentSessionAvailable = latest.sessions.some(
+          (item) => item.id === activeSessionID && !item.time.archived,
+        );
+        if (currentSessionAvailable) {
+          targetSessionID = activeSessionID;
+          usedCurrentSession = true;
+        }
       }
+
+      if (!targetSessionID) {
+        const created = await opencodeClient.createSession(targetProjectDir, `Skill: ${skill.name}`);
+        targetSessionID = created.id;
+        setMessages([]);
+      } else {
+        const msgs = await opencodeClient.loadMessages(targetProjectDir, targetSessionID).catch(() => []);
+        messageCacheRef.current[`${targetProjectDir}:${targetSessionID}`] = msgs;
+        setMessages(msgs);
+      }
+
+      setActiveSessionID(targetSessionID);
       setComposer(seedPrompt);
       setSidebarMode("projects");
       setSkillUseModal(null);
-      setStatusLine(`Prepared skill prompt for ${project.name || project.worktree.split("/").at(-1) || project.worktree}`);
+      const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
+      const targetLabel = usedCurrentSession ? "current session" : "new session";
+      setStatusLine(`Prepared skill prompt for ${projectLabel} (${targetLabel})`);
     },
-    [projects, selectProject],
+    [activeProjectDir, activeSessionID, projects, selectProject],
   );
 
   useEffect(() => {
@@ -1704,17 +1755,37 @@ export default function App() {
     [terminalOpen],
   );
   const pendingPermission = useMemo(() => (projectData?.permissions ?? [])[0], [projectData?.permissions]);
+  const isPermissionDecisionInFlight = Boolean(
+    pendingPermission &&
+      permissionDecisionPending !== null &&
+      permissionDecisionPendingRequestID === pendingPermission.id,
+  );
+
+  useEffect(() => {
+    if (!permissionDecisionPending) {
+      if (permissionDecisionPendingRequestID !== null) {
+        setPermissionDecisionPendingRequestID(null);
+      }
+      return;
+    }
+    if (!pendingPermission || permissionDecisionPendingRequestID !== pendingPermission.id) {
+      setPermissionDecisionPending(null);
+      setPermissionDecisionPendingRequestID(null);
+    }
+  }, [pendingPermission, permissionDecisionPending, permissionDecisionPendingRequestID]);
+
   useEffect(() => {
     if (appPreferences.permissionMode !== "yolo-write") {
       return;
     }
-    if (!activeProjectDir || !pendingPermission || permissionDecisionPending !== null) {
+    if (!activeProjectDir || !pendingPermission || isPermissionDecisionInFlight) {
       return;
     }
     let cancelled = false;
     void (async () => {
       try {
         setPermissionDecisionPending("once");
+        setPermissionDecisionPendingRequestID(pendingPermission.id);
         await window.orxa.opencode.replyPermission(
           activeProjectDir,
           pendingPermission.id,
@@ -1731,6 +1802,7 @@ export default function App() {
       } finally {
         if (!cancelled) {
           setPermissionDecisionPending(null);
+          setPermissionDecisionPendingRequestID(null);
         }
       }
     })();
@@ -1741,8 +1813,9 @@ export default function App() {
   }, [
     activeProjectDir,
     appPreferences.permissionMode,
+    isPermissionDecisionInFlight,
     pendingPermission,
-    permissionDecisionPending,
+    permissionDecisionPendingRequestID,
     refreshProject,
     setStatusLine,
   ]);
@@ -1859,7 +1932,12 @@ export default function App() {
       }
       try {
         setPermissionDecisionPending(reply);
-        await window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply);
+        setPermissionDecisionPendingRequestID(pendingPermission.id);
+        await withTimeout(
+          window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply),
+          PERMISSION_REPLY_TIMEOUT_MS,
+          "Permission response timed out. Please try again.",
+        );
         if (reply === "always") {
           setAppPreferences((current) =>
             current.permissionMode === "yolo-write"
@@ -1876,9 +1954,18 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       } finally {
         setPermissionDecisionPending(null);
+        setPermissionDecisionPendingRequestID(null);
       }
     },
-    [activeProjectDir, appPreferences.confirmDangerousActions, pendingPermission, refreshProject, requestConfirmation, setAppPreferences],
+    [
+      activeProjectDir,
+      appPreferences.confirmDangerousActions,
+      pendingPermission,
+      refreshProject,
+      requestConfirmation,
+      setAppPreferences,
+      setStatusLine,
+    ],
   );
 
   const replyPendingQuestion = useCallback(
@@ -2525,7 +2612,7 @@ export default function App() {
         setDependencyModalOpen={setDependencyModalOpen}
         onCheckDependencies={refreshRuntimeDependencies}
         permissionRequest={pendingPermission ?? null}
-        permissionDecisionPending={permissionDecisionPending}
+        permissionDecisionInFlight={isPermissionDecisionInFlight}
         replyPermission={replyPendingPermission}
         questionRequest={pendingQuestion}
         replyQuestion={replyPendingQuestion}

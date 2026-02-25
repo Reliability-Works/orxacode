@@ -303,7 +303,7 @@ describe("MessageFeed", () => {
     expect(bubble).toBeInTheDocument();
     fireEvent.click(bubble);
     const dialog = screen.getByRole("dialog", { name: /delegation: build/i });
-    expect(within(dialog).getByText(/Build Spencer Solutions site/i)).toBeInTheDocument();
+    expect(within(dialog).getByText("Build Spencer Solutions site")).toBeInTheDocument();
   });
 
   it("renders completed task tool as delegation timeline entry", () => {
@@ -518,9 +518,13 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
     const buildButtons = screen.getAllByRole("button", { name: /build/i });
     fireEvent.click(buildButtons[buildButtons.length - 1]!);
+    const dialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
+    const dialog = dialogs[dialogs.length - 1]!;
 
     await waitFor(() => {
-      expect(screen.getByText(/package\.json \+2 \| -1/i)).toBeInTheDocument();
+      expect(within(dialog).getByText(/Applied patch package\.json/i)).toBeInTheDocument();
+      expect(within(dialog).getByText("+2")).toHaveClass("message-diff-add");
+      expect(within(dialog).getByText("-1")).toHaveClass("message-diff-del");
     });
   });
 
@@ -576,7 +580,120 @@ describe("MessageFeed", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText(/Model: openai\/gpt-5-codex/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/Inspect files and implement a fix/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/apply_patch \(completed\)/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Applied patch/i)).toBeInTheDocument();
+  });
+
+  it("groups delegated read/list output into explored summary blocks", async () => {
+    const now = Date.now();
+    const loadMessages = vi.fn(async () => [
+      {
+        info: ({
+          id: "child-msg-grouped-output",
+          role: "assistant",
+          sessionID: "child-grouped-output",
+          time: { created: now + 10, updated: now + 10 },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "child-tool-list",
+            type: "tool",
+            sessionID: "child-grouped-output",
+            messageID: "child-msg-grouped-output",
+            callID: "child-call-list",
+            tool: "list_directory",
+            state: {
+              status: "completed",
+              input: { path: "/repo/_template/src/app" },
+              output: "",
+              title: "list",
+              metadata: {},
+              time: { start: now + 10, end: now + 11 },
+            },
+          },
+          {
+            id: "child-tool-read-layout",
+            type: "tool",
+            sessionID: "child-grouped-output",
+            messageID: "child-msg-grouped-output",
+            callID: "child-call-read-layout",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/_template/src/app/layout.tsx" },
+              output: "",
+              title: "read",
+              metadata: {},
+              time: { start: now + 12, end: now + 13 },
+            },
+          },
+          {
+            id: "child-tool-read-page",
+            type: "tool",
+            sessionID: "child-grouped-output",
+            messageID: "child-msg-grouped-output",
+            callID: "child-call-read-page",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/_template/src/app/page.tsx" },
+              output: "",
+              title: "read",
+              metadata: {},
+              time: { start: now + 14, end: now + 15 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ]);
+    const currentOrxa = (window as { orxa?: unknown }).orxa as { opencode?: Record<string, unknown> } | undefined;
+    Object.defineProperty(window, "orxa", {
+      value: { ...(currentOrxa ?? {}), opencode: { ...(currentOrxa?.opencode ?? {}), loadMessages } },
+      configurable: true,
+    });
+
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-grouped-output",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-task-grouped-output",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-grouped-output",
+            callID: "call-task-grouped-output",
+            tool: "task",
+            state: {
+              status: "completed",
+              input: {
+                prompt: "Inspect the project structure.",
+                description: "Inspect project structure",
+                subagent_type: "build",
+              },
+              output: "task_id: child-grouped-output",
+              title: "Inspect project structure",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
+    const buildButtons = screen.getAllByRole("button", { name: /build/i });
+    fireEvent.click(buildButtons[buildButtons.length - 1]!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Explored 2 files, 1 list")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/Scanned _template\/src\/app/i)).toBeInTheDocument();
+    expect(screen.getByText(/Read _template\/src\/app\/layout\.tsx/i)).toBeInTheDocument();
+    expect(screen.getByText(/Read _template\/src\/app\/page\.tsx/i)).toBeInTheDocument();
   });
 
   it("closes delegation modal on backdrop click and on escape", () => {
