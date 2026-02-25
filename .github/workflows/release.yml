@@ -45,7 +45,12 @@ jobs:
       - name: Build unpacked artifact
         run: pnpm exec electron-builder --dir --publish never
 
+      - name: Run release smoke test (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a pnpm smoke:artifact
+
       - name: Run release smoke test
+        if: matrix.os != 'ubuntu-latest'
         run: pnpm smoke:artifact
 
   publish:
