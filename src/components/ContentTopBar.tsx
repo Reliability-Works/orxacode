@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, LayoutDashboard, Pencil, Pin, PinOff, Play, Plus, Send, Trash2, X } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
@@ -124,6 +125,70 @@ export function ContentTopBar({
       return a.title.localeCompare(b.title);
     });
   }, [customRunCommands]);
+
+  const runEditorModal = runEditorOpen
+    ? createPortal(
+        <div
+          className="run-command-modal-overlay"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setRunEditorOpen(false);
+              setRunEditorError(null);
+            }
+          }}
+        >
+          <section className="run-command-modal" role="dialog" aria-modal="true" aria-labelledby="custom-run-command-title">
+            <header className="run-command-modal-header">
+              <span className="run-command-modal-icon" aria-hidden="true">
+                <Play size={14} />
+              </span>
+              <button
+                type="button"
+                className="run-command-modal-close"
+                aria-label="Close custom run command modal"
+                onClick={() => {
+                  setRunEditorOpen(false);
+                  setRunEditorError(null);
+                }}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
+            </header>
+            <h3 id="custom-run-command-title">Run</h3>
+            <p>Save a reusable command set. Enter one command per line.</p>
+            <label className="run-command-modal-field">
+              <span>Name</span>
+              <input
+                ref={runTitleInputRef}
+                type="text"
+                value={runEditorTitle}
+                onChange={(event) => setRunEditorTitle(event.target.value)}
+                placeholder="Install and start"
+              />
+            </label>
+            <label className="run-command-modal-field">
+              <span>Command to run</span>
+              <textarea
+                value={runEditorCommands}
+                onChange={(event) => setRunEditorCommands(event.target.value)}
+                rows={8}
+                placeholder={"eg:\nnpm install\nnpm run dev"}
+              />
+            </label>
+            {runEditorError ? <p className="run-command-modal-error">{runEditorError}</p> : null}
+            <footer className="run-command-modal-actions">
+              <button type="button" className="ghost" onClick={() => void saveRunEditor(false)} disabled={runEditorSaving}>
+                Save
+              </button>
+              <button type="button" onClick={() => void saveRunEditor(true)} disabled={runEditorSaving}>
+                Save and run
+              </button>
+            </footer>
+          </section>
+        </div>,
+        document.body,
+      )
+    : null;
 
   useEffect(() => {
     if (!runMenuOpen) {
@@ -494,66 +559,7 @@ export function ContentTopBar({
           />
         </div>
       </div>
-      {runEditorOpen ? (
-        <div
-          className="run-command-modal-overlay"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setRunEditorOpen(false);
-              setRunEditorError(null);
-            }
-          }}
-        >
-          <section className="run-command-modal" role="dialog" aria-modal="true" aria-labelledby="custom-run-command-title">
-            <header className="run-command-modal-header">
-              <span className="run-command-modal-icon" aria-hidden="true">
-                <Play size={14} />
-              </span>
-              <button
-                type="button"
-                className="run-command-modal-close"
-                aria-label="Close custom run command modal"
-                onClick={() => {
-                  setRunEditorOpen(false);
-                  setRunEditorError(null);
-                }}
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            </header>
-            <h3 id="custom-run-command-title">Run</h3>
-            <p>Save a reusable command set. Enter one command per line.</p>
-            <label className="run-command-modal-field">
-              <span>Name</span>
-              <input
-                ref={runTitleInputRef}
-                type="text"
-                value={runEditorTitle}
-                onChange={(event) => setRunEditorTitle(event.target.value)}
-                placeholder="Install and start"
-              />
-            </label>
-            <label className="run-command-modal-field">
-              <span>Command to run</span>
-              <textarea
-                value={runEditorCommands}
-                onChange={(event) => setRunEditorCommands(event.target.value)}
-                rows={8}
-                placeholder={"eg:\nnpm install\nnpm run dev"}
-              />
-            </label>
-            {runEditorError ? <p className="run-command-modal-error">{runEditorError}</p> : null}
-            <footer className="run-command-modal-actions">
-              <button type="button" className="ghost" onClick={() => void saveRunEditor(false)} disabled={runEditorSaving}>
-                Save
-              </button>
-              <button type="button" onClick={() => void saveRunEditor(true)} disabled={runEditorSaving}>
-                Save and run
-              </button>
-            </footer>
-          </section>
-        </div>
-      ) : null}
+      {runEditorModal}
     </div>
   );
 }

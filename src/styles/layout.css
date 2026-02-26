@@ -1098,6 +1098,8 @@ body.is-resizing * {
   display: grid;
   place-items: center;
   isolation: isolate;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .run-command-modal {
@@ -1109,6 +1111,8 @@ body.is-resizing * {
   padding: 16px;
   display: grid;
   gap: 12px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
 }
 
 .run-command-modal-header {
@@ -1463,6 +1467,12 @@ body.is-resizing * {
   flex-wrap: wrap;
 }
 
+.attachment-chip-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .composer-divider {
   height: 1px;
   background: var(--border);
@@ -1535,10 +1545,116 @@ body.is-resizing * {
 
 .attachment-chip {
   border-radius: 999px;
-  padding: 4px 10px;
+  padding: 3px 4px 3px 3px;
   font-size: 0.76rem;
   background: var(--bg-raised);
   border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+}
+
+.attachment-chip-preview {
+  transform: none;
+}
+
+.attachment-chip-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.attachment-chip-name {
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-chip-remove {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  transform: none;
+}
+
+.attachment-chip-remove:hover {
+  transform: none;
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.composer-image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  background: hsl(220 20% 4% / 0.7);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.composer-image-preview-modal {
+  width: min(92vw, 980px);
+  max-height: min(86vh, 880px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: linear-gradient(175deg, var(--bg-raised), var(--bg-surface));
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.composer-image-preview-close {
+  justify-self: end;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  transform: none;
+}
+
+.composer-image-preview-close:hover {
+  transform: none;
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.composer-image-preview-modal img {
+  max-width: min(88vw, 940px);
+  max-height: min(72vh, 760px);
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: hsl(220 16% 6%);
+}
+
+.composer-image-preview-modal p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
 }
 
 .composer-actions {

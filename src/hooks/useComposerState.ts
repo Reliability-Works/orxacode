@@ -125,22 +125,38 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     [insertSlashCommand],
   );
 
+  const addComposerAttachments = useCallback((attachments: Attachment[]) => {
+    if (attachments.length === 0) {
+      return;
+    }
+    setComposerAttachments((current) => {
+      const seen = new Set(current.map((item) => item.url));
+      const next: Attachment[] = [];
+      for (const attachment of attachments) {
+        if (!attachment.url || seen.has(attachment.url)) {
+          continue;
+        }
+        seen.add(attachment.url);
+        next.push(attachment);
+      }
+      if (next.length === 0) {
+        return current;
+      }
+      return [...current, ...next];
+    });
+  }, []);
+
   const pickImageAttachment = useCallback(async () => {
     try {
       const selection = await window.orxa.opencode.pickImage();
       if (!selection) {
         return;
       }
-      setComposerAttachments((current) => {
-        if (current.some((item) => item.url === selection.url)) {
-          return current;
-        }
-        return [...current, selection];
-      });
+      addComposerAttachments([selection]);
     } catch (error) {
       options.setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [options]);
+  }, [addComposerAttachments, options]);
 
   const removeAttachment = useCallback((url: string) => {
     setComposerAttachments((current) => current.filter((item) => item.url !== url));
@@ -274,6 +290,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     handleComposerChange,
     insertSlashCommand,
     handleSlashKeyDown,
+    addComposerAttachments,
     pickImageAttachment,
     removeAttachment,
     sendPrompt,

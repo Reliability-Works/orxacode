@@ -968,6 +968,7 @@ export default function App() {
     handleComposerChange,
     insertSlashCommand,
     handleSlashKeyDown,
+    addComposerAttachments,
     pickImageAttachment,
     removeAttachment,
     sendPrompt,
@@ -2890,6 +2891,7 @@ export default function App() {
                     slashSelectedIndex={slashSelectedIndex}
                     insertSlashCommand={insertSlashCommand}
                     handleSlashKeyDown={handleSlashKeyDown}
+                    addComposerAttachments={addComposerAttachments}
                     sendPrompt={sendPrompt}
                     abortActiveSession={abortActiveSession}
                     isSessionBusy={isSessionInProgress}
