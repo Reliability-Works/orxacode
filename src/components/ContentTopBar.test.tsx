@@ -89,6 +89,16 @@ describe("ContentTopBar open target control", () => {
     expect(screen.getByRole("dialog", { name: "Run" })).toBeInTheDocument();
   });
 
+  it("closes run editor with the close button", () => {
+    const { props } = buildProps();
+    render(<ContentTopBar {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close custom run command modal" }));
+
+    expect(screen.queryByRole("dialog", { name: "Run" })).not.toBeInTheDocument();
+  });
+
   it("renders saved commands in menu and allows running one", () => {
     const { props } = buildProps();
     const runMock = vi.fn(async () => undefined);

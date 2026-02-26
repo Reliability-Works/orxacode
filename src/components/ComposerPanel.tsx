@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
-import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, Zap } from "lucide-react";
+import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
@@ -32,6 +32,7 @@ type ComposerPanelProps = {
   slashSelectedIndex: number;
   insertSlashCommand: (name: string) => void;
   handleSlashKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  addComposerAttachments: (attachments: Attachment[]) => void;
   sendPrompt: () => void | Promise<void>;
   abortActiveSession: () => void | Promise<void>;
   isSessionBusy: boolean;
@@ -73,6 +74,27 @@ const COMPOSER_MIN_HEIGHT = 96;
 const COMPOSER_MAX_HEIGHT = 360;
 const COMPOSER_DEFAULT_HEIGHT = 118;
 
+const IMAGE_FILENAME_FALLBACK = "pasted-image.png";
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to read pasted image."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read pasted image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function isImageAttachment(attachment: Attachment) {
+  return attachment.mime.startsWith("image/") || attachment.url.startsWith("data:image/") || attachment.url.startsWith("file:");
+}
+
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
     placeholder,
@@ -85,6 +107,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     slashSelectedIndex,
     insertSlashCommand,
     handleSlashKeyDown,
+    addComposerAttachments,
     sendPrompt,
     abortActiveSession,
     isSessionBusy,
@@ -124,6 +147,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const [composerResizeActive, setComposerResizeActive] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
   const permissionMenuRef = useRef<HTMLDivElement | null>(null);
   const composerZoneRef = useRef<HTMLElement | null>(null);
   const composerResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -250,6 +274,55 @@ export function ComposerPanel(props: ComposerPanelProps) {
     };
   }, [onLayoutHeightChange]);
 
+  useEffect(() => {
+    if (!previewAttachment) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setPreviewAttachment(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [previewAttachment]);
+
+  const handlePaste = useCallback(
+    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = Array.from(event.clipboardData?.items ?? []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((item): item is File => Boolean(item));
+      if (imageFiles.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      void (async () => {
+        const timestamp = Date.now();
+        const attachments = await Promise.all(
+          imageFiles.map(async (file, index) => {
+            const dataUrl = await fileToDataUrl(file);
+            const filename = file.name?.trim() || `pasted-image-${timestamp}-${index + 1}.png`;
+            return {
+              url: dataUrl,
+              filename: filename || IMAGE_FILENAME_FALLBACK,
+              mime: file.type || "image/png",
+              path: `clipboard://${filename || IMAGE_FILENAME_FALLBACK}`,
+            } satisfies Attachment;
+          }),
+        );
+        addComposerAttachments(attachments);
+      })().catch(() => undefined);
+    },
+    [addComposerAttachments],
+  );
+
   return (
     <section ref={composerZoneRef} className="composer-zone">
       <div className="composer-input-wrap">
@@ -264,6 +337,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
           value={composer}
           style={{ height: `${composerHeight}px` }}
           onChange={(event) => setComposer(event.target.value)}
+          onPaste={handlePaste}
           onKeyDown={(event) => {
             if (slashMenuOpen && (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab" || event.key === "Escape")) {
               handleSlashKeyDown(event);
@@ -322,15 +396,31 @@ export function ComposerPanel(props: ComposerPanelProps) {
       {composerAttachments.length > 0 ? (
         <div className="composer-attachments">
           {composerAttachments.map((attachment) => (
-            <button
-              key={attachment.url}
-              type="button"
-              className="attachment-chip"
-              onClick={() => removeAttachment(attachment.url)}
-              title={`Remove ${attachment.filename}`}
-            >
-              {attachment.filename}
-            </button>
+            <div key={attachment.url} className="attachment-chip-wrap">
+              <button
+                type="button"
+                className="attachment-chip attachment-chip-preview"
+                onClick={() => {
+                  if (isImageAttachment(attachment)) {
+                    setPreviewAttachment(attachment);
+                  }
+                }}
+                title={isImageAttachment(attachment) ? `Preview ${attachment.filename}` : attachment.filename}
+                aria-label={isImageAttachment(attachment) ? `Preview ${attachment.filename}` : attachment.filename}
+              >
+                <img src={attachment.url} alt="" className="attachment-chip-thumb" />
+                <span className="attachment-chip-name">{attachment.filename}</span>
+              </button>
+              <button
+                type="button"
+                className="attachment-chip-remove"
+                onClick={() => removeAttachment(attachment.url)}
+                title={`Remove ${attachment.filename}`}
+                aria-label={`Remove ${attachment.filename}`}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
           ))}
         </div>
       ) : null}
@@ -479,6 +569,22 @@ export function ComposerPanel(props: ComposerPanelProps) {
           <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
         </div>
       </div>
+      {previewAttachment ? (
+        <div className="composer-image-preview-overlay" onClick={() => setPreviewAttachment(null)}>
+          <section className="composer-image-preview-modal" role="dialog" aria-label="Attachment preview" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="composer-image-preview-close"
+              onClick={() => setPreviewAttachment(null)}
+              aria-label="Close attachment preview"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+            <img src={previewAttachment.url} alt={previewAttachment.filename} />
+            <p>{previewAttachment.filename}</p>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
