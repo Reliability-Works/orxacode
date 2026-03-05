@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import type { JobRecord, JobRunRecord, JobTemplate } from "../components/JobsBoard";
+import {
+  BROWSER_MODE_TOOLS_POLICY,
+  MEMORY_MODE_TOOLS_POLICY,
+  mergeModeToolPolicies,
+} from "../lib/browser-tool-guardrails";
 
 const JOBS_KEY = "orxa:jobs:v1";
 const JOB_RUNS_KEY = "orxa:jobRuns:v1";
@@ -331,6 +336,10 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
           text: job.prompt,
           promptSource: "job",
           contextModeEnabled: job.contextModeEnabled === true,
+          tools: mergeModeToolPolicies(
+            job.contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
+            job.browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+          ),
           ...(job.browserModeEnabled ? { system: JOB_BROWSER_MODE_SYSTEM_ADDENDUM } : {}),
         });
 

@@ -71,8 +71,11 @@ type DelegationEventBlock =
       entry: InternalEvent;
     };
 
+const ORXA_BROWSER_RESULT_PREFIX = "[ORXA_BROWSER_RESULT]";
+const SUPERMEMORY_INTERNAL_PREFIX = "[SUPERMEMORY]";
 const INTERNAL_USER_TEXT_PREFIXES = [
-  "[ORXA_BROWSER_RESULT]",
+  ORXA_BROWSER_RESULT_PREFIX,
+  SUPERMEMORY_INTERNAL_PREFIX,
 ];
 const ORXA_BROWSER_ACTION_TAG_PATTERN = /<orxa_browser_action>\s*([\s\S]*?)\s*<\/orxa_browser_action>/gi;
 
@@ -293,12 +296,18 @@ function summarizeOrxaBrowserActionText(text: string) {
   return `Queued ${actions.length} browser actions`;
 }
 
+function countOrxaMemoryLines(text: string) {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("[ORXA_MEMORY]")).length;
+}
+
 function parseOrxaBrowserResultText(text: string) {
-  const prefix = INTERNAL_USER_TEXT_PREFIXES[0];
-  if (!prefix || !text.startsWith(prefix)) {
+  if (!text.startsWith(ORXA_BROWSER_RESULT_PREFIX)) {
     return null;
   }
-  const payload = parseJsonObject(text.slice(prefix.length).trim());
+  const payload = parseJsonObject(text.slice(ORXA_BROWSER_RESULT_PREFIX.length).trim());
   if (!payload) {
     return { action: "action", ok: true } as const;
   }
@@ -312,6 +321,13 @@ function parseOrxaBrowserResultText(text: string) {
     error,
     blockedReason,
   };
+}
+
+function parseSupermemoryInternalText(text: string) {
+  if (!text.startsWith(SUPERMEMORY_INTERNAL_PREFIX)) {
+    return null;
+  }
+  return text.slice(SUPERMEMORY_INTERNAL_PREFIX.length).trim();
 }
 
 function isLikelyTelemetryJson(value: string) {
@@ -332,6 +348,9 @@ function shouldHideAssistantText(value: string) {
     return true;
   }
   if (parseOrxaBrowserActionsFromText(text).length > 0) {
+    return true;
+  }
+  if (countOrxaMemoryLines(text) > 0) {
     return true;
   }
   if (isLikelyTelemetryJson(text)) {
@@ -1253,6 +1272,14 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
     if (browserActionSummary) {
       return { id: part.id, summary: browserActionSummary, actor };
     }
+    const memoryLineCount = countOrxaMemoryLines(text);
+    if (memoryLineCount > 0) {
+      return {
+        id: part.id,
+        summary: `Captured ${pluralize(memoryLineCount, "memory item")}`,
+        actor,
+      };
+    }
     if (isLikelyTelemetryJson(text)) {
       const parsed = parseJsonObject(text);
       const summary = typeof parsed?.type === "string" ? parsed.type : "Telemetry event";
@@ -1265,6 +1292,14 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
 function summarizeInternalUserPart(part: Part): InternalEvent | null {
   if (part.type !== "text") {
     return null;
+  }
+  const supermemoryPayload = parseSupermemoryInternalText(part.text.trim());
+  if (supermemoryPayload !== null) {
+    return {
+      id: part.id,
+      summary: "Applied in-app memory context",
+      details: supermemoryPayload.length > 0 ? compactText(supermemoryPayload, 220) : undefined,
+    };
   }
   const parsed = parseOrxaBrowserResultText(part.text.trim());
   if (!parsed) {

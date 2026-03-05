@@ -43,6 +43,7 @@ describe("useJobsScheduler", () => {
       agent?: string;
       promptSource?: "job" | "user" | "machine";
       contextModeEnabled?: boolean;
+      tools?: Record<string, boolean>;
     }) => {
       void request;
       return true;
@@ -93,7 +94,7 @@ describe("useJobsScheduler", () => {
     );
     expect(sendPromptMock).toHaveBeenCalledTimes(1);
     const sentPrompt = sendPromptMock.mock.calls[0]?.[0] as
-      | { agent?: unknown; system?: string; promptSource?: string; contextModeEnabled?: boolean }
+      | { agent?: unknown; system?: string; promptSource?: string; contextModeEnabled?: boolean; tools?: Record<string, boolean> }
       | undefined;
     expect(sentPrompt).toBeDefined();
     expect(sentPrompt?.agent).toBeUndefined();
@@ -101,6 +102,12 @@ describe("useJobsScheduler", () => {
     expect(sentPrompt?.contextModeEnabled).toBe(true);
     expect(sentPrompt?.system).toContain("<orxa_browser_action>");
     expect(sentPrompt?.system).toContain("[ORXA_BROWSER_RESULT]");
+    expect(sentPrompt?.tools).toEqual(
+      expect.objectContaining({
+        supermemory: false,
+        web_search: false,
+      }),
+    );
   });
 
   it("runs browser-disabled jobs without a browser system addendum", async () => {
@@ -117,6 +124,7 @@ describe("useJobsScheduler", () => {
       system?: string;
       promptSource?: "job" | "user" | "machine";
       contextModeEnabled?: boolean;
+      tools?: Record<string, boolean>;
     }) => {
       void request;
       return true;
@@ -161,5 +169,6 @@ describe("useJobsScheduler", () => {
     expect(sentPrompt?.promptSource).toBe("job");
     expect(sentPrompt?.contextModeEnabled).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(sentPrompt ?? {}, "system")).toBe(false);
+    expect(sentPrompt?.tools).toBeUndefined();
   });
 });

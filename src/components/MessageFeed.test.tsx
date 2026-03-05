@@ -216,6 +216,62 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Captured browser screenshot")).toBeInTheDocument();
   });
 
+  it("routes internal SUPERMEMORY user context lines to live events", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-supermemory",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-supermemory",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-supermemory",
+            text: "[SUPERMEMORY] injected 4 items",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/\[SUPERMEMORY\]/)).not.toBeInTheDocument();
+    expect(screen.getByText("Applied in-app memory context")).toBeInTheDocument();
+  });
+
+  it("routes assistant ORXA memory lines to live events instead of chat", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-orxa-memory",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-orxa-memory",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-orxa-memory",
+            text:
+              '[ORXA_MEMORY] workspace="/repo-a" type="decision" tags="memory" content="Keep local memory only."\n'
+              + '[ORXA_MEMORY] workspace="/repo-a" type="fact" tags="guardrail" content="External memory tools disabled in context mode."',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/\[ORXA_MEMORY\]/)).not.toBeInTheDocument();
+    expect(screen.getByText("Captured 2 memory items")).toBeInTheDocument();
+  });
+
   it("shows a single thinking bubble with collapsible live events when busy", () => {
     const messages: SessionMessageBundle[] = [
       {

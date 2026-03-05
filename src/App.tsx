@@ -62,6 +62,7 @@ import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useBrowserAgentBridge } from "./hooks/useBrowserAgentBridge";
+import { useMemoryModeGuardrails } from "./hooks/useMemoryModeGuardrails";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import {
   filterHiddenModelOptions,
@@ -74,7 +75,11 @@ import {
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
 import { syncAgentModelPreference } from "./lib/agent-model-preferences";
-import { BROWSER_MODE_TOOLS_POLICY } from "./lib/browser-tool-guardrails";
+import {
+  BROWSER_MODE_TOOLS_POLICY,
+  MEMORY_MODE_TOOLS_POLICY,
+  mergeModeToolPolicies,
+} from "./lib/browser-tool-guardrails";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import { CODE_FONT_OPTIONS } from "~/types/app";
@@ -1265,6 +1270,13 @@ export default function App() {
     });
   }, [abortSessionViaComposer, setStatusLine]);
 
+  const handleMemoryGuardrailViolation = useCallback((message: string) => {
+    setStatusLine(message);
+    void abortSessionViaComposer().catch((error) => {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    });
+  }, [abortSessionViaComposer, setStatusLine]);
+
   const bootstrap = useCallback(async () => {
     try {
       const result = await window.orxa.opencode.bootstrap();
@@ -1358,15 +1370,36 @@ export default function App() {
     return buildBrowserAutopilotHint(composer);
   }, [browserControlOwner, browserModeEnabled, composer]);
 
-  const effectiveSystemAddendum = useMemo(() => {
-    if (!browserSystemAddendum) {
+  const contextModeSystemAddendum = useMemo(() => {
+    if (!contextModeEnabled) {
       return undefined;
     }
-    if (!browserAutopilotHint) {
-      return browserSystemAddendum;
+    return [
+      "Context Mode is enabled in Opencode Orxa.",
+      "Use only in-app workspace context and local Opencode Orxa memory.",
+      "Do not use external memory services or memory MCP integrations.",
+      "Do not request external memory access when Context Mode is enabled.",
+    ].join("\n");
+  }, [contextModeEnabled]);
+
+  const effectiveSystemAddendum = useMemo(() => {
+    const parts = [browserSystemAddendum, browserAutopilotHint, contextModeSystemAddendum]
+      .map((item) => item?.trim())
+      .filter((item): item is string => Boolean(item));
+    if (parts.length === 0) {
+      return undefined;
     }
-    return `${browserSystemAddendum}\n\n${browserAutopilotHint}`;
-  }, [browserAutopilotHint, browserSystemAddendum]);
+    return parts.join("\n\n");
+  }, [browserAutopilotHint, browserSystemAddendum, contextModeSystemAddendum]);
+
+  const activePromptToolsPolicy = useMemo(
+    () =>
+      mergeModeToolPolicies(
+        contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
+        browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+      ),
+    [browserModeEnabled, contextModeEnabled],
+  );
 
   const sendComposerPrompt = useCallback(
     () =>
@@ -1374,9 +1407,9 @@ export default function App() {
         systemAddendum: effectiveSystemAddendum,
         contextModeEnabled,
         promptSource: "user",
-        tools: browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+        tools: activePromptToolsPolicy,
       }),
-    [browserModeEnabled, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
+    [activePromptToolsPolicy, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
   );
 
   const allModelOptions = settingsModelOptions;
@@ -2678,6 +2711,14 @@ export default function App() {
     },
     onStatus: setStatusLine,
     onGuardrailViolation: handleBrowserGuardrailViolation,
+  });
+
+  useMemoryModeGuardrails({
+    activeProjectDir: activeProjectDir ?? null,
+    activeSessionID: activeSessionID ?? null,
+    messages,
+    memoryModeEnabled: contextModeEnabled,
+    onGuardrailViolation: handleMemoryGuardrailViolation,
   });
 
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
