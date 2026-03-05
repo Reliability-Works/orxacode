@@ -357,8 +357,11 @@ export class BrowserController {
   }
 
   async navigate(url: string, tabID?: string): Promise<BrowserState> {
-    const record = this.requireTab(tabID);
     const target = toSafeBrowserUrl(url);
+    if (!tabID && !this.activeTabID) {
+      return this.openTab(target, true);
+    }
+    const record = this.requireTab(tabID);
     await record.view.webContents.loadURL(target);
     this.emitState();
     return this.getState();

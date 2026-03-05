@@ -121,6 +121,33 @@ describe("MemoryStore", () => {
     expect(unrelated).toHaveLength(0);
   });
 
+  it("avoids substring-only matches for unrelated long-form queries", async () => {
+    const store = new MemoryStore();
+    await store.updateSettings({
+      global: {
+        enabled: true,
+        mode: "balanced",
+      },
+    });
+
+    await store.ingestSessionMessages("/repo-signal", "s-signal", [
+      textBundle(
+        "s-signal",
+        "m-1",
+        "assistant",
+        "User fixed Codex startup config parse error and expects full app-wide UI cleanup for polish requests.",
+      ),
+    ]);
+
+    const unrelated = await store.getPromptMemories(
+      "/repo-signal",
+      "do a comprehensive research task for the top defi news in 2026 then document all of your findings",
+      6,
+    );
+
+    expect(unrelated).toHaveLength(0);
+  });
+
   it("ingests structured ORXA memory lines with explicit workspace routing", async () => {
     const store = new MemoryStore();
     await store.updateSettings({

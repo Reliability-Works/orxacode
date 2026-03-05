@@ -311,6 +311,33 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Applied in-app memory context")).toBeInTheDocument();
   });
 
+  it("ignores non-status SUPERMEMORY payload text", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-supermemory-noise",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-supermemory-noise",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-supermemory-noise",
+            text: "[SUPERMEMORY] Recent Context: fixed startup config and UI cleanup notes",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText("Applied in-app memory context")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recent Context:/)).not.toBeInTheDocument();
+  });
+
   it("routes assistant ORXA memory lines to live events instead of chat", () => {
     const messages: SessionMessageBundle[] = [
       {

@@ -101,5 +101,22 @@ describe("useMemoryModeGuardrails", () => {
       expect(onGuardrailViolation).not.toHaveBeenCalled();
     });
   });
-});
 
+  it("does not raise violation for internal SUPERMEMORY status lines", async () => {
+    const onGuardrailViolation = vi.fn();
+
+    renderHook(() =>
+      useMemoryModeGuardrails({
+        activeProjectDir: "/repo",
+        activeSessionID: "session-1",
+        memoryModeEnabled: true,
+        messages: [assistantTextBundle("[SUPERMEMORY] injected 2 items")],
+        onGuardrailViolation,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(onGuardrailViolation).not.toHaveBeenCalled();
+    });
+  });
+});

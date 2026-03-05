@@ -62,6 +62,8 @@ type ComposerPanelProps = {
   branchSearchInputRef: RefObject<HTMLInputElement | null>;
   branchQuery: string;
   setBranchQuery: (value: string) => void;
+  branchActionError: string | null;
+  clearBranchActionError: () => void;
   checkoutBranch: (name: string) => void | Promise<void>;
   filteredBranches: string[];
   openBranchCreateModal: () => void | Promise<void>;
@@ -141,6 +143,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
     branchSearchInputRef,
     branchQuery,
     setBranchQuery,
+    branchActionError,
+    clearBranchActionError,
     checkoutBranch,
     filteredBranches,
     openBranchCreateModal,
@@ -524,6 +528,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 const next = !value;
                 if (next) {
                   setBranchQuery("");
+                  clearBranchActionError();
                 }
                 return next;
               });
@@ -543,7 +548,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 <input
                   ref={branchSearchInputRef}
                   value={branchQuery}
-                  onChange={(event) => setBranchQuery(event.target.value)}
+                  onChange={(event) => {
+                    clearBranchActionError();
+                    setBranchQuery(event.target.value);
+                  }}
                   placeholder="Search branches"
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -554,6 +562,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 />
               </div>
               <small>Branches</small>
+              <div className="composer-branch-error-slot">
+                {branchActionError ? <p className="composer-branch-error">{branchActionError}</p> : null}
+              </div>
               <div className="composer-branch-list">
                 {filteredBranches.length === 0 ? (
                   <p>No branches found</p>

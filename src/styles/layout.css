@@ -1819,12 +1819,14 @@ body.is-resizing * {
   left: 0;
   width: min(420px, 62vw);
   max-height: 340px;
+  overflow: hidden;
   border: 1px solid var(--border-hover);
   border-radius: 12px;
   background: linear-gradient(170deg, var(--bg-raised), var(--bg-surface));
   box-shadow: 0 16px 40px var(--shadow);
   z-index: 70;
   display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   gap: 8px;
   padding: 8px;
 }
@@ -1862,8 +1864,24 @@ body.is-resizing * {
   padding: 0 2px;
 }
 
+.composer-branch-error-slot {
+  min-height: 0;
+}
+
+.composer-branch-error {
+  margin: 0;
+  border: 1px solid color-mix(in oklab, var(--danger) 56%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: color-mix(in oklab, var(--danger) 86%, white);
+  padding: 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .composer-branch-list {
-  max-height: 190px;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   display: grid;
   gap: 3px;

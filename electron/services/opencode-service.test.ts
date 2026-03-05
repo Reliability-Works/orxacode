@@ -367,6 +367,87 @@ describe("OpencodeService git flows", () => {
     expect(result.branches).not.toContain("origin");
   });
 
+  it("checks out an existing local branch without trying to create it", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCheckoutBranch: (directory: string, branch: string) => Promise<{
+        current: string;
+        branches: string[];
+      }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      gitBranches: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.runCommand = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("show-ref --verify --quiet refs/heads/staging")) {
+        return undefined;
+      }
+      if (full.includes("checkout staging")) {
+        return undefined;
+      }
+      if (full.includes("checkout -b staging")) {
+        throw new Error("should not create branch when local branch exists");
+      }
+      return undefined;
+    });
+    service.gitBranches = vi.fn(async () => ({
+      current: "staging",
+      branches: ["main", "staging"],
+    }));
+
+    const result = await service.gitCheckoutBranch("/repo", "staging");
+    expect(result.current).toBe("staging");
+    expect(service.runCommand).toHaveBeenCalledWith(
+      "git",
+      ["-C", "/repo", "checkout", "staging"],
+      "/repo",
+    );
+  });
+
+  it("falls back to checkout when branch creation reports that the branch already exists", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCheckoutBranch: (directory: string, branch: string) => Promise<{
+        current: string;
+        branches: string[];
+      }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      gitBranches: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.runCommand = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("show-ref --verify --quiet refs/heads/staging")) {
+        throw new Error("missing local ref");
+      }
+      if (full.includes("show-ref --verify --quiet refs/remotes/origin/staging")) {
+        throw new Error("missing remote ref");
+      }
+      if (full.includes("checkout -b staging")) {
+        throw new Error("fatal: a branch named 'staging' already exists");
+      }
+      if (full.includes("checkout staging")) {
+        return undefined;
+      }
+      return undefined;
+    });
+    service.gitBranches = vi.fn(async () => ({
+      current: "staging",
+      branches: ["main", "staging"],
+    }));
+
+    const result = await service.gitCheckoutBranch("/repo", "staging");
+    expect(result.current).toBe("staging");
+    expect(service.runCommand).toHaveBeenCalledWith(
+      "git",
+      ["-C", "/repo", "checkout", "staging"],
+      "/repo",
+    );
+  });
+
   it("retries PR creation without --fill when git range defaults cannot be computed", async () => {
     const service = Object.create(OpencodeService.prototype) as {
       gitCommit: (directory: string, request: {

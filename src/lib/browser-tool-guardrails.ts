@@ -1,4 +1,5 @@
 export const BROWSER_MODE_TOOLS_POLICY: Record<string, boolean> = {
+  "*": false,
   web: false,
   "web.run": false,
   web_search: false,

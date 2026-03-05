@@ -428,7 +428,7 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
         if (!hasOrxaAction && CLAIMED_BROWSER_PROGRESS_PATTERN.test(text)) {
           seen.add(key);
           onGuardrailViolationRef.current?.(
-            "Blocked browser-mode response: web progress was claimed without any <orxa_browser_action> tag. The run was stopped to enforce in-app browser-only automation.",
+            "Blocked browser-mode response: web progress was claimed without any <orxa_browser_action> tag. Browser automation was halted to enforce in-app browser-only automation.",
           );
           return;
         }

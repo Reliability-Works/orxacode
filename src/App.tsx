@@ -1096,6 +1096,8 @@ export default function App() {
     setBranchCreateName,
     branchCreateError,
     setBranchCreateError,
+    branchActionError,
+    setBranchActionError,
     loadGitDiff,
     loadGitLog,
     loadGitIssues,
@@ -1526,12 +1528,37 @@ export default function App() {
   }, [abortSessionViaComposer]);
 
   const handleBrowserGuardrailViolation = useCallback((message: string) => {
+    const now = Date.now();
+    const normalized = message.toLowerCase();
+    const isForbiddenToolUsage = normalized.includes("blocked forbidden tool usage in browser mode");
+    const shouldHaltAutomation = normalized.includes("automation was halted");
     setBrowserActionRunning(false);
-    setStatusLine(message);
-    void abortSessionViaComposer().catch((error) => {
-      setStatusLine(error instanceof Error ? error.message : String(error));
+    appendDebugLog({
+      level: "warn",
+      eventType: "browser.guardrail",
+      summary: message,
+      details: JSON.stringify(
+        {
+          sessionID: activeSessionID ?? null,
+          workspace: activeProjectDir ?? null,
+          halted: shouldHaltAutomation,
+          hiddenFromToast: true,
+        },
+        null,
+        2,
+      ),
     });
-  }, [abortSessionViaComposer, setStatusLine]);
+    if (!isForbiddenToolUsage) {
+      setStatusLine(message);
+    }
+    if (shouldHaltAutomation && activeProjectDir && activeSessionID) {
+      const key = `${activeProjectDir}::${activeSessionID}`;
+      setBrowserAutomationHaltedBySession((current) => ({
+        ...current,
+        [key]: now,
+      }));
+    }
+  }, [activeProjectDir, activeSessionID, appendDebugLog, setBrowserAutomationHaltedBySession, setStatusLine]);
 
   const handleMemoryGuardrailViolation = useCallback((message: string) => {
     setStatusLine(message);
@@ -3069,12 +3096,23 @@ export default function App() {
     const base = todosOpen ? 286 : 78;
     return base + composerOffsetLift;
   }, [composerOffsetLift, orxaTodos.length, todosOpen]);
+  const composerAnchorBottom = useMemo(
+    () => Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) + (terminalOpen ? 286 : 0),
+    [composerLayoutHeight, terminalOpen],
+  );
   const todosDrawerStyle = useMemo(
     () =>
       ({
-        "--todos-anchor-bottom": `${Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) + (terminalOpen ? 286 : 0)}px`,
+        "--todos-anchor-bottom": `${composerAnchorBottom}px`,
       }) as CSSProperties,
-    [composerLayoutHeight, terminalOpen],
+    [composerAnchorBottom],
+  );
+  const composerToastStyle = useMemo(
+    () =>
+      ({
+        "--composer-toast-bottom": `${Math.max(116, composerAnchorBottom - 4)}px`,
+      }) as CSSProperties,
+    [composerAnchorBottom],
   );
   const pendingPermission = useMemo(() => (projectData?.permissions ?? [])[0], [projectData?.permissions]);
   const isPermissionDecisionInFlight = Boolean(
@@ -4021,6 +4059,8 @@ export default function App() {
                     branchSearchInputRef={branchSearchInputRef}
                     branchQuery={branchQuery}
                     setBranchQuery={setBranchQuery}
+                    branchActionError={branchActionError}
+                    clearBranchActionError={() => setBranchActionError(null)}
                     checkoutBranch={checkoutBranch}
                     filteredBranches={filteredBranches}
                     openBranchCreateModal={openBranchCreateModal}
@@ -4101,6 +4141,18 @@ export default function App() {
               onOpenSettings={() => setSettingsOpen(true)}
             />
           )}
+          {toasts.length > 0 ? (
+            <div className="composer-toast-stack" style={composerToastStyle} role="status" aria-live="polite">
+              {toasts.map((toast) => (
+                <article key={toast.id} className={`composer-toast ${toast.tone}`.trim()}>
+                  <p>{toast.message}</p>
+                  <button type="button" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
+                    ×
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
         </main>
         {hasProjectContext ? (
           <button
@@ -4601,18 +4653,6 @@ export default function App() {
         allModelOptions={settingsModelOptions}
       />
 
-      {toasts.length > 0 ? (
-        <div className="composer-toast-stack" role="status" aria-live="polite">
-          {toasts.map((toast) => (
-            <article key={toast.id} className={`composer-toast ${toast.tone}`.trim()}>
-              <p>{toast.message}</p>
-              <button type="button" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
-                ×
-              </button>
-            </article>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

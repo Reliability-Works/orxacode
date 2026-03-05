@@ -5,6 +5,7 @@ import { isForbiddenToolNameInMemoryMode } from "../lib/browser-tool-guardrails"
 const FORBIDDEN_EXTERNAL_MEMORY_PATTERN =
   /\b(supermemory|mem0|pinecone|qdrant|weaviate|chroma(?:db)?|milvus|vector\s*db)\b/i;
 const ORXA_MEMORY_LINE_PATTERN = /^\[ORXA_MEMORY\]/im;
+const SUPERMEMORY_STATUS_LINE_PATTERN = /^\[SUPERMEMORY\]/im;
 
 type UseMemoryModeGuardrailsOptions = {
   activeProjectDir: string | null | undefined;
@@ -47,7 +48,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
           continue;
         }
         const text = part.text.trim();
-        if (!text || ORXA_MEMORY_LINE_PATTERN.test(text)) {
+        if (!text || ORXA_MEMORY_LINE_PATTERN.test(text) || SUPERMEMORY_STATUS_LINE_PATTERN.test(text)) {
           continue;
         }
         const partID = "id" in part && typeof part.id === "string" ? part.id : `part-${text.slice(0, 32)}`;
@@ -85,4 +86,3 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
     }
   }, [activeProjectDir, activeSessionID, memoryModeEnabled, messages]);
 }
-

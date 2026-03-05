@@ -33,6 +33,7 @@ describe("browser-tool-guardrails", () => {
     expect(merged).toBeDefined();
     expect(merged).toEqual(
       expect.objectContaining({
+        "*": false,
         apply_patch: false,
         supermemory: false,
         web_search: false,

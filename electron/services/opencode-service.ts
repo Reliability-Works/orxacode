@@ -2123,23 +2123,31 @@ export class OpencodeService {
       throw new Error("Invalid branch name.");
     });
 
-    const existing = await this.runCommandWithOutput(
-      "git",
-      ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/heads", nextBranch],
-      repoRoot,
-    ).catch(() => "");
-    if (existing.trim() === nextBranch) {
+    const hasLocal = await this.gitRefExists(repoRoot, `refs/heads/${nextBranch}`);
+    if (hasLocal) {
       await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
     } else {
-      const hasRemote = await this.runCommandWithOutput(
-        "git",
-        ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin", `origin/${nextBranch}`],
-        repoRoot,
-      ).catch(() => "");
-      if (hasRemote.trim() === `origin/${nextBranch}`) {
-        await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch, "--track", `origin/${nextBranch}`], repoRoot);
+      const hasRemote = await this.gitRefExists(repoRoot, `refs/remotes/origin/${nextBranch}`);
+      if (hasRemote) {
+        try {
+          await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch, "--track", `origin/${nextBranch}`], repoRoot);
+        } catch (error) {
+          const message = sanitizeError(error).toLowerCase();
+          if (!message.includes("already exists")) {
+            throw error;
+          }
+          await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
+        }
       } else {
-        await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch], repoRoot);
+        try {
+          await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch], repoRoot);
+        } catch (error) {
+          const message = sanitizeError(error).toLowerCase();
+          if (!message.includes("already exists")) {
+            throw error;
+          }
+          await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
+        }
       }
     }
 
@@ -3840,6 +3848,15 @@ export class OpencodeService {
       return undefined;
     }
     return resolved;
+  }
+
+  private async gitRefExists(repoRoot: string, ref: string) {
+    try {
+      await this.runCommand("git", ["-C", repoRoot, "show-ref", "--verify", "--quiet", ref], repoRoot);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private resolveWithinRoot(root: string, relativePath: string) {

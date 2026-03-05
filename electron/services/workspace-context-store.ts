@@ -8,6 +8,37 @@ const CONTEXT_ROOT = "workspace-context";
 const CONTEXT_VERSION = "v1";
 const MAX_MATCHES = 8;
 const MAX_CONTEXT_CHARS = 5_000;
+const CONTEXT_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "help",
+  "how",
+  "in",
+  "into",
+  "is",
+  "it",
+  "me",
+  "of",
+  "on",
+  "or",
+  "please",
+  "the",
+  "then",
+  "this",
+  "to",
+  "use",
+  "with",
+  "you",
+  "your",
+]);
 
 type WorkspaceContextStoreOptions = {
   rootDir?: string;
@@ -52,7 +83,7 @@ function tokenize(value: string) {
     .replace(/[^\w\s/-]/g, " ")
     .split(/\s+/)
     .map((item) => item.trim())
-    .filter((item) => item.length >= 3)
+    .filter((item) => item.length >= 3 && !CONTEXT_STOPWORDS.has(item))
     .slice(0, 120);
 }
 
@@ -186,6 +217,23 @@ export class WorkspaceContextStore {
     const files = await this.list(workspace);
     const normalizedWorkspace = normalizeWorkspace(workspace);
     const queryTokens = unique(tokenize(query));
+    const traceBase = {
+      id: this.createID(),
+      workspace: normalizedWorkspace,
+      sessionID,
+      query,
+      mode: "hybrid_lexical_v1" as const,
+      createdAt: this.now(),
+    };
+    if (queryTokens.length === 0) {
+      return {
+        prompt: "",
+        trace: {
+          ...traceBase,
+          selected: [],
+        },
+      };
+    }
     const sections = files.flatMap((file) => parseSections(file));
 
     const scored = sections
@@ -195,19 +243,45 @@ export class WorkspaceContextStore {
         const headingTokens = tokenize(section.heading);
         const contentTokens = tokenize(section.content).slice(0, 180);
         let score = 0;
+        const matchedTokens = new Set<string>();
         for (const token of queryTokens) {
-          if (filenameTokens.includes(token)) score += 4;
-          if (titleTokens.includes(token)) score += 3;
-          if (headingTokens.includes(token)) score += 2;
-          if (contentTokens.includes(token)) score += 1;
+          if (filenameTokens.includes(token)) {
+            score += 4;
+            matchedTokens.add(token);
+          }
+          if (titleTokens.includes(token)) {
+            score += 3;
+            matchedTokens.add(token);
+          }
+          if (headingTokens.includes(token)) {
+            score += 2;
+            matchedTokens.add(token);
+          }
+          if (contentTokens.includes(token)) {
+            score += 1;
+            matchedTokens.add(token);
+          }
         }
         const phrase = query.trim().toLowerCase();
         if (phrase.length > 8 && section.content.toLowerCase().includes(phrase)) {
           score += 5;
         }
-        return { section, score };
+        return {
+          section,
+          score,
+          matchedCount: matchedTokens.size,
+          ratio: queryTokens.length === 0 ? 0 : matchedTokens.size / queryTokens.length,
+        };
       })
-      .filter((item) => item.score > 0)
+      .filter((item) => {
+        if (item.score <= 0) {
+          return false;
+        }
+        const minMatchedCount = queryTokens.length >= 8 ? 2 : 1;
+        const minRatio = queryTokens.length >= 10 ? 0.18 : queryTokens.length >= 6 ? 0.14 : 0.1;
+        const minScore = queryTokens.length >= 10 ? 4 : queryTokens.length >= 6 ? 3 : 1;
+        return item.matchedCount >= minMatchedCount && item.ratio >= minRatio && item.score >= minScore;
+      })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         const fileDiff = a.section.filename.localeCompare(b.section.filename);
@@ -226,13 +300,8 @@ export class WorkspaceContextStore {
     }));
 
     const trace: ContextSelectionTrace = {
-      id: this.createID(),
-      workspace: normalizedWorkspace,
-      sessionID,
-      query,
-      mode: "hybrid_lexical_v1",
+      ...traceBase,
       selected,
-      createdAt: this.now(),
     };
 
     if (selected.length === 0) {

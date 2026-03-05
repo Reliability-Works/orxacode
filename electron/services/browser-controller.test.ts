@@ -296,6 +296,32 @@ describe("BrowserController", () => {
     expect(setup.events.some((event) => event.type === "browser.history.cleared")).toBe(true);
   });
 
+  it("creates a tab when navigating without an active tab", async () => {
+    const setup = createControllerSetup();
+
+    await setup.controller.navigate("https://first-nav.example");
+    const state = setup.controller.getState();
+    expect(state.tabs).toHaveLength(1);
+    expect(state.activeTabID).toBe(state.tabs[0]?.id);
+    expect(state.tabs[0]?.url).toBe("https://first-nav.example/");
+
+    await expect(setup.controller.navigate("https://nope.example", "missing-tab")).rejects.toThrow("Browser tab not found");
+  });
+
+  it("allows first browser agent action to be navigate", async () => {
+    const setup = createControllerSetup();
+
+    const result = await setup.controller.performAgentAction({
+      action: "navigate",
+      url: "https://agent-first-nav.example",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.tabID).toBe(setup.controller.getState().activeTabID);
+    expect(setup.controller.getState().tabs).toHaveLength(1);
+    expect(setup.controller.getState().tabs[0]?.url).toBe("https://agent-first-nav.example/");
+  });
+
   it("blocks dangerous schemes and defaults permissions to deny", async () => {
     const setup = createControllerSetup();
 

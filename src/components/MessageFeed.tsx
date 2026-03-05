@@ -325,7 +325,12 @@ function parseSupermemoryInternalText(text: string) {
   if (!text.startsWith(SUPERMEMORY_INTERNAL_PREFIX)) {
     return null;
   }
-  return text.slice(SUPERMEMORY_INTERNAL_PREFIX.length).trim();
+  const payload = text.slice(SUPERMEMORY_INTERNAL_PREFIX.length).trim();
+  const firstLine = payload.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (!/^injected\s+\d+\s+items?\b/i.test(firstLine)) {
+    return null;
+  }
+  return firstLine;
 }
 
 function isLikelyTelemetryJson(value: string) {

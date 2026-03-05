@@ -27,6 +27,7 @@ const MAX_PROMPT_CONTEXT_ITEMS = 12;
 const MAX_CAPTURE_PER_SESSION = 60;
 const MEMORY_POLICY_MODES: ReadonlyArray<MemoryPolicyMode> = ["conservative", "balanced", "aggressive", "codebase-facts"];
 const PROMPT_STOPWORDS = new Set([
+  "all",
   "a",
   "an",
   "and",
@@ -176,6 +177,10 @@ function tokenize(text: string) {
     .split(/[^a-z0-9@._/-]+/)
     .filter((token) => token.length >= 3 && !PROMPT_STOPWORDS.has(token))
     .slice(0, 30);
+}
+
+function tokenizeToSet(text: string) {
+  return new Set(tokenize(text));
 }
 
 function stableHash(value: string) {
@@ -924,21 +929,21 @@ export class MemoryStore {
   }
 
   private scorePromptCandidate(tokens: string[], summary: string, tags: string[], content: string, confidence: number) {
-    const summaryLower = summary.toLowerCase();
-    const tagBlob = tags.join(" ");
-    const contentLower = content.toLowerCase();
+    const summaryTokens = tokenizeToSet(summary);
+    const tagTokens = tokenizeToSet(tags.join(" "));
+    const contentTokens = tokenizeToSet(content);
     const matchedTokens = new Set<string>();
     let score = confidence;
     for (const token of tokens) {
-      if (summaryLower.includes(token)) {
+      if (summaryTokens.has(token)) {
         matchedTokens.add(token);
         score += 0.9;
       }
-      if (tagBlob.includes(token)) {
+      if (tagTokens.has(token)) {
         matchedTokens.add(token);
         score += 0.7;
       }
-      if (contentLower.includes(token)) {
+      if (contentTokens.has(token)) {
         matchedTokens.add(token);
         score += 0.5;
       }
@@ -947,6 +952,7 @@ export class MemoryStore {
       score,
       matchedCount: matchedTokens.size,
       ratio: tokens.length === 0 ? 0 : matchedTokens.size / tokens.length,
+      scoreBoost: score - confidence,
     };
   }
 
@@ -980,7 +986,8 @@ export class MemoryStore {
       const candidate = this.scorePromptCandidate(tokens, row.summary, tags, content, row.confidence);
       const minMatchedCount = tokens.length >= 6 ? 2 : 1;
       const minRatio = tokens.length >= 8 ? 0.22 : tokens.length >= 4 ? 0.18 : 0.1;
-      if (candidate.matchedCount < minMatchedCount || candidate.ratio < minRatio) {
+      const minScoreBoost = tokens.length >= 8 ? 1.6 : tokens.length >= 5 ? 1.1 : 0.7;
+      if (candidate.matchedCount < minMatchedCount || candidate.ratio < minRatio || candidate.scoreBoost < minScoreBoost) {
         continue;
       }
       scored.push({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseGitDiffStats } from "./useGitPanel";
+import { formatCheckoutBranchError, parseGitDiffStats } from "./useGitPanel";
 
 describe("parseGitDiffStats", () => {
   it("counts additions/deletions from standard diff output", () => {
@@ -41,5 +41,41 @@ describe("parseGitDiffStats", () => {
       filesChanged: 3,
       hasChanges: true,
     });
+  });
+});
+
+describe("formatCheckoutBranchError", () => {
+  it("returns an actionable message when checkout is blocked by local changes", () => {
+    const message = formatCheckoutBranchError(
+      new Error("git checkout staging exited with code 1: error: Your local changes to the following files would be overwritten by checkout"),
+      "staging",
+    );
+    expect(message).toContain('Cannot switch to "staging" because local changes would be overwritten');
+  });
+
+  it("returns a worktree-specific message when branch is checked out elsewhere", () => {
+    const message = formatCheckoutBranchError(
+      new Error(
+        "git checkout staging exited with code 128: fatal: 'staging' is already checked out at '/Users/callumspencer/Repos/macapp/OpencodeOrxa-staging'",
+      ),
+      "staging",
+    );
+    expect(message).toContain('Cannot switch to "staging" because it is already checked out in another worktree.');
+  });
+
+  it("maps branch already exists errors to a retry hint", () => {
+    const message = formatCheckoutBranchError(
+      new Error("fatal: a branch named 'staging' already exists"),
+      "staging",
+    );
+    expect(message).toBe('Branch "staging" already exists. Try selecting it again to switch.');
+  });
+
+  it("strips command boilerplate and returns raw fallback message", () => {
+    const message = formatCheckoutBranchError(
+      new Error("git checkout foo exited with code 1: fatal: something unexpected happened"),
+      "foo",
+    );
+    expect(message).toBe("fatal: something unexpected happened");
   });
 });
