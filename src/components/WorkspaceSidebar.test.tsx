@@ -41,6 +41,7 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     openSessionContextMenu: vi.fn(),
     addProjectDirectory: vi.fn(),
     setProfileModalOpen: vi.fn(),
+    onOpenDebugLogs: vi.fn(),
     setSettingsOpen: vi.fn(),
     ...overrides,
   };
@@ -81,5 +82,13 @@ describe("WorkspaceSidebar update CTA", () => {
 
     const updatingButton = screen.getByRole("button", { name: /^Updating\.\.\./ });
     expect(updatingButton).toBeDisabled();
+  });
+
+  it("opens debug logs from sidebar footer", () => {
+    const onOpenDebugLogs = vi.fn();
+    render(<WorkspaceSidebar {...buildProps({ onOpenDebugLogs })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Debug logs" }));
+    expect(onOpenDebugLogs).toHaveBeenCalledTimes(1);
   });
 });

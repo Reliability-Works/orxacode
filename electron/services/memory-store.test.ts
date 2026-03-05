@@ -101,6 +101,26 @@ describe("MemoryStore", () => {
     expect(graph.edges.length).toBeGreaterThan(0);
   });
 
+  it("filters weak/stopword-only prompt queries to avoid irrelevant memory injection", async () => {
+    const store = new MemoryStore();
+    await store.updateSettings({
+      global: {
+        enabled: true,
+        mode: "balanced",
+      },
+    });
+
+    await store.ingestSessionMessages("/repo-signal", "s-signal", [
+      textBundle("s-signal", "m-1", "user", "Project signal: prioritize browser agent reliability and action retries."),
+    ]);
+
+    const stopwordOnly = await store.getPromptMemories("/repo-signal", "please help me with this", 6);
+    const unrelated = await store.getPromptMemories("/repo-signal", "recipe for italian tiramisu", 6);
+
+    expect(stopwordOnly).toHaveLength(0);
+    expect(unrelated).toHaveLength(0);
+  });
+
   it("ingests structured ORXA memory lines with explicit workspace routing", async () => {
     const store = new MemoryStore();
     await store.updateSettings({

@@ -131,8 +131,10 @@ describe("OpencodeService memory prompt integration", () => {
       client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
       memoryStore: { buildPromptContext: (directory: string, text: string) => Promise<string> };
       scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+      ensureWorkspaceDirectory: (directory: string) => string;
     };
     service.promptFence = new Map<string, number>();
+    service.ensureWorkspaceDirectory = (directory) => directory;
     return service;
   }
 
@@ -214,6 +216,36 @@ describe("OpencodeService memory prompt integration", () => {
 
     const payload = promptMock.mock.calls[0]?.[0] as { tools?: Record<string, boolean> } | undefined;
     expect(payload?.tools).toEqual({ "*": false, web_search: false });
+  });
+
+  it("skips memory-context lookup for machine-origin prompts", async () => {
+    const service = createSendPromptHarness() as unknown as {
+      sendPrompt: (input: { directory: string; sessionID: string; text: string; promptSource?: "machine" | "user" }) => Promise<boolean>;
+      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
+      memoryStore: { buildPromptContext: () => Promise<string> };
+      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+    };
+    const promptMock = vi.fn(async (payload: unknown) => {
+      void payload;
+      return undefined;
+    });
+    const buildContextMock = vi.fn(async () => "Workspace memory guidance");
+    service.client = () => ({ session: { prompt: promptMock } });
+    service.memoryStore = {
+      buildPromptContext: buildContextMock,
+    };
+    service.scheduleSessionMemoryIngest = async () => undefined;
+
+    await service.sendPrompt({
+      directory: "/repo-standard",
+      sessionID: "session-4",
+      text: "[ORXA_BROWSER_RESULT]{}",
+      promptSource: "machine",
+    });
+
+    expect(buildContextMock).not.toHaveBeenCalled();
+    const payload = promptMock.mock.calls[0]?.[0] as { system?: string } | undefined;
+    expect(payload?.system).toBeUndefined();
   });
 });
 
@@ -303,6 +335,36 @@ describe("OpencodeService git flows", () => {
       ["pr", "create", "--fill", "--head", "feature/commit-flow", "--base", "main"],
       "/repo",
     );
+  });
+
+  it("omits bare origin namespace entries from branch list", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitBranches: (directory: string) => Promise<{
+        current: string;
+        branches: string[];
+      }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feat/driving-4-us");
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("refs/heads")) {
+        return ["feat/driving-4-us", "main"].join("\n");
+      }
+      if (full.includes("refs/remotes/origin")) {
+        return ["origin", "origin/HEAD", "origin/main", "origin/feat/first-response-nextjs"].join("\n");
+      }
+      return "";
+    });
+
+    const result = await service.gitBranches("/repo");
+    expect(result.current).toBe("feat/driving-4-us");
+    expect(result.branches).toEqual(["feat/driving-4-us", "feat/first-response-nextjs", "main"]);
+    expect(result.branches).not.toContain("origin");
   });
 
   it("retries PR creation without --fill when git range defaults cannot be computed", async () => {

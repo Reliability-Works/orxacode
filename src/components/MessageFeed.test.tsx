@@ -154,6 +154,74 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Captured first source. Continuing evidence collection.")).toBeInTheDocument();
   });
 
+  it("keeps visible user text when a bundle also contains internal machine-result lines", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-mixed",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-visible",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-mixed",
+            text: "Research and summarize top DeFi news from 2026.",
+          },
+          {
+            id: "part-user-internal",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-mixed",
+            text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText("Research and summarize top DeFi news from 2026.")).toBeInTheDocument();
+    expect(screen.queryByText(/\[ORXA_BROWSER_RESULT\]/)).not.toBeInTheDocument();
+  });
+
+  it("renders all visible user text parts instead of truncating to the first one", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-multipart",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-line-1",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-multipart",
+            text: "Line one.",
+          },
+          {
+            id: "part-user-line-2",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-multipart",
+            text: "Line two.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText("Line one.")).toBeInTheDocument();
+    expect(screen.getByText("Line two.")).toBeInTheDocument();
+  });
+
   it("moves ORXA browser action tags into live events instead of chat text", () => {
     const messages: SessionMessageBundle[] = [
       {

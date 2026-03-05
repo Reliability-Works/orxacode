@@ -49,6 +49,7 @@ export type WorkspaceSidebarProps = {
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
   setProfileModalOpen: Dispatch<SetStateAction<boolean>>;
+  onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
 
@@ -86,6 +87,7 @@ export function WorkspaceSidebar({
   openSessionContextMenu,
   addProjectDirectory,
   setProfileModalOpen,
+  onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
   const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
@@ -353,6 +355,7 @@ export function WorkspaceSidebar({
           }}
         />
         <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
+        <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
         <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
       </div>
       </div>

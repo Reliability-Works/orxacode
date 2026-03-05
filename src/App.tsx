@@ -34,6 +34,7 @@ import type {
   SessionMessageBundle,
   BrowserHistoryItem,
   BrowserState,
+  OrxaEvent,
   WorkspaceArtifactSummary,
   WorkspaceContextFile,
 } from "@shared/ipc";
@@ -176,6 +177,24 @@ type OpenTargetOption = {
 type TextInputDialogState = Omit<TextInputDialogProps, "isOpen" | "onCancel">;
 
 type ConfirmDialogRequest = Omit<ConfirmDialogProps, "isOpen" | "onConfirm" | "onCancel">;
+type AppToastTone = "info" | "warning" | "error";
+
+type AppToast = {
+  id: string;
+  message: string;
+  tone: AppToastTone;
+};
+
+type DebugLogLevel = "info" | "warn" | "error";
+
+type DebugLogEntry = {
+  id: string;
+  time: number;
+  level: DebugLogLevel;
+  eventType: string;
+  summary: string;
+  details?: string;
+};
 
 const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "cursor", label: "Cursor", logo: cursorLogo },
@@ -220,6 +239,10 @@ const WEB_TASK_HINT_PATTERN =
   /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
 const APP_PRIVATE_ARTIFACT_QUERY_LIMIT = 1_000;
 const APP_PRIVATE_ARTIFACT_VIEW_LIMIT = 300;
+const STATUS_TOAST_ERROR_PATTERN = /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i;
+const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i;
+const RECOVERABLE_SESSION_ERROR_PATTERN =
+  /\b(skill|skills?|working directory|workspace|cwd|enoent|not found|no such file|no longer accessible)\b/i;
 
 const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
   partition: "persist:orxa-browser",
@@ -246,6 +269,121 @@ function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarSta
     label: entry.title?.trim() ? entry.title : entry.url,
     url: entry.url,
   }));
+}
+
+function toneForStatusLine(status: string): AppToastTone | null {
+  const value = status.trim();
+  if (!value) {
+    return null;
+  }
+  if (STATUS_TOAST_ERROR_PATTERN.test(value)) {
+    return "error";
+  }
+  if (STATUS_TOAST_WARNING_PATTERN.test(value)) {
+    return "warning";
+  }
+  return null;
+}
+
+function isRecoverableSessionError(message: string, code?: string) {
+  if (RECOVERABLE_SESSION_ERROR_PATTERN.test(message)) {
+    return true;
+  }
+  if (typeof code === "string" && RECOVERABLE_SESSION_ERROR_PATTERN.test(code)) {
+    return true;
+  }
+  return false;
+}
+
+function toDebugLogFromEvent(event: OrxaEvent): Omit<DebugLogEntry, "id" | "time"> {
+  const stringifyDetails = (value: unknown) => {
+    if (value === undefined) {
+      return undefined;
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  };
+
+  if (event.type === "runtime.error") {
+    return {
+      level: "error",
+      eventType: "runtime.error",
+      summary: event.payload.message || "Runtime error",
+      details: stringifyDetails(event.payload),
+    };
+  }
+
+  if (event.type === "updater.telemetry") {
+    const phase = event.payload.phase;
+    const level: DebugLogLevel = phase === "check.error" ? "error" : "info";
+    const summary = phase === "check.error"
+      ? `Updater check failed${event.payload.message ? `: ${event.payload.message}` : ""}`
+      : `Updater event: ${phase}`;
+    return {
+      level,
+      eventType: `updater.${phase}`,
+      summary,
+      details: stringifyDetails(event.payload),
+    };
+  }
+
+  if (event.type === "opencode.project") {
+    const streamType = String(event.payload.event.type ?? "project.event");
+    const properties = event.payload.event.properties;
+    if (streamType === "session.error") {
+      const errorRecord =
+        properties?.error && typeof properties.error === "object"
+          ? (properties.error as Record<string, unknown>)
+          : undefined;
+      const message = typeof errorRecord?.message === "string" ? errorRecord.message : "Session error";
+      return {
+        level: "error",
+        eventType: streamType,
+        summary: message,
+        details: stringifyDetails(properties),
+      };
+    }
+    if (streamType === "session.status") {
+      const status =
+        properties?.status && typeof properties.status === "object"
+          ? (properties.status as Record<string, unknown>)
+          : undefined;
+      const statusType = typeof status?.type === "string" ? status.type : "unknown";
+      return {
+        level: statusType === "retry" ? "warn" : "info",
+        eventType: streamType,
+        summary: `Session status: ${statusType}`,
+        details: stringifyDetails(properties),
+      };
+    }
+    return {
+      level: "info",
+      eventType: streamType,
+      summary: `Project event: ${streamType}`,
+      details: stringifyDetails(properties),
+    };
+  }
+
+  if (event.type === "browser.agent.action") {
+    return {
+      level: event.payload.ok ? "info" : "error",
+      eventType: `browser.${event.payload.action}`,
+      summary: event.payload.ok
+        ? `Browser action completed: ${event.payload.action}`
+        : `Browser action failed: ${event.payload.action}${event.payload.error ? ` (${event.payload.error})` : ""}`,
+      details: stringifyDetails(event.payload),
+    };
+  }
+
+  return {
+    level: "info",
+    eventType: event.type,
+    summary: event.type,
+    details: stringifyDetails(event.payload),
+  };
 }
 
 function buildBrowserAutopilotHint(input: string): string | undefined {
@@ -620,7 +758,63 @@ export default function App() {
     document.documentElement.style.setProperty("--code-font", stack);
   }, [appPreferences.codeFont]);
   const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
-  const [, setStatusLine] = useState<string>("Ready");
+  const [statusLine, setStatusLine] = useState<string>("Ready");
+  const [toasts, setToasts] = useState<AppToast[]>([]);
+  const [debugModalOpen, setDebugModalOpen] = useState(false);
+  const [debugLogLevelFilter, setDebugLogLevelFilter] = useState<"all" | DebugLogLevel>("all");
+  const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
+  const toastTimersRef = useRef<Record<string, number>>({});
+  const dismissToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current[id];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete toastTimersRef.current[id];
+    }
+    setToasts((current) => current.filter((item) => item.id !== id));
+  }, []);
+  const pushToast = useCallback((message: string, tone: AppToastTone = "info", durationMs = 5_200) => {
+    const normalized = message.trim();
+    if (!normalized) {
+      return;
+    }
+    const id = `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    setToasts((current) => {
+      const duplicate = current.find((item) => item.message === normalized && item.tone === tone);
+      if (duplicate) {
+        return current;
+      }
+      return [...current, { id, message: normalized, tone }].slice(-4);
+    });
+    toastTimersRef.current[id] = window.setTimeout(() => {
+      dismissToast(id);
+    }, durationMs);
+  }, [dismissToast]);
+  const appendDebugLog = useCallback((entry: Omit<DebugLogEntry, "id" | "time">) => {
+    setDebugLogs((current) => {
+      const next: DebugLogEntry = {
+        id: `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
+        time: Date.now(),
+        ...entry,
+      };
+      return [...current, next].slice(-1200);
+    });
+  }, []);
+  useEffect(() => {
+    return () => {
+      Object.values(toastTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      toastTimersRef.current = {};
+    };
+  }, []);
+  useEffect(() => {
+    const message = statusLine.trim();
+    if (!message) {
+      return;
+    }
+    const tone = toneForStatusLine(message);
+    if (tone) {
+      pushToast(message, tone);
+    }
+  }, [pushToast, statusLine]);
   const [sessionProvenanceByPath, setSessionProvenanceByPath] = useState<Record<string, ChangeProvenanceRecord>>({});
   const [sessionFeedNotices, setSessionFeedNotices] = useState<Record<string, SessionFeedNotice[]>>({});
   const addSessionFeedNotice = useCallback(
@@ -1023,6 +1217,12 @@ export default function App() {
     }
     return branches.filter((branch) => branch.toLowerCase().includes(query));
   }, [branchQuery, branchState]);
+  const filteredDebugLogs = useMemo(() => {
+    if (debugLogLevelFilter === "all") {
+      return debugLogs;
+    }
+    return debugLogs.filter((entry) => entry.level === debugLogLevelFilter);
+  }, [debugLogLevelFilter, debugLogs]);
 
   const refreshProfiles = useCallback(async () => {
     const [nextRuntime, nextProfiles] = await Promise.all([window.orxa.runtime.getState(), window.orxa.runtime.listProfiles()]);
@@ -1316,6 +1516,7 @@ export default function App() {
       setProjects(result.projects);
       setRuntime(result.runtime);
       if (activeProjectDir && !result.projects.some((item) => item.worktree === activeProjectDir)) {
+        setStatusLine(`Workspace directory is no longer accessible: ${activeProjectDir}`);
         setActiveProjectDir(undefined);
         setProjectData(null);
         setActiveSessionID(undefined);
@@ -1755,6 +1956,8 @@ export default function App() {
     }
 
     const unsubscribe = events.subscribe((event) => {
+      appendDebugLog(toDebugLogFromEvent(event));
+
       if (event.type === "runtime.status") {
         setRuntime(event.payload);
       }
@@ -1950,9 +2153,11 @@ export default function App() {
               ? (eventProperties.error as Record<string, unknown>)
               : undefined;
           const message = typeof errorRecord?.message === "string" ? errorRecord.message.trim() : "";
+          const errorCode = typeof errorRecord?.code === "string" ? errorRecord.code.trim() : "";
           const sessionID = eventSessionID ?? activeSessionID;
           const interruptedDetail = "User interrupted. Send a new message to continue.";
           const useInterruptedReason = isRecentManualStop;
+          const useRecoverableReason = !useInterruptedReason && isRecoverableSessionError(message, errorCode);
           const interruptedAlreadyNoticed = Boolean(manualStopState?.noticeEmitted);
           if (useInterruptedReason && interruptedAlreadyNoticed) {
             if (sessionID && sessionID === activeSessionID) {
@@ -1962,17 +2167,27 @@ export default function App() {
           }
           if (sessionID) {
             addSessionFeedNotice(event.payload.directory, sessionID, {
-              label: useInterruptedReason ? "Session stopped by user" : "Session stopped due to an error",
+              label: useInterruptedReason
+                ? "Session stopped by user"
+                : useRecoverableReason
+                  ? "Session warning"
+                  : "Session stopped due to an error",
               detail: useInterruptedReason
                 ? interruptedDetail
                 : message || "No additional error details were returned by the backend.",
-              tone: useInterruptedReason ? "info" : "error",
+              tone: useInterruptedReason || useRecoverableReason ? "info" : "error",
             });
           }
           if (useInterruptedReason && eventSessionKey) {
             manualSessionStopsRef.current[eventSessionKey] = { requestedAt: manualStopAt ?? now, noticeEmitted: true };
           }
-          setStatusLine(useInterruptedReason ? interruptedDetail : message || "Session stopped due to an error.");
+          const detail = useInterruptedReason
+            ? interruptedDetail
+            : message || "Session stopped due to an error.";
+          setStatusLine(detail);
+          if (useRecoverableReason) {
+            pushToast(detail, "warning");
+          }
           if (sessionID && sessionID === activeSessionID) {
             stopResponsePolling();
           }
@@ -2003,8 +2218,10 @@ export default function App() {
     activeProjectDir,
     activeSessionID,
     addSessionFeedNotice,
+    appendDebugLog,
     bootstrap,
     loadMemoryGraph,
+    pushToast,
     queueRefresh,
     refreshArtifacts,
     scheduleGitRefresh,
@@ -2240,6 +2457,30 @@ export default function App() {
     }
   }, [bootstrap, selectProject]);
 
+  const changeProjectDirectory = useCallback(async (directory: string, label: string) => {
+    try {
+      const nextDirectory = await addProjectDirectory();
+      if (!nextDirectory) {
+        return;
+      }
+      if (nextDirectory === directory) {
+        setStatusLine(`Workspace already points to ${nextDirectory}`);
+        return;
+      }
+      await opencodeClient.removeProjectDirectory(directory);
+      await bootstrap();
+      if (activeProjectDir === directory) {
+        await selectProject(nextDirectory);
+      }
+      setStatusLine(`Updated workspace "${label}"`);
+      pushToast(`Workspace path updated to ${nextDirectory}`, "info", 4_000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusLine(message);
+      pushToast(message, "error");
+    }
+  }, [activeProjectDir, addProjectDirectory, bootstrap, pushToast, selectProject, setStatusLine]);
+
   const loadSkills = useCallback(async () => {
     try {
       setSkillsLoading(true);
@@ -2336,56 +2577,62 @@ export default function App() {
 
   const applySkillToProject = useCallback(
     async (skill: SkillEntry, targetProjectDir: string, sessionTarget: SkillPromptTarget) => {
-      const project = projects.find((item) => item.worktree === targetProjectDir);
-      if (!project) {
-        setStatusLine("Select a valid workspace");
-        return;
-      }
-      const seedPrompt = [
-        `Use skill: ${skill.name}`,
-        "",
-        skill.description,
-        "",
-        `Skill path: ${skill.path}`,
-        "",
-        "Apply this skill to the current task and ask clarifying questions if needed.",
-      ].join("\n");
-
-      await selectProject(targetProjectDir);
-      const latest = await opencodeClient.refreshProject(targetProjectDir);
-      setProjectData(latest);
-
-      let targetSessionID: string | null = null;
-      let usedCurrentSession = false;
-      if (sessionTarget === "current" && activeProjectDir === targetProjectDir && activeSessionID) {
-        const currentSessionAvailable = latest.sessions.some(
-          (item) => item.id === activeSessionID && !item.time.archived,
-        );
-        if (currentSessionAvailable) {
-          targetSessionID = activeSessionID;
-          usedCurrentSession = true;
+      try {
+        const project = projects.find((item) => item.worktree === targetProjectDir);
+        if (!project) {
+          setStatusLine("Select a valid workspace");
+          return;
         }
-      }
+        const seedPrompt = [
+          `Use skill: ${skill.name}`,
+          "",
+          skill.description,
+          "",
+          `Skill path: ${skill.path}`,
+          "",
+          "Apply this skill to the current task and ask clarifying questions if needed.",
+        ].join("\n");
 
-      if (!targetSessionID) {
-        const created = await opencodeClient.createSession(targetProjectDir, `Skill: ${skill.name}`);
-        targetSessionID = created.id;
-        setMessages([]);
-      } else {
-        const msgs = await opencodeClient.loadMessages(targetProjectDir, targetSessionID).catch(() => []);
-        messageCacheRef.current[`${targetProjectDir}:${targetSessionID}`] = msgs;
-        setMessages(msgs);
-      }
+        await selectProject(targetProjectDir);
+        const latest = await opencodeClient.refreshProject(targetProjectDir);
+        setProjectData(latest);
 
-      setActiveSessionID(targetSessionID);
-      setComposer(seedPrompt);
-      setSidebarMode("projects");
-      setSkillUseModal(null);
-      const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
-      const targetLabel = usedCurrentSession ? "current session" : "new session";
-      setStatusLine(`Prepared skill prompt for ${projectLabel} (${targetLabel})`);
+        let targetSessionID: string | null = null;
+        let usedCurrentSession = false;
+        if (sessionTarget === "current" && activeProjectDir === targetProjectDir && activeSessionID) {
+          const currentSessionAvailable = latest.sessions.some(
+            (item) => item.id === activeSessionID && !item.time.archived,
+          );
+          if (currentSessionAvailable) {
+            targetSessionID = activeSessionID;
+            usedCurrentSession = true;
+          }
+        }
+
+        if (!targetSessionID) {
+          const created = await opencodeClient.createSession(targetProjectDir, `Skill: ${skill.name}`);
+          targetSessionID = created.id;
+          setMessages([]);
+        } else {
+          const msgs = await opencodeClient.loadMessages(targetProjectDir, targetSessionID).catch(() => []);
+          messageCacheRef.current[`${targetProjectDir}:${targetSessionID}`] = msgs;
+          setMessages(msgs);
+        }
+
+        setActiveSessionID(targetSessionID);
+        setComposer(seedPrompt);
+        setSidebarMode("projects");
+        setSkillUseModal(null);
+        const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
+        const targetLabel = usedCurrentSession ? "current session" : "new session";
+        setStatusLine(`Prepared skill prompt for ${projectLabel} (${targetLabel})`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatusLine(message);
+        pushToast(message, "warning");
+      }
     },
-    [activeProjectDir, activeSessionID, projects, selectProject, setActiveSessionID, setComposer, setMessages, setProjectData, setSidebarMode],
+    [activeProjectDir, activeSessionID, projects, pushToast, selectProject, setActiveSessionID, setComposer, setMessages, setProjectData, setSidebarMode],
   );
 
   useEffect(() => {
@@ -3590,6 +3837,7 @@ export default function App() {
             openSessionContextMenu={openSessionContextMenu}
             addProjectDirectory={() => addProjectDirectory()}
             setProfileModalOpen={setProfileModalOpen}
+            onOpenDebugLogs={() => setDebugModalOpen(true)}
             setSettingsOpen={setSettingsOpen}
           />
         </div>
@@ -3888,6 +4136,16 @@ export default function App() {
               <>
                 <button
                   type="button"
+                  onClick={() => {
+                    const { directory, label } = contextMenu;
+                    setContextMenu(null);
+                    void changeProjectDirectory(directory, label);
+                  }}
+                >
+                  Change Working Directory...
+                </button>
+                <button
+                  type="button"
                   className="danger"
                   onClick={() => {
                     const { directory, label } = contextMenu;
@@ -3943,6 +4201,65 @@ export default function App() {
               </>
             )}
           </div>
+        </div>
+      ) : null}
+
+      {debugModalOpen ? (
+        <div className="overlay debug-log-overlay" onClick={() => setDebugModalOpen(false)}>
+          <section
+            className="modal debug-log-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Session debug logs"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="modal-header">
+              <div>
+                <h2>Session Debug Logs</h2>
+                <small className="debug-log-subtitle">Current status: {statusLine}</small>
+              </div>
+              <button type="button" onClick={() => setDebugModalOpen(false)}>
+                Close
+              </button>
+            </header>
+            <div className="debug-log-toolbar">
+              <span className="debug-log-filter-label">Filter level</span>
+              {(["all", "info", "warn", "error"] as const).map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={debugLogLevelFilter === level ? "active" : ""}
+                  onClick={() => setDebugLogLevelFilter(level)}
+                >
+                  {level === "all" ? "All" : level.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div className="debug-log-list" role="log" aria-live="polite">
+              {filteredDebugLogs.length === 0 ? (
+                <p className="dashboard-empty">No debug logs yet.</p>
+              ) : (
+                filteredDebugLogs
+                  .slice()
+                  .reverse()
+                  .map((entry) => (
+                    <article key={entry.id} className={`debug-log-item ${entry.level}`.trim()}>
+                      <div className="debug-log-item-meta">
+                        <span>{new Date(entry.time).toLocaleTimeString()}</span>
+                        <span>{entry.eventType}</span>
+                      </div>
+                      <p>{entry.summary}</p>
+                      {entry.details ? (
+                        <details>
+                          <summary>Details</summary>
+                          <pre>{entry.details}</pre>
+                        </details>
+                      ) : null}
+                    </article>
+                  ))
+              )}
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -4250,6 +4567,19 @@ export default function App() {
         onRestoreOrxaAgentHistory={(name, historyID) => window.orxa.opencode.restoreOrxaAgentHistory(name, historyID)}
         allModelOptions={settingsModelOptions}
       />
+
+      {toasts.length > 0 ? (
+        <div className="composer-toast-stack" role="status" aria-live="polite">
+          {toasts.map((toast) => (
+            <article key={toast.id} className={`composer-toast ${toast.tone}`.trim()}>
+              <p>{toast.message}</p>
+              <button type="button" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
+                ×
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

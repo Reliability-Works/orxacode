@@ -26,6 +26,52 @@ const MAX_GUIDANCE_LENGTH = 4_000;
 const MAX_PROMPT_CONTEXT_ITEMS = 12;
 const MAX_CAPTURE_PER_SESSION = 60;
 const MEMORY_POLICY_MODES: ReadonlyArray<MemoryPolicyMode> = ["conservative", "balanced", "aggressive", "codebase-facts"];
+const PROMPT_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "any",
+  "are",
+  "as",
+  "at",
+  "be",
+  "but",
+  "by",
+  "for",
+  "from",
+  "get",
+  "help",
+  "how",
+  "i",
+  "if",
+  "in",
+  "into",
+  "is",
+  "it",
+  "its",
+  "me",
+  "my",
+  "of",
+  "on",
+  "or",
+  "our",
+  "please",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "this",
+  "to",
+  "up",
+  "use",
+  "want",
+  "we",
+  "with",
+  "you",
+  "your",
+]);
 
 type MemoryItemRow = {
   id: string;
@@ -128,7 +174,7 @@ function tokenize(text: string) {
   return normalizeWhitespace(text)
     .toLowerCase()
     .split(/[^a-z0-9@._/-]+/)
-    .filter((token) => token.length >= 3)
+    .filter((token) => token.length >= 3 && !PROMPT_STOPWORDS.has(token))
     .slice(0, 30);
 }
 
@@ -878,25 +924,30 @@ export class MemoryStore {
   }
 
   private scorePromptCandidate(tokens: string[], summary: string, tags: string[], content: string, confidence: number) {
-    if (tokens.length === 0) {
-      return confidence;
-    }
     const summaryLower = summary.toLowerCase();
     const tagBlob = tags.join(" ");
     const contentLower = content.toLowerCase();
+    const matchedTokens = new Set<string>();
     let score = confidence;
     for (const token of tokens) {
       if (summaryLower.includes(token)) {
+        matchedTokens.add(token);
         score += 0.9;
       }
       if (tagBlob.includes(token)) {
+        matchedTokens.add(token);
         score += 0.7;
       }
       if (contentLower.includes(token)) {
+        matchedTokens.add(token);
         score += 0.5;
       }
     }
-    return score;
+    return {
+      score,
+      matchedCount: matchedTokens.size,
+      ratio: tokens.length === 0 ? 0 : matchedTokens.size / tokens.length,
+    };
   }
 
   async getPromptMemories(workspaceInput: string, query: string, limit: number): Promise<MemoryPromptEntry[]> {
@@ -919,13 +970,21 @@ export class MemoryStore {
       updated_at: number;
     }>;
     const tokens = tokenize(query);
+    if (tokens.length === 0) {
+      return [];
+    }
     const scored: Array<{ score: number; entry: MemoryPromptEntry }> = [];
     for (const row of rows) {
       const tags = parseTags(row.tags_json);
       const content = await this.decrypt(row.content_enc);
-      const score = this.scorePromptCandidate(tokens, row.summary, tags, content, row.confidence);
+      const candidate = this.scorePromptCandidate(tokens, row.summary, tags, content, row.confidence);
+      const minMatchedCount = tokens.length >= 6 ? 2 : 1;
+      const minRatio = tokens.length >= 8 ? 0.22 : tokens.length >= 4 ? 0.18 : 0.1;
+      if (candidate.matchedCount < minMatchedCount || candidate.ratio < minRatio) {
+        continue;
+      }
       scored.push({
-        score,
+        score: candidate.score,
         entry: {
           summary: row.summary,
           content,

@@ -65,13 +65,45 @@ function clampContextMenuPosition(x: number, y: number) {
   };
 }
 
-function normalizeMessageBundles(items: SessionMessageBundle[]) {
+function mergeMessageParts(previous: SessionMessageBundle["parts"], next: SessionMessageBundle["parts"]) {
+  const merged = new Map<string, SessionMessageBundle["parts"][number]>();
+  const fallback = [] as SessionMessageBundle["parts"][number][];
+  for (const part of [...previous, ...next]) {
+    if (typeof part.id === "string" && part.id.length > 0) {
+      merged.set(part.id, part);
+      continue;
+    }
+    fallback.push(part);
+  }
+  return [...merged.values(), ...fallback];
+}
+
+function messageUpdatedAt(info: SessionMessageBundle["info"]) {
+  const timeRecord = info.time as Record<string, unknown>;
+  const updated = typeof timeRecord.updated === "number" ? timeRecord.updated : undefined;
+  const created = typeof timeRecord.created === "number" ? timeRecord.created : 0;
+  return updated ?? created;
+}
+
+export function normalizeMessageBundles(items: SessionMessageBundle[]) {
   if (items.length <= 1) {
     return items;
   }
   const byId = new Map<string, SessionMessageBundle>();
   for (const item of items) {
-    byId.set(item.info.id, item);
+    const existing = byId.get(item.info.id);
+    if (!existing) {
+      byId.set(item.info.id, item);
+      continue;
+    }
+    const itemUpdatedAt = messageUpdatedAt(item.info);
+    const existingUpdatedAt = messageUpdatedAt(existing.info);
+    const nextInfo = itemUpdatedAt >= existingUpdatedAt ? item.info : existing.info;
+    byId.set(item.info.id, {
+      ...item,
+      info: nextInfo,
+      parts: mergeMessageParts(existing.parts, item.parts),
+    });
   }
   return [...byId.values()].sort((a, b) => a.info.time.created - b.info.time.created);
 }

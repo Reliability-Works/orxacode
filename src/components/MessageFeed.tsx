@@ -96,7 +96,7 @@ function summarizeExploration(entries: TimelineEvent[]) {
     parts.push(pluralize(reads, "file"));
   }
   if (searches > 0) {
-    parts.push(pluralize(searches, "search"));
+    parts.push(pluralize(searches, "search", "searches"));
   }
   if (lists > 0) {
     parts.push(pluralize(lists, "list"));
@@ -152,7 +152,7 @@ function buildDelegationEventBlocks(events: InternalEvent[]): DelegationEventBlo
       parts.push(pluralize(reads, "file"));
     }
     if (searches > 0) {
-      parts.push(pluralize(searches, "search"));
+      parts.push(pluralize(searches, "search", "searches"));
     }
     if (lists > 0) {
       parts.push(pluralize(lists, "list"));
@@ -214,14 +214,7 @@ function getVisibleParts(role: string, parts: Part[]) {
     return parts.filter((part) => part.type === "text" || part.type === "file");
   }
 
-  const hasInternalMachineResult = parts.some(
-    (part) => part.type === "text" && INTERNAL_USER_TEXT_PREFIXES.some((prefix) => part.text.trim().startsWith(prefix)),
-  );
-  if (hasInternalMachineResult) {
-    return [];
-  }
-
-  const firstUserText = parts.find((part) => {
+  const visibleUserTextParts = parts.filter((part) => {
     if (part.type !== "text") {
       return false;
     }
@@ -240,8 +233,13 @@ function getVisibleParts(role: string, parts: Part[]) {
     }
     return true;
   });
+
+  if (visibleUserTextParts.length === 0) {
+    return [];
+  }
+
   const fileParts = parts.filter((part) => part.type === "file");
-  const filtered = [...(firstUserText ? [firstUserText] : []), ...fileParts];
+  const filtered = [...visibleUserTextParts, ...fileParts];
 
   if (filtered.length > 0) {
     return filtered;
@@ -1118,7 +1116,7 @@ function toToolActivityLabel(
     return withTarget("Reading", "Read");
   }
   if (name.includes("rg") || name.includes("grep") || name.includes("search") || name.includes("find")) {
-    return withTarget("Searching", "Searched");
+    return withTarget("Searching", "Searched", "Search failed");
   }
   if (name.includes("ls") || name.includes("list")) {
     return withTarget("Scanning", "Scanned");

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -676,11 +676,7 @@ export class OpencodeService {
   }
 
   async addProjectDirectory(directory: string) {
-    const normalized = path.resolve(directory);
-    const info = await stat(normalized).catch(() => undefined);
-    if (!info || !info.isDirectory()) {
-      throw new Error("Selected path is not a directory");
-    }
+    const normalized = this.ensureWorkspaceDirectory(directory, "Selected path is not a directory");
     this.projectStore.add(normalized);
     return normalized;
   }
@@ -1046,13 +1042,15 @@ export class OpencodeService {
   }
 
   async selectProject(directory: string) {
-    await this.addProjectDirectory(directory).catch(() => undefined);
-    this.startProjectStream(directory);
-    return this.refreshProject(directory);
+    const normalized = this.ensureWorkspaceDirectory(directory);
+    await this.addProjectDirectory(normalized);
+    this.startProjectStream(normalized);
+    return this.refreshProject(normalized);
   }
 
   async refreshProject(directory: string): Promise<ProjectBootstrap> {
-    const client = this.client(directory);
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const client = this.client(normalizedDirectory);
 
     const [
       pathInfo,
@@ -1070,30 +1068,30 @@ export class OpencodeService {
       vcs,
       ptys,
     ] = await Promise.all([
-      this.unwrap(client.path.get({ directory })).catch(() => ({
+      this.unwrap(client.path.get({ directory: normalizedDirectory })).catch(() => ({
         home: homedir(),
         state: path.join(homedir(), ".local", "share", "opencode"),
         config: path.join(homedir(), ".config", "opencode"),
-        worktree: directory,
-        directory,
+        worktree: normalizedDirectory,
+        directory: normalizedDirectory,
       })),
-      this.unwrap(client.session.list({ directory, roots: true, limit: 120 })).catch(() => []),
-      this.unwrap(client.session.status({ directory })).catch(() => ({})),
-      this.unwrap(client.provider.list({ directory })).catch(() => ({ all: [], connected: [], default: {} })),
-      this.unwrap(client.app.agents({ directory })).catch(() => []),
-      this.unwrap(client.config.get({ directory })).catch(() => ({})),
-      this.unwrap(client.permission.list({ directory })).catch(() => []),
-      this.unwrap(client.question.list({ directory })).catch(() => []),
-      this.unwrap(client.command.list({ directory })).catch(() => []),
-      this.unwrap(client.mcp.status({ directory })).catch(() => ({})),
-      this.unwrap(client.lsp.status({ directory })).catch(() => []),
-      this.unwrap(client.formatter.status({ directory })).catch(() => []),
-      this.unwrap(client.vcs.get({ directory })).catch(() => undefined),
-      this.unwrap(client.pty.list({ directory })).catch(() => []),
+      this.unwrap(client.session.list({ directory: normalizedDirectory, roots: true, limit: 120 })).catch(() => []),
+      this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.provider.list({ directory: normalizedDirectory })).catch(() => ({ all: [], connected: [], default: {} })),
+      this.unwrap(client.app.agents({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.config.get({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.mcp.status({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.lsp.status({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.formatter.status({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.vcs.get({ directory: normalizedDirectory })).catch(() => undefined),
+      this.unwrap(client.pty.list({ directory: normalizedDirectory })).catch(() => []),
     ]);
 
     return {
-      directory,
+      directory: normalizedDirectory,
       path: pathInfo,
       sessions,
       sessionStatus,
@@ -1112,8 +1110,9 @@ export class OpencodeService {
   }
 
   async createSession(directory: string, title?: string, permissionMode?: SessionPermissionMode) {
-    const response = await this.client(directory).session.create({
-      directory,
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const response = await this.client(normalizedDirectory).session.create({
+      directory: normalizedDirectory,
       title,
       permission: toSessionPermissionRules(permissionMode),
     });
@@ -1432,9 +1431,10 @@ export class OpencodeService {
   }
 
   async sendPrompt(input: PromptRequest) {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(input.directory);
     const promptSentAt = Date.now();
     const dedupeKey = [
-      input.directory,
+      normalizedDirectory,
       input.sessionID,
       input.text.trim(),
       input.contextModeEnabled ? "context:on" : "context:off",
@@ -1476,13 +1476,15 @@ export class OpencodeService {
       });
     }
 
-    const memoryContext = await this.memoryStore.buildPromptContext(input.directory, input.text).catch(() => "");
     const promptSource = input.promptSource ?? "user";
+    const memoryContext = promptSource === "machine"
+      ? ""
+      : await this.memoryStore.buildPromptContext(normalizedDirectory, input.text).catch(() => "");
     let contextPrompt = "";
     let contextTrace: ContextSelectionTrace | undefined;
     if (input.contextModeEnabled === true && promptSource !== "machine") {
       const contextResult = await this.workspaceContextStore
-        .buildPromptContext(input.directory, input.sessionID, input.text)
+        .buildPromptContext(normalizedDirectory, input.sessionID, input.text)
         .catch(() => undefined);
       contextPrompt = contextResult?.prompt ?? "";
       contextTrace = contextResult?.trace;
@@ -1493,7 +1495,7 @@ export class OpencodeService {
         });
         if (contextTrace.selected.length > 0) {
           void this.artifactStore.writeContextSelectionArtifact({
-            workspace: input.directory,
+            workspace: normalizedDirectory,
             sessionID: input.sessionID,
             trace: contextTrace,
           }).then((artifact) => {
@@ -1512,7 +1514,7 @@ export class OpencodeService {
       .join("\n\n");
 
     const request = {
-      directory: input.directory,
+      directory: normalizedDirectory,
       sessionID: input.sessionID,
       agent: input.agent,
       model: input.model,
@@ -1523,27 +1525,27 @@ export class OpencodeService {
     };
 
     try {
-      await this.client(input.directory).session.prompt(request);
+      await this.client(normalizedDirectory).session.prompt(request);
     } catch (error) {
       if (!isTransientPromptError(error)) {
         throw error;
       }
       const pollStartedAt = Date.now();
       while (Date.now() - pollStartedAt < 2_400) {
-        const recentMessages = await this.loadMessages(input.directory, input.sessionID).catch(() => undefined);
+        const recentMessages = await this.loadMessages(normalizedDirectory, input.sessionID).catch(() => undefined);
         if (recentMessages && hasRecentMatchingUserPrompt(recentMessages, input.text, promptSentAt)) {
           return true;
         }
         await delay(280);
       }
       await delay(320);
-      await this.client(input.directory).session.prompt(request);
+      await this.client(normalizedDirectory).session.prompt(request);
     } finally {
       setTimeout(() => {
         this.promptFence.delete(dedupeKey);
       }, 15_000);
     }
-    void this.scheduleSessionMemoryIngest(input.directory, input.sessionID, "prompt.sent");
+    void this.scheduleSessionMemoryIngest(normalizedDirectory, input.sessionID, "prompt.sent");
     return true;
   }
 
@@ -2090,6 +2092,7 @@ export class OpencodeService {
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
+      .filter((line) => line !== "origin")
       .filter((line) => !line.endsWith("/HEAD"))
       .map((line) => line.replace(/^origin\//, ""));
     const branches = [...new Set([...localBranches, ...remoteBranches])].sort((left, right) => left.localeCompare(right));
@@ -2885,14 +2888,23 @@ export class OpencodeService {
 
   private summarizeStreamEvent(event: Event) {
     if (event.type === "session.error") {
-      const properties = (event as { properties?: { sessionID?: string; error?: { message?: string } } }).properties;
+      const properties = (event as { properties?: { sessionID?: string; error?: Record<string, unknown> } }).properties;
+      const errorRecord = properties?.error && typeof properties.error === "object"
+        ? properties.error
+        : undefined;
       return {
         type: String(event.type),
         properties: {
           sessionID: properties?.sessionID,
-          error: {
-            message: properties?.error?.message,
-          },
+          error: errorRecord
+            ? {
+                ...errorRecord,
+                message: typeof errorRecord.message === "string" ? errorRecord.message : undefined,
+                code: typeof errorRecord.code === "string" ? errorRecord.code : undefined,
+                name: typeof errorRecord.name === "string" ? errorRecord.name : undefined,
+                cause: errorRecord.cause,
+              }
+            : undefined,
         },
       };
     }
@@ -3202,12 +3214,37 @@ export class OpencodeService {
   }
 
   private listStoredProjects(): ProjectListItem[] {
-    return this.projectStore.list().map((worktree) => ({
+    const available: string[] = [];
+    for (const worktree of this.projectStore.list()) {
+      if (existsSync(worktree)) {
+        available.push(worktree);
+      } else {
+        this.projectStore.remove(worktree);
+      }
+    }
+    return available.map((worktree) => ({
       id: `local:${worktree}`,
       name: path.basename(worktree),
       worktree: path.resolve(worktree),
       source: "local",
     }));
+  }
+
+  private ensureWorkspaceDirectory(directoryInput: string, invalidMessage?: string) {
+    const normalized = path.resolve(directoryInput);
+    let info: ReturnType<typeof statSync> | undefined;
+    try {
+      info = statSync(normalized);
+    } catch {
+      info = undefined;
+    }
+    if (!info) {
+      throw new Error(invalidMessage ?? `Workspace directory is no longer accessible: ${normalized}`);
+    }
+    if (!info.isDirectory()) {
+      throw new Error(invalidMessage ?? `Workspace directory is no longer accessible: ${normalized}`);
+    }
+    return normalized;
   }
 
   private orxaRootDir() {

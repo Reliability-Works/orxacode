@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProjectBootstrap } from "@shared/ipc";
-import { useWorkspaceState } from "./useWorkspaceState";
+import type { ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
+import { normalizeMessageBundles, useWorkspaceState } from "./useWorkspaceState";
 
 function createProjectBootstrap(directory: string, sessions: Array<{ id: string; time: { updated: number } }>): ProjectBootstrap {
   const sessionStatus = Object.fromEntries(sessions.map((session) => [session.id, { type: "idle" }]));
@@ -80,5 +80,49 @@ describe("useWorkspaceState", () => {
     });
 
     expect(createSessionMock).toHaveBeenCalledWith(directory, "New session", "ask-write");
+  });
+
+  it("merges duplicate message bundle ids without dropping visible parts", () => {
+    const now = Date.now();
+    const bundles: SessionMessageBundle[] = [
+      {
+        info: {
+          id: "message-1",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-1",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "message-1",
+            text: "First part",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+      {
+        info: {
+          id: "message-1",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: now, updated: now + 1 },
+        } as unknown as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-2",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "message-1",
+            text: "Second part",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+    const normalized = normalizeMessageBundles(bundles);
+
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0]?.parts).toHaveLength(2);
   });
 });
