@@ -5,6 +5,9 @@ import { createIpcEventHub } from "./services/ipc-event-hub";
 const eventHub = createIpcEventHub(ipcRenderer, IPC.events);
 
 const bridge: OrxaBridge = {
+  app: {
+    openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
+  },
   mode: {
     get: () => ipcRenderer.invoke(IPC.modeGet),
     set: (mode) => ipcRenderer.invoke(IPC.modeSet, mode),
@@ -87,6 +90,19 @@ const bridge: OrxaBridge = {
     listFiles: (directory, relativePath) => ipcRenderer.invoke(IPC.opencodeListFiles, directory, relativePath),
     countProjectFiles: (directory) => ipcRenderer.invoke(IPC.opencodeCountProjectFiles, directory),
     readProjectFile: (directory, relativePath) => ipcRenderer.invoke(IPC.opencodeReadProjectFile, directory, relativePath),
+    listArtifacts: (query) => ipcRenderer.invoke(IPC.opencodeArtifactsList, query),
+    getArtifact: (id) => ipcRenderer.invoke(IPC.opencodeArtifactsGet, id),
+    deleteArtifact: (id) => ipcRenderer.invoke(IPC.opencodeArtifactsDelete, id),
+    listArtifactSessions: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsListSessions, workspace),
+    listWorkspaceArtifactSummary: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsListWorkspaceSummary, workspace),
+    getArtifactRetentionPolicy: () => ipcRenderer.invoke(IPC.opencodeArtifactsGetRetention),
+    setArtifactRetentionPolicy: (input) => ipcRenderer.invoke(IPC.opencodeArtifactsSetRetention, input),
+    pruneArtifactsNow: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsPrune, workspace),
+    exportArtifactBundle: (input) => ipcRenderer.invoke(IPC.opencodeArtifactsExportBundle, input),
+    listWorkspaceContext: (workspace) => ipcRenderer.invoke(IPC.opencodeContextList, workspace),
+    readWorkspaceContext: (workspace, id) => ipcRenderer.invoke(IPC.opencodeContextRead, workspace, id),
+    writeWorkspaceContext: (input) => ipcRenderer.invoke(IPC.opencodeContextWrite, input),
+    deleteWorkspaceContext: (workspace, id) => ipcRenderer.invoke(IPC.opencodeContextDelete, workspace, id),
     getMemorySettings: (directory) => ipcRenderer.invoke(IPC.opencodeMemoryGetSettings, directory),
     updateMemorySettings: (input) => ipcRenderer.invoke(IPC.opencodeMemoryUpdateSettings, input),
     listMemoryTemplates: () => ipcRenderer.invoke(IPC.opencodeMemoryListTemplates),
@@ -112,6 +128,21 @@ const bridge: OrxaBridge = {
     write: (directory, ptyID, data) => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
     resize: (directory, ptyID, cols, rows) => ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
     close: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
+  },
+  browser: {
+    getState: () => ipcRenderer.invoke(IPC.browserGetState),
+    setVisible: (visible) => ipcRenderer.invoke(IPC.browserSetVisible, visible),
+    setBounds: (bounds) => ipcRenderer.invoke(IPC.browserSetBounds, bounds),
+    openTab: (url, activate) => ipcRenderer.invoke(IPC.browserOpenTab, url, activate),
+    closeTab: (tabID) => ipcRenderer.invoke(IPC.browserCloseTab, tabID),
+    switchTab: (tabID) => ipcRenderer.invoke(IPC.browserSwitchTab, tabID),
+    navigate: (url, tabID) => ipcRenderer.invoke(IPC.browserNavigate, url, tabID),
+    back: (tabID) => ipcRenderer.invoke(IPC.browserBack, tabID),
+    forward: (tabID) => ipcRenderer.invoke(IPC.browserForward, tabID),
+    reload: (tabID) => ipcRenderer.invoke(IPC.browserReload, tabID),
+    listHistory: (limit) => ipcRenderer.invoke(IPC.browserListHistory, limit),
+    clearHistory: () => ipcRenderer.invoke(IPC.browserClearHistory),
+    performAgentAction: (request) => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
   },
   events: {
     subscribe: (listener) => eventHub.subscribe(listener),

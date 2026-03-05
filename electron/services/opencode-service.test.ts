@@ -187,6 +187,34 @@ describe("OpencodeService memory prompt integration", () => {
     const payload = promptMock.mock.calls[0]?.[0] as { system?: string } | undefined;
     expect(payload?.system).toBeUndefined();
   });
+
+  it("forwards explicit tool policy overrides in prompt payload", async () => {
+    const service = createSendPromptHarness() as unknown as {
+      sendPrompt: (input: { directory: string; sessionID: string; text: string; tools?: Record<string, boolean> }) => Promise<boolean>;
+      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
+      memoryStore: { buildPromptContext: () => Promise<string> };
+      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+    };
+    const promptMock = vi.fn(async (payload: unknown) => {
+      void payload;
+      return undefined;
+    });
+    service.client = () => ({ session: { prompt: promptMock } });
+    service.memoryStore = {
+      buildPromptContext: async () => "",
+    };
+    service.scheduleSessionMemoryIngest = async () => undefined;
+
+    await service.sendPrompt({
+      directory: "/repo-standard",
+      sessionID: "session-3",
+      text: "Use ORXA browser actions only",
+      tools: { "*": false, web_search: false },
+    });
+
+    const payload = promptMock.mock.calls[0]?.[0] as { tools?: Record<string, boolean> } | undefined;
+    expect(payload?.tools).toEqual({ "*": false, web_search: false });
+  });
 });
 
 describe("OpencodeService git flows", () => {
@@ -239,12 +267,14 @@ describe("OpencodeService git flows", () => {
       }) => Promise<{ prUrl?: string }>;
       resolveGitRepoRoot: ReturnType<typeof vi.fn>;
       currentBranch: ReturnType<typeof vi.fn>;
+      resolveCommandPath: ReturnType<typeof vi.fn>;
       runCommand: ReturnType<typeof vi.fn>;
       runCommandWithOutput: ReturnType<typeof vi.fn>;
     };
 
     service.resolveGitRepoRoot = vi.fn(async () => "/repo");
     service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.resolveCommandPath = vi.fn(async () => "gh");
     service.runCommand = vi.fn(async () => undefined);
     service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
       const full = args.join(" ");
@@ -286,12 +316,14 @@ describe("OpencodeService git flows", () => {
       }) => Promise<{ prUrl?: string }>;
       resolveGitRepoRoot: ReturnType<typeof vi.fn>;
       currentBranch: ReturnType<typeof vi.fn>;
+      resolveCommandPath: ReturnType<typeof vi.fn>;
       runCommand: ReturnType<typeof vi.fn>;
       runCommandWithOutput: ReturnType<typeof vi.fn>;
     };
 
     service.resolveGitRepoRoot = vi.fn(async () => "/repo");
     service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.resolveCommandPath = vi.fn(async () => "gh");
     service.runCommand = vi.fn(async () => undefined);
     service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
       const full = args.join(" ");
@@ -338,12 +370,14 @@ describe("OpencodeService git flows", () => {
       }) => Promise<{ prUrl?: string }>;
       resolveGitRepoRoot: ReturnType<typeof vi.fn>;
       currentBranch: ReturnType<typeof vi.fn>;
+      resolveCommandPath: ReturnType<typeof vi.fn>;
       runCommand: ReturnType<typeof vi.fn>;
       runCommandWithOutput: ReturnType<typeof vi.fn>;
     };
 
     service.resolveGitRepoRoot = vi.fn(async () => "/repo");
     service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.resolveCommandPath = vi.fn(async () => "gh");
     service.runCommand = vi.fn(async () => undefined);
     service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
       const full = args.join(" ");
@@ -367,6 +401,114 @@ describe("OpencodeService git flows", () => {
         baseBranch: "main",
       }),
     ).rejects.toThrow("Unable to create PR: gh pr create --fill --head feature/commit-flow --base main exited with code 1: pull request create failed: GraphQL: No commits between base and head");
+  });
+
+  it("falls back to compare URL when gh is unavailable for create-pr flow", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommit: (directory: string, request: {
+        includeUnstaged: boolean;
+        message?: string;
+        guidancePrompt?: string;
+        baseBranch?: string;
+        nextStep: "commit" | "commit_and_push" | "commit_and_create_pr";
+      }) => Promise<{ prUrl?: string }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      resolveCommandPath: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.resolveCommandPath = vi.fn(async () => undefined);
+    service.runCommand = vi.fn(async () => undefined);
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("diff --cached --name-only")) {
+        return "src/app.ts\n";
+      }
+      if (full.includes("rev-parse HEAD")) {
+        return "abc1234\n";
+      }
+      if (full.includes("remote get-url origin")) {
+        return "git@github.com:anomalyco/opencode.git\n";
+      }
+      if (full.includes("symbolic-ref --quiet --short refs/remotes/origin/HEAD")) {
+        return "origin/main\n";
+      }
+      return "";
+    });
+
+    const result = await service.gitCommit("/repo", {
+      includeUnstaged: false,
+      message: "feat: improve commit modal",
+      nextStep: "commit_and_create_pr",
+    });
+
+    expect(result.prUrl).toBe("https://github.com/anomalyco/opencode/compare/main...feature%2Fcommit-flow?expand=1");
+    expect(service.runCommand).toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["-C", "/repo", "commit"]),
+      "/repo",
+    );
+    expect(service.runCommand).toHaveBeenCalledWith(
+      "git",
+      ["-C", "/repo", "push"],
+      "/repo",
+    );
+    const prCreateInvoked = service.runCommandWithOutput.mock.calls.some(
+      (_call: unknown[]) => Array.isArray(_call[1]) && (_call[1] as string[])[0] === "pr" && (_call[1] as string[])[1] === "create",
+    );
+    expect(prCreateInvoked).toBe(false);
+  });
+
+  it("throws when guided auto-generation fails instead of using generic fallback", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitCommit: (directory: string, request: {
+        includeUnstaged: boolean;
+        message?: string;
+        guidancePrompt?: string;
+        baseBranch?: string;
+        nextStep: "commit" | "commit_and_push" | "commit_and_create_pr";
+      }) => Promise<{ prUrl?: string }>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      currentBranch: ReturnType<typeof vi.fn>;
+      collectGitStats: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+      generateCommitMessageWithAgent: ReturnType<typeof vi.fn>;
+      runCommand: ReturnType<typeof vi.fn>;
+    };
+
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.currentBranch = vi.fn(async () => "feature/commit-flow");
+    service.collectGitStats = vi.fn(async () => ({ filesChanged: 3, insertions: 10, deletions: 2 }));
+    service.runCommandWithOutput = vi.fn(async (_command: string, args: string[]) => {
+      const full = args.join(" ");
+      if (full.includes("diff --cached --name-only")) {
+        return "src/app.ts\n";
+      }
+      if (full.includes("status --short") || full.includes("diff --compact-summary")) {
+        return "M src/app.ts\n";
+      }
+      return "";
+    });
+    service.generateCommitMessageWithAgent = vi.fn(async () => undefined);
+    service.runCommand = vi.fn(async () => undefined);
+
+    await expect(
+      service.gitCommit("/repo", {
+        includeUnstaged: false,
+        nextStep: "commit",
+        guidancePrompt: "Use a strict conventional commit with grouped bullets.",
+      }),
+    ).rejects.toThrow("Unable to auto-generate commit message. Enter a commit message manually and try again.");
+
+    expect(service.runCommand).not.toHaveBeenCalledWith(
+      "git",
+      expect.arrayContaining(["-C", "/repo", "commit"]),
+      "/repo",
+    );
   });
 });
 

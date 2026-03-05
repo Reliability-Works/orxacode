@@ -19,6 +19,7 @@ type IconName =
   | "log"
   | "issues"
   | "pulls"
+  | "browser"
   | "panelLeft"
   | "panelRight"
   | "orxa"
@@ -166,6 +167,15 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
           <circle cx="7" cy="18.5" r="2" />
           <path d="M7 7.5v9" />
           <path d="M9 16.5h3a5 5 0 0 0 5-5v-1" />
+        </svg>
+      );
+    case "browser":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18" />
+          <path d="M12 3a15 15 0 0 1 0 18" />
+          <path d="M12 3a15 15 0 0 0 0 18" />
         </svg>
       );
     case "panelLeft":

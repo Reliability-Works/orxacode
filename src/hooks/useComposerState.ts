@@ -22,6 +22,13 @@ export type ModelPayload = {
   modelID: string;
 };
 
+export type SendPromptInput = {
+  systemAddendum?: string;
+  contextModeEnabled?: boolean;
+  promptSource?: "user" | "job" | "machine";
+  tools?: Record<string, boolean>;
+};
+
 type UseComposerStateOptions = {
   availableSlashCommands: SlashCommand[];
   refreshMessages: () => Promise<void>;
@@ -174,7 +181,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     return { providerID, modelID };
   }, [selectedModel]);
 
-  const sendPrompt = useCallback(async () => {
+  const sendPrompt = useCallback(async (input?: string | SendPromptInput) => {
     if (sendingPromptRef.current) {
       return;
     }
@@ -188,7 +195,16 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
-    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}`;
+    const promptInput: SendPromptInput = typeof input === "string"
+      ? { systemAddendum: input }
+      : input ?? {};
+    const normalizedSystemAddendum = promptInput.systemAddendum?.trim() ?? "";
+    const promptSource = promptInput.promptSource ?? "user";
+    const contextModeEnabled = promptInput.contextModeEnabled === true;
+    const toolsKey = promptInput.tools
+      ? JSON.stringify(Object.entries(promptInput.tools).sort(([left], [right]) => left.localeCompare(right)))
+      : "";
+    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}:${normalizedSystemAddendum}:${promptSource}:${contextModeEnabled ? "context:on" : "context:off"}:${toolsKey}`;
     if (lastSendRef.current && lastSendRef.current.token === sendToken && Date.now() - lastSendRef.current.at < 6_000) {
       return;
     }
@@ -216,6 +232,10 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         directory: activeProjectDir,
         sessionID: activeSessionID,
         text,
+        system: normalizedSystemAddendum.length > 0 ? normalizedSystemAddendum : undefined,
+        contextModeEnabled,
+        promptSource,
+        tools: promptInput.tools,
         attachments: capturedAttachments.map((attachment) => ({
           url: attachment.url,
           mime: attachment.mime,

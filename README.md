@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+- [At a Glance](#at-a-glance)
 - [UI Preview](#ui-preview)
 - [Runtime Requirements](#runtime-requirements)
   - [Required: OpenCode](#required-opencode)
@@ -14,9 +15,11 @@
   - [Memory System](#memory-system)
   - [Permission and Safety UX](#permission-and-safety-ux)
   - [Skills and Prompt Preparation](#skills-and-prompt-preparation)
+  - [Integrated Browser and Agent Control](#integrated-browser-and-agent-control)
   - [Jobs and Automation](#jobs-and-automation)
   - [Runtime, Terminal, and Config](#runtime-terminal-and-config)
   - [Plugin and Updater Support](#plugin-and-updater-support)
+- [Agent Browser Contract](#agent-browser-contract)
 - [Local Development](#local-development)
 - [Validation](#validation)
 - [Packaging](#packaging)
@@ -52,6 +55,18 @@ Source of truth: [anomalyco/opencode](https://github.com/anomalyco/opencode).
 Quick links:
 - Contribution guide: [`contributor.md`](contributor.md)
 - License: [`LICENSE`](LICENSE)
+
+## At a Glance
+
+Opencode Orxa ships as a full workspace operations desktop for OpenCode with:
+
+- Multi-workspace management and session-first execution timeline.
+- Rich model/agent composition with session controls and permission mode switching.
+- Integrated memory capture/retrieval with graph visualization.
+- Embedded real browser (persistent profile, tabs, history, login/session persistence).
+- Agent browser automation bridge (action envelope contract and machine result loopback).
+- Job scheduler with per-job Browser Mode toggle for browser-enabled automation runs.
+- Integrated terminal, runtime profile management, plugin bootstrap, and auto updates.
 
 ## Runtime Requirements
 
@@ -131,11 +146,33 @@ Memory controls are available in Settings:
 - Skill modal for choosing workspace target and preparing a structured seed prompt.
 - Session targeting during prepare flow (current session or new session).
 
+### Integrated Browser and Agent Control
+
+- Embedded right-pane browser tab beside `Git` and `Files`, including:
+  - Multi-tab browsing.
+  - URL navigation controls.
+  - History list + clear history actions.
+  - Persistent browser profile (`persist:orxa-browser`) so cookies/session logins survive app restarts.
+- Browser mode toggle in composer controls:
+  - Off by default.
+  - When on, prompts include explicit browser capability instructions.
+- Human/agent control handoff:
+  - Agent controls by default when Browser Mode is enabled.
+  - `Take control` switches ownership to human and pauses agent execution.
+  - `Hand back to agent` returns ownership for continued automation.
+  - Browser strip `Stop` uses the same abort pathway as composer stop / `Esc`.
+- Auto focus behavior:
+  - App switches to the browser pane when agent browser actions begin.
+
 ### Jobs and Automation
 
 - Job templates for common recurring workflows.
 - Configurable schedules (daily with days/time, or interval-based).
 - Job run inbox with completion/failure visibility and per-run output viewer.
+- Per-job `Enable Browser Mode` toggle:
+  - Disabled by default.
+  - When enabled, scheduled runs receive browser capability instructions.
+  - When disabled, no browser contract is injected for that job run.
 
 ### Runtime, Terminal, and Config
 
@@ -151,6 +188,34 @@ Memory controls are available in Settings:
 - Built-in Orxa plugin bootstrap/registration path in app flow.
 - Auto-update checks for packaged builds via GitHub Releases.
 - Manual update trigger in Settings and Help menu (`Check for updates`).
+
+## Agent Browser Contract
+
+When Browser Mode is enabled and the agent owns control:
+
+1. Assistant emits:
+
+```xml
+<orxa_browser_action>{"id":"unique-action-id","action":"navigate","args":{"url":"https://example.com"}}</orxa_browser_action>
+```
+
+2. The app executes the action via browser IPC and returns a machine message prefixed with:
+
+```text
+[ORXA_BROWSER_RESULT]{"id":"unique-action-id","action":"navigate","ok":true,"data":{...}}
+```
+
+3. If browser mode is disabled or human owns control, execution is deterministically blocked and the result includes a blocked reason.
+
+Supported actions include:
+- `open_tab`, `close_tab`, `switch_tab`, `navigate`, `back`, `forward`, `reload`
+- `click`, `type`, `press`, `scroll`, `extract_text`, `screenshot`
+- `exists`, `visible`, `wait_for`, `wait_for_navigation`, `wait_for_idle`
+
+Locator guidance for dynamic pages:
+- Prefer robust locator args (`selector`, `selectors`, `text`, `role`, `name`, `label`, `frameSelector`).
+- Use `timeoutMs` and `maxAttempts` for retries/waits.
+- For dynamic or anti-automation pages, DOM primitives can still fail; design workflows to handle blocked/timeouts and retry with alternative locators.
 
 ## Local Development
 

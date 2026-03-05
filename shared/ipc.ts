@@ -20,6 +20,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 export const IPC = {
+  appOpenExternal: "orxa:app:openExternal",
   modeGet: "orxa:mode:get",
   modeSet: "orxa:mode:set",
   updatesGetPreferences: "orxa:updates:getPreferences",
@@ -88,6 +89,19 @@ export const IPC = {
   opencodeListFiles: "orxa:opencode:listFiles",
   opencodeCountProjectFiles: "orxa:opencode:countProjectFiles",
   opencodeReadProjectFile: "orxa:opencode:readProjectFile",
+  opencodeArtifactsList: "orxa:opencode:artifacts:list",
+  opencodeArtifactsGet: "orxa:opencode:artifacts:get",
+  opencodeArtifactsDelete: "orxa:opencode:artifacts:delete",
+  opencodeArtifactsListSessions: "orxa:opencode:artifacts:listSessions",
+  opencodeArtifactsListWorkspaceSummary: "orxa:opencode:artifacts:listWorkspaceSummary",
+  opencodeArtifactsGetRetention: "orxa:opencode:artifacts:getRetention",
+  opencodeArtifactsSetRetention: "orxa:opencode:artifacts:setRetention",
+  opencodeArtifactsPrune: "orxa:opencode:artifacts:prune",
+  opencodeArtifactsExportBundle: "orxa:opencode:artifacts:exportBundle",
+  opencodeContextList: "orxa:opencode:context:list",
+  opencodeContextRead: "orxa:opencode:context:read",
+  opencodeContextWrite: "orxa:opencode:context:write",
+  opencodeContextDelete: "orxa:opencode:context:delete",
   opencodeMemoryGetSettings: "orxa:opencode:memory:getSettings",
   opencodeMemoryUpdateSettings: "orxa:opencode:memory:updateSettings",
   opencodeMemoryListTemplates: "orxa:opencode:memory:listTemplates",
@@ -111,6 +125,19 @@ export const IPC = {
   terminalWrite: "orxa:terminal:write",
   terminalResize: "orxa:terminal:resize",
   terminalClose: "orxa:terminal:close",
+  browserGetState: "orxa:browser:getState",
+  browserSetVisible: "orxa:browser:setVisible",
+  browserSetBounds: "orxa:browser:setBounds",
+  browserOpenTab: "orxa:browser:openTab",
+  browserCloseTab: "orxa:browser:closeTab",
+  browserSwitchTab: "orxa:browser:switchTab",
+  browserNavigate: "orxa:browser:navigate",
+  browserBack: "orxa:browser:back",
+  browserForward: "orxa:browser:forward",
+  browserReload: "orxa:browser:reload",
+  browserListHistory: "orxa:browser:listHistory",
+  browserClearHistory: "orxa:browser:clearHistory",
+  browserPerformAgentAction: "orxa:browser:performAgentAction",
   events: "orxa:events",
 } as const;
 
@@ -220,6 +247,9 @@ export type PromptRequest = {
   };
   variant?: string;
   system?: string;
+  contextModeEnabled?: boolean;
+  promptSource?: "user" | "job" | "machine";
+  tools?: Record<string, boolean>;
 };
 
 export type SessionPermissionMode = "ask-write" | "yolo-write";
@@ -405,6 +435,127 @@ export type ProjectFileDocument = {
   truncated: boolean;
 };
 
+export type ArtifactKind = "browser.screenshot" | "context.selection";
+
+export type ArtifactRecord = {
+  id: string;
+  workspace: string;
+  workspaceHash: string;
+  sessionID: string;
+  kind: ArtifactKind;
+  createdAt: number;
+  mime?: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
+  title?: string;
+  url?: string;
+  actionID?: string;
+  artifactPath?: string;
+  fileUrl?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ArtifactListQuery = {
+  workspace?: string;
+  sessionID?: string;
+  kind?: ArtifactKind | ArtifactKind[];
+  limit?: number;
+};
+
+export type ArtifactSessionSummary = {
+  sessionID: string;
+  artifacts: number;
+  screenshots: number;
+  contextSelections: number;
+  bytes: number;
+  lastCreatedAt?: number;
+};
+
+export type WorkspaceArtifactSummary = {
+  workspace: string;
+  workspaceHash: string;
+  sessions: number;
+  artifacts: number;
+  screenshots: number;
+  contextSelections: number;
+  bytes: number;
+  lastCreatedAt?: number;
+};
+
+export type ArtifactRetentionPolicy = {
+  maxBytes: number;
+  totalBytes: number;
+  artifactCount: number;
+  fileArtifactCount: number;
+  updatedAt: number;
+};
+
+export type ArtifactRetentionUpdateInput = {
+  maxBytes: number;
+};
+
+export type ArtifactPruneResult = {
+  removed: number;
+  removedBytes: number;
+  totalBytes: number;
+  artifactCount: number;
+  maxBytes: number;
+};
+
+export type ArtifactExportBundleInput = {
+  workspace: string;
+  sessionID?: string;
+  kind?: ArtifactKind | ArtifactKind[];
+  limit?: number;
+};
+
+export type ArtifactExportBundleResult = {
+  bundlePath: string;
+  manifestPath: string;
+  exportedArtifacts: number;
+  copiedFiles: number;
+  totalBytes: number;
+  createdAt: number;
+};
+
+export type WorkspaceContextFile = {
+  id: string;
+  workspace: string;
+  filename: string;
+  path: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type WorkspaceContextWriteInput = {
+  workspace: string;
+  id?: string;
+  filename?: string;
+  title?: string;
+  content: string;
+};
+
+export type ContextSelectionTrace = {
+  id: string;
+  workspace: string;
+  sessionID: string;
+  query: string;
+  mode: "hybrid_lexical_v1";
+  selected: Array<{
+    contextID: string;
+    filename: string;
+    title: string;
+    heading: string;
+    score: number;
+    snippet: string;
+  }>;
+  createdAt: number;
+};
+
 export type OpenCodeAgentFile = {
   name: string;
   filename: string;
@@ -540,6 +691,176 @@ export type TerminalConnectResult = {
   connected: boolean;
 };
 
+export type BrowserBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type BrowserTab = {
+  id: string;
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  lastNavigatedAt?: number;
+};
+
+export type BrowserState = {
+  partition: string;
+  bounds: BrowserBounds;
+  tabs: BrowserTab[];
+  activeTabID?: string;
+};
+
+export type BrowserHistoryItem = {
+  id: string;
+  url: string;
+  title: string;
+  visitedAt: number;
+};
+
+export type BrowserLocator = {
+  selector?: string;
+  selectors?: string[];
+  text?: string;
+  role?: string;
+  name?: string;
+  label?: string;
+  frameSelector?: string;
+  includeShadowDom?: boolean;
+  exact?: boolean;
+};
+
+export type BrowserAgentActionRequest =
+  | {
+      action: "open_tab";
+      url?: string;
+      activate?: boolean;
+    }
+  | {
+      action: "close_tab";
+      tabID?: string;
+    }
+  | {
+      action: "switch_tab";
+      tabID: string;
+    }
+  | {
+      action: "navigate";
+      url: string;
+      tabID?: string;
+    }
+  | {
+      action: "back";
+      tabID?: string;
+    }
+  | {
+      action: "forward";
+      tabID?: string;
+    }
+  | {
+      action: "reload";
+      tabID?: string;
+    }
+  | {
+      action: "click";
+      tabID?: string;
+      selector?: string;
+      locator?: BrowserLocator;
+      timeoutMs?: number;
+      maxAttempts?: number;
+      waitForNavigation?: boolean;
+    }
+  | {
+      action: "type";
+      text: string;
+      tabID?: string;
+      selector?: string;
+      locator?: BrowserLocator;
+      submit?: boolean;
+      clear?: boolean;
+      timeoutMs?: number;
+      maxAttempts?: number;
+    }
+  | {
+      action: "press";
+      key: string;
+      tabID?: string;
+    }
+  | {
+      action: "scroll";
+      tabID?: string;
+      x?: number;
+      y?: number;
+      top?: number;
+      left?: number;
+      behavior?: "auto" | "smooth";
+    }
+  | {
+      action: "extract_text";
+      selector?: string;
+      tabID?: string;
+      maxLength?: number;
+      locator?: BrowserLocator;
+      timeoutMs?: number;
+      maxAttempts?: number;
+    }
+  | {
+      action: "exists";
+      selector?: string;
+      tabID?: string;
+      locator?: BrowserLocator;
+      timeoutMs?: number;
+    }
+  | {
+      action: "visible";
+      selector?: string;
+      tabID?: string;
+      locator?: BrowserLocator;
+      timeoutMs?: number;
+    }
+  | {
+      action: "wait_for";
+      selector?: string;
+      tabID?: string;
+      locator?: BrowserLocator;
+      timeoutMs?: number;
+      state?: "attached" | "visible" | "hidden";
+    }
+  | {
+      action: "wait_for_navigation";
+      tabID?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "wait_for_idle";
+      tabID?: string;
+      timeoutMs?: number;
+      idleMs?: number;
+    }
+  | {
+      action: "screenshot";
+      tabID?: string;
+      format?: "png" | "jpeg";
+      quality?: number;
+      bounds?: Partial<BrowserBounds>;
+      workspace?: string;
+      sessionID?: string;
+      actionID?: string;
+    };
+
+export type BrowserAgentActionResult = {
+  action: BrowserAgentActionRequest["action"];
+  ok: boolean;
+  state: BrowserState;
+  tabID?: string;
+  data?: Record<string, unknown>;
+  error?: string;
+};
+
 type StreamEventSummary = {
   type: string;
   properties?: Record<string, unknown>;
@@ -608,9 +929,38 @@ export type OrxaEvent =
   | {
       type: "memory.backfill";
       payload: MemoryBackfillStatus;
+    }
+  | {
+      type: "browser.state";
+      payload: BrowserState;
+    }
+  | {
+      type: "browser.history.added";
+      payload: BrowserHistoryItem;
+    }
+  | {
+      type: "browser.history.cleared";
+      payload: {
+        count: number;
+      };
+    }
+  | {
+      type: "browser.agent.action";
+      payload: BrowserAgentActionResult;
+    }
+  | {
+      type: "artifact.created";
+      payload: ArtifactRecord;
+    }
+  | {
+      type: "context.selection";
+      payload: ContextSelectionTrace;
     };
 
 export interface OrxaBridge {
+  app: {
+    openExternal: (url: string) => Promise<boolean>;
+  };
   mode: {
     get: () => Promise<AppMode>;
     set: (mode: AppMode) => Promise<AppMode>;
@@ -691,6 +1041,19 @@ export interface OrxaBridge {
     listFiles: (directory: string, relativePath?: string) => Promise<ProjectFileEntry[]>;
     countProjectFiles: (directory: string) => Promise<number>;
     readProjectFile: (directory: string, relativePath: string) => Promise<ProjectFileDocument>;
+    listArtifacts: (query?: ArtifactListQuery) => Promise<ArtifactRecord[]>;
+    getArtifact: (id: string) => Promise<ArtifactRecord | undefined>;
+    deleteArtifact: (id: string) => Promise<boolean>;
+    listArtifactSessions: (workspace: string) => Promise<ArtifactSessionSummary[]>;
+    listWorkspaceArtifactSummary: (workspace: string) => Promise<WorkspaceArtifactSummary>;
+    getArtifactRetentionPolicy: () => Promise<ArtifactRetentionPolicy>;
+    setArtifactRetentionPolicy: (input: ArtifactRetentionUpdateInput) => Promise<ArtifactRetentionPolicy>;
+    pruneArtifactsNow: (workspace?: string) => Promise<ArtifactPruneResult>;
+    exportArtifactBundle: (input: ArtifactExportBundleInput) => Promise<ArtifactExportBundleResult>;
+    listWorkspaceContext: (workspace: string) => Promise<WorkspaceContextFile[]>;
+    readWorkspaceContext: (workspace: string, id: string) => Promise<WorkspaceContextFile>;
+    writeWorkspaceContext: (input: WorkspaceContextWriteInput) => Promise<WorkspaceContextFile>;
+    deleteWorkspaceContext: (workspace: string, id: string) => Promise<boolean>;
     getMemorySettings: (directory?: string) => Promise<MemorySettings>;
     updateMemorySettings: (input: MemorySettingsUpdateInput) => Promise<MemorySettings>;
     listMemoryTemplates: () => Promise<MemoryTemplate[]>;
@@ -722,6 +1085,21 @@ export interface OrxaBridge {
     write: (directory: string, ptyID: string, data: string) => Promise<boolean>;
     resize: (directory: string, ptyID: string, cols: number, rows: number) => Promise<boolean>;
     close: (directory: string, ptyID: string) => Promise<boolean>;
+  };
+  browser: {
+    getState: () => Promise<BrowserState>;
+    setVisible: (visible: boolean) => Promise<BrowserState>;
+    setBounds: (bounds: BrowserBounds) => Promise<BrowserState>;
+    openTab: (url?: string, activate?: boolean) => Promise<BrowserState>;
+    closeTab: (tabID?: string) => Promise<BrowserState>;
+    switchTab: (tabID: string) => Promise<BrowserState>;
+    navigate: (url: string, tabID?: string) => Promise<BrowserState>;
+    back: (tabID?: string) => Promise<BrowserState>;
+    forward: (tabID?: string) => Promise<BrowserState>;
+    reload: (tabID?: string) => Promise<BrowserState>;
+    listHistory: (limit?: number) => Promise<BrowserHistoryItem[]>;
+    clearHistory: () => Promise<BrowserHistoryItem[]>;
+    performAgentAction: (request: BrowserAgentActionRequest) => Promise<BrowserAgentActionResult>;
   };
   events: {
     subscribe: (listener: (event: OrxaEvent) => void) => () => void;

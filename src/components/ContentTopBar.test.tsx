@@ -19,6 +19,8 @@ function buildProps() {
       projectData: null,
       terminalOpen: false,
       toggleTerminal: vi.fn(async () => undefined),
+      artifactsOpen: false,
+      onToggleArtifacts: vi.fn(),
       titleMenuOpen: false,
       openMenuOpen: false,
       setOpenMenuOpen: vi.fn(),

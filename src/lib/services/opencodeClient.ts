@@ -1,4 +1,12 @@
 import type {
+  ArtifactExportBundleInput,
+  ArtifactExportBundleResult,
+  ArtifactListQuery,
+  ArtifactPruneResult,
+  ArtifactRecord,
+  ArtifactRetentionPolicy,
+  ArtifactRetentionUpdateInput,
+  ArtifactSessionSummary,
   ChangeProvenanceRecord,
   ExecutionLedgerSnapshot,
   GitBranchState,
@@ -8,6 +16,9 @@ import type {
   SessionMessageBundle,
   SessionPermissionMode,
   SessionProvenanceSnapshot,
+  WorkspaceArtifactSummary,
+  WorkspaceContextFile,
+  WorkspaceContextWriteInput,
 } from "@shared/ipc";
 import type { Session } from "@opencode-ai/sdk/v2/client";
 
@@ -170,6 +181,64 @@ export const opencodeClient = {
         ...(options ?? {}),
       });
       expectTrue(sent, "sendPrompt");
+    }, { retries: 0 });
+  },
+
+  async listArtifacts(query?: ArtifactListQuery): Promise<ArtifactRecord[]> {
+    return withRetry("listArtifacts", () => getBridge().listArtifacts(query), { retries: 1 });
+  },
+
+  async getArtifact(id: string): Promise<ArtifactRecord | undefined> {
+    return withRetry("getArtifact", () => getBridge().getArtifact(id), { retries: 0 });
+  },
+
+  async deleteArtifact(id: string): Promise<void> {
+    return withRetry("deleteArtifact", async () => {
+      const deleted = await getBridge().deleteArtifact(id);
+      expectTrue(deleted, "deleteArtifact");
+    }, { retries: 0 });
+  },
+
+  async listArtifactSessions(workspace: string): Promise<ArtifactSessionSummary[]> {
+    return withRetry("listArtifactSessions", () => getBridge().listArtifactSessions(workspace), { retries: 1 });
+  },
+
+  async listWorkspaceArtifactSummary(workspace: string): Promise<WorkspaceArtifactSummary> {
+    return withRetry("listWorkspaceArtifactSummary", () => getBridge().listWorkspaceArtifactSummary(workspace), { retries: 1 });
+  },
+
+  async getArtifactRetentionPolicy(): Promise<ArtifactRetentionPolicy> {
+    return withRetry("getArtifactRetentionPolicy", () => getBridge().getArtifactRetentionPolicy(), { retries: 1 });
+  },
+
+  async setArtifactRetentionPolicy(input: ArtifactRetentionUpdateInput): Promise<ArtifactRetentionPolicy> {
+    return withRetry("setArtifactRetentionPolicy", () => getBridge().setArtifactRetentionPolicy(input), { retries: 0 });
+  },
+
+  async pruneArtifactsNow(workspace?: string): Promise<ArtifactPruneResult> {
+    return withRetry("pruneArtifactsNow", () => getBridge().pruneArtifactsNow(workspace), { retries: 0 });
+  },
+
+  async exportArtifactBundle(input: ArtifactExportBundleInput): Promise<ArtifactExportBundleResult> {
+    return withRetry("exportArtifactBundle", () => getBridge().exportArtifactBundle(input), { retries: 0 });
+  },
+
+  async listWorkspaceContext(workspace: string): Promise<WorkspaceContextFile[]> {
+    return withRetry("listWorkspaceContext", () => getBridge().listWorkspaceContext(workspace), { retries: 1 });
+  },
+
+  async readWorkspaceContext(workspace: string, id: string): Promise<WorkspaceContextFile> {
+    return withRetry("readWorkspaceContext", () => getBridge().readWorkspaceContext(workspace, id), { retries: 1 });
+  },
+
+  async writeWorkspaceContext(input: WorkspaceContextWriteInput): Promise<WorkspaceContextFile> {
+    return withRetry("writeWorkspaceContext", () => getBridge().writeWorkspaceContext(input), { retries: 0 });
+  },
+
+  async deleteWorkspaceContext(workspace: string, id: string): Promise<void> {
+    return withRetry("deleteWorkspaceContext", async () => {
+      const deleted = await getBridge().deleteWorkspaceContext(workspace, id);
+      expectTrue(deleted, "deleteWorkspaceContext");
     }, { retries: 0 });
   },
 

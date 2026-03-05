@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
-import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
+import { Check, ChevronDown, Compass, FileText, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
@@ -42,6 +42,10 @@ type ComposerPanelProps = {
   isPlanMode: boolean;
   hasPlanAgent: boolean;
   togglePlanMode: (enabled: boolean) => void;
+  browserModeEnabled: boolean;
+  setBrowserModeEnabled: (enabled: boolean) => void;
+  contextModeEnabled: boolean;
+  setContextModeEnabled: (enabled: boolean) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   compactionProgress: number;
@@ -117,6 +121,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
     isPlanMode,
     hasPlanAgent,
     togglePlanMode,
+    browserModeEnabled,
+    setBrowserModeEnabled,
+    contextModeEnabled,
+    setContextModeEnabled,
     permissionMode,
     onPermissionModeChange,
     compactionProgress,
@@ -435,6 +443,26 @@ export function ComposerPanel(props: ComposerPanelProps) {
           />
           Plan mode
         </label>
+        <button
+          type="button"
+          className={`composer-mode-toggle-icon ${browserModeEnabled ? "is-active" : ""}`.trim()}
+          aria-pressed={browserModeEnabled}
+          onClick={() => setBrowserModeEnabled(!browserModeEnabled)}
+          title={browserModeEnabled ? "Browser mode enabled" : "Browser mode disabled"}
+          aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
+        >
+          <Compass size={13} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`composer-mode-toggle-icon ${contextModeEnabled ? "is-active" : ""}`.trim()}
+          aria-pressed={contextModeEnabled}
+          onClick={() => setContextModeEnabled(!contextModeEnabled)}
+          title={contextModeEnabled ? "Context mode enabled" : "Context mode disabled"}
+          aria-label={contextModeEnabled ? "Disable Context mode" : "Enable Context mode"}
+        >
+          <FileText size={13} aria-hidden="true" />
+        </button>
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"

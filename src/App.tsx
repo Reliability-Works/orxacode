@@ -18,7 +18,11 @@ import {
 import type {
   AppMode,
   AgentsDocument,
+  ArtifactRetentionPolicy,
+  ArtifactRecord,
+  ArtifactSessionSummary,
   ChangeProvenanceRecord,
+  ContextSelectionTrace,
   MemoryBackfillStatus,
   MemoryGraphSnapshot,
   ProjectListItem,
@@ -28,6 +32,10 @@ import type {
   RuntimeState,
   SkillEntry,
   SessionMessageBundle,
+  BrowserHistoryItem,
+  BrowserState,
+  WorkspaceArtifactSummary,
+  WorkspaceContextFile,
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { ComposerPanel } from "./components/ComposerPanel";
@@ -36,8 +44,9 @@ import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset 
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
-import { GitSidebar } from "./components/GitSidebar";
+import { GitSidebar, type BrowserControlOwner, type BrowserSidebarState } from "./components/GitSidebar";
 import { ProjectDashboard } from "./components/ProjectDashboard";
+import { ArtifactsDrawer, type ArtifactScopeTab } from "./components/ArtifactsDrawer";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { JobsBoard } from "./components/JobsBoard";
@@ -45,12 +54,14 @@ import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { MemoryBoard } from "./components/MemoryBoard";
 import { ConfirmDialog, type ConfirmDialogProps } from "./components/ConfirmDialog";
 import { TextInputDialog, type TextInputDialogProps } from "./components/TextInputDialog";
+import { WorkspaceContextManager } from "./components/WorkspaceContextManager";
 import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
 import { useComposerState } from "./hooks/useComposerState";
 import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
+import { useBrowserAgentBridge } from "./hooks/useBrowserAgentBridge";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import {
   filterHiddenModelOptions,
@@ -63,6 +74,7 @@ import {
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
 import { syncAgentModelPreference } from "./lib/agent-model-preferences";
+import { BROWSER_MODE_TOOLS_POLICY } from "./lib/browser-tool-guardrails";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import { CODE_FONT_OPTIONS } from "~/types/app";
@@ -140,6 +152,13 @@ type UpdateProgressState = {
   version?: string;
 };
 
+type StartupState = {
+  phase: "running" | "done";
+  message: string;
+  completed: number;
+  total: number;
+};
+
 const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
 
 type OpenTargetOption = {
@@ -184,6 +203,98 @@ function commitFlowSuccessMessage(nextStep: CommitNextStep) {
 const DEFAULT_COMPACTION_THRESHOLD = 120_000;
 const MIN_COMPACTION_THRESHOLD = 24_000;
 const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
+const BROWSER_MODE_KEY = "orxa:browserModeEnabled:v1";
+const CONTEXT_MODE_KEY = "orxa:contextModeEnabled:v1";
+const DEFAULT_BROWSER_LANDING_URL = "about:blank";
+const STARTUP_TOTAL_STEPS = 8;
+const STARTUP_STEP_TIMEOUT_MS = 12_000;
+const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
+const WEB_TASK_HINT_PATTERN =
+  /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
+const APP_PRIVATE_ARTIFACT_QUERY_LIMIT = 1_000;
+const APP_PRIVATE_ARTIFACT_VIEW_LIMIT = 300;
+
+const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
+  partition: "persist:orxa-browser",
+  bounds: { x: 0, y: 0, width: 0, height: 0 },
+  tabs: [],
+  activeTabID: undefined,
+};
+
+function isAbsoluteWorkspacePath(value: string) {
+  return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
+}
+
+function isAppPrivateArtifact(record: ArtifactRecord) {
+  return !isAbsoluteWorkspacePath(record.workspace);
+}
+
+function toAppPrivateArtifacts(records: ArtifactRecord[]) {
+  return records.filter(isAppPrivateArtifact).slice(0, APP_PRIVATE_ARTIFACT_VIEW_LIMIT);
+}
+
+function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarState["history"] {
+  return items.map((entry) => ({
+    id: entry.id,
+    label: entry.title?.trim() ? entry.title : entry.url,
+    url: entry.url,
+  }));
+}
+
+function buildBrowserAutopilotHint(input: string): string | undefined {
+  const text = input.trim();
+  if (!text) {
+    return undefined;
+  }
+  const hasUrl = URL_REFERENCE_PATTERN.test(text);
+  const hasWebTask = WEB_TASK_HINT_PATTERN.test(text);
+  if (!hasUrl && !hasWebTask) {
+    return undefined;
+  }
+
+  const lines = [
+    "Auto Browser Skill Triggered: the latest user request appears to need web browsing.",
+    "Prefer integrated Orxa browser actions over any external/headless browser tool.",
+  ];
+  if (hasUrl) {
+    lines.push("Use URLs mentioned by the user as first navigation targets.");
+  }
+  if (hasWebTask) {
+    lines.push("For research tasks, follow a loop: navigate, wait_for_idle, extract_text, then summarize.");
+  }
+  return lines.join("\n");
+}
+
+function toBrowserSidebarState(input: {
+  runtimeState: BrowserState;
+  history: BrowserHistoryItem[];
+  modeEnabled: boolean;
+  controlOwner: BrowserControlOwner;
+  actionRunning: boolean;
+  canStop: boolean;
+}): BrowserSidebarState {
+  const tabs = input.runtimeState.tabs.map((tab) => ({
+    id: tab.id,
+    title: tab.title?.trim() ? tab.title : tab.url || "New Tab",
+    url: tab.url,
+    isActive: tab.id === input.runtimeState.activeTabID,
+  }));
+  const activeTab = input.runtimeState.tabs.find((tab) => tab.id === input.runtimeState.activeTabID) ?? null;
+
+  return {
+    modeEnabled: input.modeEnabled,
+    controlOwner: input.controlOwner,
+    tabs,
+    activeTabID: input.runtimeState.activeTabID ?? null,
+    activeUrl: activeTab?.url ?? "",
+    history: toBrowserSidebarHistory(input.history),
+    canGoBack: activeTab?.canGoBack ?? false,
+    canGoForward: activeTab?.canGoForward ?? false,
+    isLoading: activeTab?.loading ?? false,
+    actionRunning: input.actionRunning,
+    canStop: input.canStop,
+  };
+}
 
 function shouldAutoRenameSessionTitle(title: string | undefined) {
   if (!title) {
@@ -649,7 +760,38 @@ export default function App() {
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
-  const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
+  const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files" | "browser">("git");
+  const [browserModeEnabled, setBrowserModeEnabled] = usePersistedState<boolean>(BROWSER_MODE_KEY, false, {
+    deserialize: (raw) => raw === "1" || raw === "true",
+    serialize: (value) => (value ? "1" : "0"),
+  });
+  const [contextModeEnabled, setContextModeEnabled] = usePersistedState<boolean>(CONTEXT_MODE_KEY, false, {
+    deserialize: (raw) => raw === "1" || raw === "true",
+    serialize: (value) => (value ? "1" : "0"),
+  });
+  const [browserControlOwner, setBrowserControlOwner] = useState<BrowserControlOwner>("agent");
+  const [browserRuntimeState, setBrowserRuntimeState] = useState<BrowserState>(EMPTY_BROWSER_RUNTIME_STATE);
+  const [browserHistoryItems, setBrowserHistoryItems] = useState<BrowserHistoryItem[]>([]);
+  const [browserActionRunning, setBrowserActionRunning] = useState(false);
+  const [artifactsDrawerOpen, setArtifactsDrawerOpen] = useState(false);
+  const [artifactsDrawerTab, setArtifactsDrawerTab] = useState<ArtifactScopeTab>("session");
+  const [sessionArtifacts, setSessionArtifacts] = useState<ArtifactRecord[]>([]);
+  const [workspaceArtifacts, setWorkspaceArtifacts] = useState<ArtifactRecord[]>([]);
+  const [appArtifacts, setAppArtifacts] = useState<ArtifactRecord[]>([]);
+  const [artifactSessionSummaries, setArtifactSessionSummaries] = useState<ArtifactSessionSummary[]>([]);
+  const [workspaceArtifactSummary, setWorkspaceArtifactSummary] = useState<WorkspaceArtifactSummary | null>(null);
+  const [artifactRetentionPolicy, setArtifactRetentionPolicy] = useState<ArtifactRetentionPolicy | null>(null);
+  const [artifactRetentionBusy, setArtifactRetentionBusy] = useState(false);
+  const [artifactExportBusy, setArtifactExportBusy] = useState(false);
+  const [workspaceContextFiles, setWorkspaceContextFiles] = useState<WorkspaceContextFile[]>([]);
+  const [workspaceContextManagerOpen, setWorkspaceContextManagerOpen] = useState(false);
+  const [latestContextTrace, setLatestContextTrace] = useState<ContextSelectionTrace | null>(null);
+  const [startupState, setStartupState] = useState<StartupState>({
+    phase: "running",
+    message: "Initializing Opencode Orxa…",
+    completed: 0,
+    total: STARTUP_TOTAL_STEPS,
+  });
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const [preferredOpenTarget, setPreferredOpenTarget] = usePersistedState<OpenTarget>(OPEN_TARGET_KEY, "finder", {
@@ -702,6 +844,7 @@ export default function App() {
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
+  const browserPaneVisible = showGitPane && rightSidebarTab === "browser";
   const {
     branchState,
     gitPanelTab,
@@ -764,7 +907,11 @@ export default function App() {
   const projectSearchInputRef = useRef<HTMLInputElement | null>(null);
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAutoCreateTried = useRef(false);
+  const lastBrowserBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const commitFlowDismissTimerRef = useRef<number | null>(null);
+  const abortActiveSessionRef = useRef<(() => Promise<void>) | null>(null);
+  const startupRanRef = useRef(false);
+  const startupCompletedRef = useRef(false);
 
   const sessions = useMemo(() => {
     if (!projectData) {
@@ -932,6 +1079,192 @@ export default function App() {
     }
   }, []);
 
+  const syncBrowserSnapshot = useCallback(async () => {
+    const [nextState, nextHistory] = await Promise.all([window.orxa.browser.getState(), window.orxa.browser.listHistory(200)]);
+    setBrowserRuntimeState(nextState);
+    setBrowserHistoryItems(nextHistory);
+  }, []);
+
+  const refreshWorkspaceContextFiles = useCallback(async (workspace?: string | null) => {
+    const targetWorkspace = workspace ?? activeProjectDir;
+    if (!targetWorkspace) {
+      setWorkspaceContextFiles([]);
+      return;
+    }
+    try {
+      const entries = await window.orxa.opencode.listWorkspaceContext(targetWorkspace);
+      setWorkspaceContextFiles(entries);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeProjectDir]);
+
+  const refreshArtifacts = useCallback(async (workspace?: string | null, sessionID?: string | null) => {
+    const targetWorkspace = workspace ?? activeProjectDir;
+    const targetSessionID = sessionID ?? activeSessionID;
+    try {
+      const appRecordsPromise = window.orxa.opencode.listArtifacts({ limit: APP_PRIVATE_ARTIFACT_QUERY_LIMIT });
+      const retentionPolicyPromise = window.orxa.opencode.getArtifactRetentionPolicy();
+      if (!targetWorkspace) {
+        const [appRecords, retentionPolicy] = await Promise.all([appRecordsPromise, retentionPolicyPromise]);
+        setWorkspaceArtifacts([]);
+        setSessionArtifacts([]);
+        setArtifactSessionSummaries([]);
+        setWorkspaceArtifactSummary(null);
+        setAppArtifacts(toAppPrivateArtifacts(appRecords));
+        setArtifactRetentionPolicy(retentionPolicy);
+        return;
+      }
+
+      const [workspaceRecords, sessionRecords, summaries, workspaceSummary, retentionPolicy, appRecords] = await Promise.all([
+        window.orxa.opencode.listArtifacts({ workspace: targetWorkspace, limit: 300 }),
+        targetSessionID
+          ? window.orxa.opencode.listArtifacts({ workspace: targetWorkspace, sessionID: targetSessionID, limit: 150 })
+          : Promise.resolve([]),
+        window.orxa.opencode.listArtifactSessions(targetWorkspace),
+        window.orxa.opencode.listWorkspaceArtifactSummary(targetWorkspace),
+        retentionPolicyPromise,
+        appRecordsPromise,
+      ]);
+      setWorkspaceArtifacts(workspaceRecords);
+      setSessionArtifacts(sessionRecords);
+      setArtifactSessionSummaries(summaries);
+      setWorkspaceArtifactSummary(workspaceSummary);
+      setAppArtifacts(toAppPrivateArtifacts(appRecords));
+      setArtifactRetentionPolicy(retentionPolicy);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [activeProjectDir, activeSessionID]);
+
+  const ensureBrowserTab = useCallback(async () => {
+    const current = await window.orxa.browser.getState();
+    if (current.tabs.length > 0) {
+      setBrowserRuntimeState(current);
+      return current;
+    }
+    const nextState = await window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true);
+    setBrowserRuntimeState(nextState);
+    return nextState;
+  }, []);
+
+  const runBrowserStateCommand = useCallback(async (command: () => Promise<BrowserState>) => {
+    try {
+      const nextState = await command();
+      setBrowserRuntimeState(nextState);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const abortSessionViaComposer = useCallback(async () => {
+    if (abortActiveSessionRef.current) {
+      await abortActiveSessionRef.current();
+      return;
+    }
+    if (activeProjectDir && activeSessionID) {
+      await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID);
+    }
+  }, [activeProjectDir, activeSessionID]);
+
+  const setBrowserMode = useCallback(async (enabled: boolean) => {
+    setBrowserModeEnabled(enabled);
+    if (!enabled) {
+      setBrowserActionRunning(false);
+      return;
+    }
+    try {
+      await ensureBrowserTab();
+      await syncBrowserSnapshot();
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [ensureBrowserTab, setBrowserModeEnabled, syncBrowserSnapshot]);
+
+  const browserNavigate = useCallback(async (url: string) => {
+    await runBrowserStateCommand(() => window.orxa.browser.navigate(url));
+  }, [runBrowserStateCommand]);
+
+  const browserOpenTab = useCallback(async () => {
+    await runBrowserStateCommand(() => window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true));
+  }, [runBrowserStateCommand]);
+
+  const browserCloseTab = useCallback(async (tabID: string) => {
+    await runBrowserStateCommand(() => window.orxa.browser.closeTab(tabID));
+  }, [runBrowserStateCommand]);
+
+  const browserGoBack = useCallback(async () => {
+    await runBrowserStateCommand(() => window.orxa.browser.back());
+  }, [runBrowserStateCommand]);
+
+  const browserGoForward = useCallback(async () => {
+    await runBrowserStateCommand(() => window.orxa.browser.forward());
+  }, [runBrowserStateCommand]);
+
+  const browserReload = useCallback(async () => {
+    await runBrowserStateCommand(() => window.orxa.browser.reload());
+  }, [runBrowserStateCommand]);
+
+  const browserSelectTab = useCallback(async (tabID: string) => {
+    await runBrowserStateCommand(() => window.orxa.browser.switchTab(tabID));
+  }, [runBrowserStateCommand]);
+
+  const browserSelectHistory = useCallback(async (url: string) => {
+    await runBrowserStateCommand(() => window.orxa.browser.navigate(url));
+  }, [runBrowserStateCommand]);
+
+  const browserReportViewportBounds = useCallback((bounds: { x: number; y: number; width: number; height: number }) => {
+    const previous = lastBrowserBoundsRef.current;
+    if (
+      previous &&
+      previous.x === bounds.x &&
+      previous.y === bounds.y &&
+      previous.width === bounds.width &&
+      previous.height === bounds.height
+    ) {
+      return;
+    }
+    lastBrowserBoundsRef.current = bounds;
+    void window.orxa.browser.setBounds(bounds)
+      .then((nextState) => {
+        setBrowserRuntimeState(nextState);
+      })
+      .catch((error) => {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      });
+  }, []);
+
+  const browserTakeControl = useCallback(async () => {
+    setBrowserControlOwner("human");
+    setBrowserActionRunning(false);
+    try {
+      await abortSessionViaComposer();
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [abortSessionViaComposer]);
+
+  const browserHandBack = useCallback(() => {
+    setBrowserControlOwner("agent");
+  }, []);
+
+  const browserStop = useCallback(async () => {
+    setBrowserActionRunning(false);
+    try {
+      await abortSessionViaComposer();
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    }
+  }, [abortSessionViaComposer]);
+
+  const handleBrowserGuardrailViolation = useCallback((message: string) => {
+    setBrowserActionRunning(false);
+    setStatusLine(message);
+    void abortSessionViaComposer().catch((error) => {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    });
+  }, [abortSessionViaComposer, setStatusLine]);
+
   const bootstrap = useCallback(async () => {
     try {
       const result = await window.orxa.opencode.bootstrap();
@@ -989,6 +1322,63 @@ export default function App() {
     onSessionAbortRequested: markSessionAbortRequested,
   });
 
+  useEffect(() => {
+    abortActiveSessionRef.current = async () => {
+      await Promise.resolve(abortActiveSession());
+    };
+    return () => {
+      abortActiveSessionRef.current = null;
+    };
+  }, [abortActiveSession]);
+
+  const browserSystemAddendum = useMemo(() => {
+    if (!browserModeEnabled) {
+      return undefined;
+    }
+    return [
+      "Browser Mode is enabled in Opencode Orxa.",
+      browserControlOwner === "agent"
+        ? "Agent currently owns browser control."
+        : "Human currently owns browser control. Browser actions will be blocked until hand-back.",
+      "To request browser automation, emit exactly one tag per action:",
+      "<orxa_browser_action>{\"id\":\"unique-action-id\",\"action\":\"navigate\",\"args\":{\"url\":\"https://example.com\"}}</orxa_browser_action>",
+      "Supported actions: open_tab, close_tab, switch_tab, navigate, back, forward, reload, click, type, press, scroll, extract_text, exists, visible, wait_for, wait_for_navigation, wait_for_idle, screenshot.",
+      "For dynamic pages prefer robust locators in args.locator (selector/selectors/text/role/name/label/frameSelector/includeShadowDom/exact), plus timeoutMs/maxAttempts where needed.",
+      "Do not stop at first paint: continue with scroll, click, wait_for_idle, and extract_text loops until requested evidence is gathered.",
+      "Hard guardrail: do not use Playwright, MCP tools, web.run, or any external/headless/system browser tool in this session.",
+      "Only the in-app Orxa browser is allowed while Browser Mode is enabled.",
+      "Do not assume native browser tools. Wait for machine result messages prefixed with [ORXA_BROWSER_RESULT].",
+    ].join("\n");
+  }, [browserControlOwner, browserModeEnabled]);
+
+  const browserAutopilotHint = useMemo(() => {
+    if (!browserModeEnabled || browserControlOwner !== "agent") {
+      return undefined;
+    }
+    return buildBrowserAutopilotHint(composer);
+  }, [browserControlOwner, browserModeEnabled, composer]);
+
+  const effectiveSystemAddendum = useMemo(() => {
+    if (!browserSystemAddendum) {
+      return undefined;
+    }
+    if (!browserAutopilotHint) {
+      return browserSystemAddendum;
+    }
+    return `${browserSystemAddendum}\n\n${browserAutopilotHint}`;
+  }, [browserAutopilotHint, browserSystemAddendum]);
+
+  const sendComposerPrompt = useCallback(
+    () =>
+      sendPrompt({
+        systemAddendum: effectiveSystemAddendum,
+        contextModeEnabled,
+        promptSource: "user",
+        tools: browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+      }),
+    [browserModeEnabled, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
+  );
+
   const allModelOptions = settingsModelOptions;
 
   const modelSelectOptions = useMemo(
@@ -1000,24 +1390,114 @@ export default function App() {
     return model?.variants ?? [];
   }, [selectedModel, modelSelectOptions]);
   useEffect(() => {
-    void refreshProfiles()
-      .then(async () => {
-        const mode = await refreshMode();
-        await bootstrap();
-        await Promise.all([refreshConfigModels(), refreshGlobalProviders()]);
-        if (mode === "orxa") {
-          await refreshOrxaState();
-          return;
+    if (startupRanRef.current) {
+      return;
+    }
+    startupRanRef.current = true;
+    startupCompletedRef.current = false;
+    let cancelled = false;
+    let completed = 0;
+    const total = STARTUP_TOTAL_STEPS;
+    const updateStartup = (message: string, phase: StartupState["phase"] = "running") => {
+      if (cancelled) {
+        return;
+      }
+      setStartupState({
+        phase,
+        message,
+        completed,
+        total,
+      });
+    };
+    const markStepDone = (message: string) => {
+      completed += 1;
+      updateStartup(message);
+    };
+    const runStep = async <T,>(message: string, action: () => Promise<T>): Promise<T | undefined> => {
+      updateStartup(message);
+      let timeoutID: number | undefined;
+      try {
+        return await new Promise<T>((resolve, reject) => {
+          timeoutID = window.setTimeout(() => {
+            reject(new Error(`${message} timed out after ${STARTUP_STEP_TIMEOUT_MS}ms`));
+          }, STARTUP_STEP_TIMEOUT_MS);
+          void action()
+            .then((result) => {
+              resolve(result);
+            })
+            .catch((error) => {
+              reject(error);
+            });
+        });
+      } catch (error) {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (timeoutID !== undefined) {
+          window.clearTimeout(timeoutID);
         }
-        setOrxaModels({});
-        setOrxaPrompts({});
-      })
-      .catch((error) => setStatusLine(error instanceof Error ? error.message : String(error)));
-  }, [bootstrap, refreshConfigModels, refreshGlobalProviders, refreshMode, refreshOrxaState, refreshProfiles]);
+        markStepDone(message);
+      }
+      return undefined;
+    };
+
+    void (async () => {
+      try {
+        await runStep("Loading runtime profiles…", refreshProfiles);
+        const mode = (await runStep("Loading app mode…", refreshMode)) ?? "standard";
+        await runStep("Bootstrapping workspaces…", bootstrap);
+        await runStep("Loading model references…", refreshConfigModels);
+        await runStep("Loading provider registry…", refreshGlobalProviders);
+        await runStep(mode === "orxa" ? "Loading Orxa defaults…" : "Skipping Orxa defaults…", async () => {
+          if (mode === "orxa") {
+            await refreshOrxaState();
+            return;
+          }
+          setOrxaModels({});
+          setOrxaPrompts({});
+        });
+        await runStep("Checking runtime dependencies…", refreshRuntimeDependencies);
+        await runStep("Syncing browser state…", syncBrowserSnapshot);
+      } finally {
+        startupCompletedRef.current = true;
+        updateStartup("Initialization complete", "done");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (!startupCompletedRef.current) {
+        startupRanRef.current = false;
+      }
+    };
+  }, [
+    bootstrap,
+    refreshConfigModels,
+    refreshGlobalProviders,
+    refreshMode,
+    refreshOrxaState,
+    refreshProfiles,
+    refreshRuntimeDependencies,
+    syncBrowserSnapshot,
+  ]);
 
   useEffect(() => {
-    void refreshRuntimeDependencies();
-  }, [refreshRuntimeDependencies]);
+    void window.orxa.browser.setVisible(browserPaneVisible)
+      .then((nextState) => {
+        setBrowserRuntimeState(nextState);
+      })
+      .catch((error) => {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      });
+  }, [browserPaneVisible]);
+
+  useEffect(() => {
+    if (rightSidebarTab !== "browser") {
+      return;
+    }
+    void ensureBrowserTab().catch((error) => {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    });
+  }, [ensureBrowserTab, rightSidebarTab]);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -1035,6 +1515,37 @@ export default function App() {
     setMessages([]);
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
+
+  useEffect(() => {
+    if (!activeProjectDir) {
+      setWorkspaceArtifacts([]);
+      setSessionArtifacts([]);
+      setArtifactSessionSummaries([]);
+      setWorkspaceArtifactSummary(null);
+      setWorkspaceContextFiles([]);
+      return;
+    }
+    void refreshArtifacts(activeProjectDir, activeSessionID);
+    void refreshWorkspaceContextFiles(activeProjectDir);
+  }, [activeProjectDir, activeSessionID, refreshArtifacts, refreshWorkspaceContextFiles]);
+
+  useEffect(() => {
+    if (!artifactsDrawerOpen) {
+      return;
+    }
+    void refreshArtifacts(activeProjectDir, activeSessionID);
+  }, [activeProjectDir, activeSessionID, artifactsDrawerOpen, refreshArtifacts]);
+
+  useEffect(() => {
+    if (!workspaceContextManagerOpen || !activeProjectDir) {
+      return;
+    }
+    void refreshWorkspaceContextFiles(activeProjectDir);
+  }, [activeProjectDir, refreshWorkspaceContextFiles, workspaceContextManagerOpen]);
+
+  useEffect(() => {
+    setLatestContextTrace(null);
+  }, [activeProjectDir, activeSessionID]);
 
   useEffect(() => {
     if (!activeProjectDir || !activeSessionID) {
@@ -1224,6 +1735,47 @@ export default function App() {
         }
       }
 
+      if (event.type === "browser.state") {
+        setBrowserRuntimeState(event.payload);
+      }
+
+      if (event.type === "browser.history.added") {
+        setBrowserHistoryItems((current) => {
+          const withoutMatch = current.filter((item) => item.id !== event.payload.id && item.url !== event.payload.url);
+          return [event.payload, ...withoutMatch].slice(0, 1_000);
+        });
+      }
+
+      if (event.type === "browser.history.cleared") {
+        setBrowserHistoryItems([]);
+      }
+
+      if (event.type === "browser.agent.action") {
+        setBrowserActionRunning(false);
+      }
+
+      if (event.type === "artifact.created") {
+        const artifact = event.payload;
+        if (isAppPrivateArtifact(artifact)) {
+          setAppArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, APP_PRIVATE_ARTIFACT_VIEW_LIMIT));
+        }
+        if (activeProjectDir && artifact.workspace === activeProjectDir) {
+          setWorkspaceArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, 300));
+          if (activeSessionID && artifact.sessionID === activeSessionID) {
+            setSessionArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, 150));
+          }
+          void refreshArtifacts(activeProjectDir, activeSessionID).catch(() => undefined);
+        } else if (isAppPrivateArtifact(artifact)) {
+          void refreshArtifacts(activeProjectDir, activeSessionID).catch(() => undefined);
+        }
+      }
+
+      if (event.type === "context.selection") {
+        if (activeProjectDir && activeSessionID && event.payload.workspace === activeProjectDir && event.payload.sessionID === activeSessionID) {
+          setLatestContextTrace(event.payload);
+        }
+      }
+
       if (event.type === "opencode.global") {
         if (event.payload.event.type === "project.updated" || event.payload.event.type === "global.disposed") {
           void bootstrap();
@@ -1358,7 +1910,19 @@ export default function App() {
     return () => {
       unsubscribe();
     };
-  }, [activeProjectDir, activeSessionID, addSessionFeedNotice, bootstrap, loadMemoryGraph, queueRefresh, scheduleGitRefresh, sidebarMode, stopResponsePolling, updateInstallPending]);
+  }, [
+    activeProjectDir,
+    activeSessionID,
+    addSessionFeedNotice,
+    bootstrap,
+    loadMemoryGraph,
+    queueRefresh,
+    refreshArtifacts,
+    scheduleGitRefresh,
+    sidebarMode,
+    stopResponsePolling,
+    updateInstallPending,
+  ]);
 
   const downloadAndInstallUpdate = useCallback(async () => {
     if (updateInstallPending) {
@@ -2087,6 +2651,35 @@ export default function App() {
     [orxaTodos],
   );
   const allTodosCompleted = orxaTodos.length > 0 && completedTodoCount === orxaTodos.length;
+  const effectiveBrowserState = useMemo(() => toBrowserSidebarState({
+    runtimeState: browserRuntimeState,
+    history: browserHistoryItems,
+    modeEnabled: browserModeEnabled,
+    controlOwner: browserControlOwner,
+    actionRunning: browserActionRunning,
+    canStop: browserActionRunning || isSessionInProgress,
+  }), [browserActionRunning, browserControlOwner, browserHistoryItems, browserModeEnabled, browserRuntimeState, isSessionInProgress]);
+  const startupProgressPercent = useMemo(() => {
+    if (startupState.total <= 0) {
+      return 0;
+    }
+    return Math.max(0, Math.min(100, Math.round((startupState.completed / startupState.total) * 100)));
+  }, [startupState.completed, startupState.total]);
+
+  useBrowserAgentBridge({
+    activeProjectDir: activeProjectDir ?? null,
+    activeSessionID: activeSessionID ?? null,
+    messages,
+    browserModeEnabled,
+    controlOwner: browserControlOwner,
+    onActionStart: () => {
+      setRightSidebarTab("browser");
+      setBrowserActionRunning(true);
+    },
+    onStatus: setStatusLine,
+    onGuardrailViolation: handleBrowserGuardrailViolation,
+  });
+
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const messageFeedBottomClearance = useMemo(() => {
     if (orxaTodos.length === 0) {
@@ -2533,9 +3126,14 @@ export default function App() {
     if (!pendingPrUrl) {
       return;
     }
-    window.open(pendingPrUrl, "_blank", "noopener,noreferrer");
+    void window.orxa.app.openExternal(pendingPrUrl)
+      .then(() => {
+        setStatusLine("Opened pull request");
+      })
+      .catch((error) => {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+      });
     setPendingPrUrl(null);
-    setStatusLine("Opened pull request");
     setCommitMenuOpen(false);
     setOpenMenuOpen(false);
     setTitleMenuOpen(false);
@@ -2612,6 +3210,106 @@ export default function App() {
     setComposer((current) => (current.trim().length > 0 ? `${current}\n${filePath}` : filePath));
   }, [setComposer]);
 
+  const openArtifactsDrawer = useCallback((tab: ArtifactScopeTab) => {
+    setArtifactsDrawerTab(tab);
+    setArtifactsDrawerOpen(true);
+  }, []);
+
+  const closeArtifactsDrawer = useCallback(() => {
+    setArtifactsDrawerOpen(false);
+  }, []);
+
+  const applyArtifactRetentionCap = useCallback(async (maxBytes: number) => {
+    setArtifactRetentionBusy(true);
+    try {
+      const policy = await window.orxa.opencode.setArtifactRetentionPolicy({ maxBytes });
+      setArtifactRetentionPolicy(policy);
+      await refreshArtifacts(activeProjectDir, activeSessionID);
+      setStatusLine(`Artifact cap set to ${Math.round(policy.maxBytes / (1024 * 1024))} MB`);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArtifactRetentionBusy(false);
+    }
+  }, [activeProjectDir, activeSessionID, refreshArtifacts]);
+
+  const pruneArtifactsNow = useCallback(async () => {
+    setArtifactRetentionBusy(true);
+    try {
+      const result = await window.orxa.opencode.pruneArtifactsNow(activeProjectDir ?? undefined);
+      await refreshArtifacts(activeProjectDir, activeSessionID);
+      setStatusLine(`Pruned ${result.removed} artifacts (${Math.round(result.removedBytes / 1024)} KB freed)`);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArtifactRetentionBusy(false);
+    }
+  }, [activeProjectDir, activeSessionID, refreshArtifacts]);
+
+  const exportArtifactsBundle = useCallback(async () => {
+    if (!activeProjectDir || artifactsDrawerTab === "app") {
+      return;
+    }
+    setArtifactExportBusy(true);
+    try {
+      const result = await window.orxa.opencode.exportArtifactBundle({
+        workspace: activeProjectDir,
+        sessionID: artifactsDrawerTab === "session" ? activeSessionID ?? undefined : undefined,
+        limit: 1_000,
+      });
+      setStatusLine(`Exported ${result.exportedArtifacts} artifacts to ${result.bundlePath}`);
+    } catch (error) {
+      setStatusLine(error instanceof Error ? error.message : String(error));
+    } finally {
+      setArtifactExportBusy(false);
+    }
+  }, [activeProjectDir, activeSessionID, artifactsDrawerTab]);
+
+  const openWorkspaceContextManager = useCallback(async () => {
+    if (!activeProjectDir) {
+      return;
+    }
+    setWorkspaceContextManagerOpen(true);
+    await refreshWorkspaceContextFiles(activeProjectDir);
+  }, [activeProjectDir, refreshWorkspaceContextFiles]);
+
+  const createWorkspaceContext = useCallback(async () => {
+    if (!activeProjectDir) {
+      return;
+    }
+    setTextInputDialog({
+      title: "New context file",
+      defaultValue: "vision.md",
+      placeholder: "vision.md",
+      confirmLabel: "Create",
+      validate: (value) => {
+        if (!value.trim()) {
+          return "Filename is required";
+        }
+        return null;
+      },
+      onConfirm: async (value) => {
+        const filename = value.trim();
+        if (!filename) {
+          return;
+        }
+        try {
+          await window.orxa.opencode.writeWorkspaceContext({
+            workspace: activeProjectDir,
+            filename,
+            title: filename.replace(/\.md$/i, ""),
+            content: `# ${filename.replace(/\.md$/i, "")}\n\n`,
+          });
+          await refreshWorkspaceContextFiles(activeProjectDir);
+          setWorkspaceContextManagerOpen(true);
+          setStatusLine("Workspace context created");
+        } catch (error) {
+          setStatusLine(error instanceof Error ? error.message : String(error));
+        }
+      },
+    });
+  }, [activeProjectDir, refreshWorkspaceContextFiles]);
+
   useEffect(() => {
     if (!activeProjectDir) {
       setRightSidebarTab("git");
@@ -2650,6 +3348,18 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="window-drag-region" />
+      {startupState.phase === "running" ? (
+        <section className="startup-overlay" aria-live="polite" role="status">
+          <div className="startup-card">
+            <h2>Initializing Opencode Orxa</h2>
+            <p>{startupState.message}</p>
+            <div className="startup-meter" aria-label="Startup progress">
+              <div className="startup-meter-fill" style={{ width: `${startupProgressPercent}%` }} />
+            </div>
+            <small>{startupProgressPercent}%</small>
+          </div>
+        </section>
+      ) : null}
       {hasProjectContext ? (
         <ContentTopBar
           projectsPaneVisible={showProjectsPane}
@@ -2668,6 +3378,14 @@ export default function App() {
           projectData={projectData}
           terminalOpen={terminalOpen}
           toggleTerminal={toggleTerminal}
+          artifactsOpen={artifactsDrawerOpen}
+          onToggleArtifacts={() => {
+            if (artifactsDrawerOpen) {
+              closeArtifactsDrawer();
+            } else {
+              openArtifactsDrawer(activeProjectDir ? "session" : "app");
+            }
+          }}
           titleMenuOpen={titleMenuOpen}
           openMenuOpen={openMenuOpen}
           setOpenMenuOpen={setOpenMenuOpen}
@@ -2892,7 +3610,7 @@ export default function App() {
                     insertSlashCommand={insertSlashCommand}
                     handleSlashKeyDown={handleSlashKeyDown}
                     addComposerAttachments={addComposerAttachments}
-                    sendPrompt={sendPrompt}
+                    sendPrompt={sendComposerPrompt}
                     abortActiveSession={abortActiveSession}
                     isSessionBusy={isSessionInProgress}
                     isSendingPrompt={isSendingPrompt}
@@ -2901,6 +3619,10 @@ export default function App() {
                     isPlanMode={isPlanMode}
                     hasPlanAgent={hasPlanAgent}
                     togglePlanMode={togglePlanMode}
+                    browserModeEnabled={browserModeEnabled}
+                    setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
+                    contextModeEnabled={contextModeEnabled}
+                    setContextModeEnabled={setContextModeEnabled}
                     permissionMode={appPreferences.permissionMode}
                     onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                     compactionProgress={compactionMeter.progress}
@@ -2953,6 +3675,17 @@ export default function App() {
                   onSaveAgents={() => void saveAgentsDocument()}
                   onRefreshAgents={() => void refreshAgentsDocument()}
                   onRefresh={() => void refreshProjectDashboard()}
+                  workspaceContextFiles={workspaceContextFiles}
+                  workspaceContextLoading={false}
+                  onViewAllWorkspaceContext={() => {
+                    void openWorkspaceContextManager();
+                  }}
+                  onAddWorkspaceContext={() => {
+                    void createWorkspaceContext();
+                  }}
+                  workspaceArtifactsSummary={workspaceArtifactSummary}
+                  workspaceArtifactsLoading={false}
+                  onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
                 />
               )}
               <TerminalPanel
@@ -3022,6 +3755,19 @@ export default function App() {
               fileProvenanceByPath={sessionProvenanceByPath}
               onAddToChatPath={appendPathToComposer}
               onStatusChange={setStatusLine}
+              browserState={effectiveBrowserState}
+              onBrowserOpenTab={browserOpenTab}
+              onBrowserCloseTab={browserCloseTab}
+              onBrowserNavigate={browserNavigate}
+              onBrowserGoBack={browserGoBack}
+              onBrowserGoForward={browserGoForward}
+              onBrowserReload={browserReload}
+              onBrowserSelectTab={browserSelectTab}
+              onBrowserSelectHistory={browserSelectHistory}
+              onBrowserReportViewportBounds={browserReportViewportBounds}
+              onBrowserTakeControl={browserTakeControl}
+              onBrowserHandBack={browserHandBack}
+              onBrowserStop={browserStop}
             />
           </div>
         ) : null}
@@ -3259,6 +4005,60 @@ export default function App() {
           await window.orxa.runtime.stopLocal();
           await refreshProfiles();
           setStatusLine("Local server stopped");
+        }}
+      />
+
+      <ArtifactsDrawer
+        open={artifactsDrawerOpen}
+        tab={artifactsDrawerTab}
+        onTabChange={setArtifactsDrawerTab}
+        onClose={closeArtifactsDrawer}
+        sessionArtifacts={sessionArtifacts}
+        workspaceArtifacts={workspaceArtifacts}
+        appArtifacts={appArtifacts}
+        sessionSummaries={artifactSessionSummaries}
+        workspaceSummary={workspaceArtifactSummary}
+        retentionPolicy={artifactRetentionPolicy}
+        retentionBusy={artifactRetentionBusy}
+        exportBusy={artifactExportBusy}
+        contextTrace={latestContextTrace}
+        activeSessionID={activeSessionID ?? null}
+        onRefresh={() => void refreshArtifacts(activeProjectDir, activeSessionID)}
+        onApplyRetentionCap={(maxBytes) => void applyArtifactRetentionCap(maxBytes)}
+        onPruneNow={() => void pruneArtifactsNow()}
+        onExportBundle={activeProjectDir && artifactsDrawerTab !== "app" ? () => void exportArtifactsBundle() : undefined}
+        onDeleteArtifact={async (artifactID) => {
+          try {
+            await window.orxa.opencode.deleteArtifact(artifactID);
+            await refreshArtifacts(activeProjectDir, activeSessionID);
+          } catch (error) {
+            setStatusLine(error instanceof Error ? error.message : String(error));
+          }
+        }}
+      />
+
+      <WorkspaceContextManager
+        open={workspaceContextManagerOpen}
+        files={workspaceContextFiles}
+        onClose={() => setWorkspaceContextManagerOpen(false)}
+        onRefresh={() => void refreshWorkspaceContextFiles(activeProjectDir)}
+        onCreate={() => void createWorkspaceContext()}
+        onSave={async (input) => {
+          if (!activeProjectDir) {
+            return;
+          }
+          await window.orxa.opencode.writeWorkspaceContext({
+            ...input,
+            workspace: activeProjectDir,
+          });
+          await refreshWorkspaceContextFiles(activeProjectDir);
+        }}
+        onDelete={async (id) => {
+          if (!activeProjectDir) {
+            return;
+          }
+          await window.orxa.opencode.deleteWorkspaceContext(activeProjectDir, id);
+          await refreshWorkspaceContextFiles(activeProjectDir);
         }}
       />
 

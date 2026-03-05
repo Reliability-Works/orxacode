@@ -2,8 +2,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import {
+  type ArtifactExportBundleInput,
+  type ArtifactListQuery,
+  type ArtifactRetentionUpdateInput,
+  type BrowserAgentActionRequest,
+  type BrowserBounds,
+  type BrowserLocator,
   IPC,
   type AppMode,
   type GitCommitRequest,
@@ -11,10 +17,12 @@ import {
   type MemorySettingsUpdateInput,
   type OpenDirectoryTarget,
   type OrxaEvent,
+  type WorkspaceContextWriteInput,
   type UpdatePreferences,
   type RuntimeProfileInput,
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
+import { BrowserController } from "./services/browser-controller";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
@@ -27,6 +35,7 @@ const __dirname = path.dirname(__filename);
 const service = new OpencodeService();
 const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
+let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
 const startupBootstrap = createStartupBootstrapTracker();
 const PTY_OUTPUT_FLUSH_MS = 16;
@@ -46,6 +55,20 @@ function assertBoolean(value: unknown, field: string): boolean {
     throw new Error(`${field} must be a boolean`);
   }
   return value;
+}
+
+function assertExternalUrl(value: unknown): string {
+  const raw = assertString(value, "url");
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("Invalid external URL");
+  }
+  if (!["https:", "http:", "mailto:", "file:"].includes(parsed.protocol)) {
+    throw new Error("Unsupported external URL scheme");
+  }
+  return parsed.toString();
 }
 
 function assertOpenDirectoryTarget(value: unknown): OpenDirectoryTarget {
@@ -184,6 +207,9 @@ function assertPromptRequestInput(value: unknown): Parameters<typeof service.sen
     model?: unknown;
     variant?: unknown;
     system?: unknown;
+    contextModeEnabled?: unknown;
+    promptSource?: unknown;
+    tools?: unknown;
   };
 
   const text = assertString(payload.text, "text");
@@ -255,6 +281,38 @@ function assertPromptRequestInput(value: unknown): Parameters<typeof service.sen
       throw new Error("system must be a string with max length 32000");
     }
     result.system = payload.system;
+  }
+
+  if (payload.contextModeEnabled !== undefined) {
+    result.contextModeEnabled = assertBoolean(payload.contextModeEnabled, "contextModeEnabled");
+  }
+
+  if (payload.promptSource !== undefined) {
+    if (payload.promptSource !== "user" && payload.promptSource !== "job" && payload.promptSource !== "machine") {
+      throw new Error("promptSource must be 'user', 'job', or 'machine'");
+    }
+    result.promptSource = payload.promptSource;
+  }
+
+  if (payload.tools !== undefined) {
+    if (!payload.tools || typeof payload.tools !== "object" || Array.isArray(payload.tools)) {
+      throw new Error("tools must be an object map of tool name to boolean");
+    }
+    const toolsEntries = Object.entries(payload.tools as Record<string, unknown>);
+    if (toolsEntries.length > 256) {
+      throw new Error("tools cannot include more than 256 entries");
+    }
+    const tools: Record<string, boolean> = {};
+    for (const [toolName, enabled] of toolsEntries) {
+      if (toolName.length === 0 || toolName.length > 128) {
+        throw new Error("tools keys must be non-empty strings with max length 128");
+      }
+      if (enabled !== true && enabled !== false) {
+        throw new Error(`tools.${toolName} must be a boolean`);
+      }
+      tools[toolName] = enabled;
+    }
+    result.tools = tools;
   }
 
   return result;
@@ -353,6 +411,364 @@ function assertMemoryGraphQuery(value: unknown): MemoryGraphQuery {
   return output;
 }
 
+function assertArtifactListQuery(value: unknown): ArtifactListQuery {
+  if (value === undefined || value === null) {
+    return {};
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Artifact list query must be an object");
+  }
+  const payload = value as Record<string, unknown>;
+  const output: ArtifactListQuery = {};
+  if (payload.workspace !== undefined) {
+    output.workspace = assertString(payload.workspace, "workspace");
+  }
+  if (payload.sessionID !== undefined) {
+    output.sessionID = assertString(payload.sessionID, "sessionID");
+  }
+  if (payload.kind !== undefined) {
+    if (typeof payload.kind === "string") {
+      output.kind = payload.kind as ArtifactListQuery["kind"];
+    } else if (Array.isArray(payload.kind)) {
+      output.kind = payload.kind.filter((item): item is string => typeof item === "string") as ArtifactListQuery["kind"];
+    } else {
+      throw new Error("kind must be a string or string[]");
+    }
+  }
+  if (payload.limit !== undefined) {
+    output.limit = Math.floor(assertFiniteNumber(payload.limit, "limit"));
+  }
+  return output;
+}
+
+function assertArtifactRetentionUpdateInput(value: unknown): ArtifactRetentionUpdateInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Artifact retention payload is required");
+  }
+  const payload = value as Record<string, unknown>;
+  const maxBytes = Math.floor(assertFiniteNumber(payload.maxBytes, "maxBytes"));
+  if (maxBytes < 1) {
+    throw new Error("maxBytes must be greater than 0");
+  }
+  return { maxBytes };
+}
+
+function assertArtifactExportBundleInput(value: unknown): ArtifactExportBundleInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Artifact export payload is required");
+  }
+  const payload = value as Record<string, unknown>;
+  const output: ArtifactExportBundleInput = {
+    workspace: assertString(payload.workspace, "workspace"),
+  };
+  if (payload.sessionID !== undefined) {
+    output.sessionID = assertString(payload.sessionID, "sessionID");
+  }
+  if (payload.kind !== undefined) {
+    if (typeof payload.kind === "string") {
+      output.kind = payload.kind as ArtifactExportBundleInput["kind"];
+    } else if (Array.isArray(payload.kind)) {
+      output.kind = payload.kind.filter((item): item is string => typeof item === "string") as ArtifactExportBundleInput["kind"];
+    } else {
+      throw new Error("kind must be a string or string[]");
+    }
+  }
+  if (payload.limit !== undefined) {
+    output.limit = Math.floor(assertFiniteNumber(payload.limit, "limit"));
+  }
+  return output;
+}
+
+function assertWorkspaceContextWriteInput(value: unknown): WorkspaceContextWriteInput {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Workspace context write payload is required");
+  }
+  const payload = value as Record<string, unknown>;
+  return {
+    workspace: assertString(payload.workspace, "workspace"),
+    id: payload.id === undefined ? undefined : assertString(payload.id, "id"),
+    filename: payload.filename === undefined ? undefined : assertString(payload.filename, "filename"),
+    title: payload.title === undefined ? undefined : assertString(payload.title, "title"),
+    content: assertString(payload.content, "content"),
+  };
+}
+
+function assertOptionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return assertString(value, field);
+}
+
+function assertFiniteNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${field} must be a finite number`);
+  }
+  return value;
+}
+
+function assertBrowserBoundsInput(value: unknown): BrowserBounds {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Browser bounds payload is required");
+  }
+  const payload = value as Partial<BrowserBounds>;
+  const width = assertFiniteNumber(payload.width, "bounds.width");
+  const height = assertFiniteNumber(payload.height, "bounds.height");
+  return {
+    x: assertFiniteNumber(payload.x, "bounds.x"),
+    y: assertFiniteNumber(payload.y, "bounds.y"),
+    width,
+    height,
+  };
+}
+
+function assertOptionalBrowserBoundsInput(value: unknown): Partial<BrowserBounds> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("bounds must be an object");
+  }
+  const payload = value as Partial<BrowserBounds>;
+  const output: Partial<BrowserBounds> = {};
+  if (payload.x !== undefined) {
+    output.x = assertFiniteNumber(payload.x, "bounds.x");
+  }
+  if (payload.y !== undefined) {
+    output.y = assertFiniteNumber(payload.y, "bounds.y");
+  }
+  if (payload.width !== undefined) {
+    output.width = assertFiniteNumber(payload.width, "bounds.width");
+  }
+  if (payload.height !== undefined) {
+    output.height = assertFiniteNumber(payload.height, "bounds.height");
+  }
+  return output;
+}
+
+function assertOptionalBrowserLocatorInput(value: unknown): BrowserLocator | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("locator must be an object");
+  }
+  const payload = value as Record<string, unknown>;
+  const locator: BrowserLocator = {};
+  if (payload.selector !== undefined) {
+    locator.selector = assertString(payload.selector, "locator.selector");
+  }
+  if (payload.selectors !== undefined) {
+    locator.selectors = assertStringArray(payload.selectors, "locator.selectors", 24);
+  }
+  if (payload.text !== undefined) {
+    locator.text = assertString(payload.text, "locator.text");
+  }
+  if (payload.role !== undefined) {
+    locator.role = assertString(payload.role, "locator.role");
+  }
+  if (payload.name !== undefined) {
+    locator.name = assertString(payload.name, "locator.name");
+  }
+  if (payload.label !== undefined) {
+    locator.label = assertString(payload.label, "locator.label");
+  }
+  if (payload.frameSelector !== undefined) {
+    locator.frameSelector = assertString(payload.frameSelector, "locator.frameSelector");
+  }
+  if (payload.includeShadowDom !== undefined) {
+    locator.includeShadowDom = assertBoolean(payload.includeShadowDom, "locator.includeShadowDom");
+  }
+  if (payload.exact !== undefined) {
+    locator.exact = assertBoolean(payload.exact, "locator.exact");
+  }
+  return locator;
+}
+
+function assertBrowserSender(event: IpcMainInvokeEvent) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    throw new Error("Main window is not available");
+  }
+  if (event.sender.id !== mainWindow.webContents.id) {
+    throw new Error("Unauthorized browser IPC sender");
+  }
+}
+
+function requireBrowserController(): BrowserController {
+  if (!browserController) {
+    throw new Error("Browser controller is not initialized");
+  }
+  return browserController;
+}
+
+function assertBrowserAgentActionRequest(value: unknown): BrowserAgentActionRequest {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Browser action payload is required");
+  }
+
+  const payload = value as Record<string, unknown>;
+  if (typeof payload.action !== "string") {
+    throw new Error("Browser action is required");
+  }
+
+  const tabID = assertOptionalString(payload.tabID, "tabID");
+  const timeoutMs = payload.timeoutMs === undefined ? undefined : Math.floor(assertFiniteNumber(payload.timeoutMs, "timeoutMs"));
+  const maxAttempts = payload.maxAttempts === undefined ? undefined : Math.floor(assertFiniteNumber(payload.maxAttempts, "maxAttempts"));
+  const locator = assertOptionalBrowserLocatorInput(payload.locator);
+  const action = payload.action;
+  switch (action) {
+    case "open_tab":
+      return {
+        action,
+        url: assertOptionalString(payload.url, "url"),
+        activate: payload.activate === undefined ? undefined : assertBoolean(payload.activate, "activate"),
+      };
+    case "close_tab":
+      return {
+        action,
+        tabID,
+      };
+    case "switch_tab":
+      return {
+        action,
+        tabID: assertString(payload.tabID, "tabID"),
+      };
+    case "navigate":
+      return {
+        action,
+        url: assertString(payload.url, "url"),
+        tabID,
+      };
+    case "back":
+    case "forward":
+    case "reload":
+      return {
+        action,
+        tabID,
+      };
+    case "click":
+      return {
+        action,
+        tabID,
+        selector: assertOptionalString(payload.selector, "selector"),
+        locator,
+        timeoutMs,
+        maxAttempts,
+        waitForNavigation:
+          payload.waitForNavigation === undefined ? undefined : assertBoolean(payload.waitForNavigation, "waitForNavigation"),
+      };
+    case "type":
+      return {
+        action,
+        text: assertString(payload.text, "text"),
+        tabID,
+        selector: assertOptionalString(payload.selector, "selector"),
+        locator,
+        submit: payload.submit === undefined ? undefined : assertBoolean(payload.submit, "submit"),
+        clear: payload.clear === undefined ? undefined : assertBoolean(payload.clear, "clear"),
+        timeoutMs,
+        maxAttempts,
+      };
+    case "press":
+      return {
+        action,
+        key: assertString(payload.key, "key"),
+        tabID,
+      };
+    case "scroll": {
+      const behavior =
+        payload.behavior === undefined
+          ? undefined
+          : payload.behavior === "auto" || payload.behavior === "smooth"
+            ? payload.behavior
+            : (() => {
+                throw new Error("scroll behavior must be 'auto' or 'smooth'");
+              })();
+      return {
+        action,
+        tabID,
+        x: payload.x === undefined ? undefined : assertFiniteNumber(payload.x, "x"),
+        y: payload.y === undefined ? undefined : assertFiniteNumber(payload.y, "y"),
+        top: payload.top === undefined ? undefined : assertFiniteNumber(payload.top, "top"),
+        left: payload.left === undefined ? undefined : assertFiniteNumber(payload.left, "left"),
+        behavior,
+      };
+    }
+    case "extract_text":
+      return {
+        action,
+        selector: assertOptionalString(payload.selector, "selector"),
+        tabID,
+        maxLength: payload.maxLength === undefined ? undefined : Math.floor(assertFiniteNumber(payload.maxLength, "maxLength")),
+        locator,
+        timeoutMs,
+        maxAttempts,
+      };
+    case "exists":
+    case "visible":
+      return {
+        action,
+        selector: assertOptionalString(payload.selector, "selector"),
+        tabID,
+        locator,
+        timeoutMs,
+      };
+    case "wait_for": {
+      const state =
+        payload.state === undefined
+          ? undefined
+          : payload.state === "attached" || payload.state === "visible" || payload.state === "hidden"
+            ? payload.state
+            : (() => {
+                throw new Error("wait_for state must be 'attached', 'visible', or 'hidden'");
+              })();
+      return {
+        action,
+        selector: assertOptionalString(payload.selector, "selector"),
+        tabID,
+        locator,
+        timeoutMs,
+        state,
+      };
+    }
+    case "wait_for_navigation":
+      return {
+        action,
+        tabID,
+        timeoutMs,
+      };
+    case "wait_for_idle":
+      return {
+        action,
+        tabID,
+        timeoutMs,
+        idleMs: payload.idleMs === undefined ? undefined : Math.floor(assertFiniteNumber(payload.idleMs, "idleMs")),
+      };
+    case "screenshot": {
+      const format =
+        payload.format === undefined
+          ? undefined
+          : payload.format === "png" || payload.format === "jpeg"
+            ? payload.format
+            : (() => {
+                throw new Error("screenshot format must be 'png' or 'jpeg'");
+              })();
+      return {
+        action,
+        tabID,
+        format,
+        quality: payload.quality === undefined ? undefined : assertFiniteNumber(payload.quality, "quality"),
+        bounds: assertOptionalBrowserBoundsInput(payload.bounds),
+        workspace: payload.workspace === undefined ? undefined : assertString(payload.workspace, "workspace"),
+        sessionID: payload.sessionID === undefined ? undefined : assertString(payload.sessionID, "sessionID"),
+        actionID: payload.actionID === undefined ? undefined : assertString(payload.actionID, "actionID"),
+      };
+    }
+    default:
+      throw new Error(`Unsupported browser action: ${action}`);
+  }
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, "preload.mjs");
 
@@ -378,8 +794,9 @@ function createWindow() {
     },
   });
 
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+  // Prevent renderer-triggered popups from auto-launching external browsers.
+  // Explicit user-triggered opens are handled via validated IPC.
+  window.webContents.setWindowOpenHandler(() => {
     return { action: "deny" };
   });
 
@@ -391,6 +808,18 @@ function createWindow() {
     void window.loadFile(htmlPath);
   }
 
+  return window;
+}
+
+function attachMainWindow(window: BrowserWindow) {
+  mainWindow = window;
+  browserController?.setWindow(window);
+  window.on("closed", () => {
+    if (mainWindow === window) {
+      browserController?.setWindow(null);
+      mainWindow = null;
+    }
+  });
   return window;
 }
 
@@ -490,6 +919,10 @@ function registerIpcHandlers() {
     startupBootstrap.clear();
     await service.removeOrxaPluginFromConfig();
     return modeStore.setMode(mode);
+  });
+  ipcMain.handle(IPC.appOpenExternal, async (_event, url: unknown) => {
+    await shell.openExternal(assertExternalUrl(url));
+    return true;
   });
   ipcMain.handle(IPC.updatesGetPreferences, async () =>
     autoUpdaterController?.getPreferences() ?? { autoCheckEnabled: true, releaseChannel: "stable" },
@@ -788,6 +1221,43 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeReadProjectFile, async (_event, directory: unknown, relativePath: unknown) =>
     service.readProjectFile(assertString(directory, "directory"), assertString(relativePath, "relativePath")),
   );
+  ipcMain.handle(IPC.opencodeArtifactsList, async (_event, query?: unknown) =>
+    service.listArtifacts(assertArtifactListQuery(query)),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsGet, async (_event, id: unknown) =>
+    service.getArtifact(assertString(id, "id")),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsDelete, async (_event, id: unknown) =>
+    service.deleteArtifact(assertString(id, "id")),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsListSessions, async (_event, workspace: unknown) =>
+    service.listArtifactSessions(assertString(workspace, "workspace")),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsListWorkspaceSummary, async (_event, workspace: unknown) =>
+    service.listWorkspaceArtifactSummary(assertString(workspace, "workspace")),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsGetRetention, async () => service.getArtifactRetentionPolicy());
+  ipcMain.handle(IPC.opencodeArtifactsSetRetention, async (_event, input: unknown) =>
+    service.setArtifactRetentionPolicy(assertArtifactRetentionUpdateInput(input)),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsPrune, async (_event, workspace?: unknown) =>
+    service.pruneArtifactsNow(typeof workspace === "string" ? workspace : undefined),
+  );
+  ipcMain.handle(IPC.opencodeArtifactsExportBundle, async (_event, input: unknown) =>
+    service.exportArtifactBundle(assertArtifactExportBundleInput(input)),
+  );
+  ipcMain.handle(IPC.opencodeContextList, async (_event, workspace: unknown) =>
+    service.listWorkspaceContext(assertString(workspace, "workspace")),
+  );
+  ipcMain.handle(IPC.opencodeContextRead, async (_event, workspace: unknown, id: unknown) =>
+    service.readWorkspaceContext(assertString(workspace, "workspace"), assertString(id, "id")),
+  );
+  ipcMain.handle(IPC.opencodeContextWrite, async (_event, input: unknown) =>
+    service.writeWorkspaceContext(assertWorkspaceContextWriteInput(input)),
+  );
+  ipcMain.handle(IPC.opencodeContextDelete, async (_event, workspace: unknown, id: unknown) =>
+    service.deleteWorkspaceContext(assertString(workspace, "workspace"), assertString(id, "id")),
+  );
   ipcMain.handle(IPC.opencodeMemoryGetSettings, async (_event, directory?: unknown) =>
     service.getMemorySettings(typeof directory === "string" ? directory : undefined),
   );
@@ -880,6 +1350,63 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.terminalClose, async (_event, directory: unknown, ptyID: unknown) =>
     service.closePty(assertString(directory, "directory"), assertString(ptyID, "ptyID")),
   );
+
+  ipcMain.handle(IPC.browserGetState, async (event) => {
+    assertBrowserSender(event);
+    return requireBrowserController().getState();
+  });
+  ipcMain.handle(IPC.browserSetVisible, async (event, visible: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().setVisible(assertBoolean(visible, "visible"));
+  });
+  ipcMain.handle(IPC.browserSetBounds, async (event, bounds: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().setBounds(assertBrowserBoundsInput(bounds));
+  });
+  ipcMain.handle(IPC.browserOpenTab, async (event, url?: unknown, activate?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().openTab(
+      typeof url === "string" ? url : undefined,
+      activate === undefined ? true : assertBoolean(activate, "activate"),
+    );
+  });
+  ipcMain.handle(IPC.browserCloseTab, async (event, tabID?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().closeTab(typeof tabID === "string" ? tabID : undefined);
+  });
+  ipcMain.handle(IPC.browserSwitchTab, async (event, tabID: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().switchTab(assertString(tabID, "tabID"));
+  });
+  ipcMain.handle(IPC.browserNavigate, async (event, url: unknown, tabID?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().navigate(assertString(url, "url"), typeof tabID === "string" ? tabID : undefined);
+  });
+  ipcMain.handle(IPC.browserBack, async (event, tabID?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().back(typeof tabID === "string" ? tabID : undefined);
+  });
+  ipcMain.handle(IPC.browserForward, async (event, tabID?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().forward(typeof tabID === "string" ? tabID : undefined);
+  });
+  ipcMain.handle(IPC.browserReload, async (event, tabID?: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().reload(typeof tabID === "string" ? tabID : undefined);
+  });
+  ipcMain.handle(IPC.browserListHistory, async (event, limit?: unknown) => {
+    assertBrowserSender(event);
+    const parsedLimit = limit === undefined ? undefined : Math.floor(assertFiniteNumber(limit, "limit"));
+    return requireBrowserController().listHistory(parsedLimit);
+  });
+  ipcMain.handle(IPC.browserClearHistory, async (event) => {
+    assertBrowserSender(event);
+    return requireBrowserController().clearHistory();
+  });
+  ipcMain.handle(IPC.browserPerformAgentAction, async (event, request: unknown) => {
+    assertBrowserSender(event);
+    return requireBrowserController().performAgentAction(assertBrowserAgentActionRequest(request));
+  });
 }
 
 function flushBufferedPtyOutput(key: string) {
@@ -945,6 +1472,9 @@ function publishEvent(event: OrxaEvent) {
 
 async function boot() {
   await app.whenReady();
+  browserController = new BrowserController({
+    onEvent: (event) => publishEvent(event),
+  });
   registerIpcHandlers();
 
   service.onEvent = (event) => publishEvent(event);
@@ -956,7 +1486,7 @@ async function boot() {
     return;
   }
 
-  mainWindow = createWindow();
+  attachMainWindow(createWindow());
   void configureMacAppIdentity();
   autoUpdaterController = setupAutoUpdates(
     () => mainWindow,
@@ -988,7 +1518,7 @@ async function boot() {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow();
+      attachMainWindow(createWindow());
     }
   });
 
@@ -1000,6 +1530,8 @@ async function boot() {
 
   app.on("before-quit", () => {
     autoUpdaterController?.cleanup();
+    browserController?.dispose();
+    browserController = null;
     flushAllPtyOutput();
     void service.stopLocal();
   });

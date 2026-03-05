@@ -387,7 +387,15 @@ export function GlobalModalsHost({
                         {copiedDependencyKey === dependency.key ? "Copied" : "Copy"}
                       </button>
                     </div>
-                    <a href={dependency.sourceUrl} target="_blank" rel="noreferrer">
+                    <a
+                      href={dependency.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void window.orxa.app.openExternal(dependency.sourceUrl).catch(() => undefined);
+                      }}
+                    >
                       Source repository
                     </a>
                   </article>

@@ -110,6 +110,112 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/todowrite/i)).not.toBeInTheDocument();
   });
 
+  it("hides internal ORXA browser machine-result user prompts", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-machine-result",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-machine-result",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-result",
+            text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+      {
+        info: ({
+          id: "msg-assistant-visible",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-visible",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-visible",
+            text: "Captured first source. Continuing evidence collection.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.queryByText(/\[ORXA_BROWSER_RESULT\]/)).not.toBeInTheDocument();
+    expect(screen.getByText("Captured first source. Continuing evidence collection.")).toBeInTheDocument();
+  });
+
+  it("moves ORXA browser action tags into live events instead of chat text", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-browser-action",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-browser-action",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-browser-action",
+            text: '<orxa_browser_action>{"id":"action-1","action":"navigate","args":{"url":"https://defillama.com"}}</orxa_browser_action>',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/<orxa_browser_action>/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Queued browser action: navigate")).toBeInTheDocument();
+  });
+
+  it("keeps ORXA screenshot machine-result attachments out of user chat messages", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-machine-screenshot",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-machine-screenshot-text",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-screenshot",
+            text: '[ORXA_BROWSER_RESULT]{"id":"shot-1","action":"screenshot","ok":true}',
+          },
+          {
+            id: "part-user-machine-screenshot-file",
+            type: "file",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-screenshot",
+            mime: "image/png",
+            url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/Attached file:/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Captured browser screenshot")).toBeInTheDocument();
+  });
+
   it("shows a single thinking bubble with collapsible live events when busy", () => {
     const messages: SessionMessageBundle[] = [
       {

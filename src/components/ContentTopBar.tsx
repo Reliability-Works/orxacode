@@ -36,6 +36,8 @@ type ContentTopBarProps = {
   projectData: ProjectData | null;
   terminalOpen: boolean;
   toggleTerminal: () => Promise<void>;
+  artifactsOpen: boolean;
+  onToggleArtifacts: () => void;
   titleMenuOpen: boolean;
   openMenuOpen: boolean;
   setOpenMenuOpen: (open: boolean) => void;
@@ -77,6 +79,8 @@ export function ContentTopBar({
   projectData,
   terminalOpen,
   toggleTerminal,
+  artifactsOpen,
+  onToggleArtifacts,
   titleMenuOpen,
   openMenuOpen,
   setOpenMenuOpen,
@@ -398,6 +402,12 @@ export function ContentTopBar({
           label="Toggle terminal"
           className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
           onClick={() => void toggleTerminal()}
+        />
+        <IconButton
+          icon="image"
+          label="Toggle artifacts"
+          className={`titlebar-toggle titlebar-toggle-artifacts ${artifactsOpen ? "active" : ""}`.trim()}
+          onClick={onToggleArtifacts}
         />
       </div>
       <div className="content-edge-right-actions">

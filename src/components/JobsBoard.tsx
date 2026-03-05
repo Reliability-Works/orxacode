@@ -29,6 +29,8 @@ export type JobRecord = {
   name: string;
   projectDir: string;
   prompt: string;
+  browserModeEnabled: boolean;
+  contextModeEnabled: boolean;
   schedule: JobSchedule;
   enabled: boolean;
   createdAt: number;
@@ -54,6 +56,8 @@ export type JobTemplate = {
   title: string;
   description: string;
   prompt: string;
+  browserModeEnabled: boolean;
+  contextModeEnabled: boolean;
   icon: "book" | "bug" | "shield" | "activity" | "package" | "sparkles";
   schedule: JobSchedule;
 };
@@ -190,9 +194,13 @@ export function JobsBoard({
             <article key={job.id} className="jobs-config-card">
               <header>
                 <strong>{job.name}</strong>
-                <span className={`jobs-status-pill ${job.enabled ? "enabled" : "paused"}`.trim()}>
-                  {job.enabled ? "Enabled" : "Paused"}
-                </span>
+                <div className="jobs-config-badges">
+                  <span className={`jobs-status-pill ${job.enabled ? "enabled" : "paused"}`.trim()}>
+                    {job.enabled ? "Enabled" : "Paused"}
+                  </span>
+                  {job.browserModeEnabled ? <span className="jobs-inbox-label">Browser Mode</span> : null}
+                  {job.contextModeEnabled ? <span className="jobs-inbox-label">Context Mode</span> : null}
+                </div>
               </header>
               <p>{job.prompt}</p>
               <footer>
@@ -320,6 +328,24 @@ export function JobEditorModal({ open, draft, projects, onClose, onChange, onSav
               onChange={(event) => update({ prompt: event.target.value })}
               placeholder="Describe what the job should do..."
             />
+          </label>
+
+          <label className="job-editor-browser-toggle">
+            <input
+              type="checkbox"
+              checked={draft.browserModeEnabled}
+              onChange={(event) => update({ browserModeEnabled: event.target.checked })}
+            />
+            Enable Browser Mode
+          </label>
+
+          <label className="job-editor-browser-toggle">
+            <input
+              type="checkbox"
+              checked={draft.contextModeEnabled}
+              onChange={(event) => update({ contextModeEnabled: event.target.checked })}
+            />
+            Enable Context Mode
           </label>
 
           <section className="job-editor-schedule">

@@ -1,6 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { GitSidebar } from "./GitSidebar";
+import { GitSidebar, type BrowserSidebarState } from "./GitSidebar";
+
+const browserState: BrowserSidebarState = {
+  modeEnabled: false,
+  controlOwner: "agent",
+  tabs: [],
+  activeTabID: null,
+  activeUrl: "",
+  history: [],
+  canGoBack: false,
+  canGoForward: false,
+  isLoading: false,
+  actionRunning: false,
+};
 
 const baseProps = {
   sidebarPanelTab: "git" as const,
@@ -33,6 +46,17 @@ const baseProps = {
   onUnstageFile: vi.fn(async () => undefined),
   onAddToChatPath: vi.fn(),
   onStatusChange: vi.fn(),
+  browserState,
+  onBrowserNavigate: vi.fn(async () => undefined),
+  onBrowserGoBack: vi.fn(async () => undefined),
+  onBrowserGoForward: vi.fn(async () => undefined),
+  onBrowserReload: vi.fn(async () => undefined),
+  onBrowserSelectTab: vi.fn(async () => undefined),
+  onBrowserSelectHistory: vi.fn(async () => undefined),
+  onBrowserReportViewportBounds: vi.fn(async () => undefined),
+  onBrowserTakeControl: vi.fn(async () => undefined),
+  onBrowserHandBack: vi.fn(async () => undefined),
+  onBrowserStop: vi.fn(async () => undefined),
 };
 
 describe("GitSidebar provenance", () => {
@@ -62,4 +86,3 @@ describe("GitSidebar provenance", () => {
     expect(screen.getByText(/Unknown provenance/i)).toBeInTheDocument();
   });
 });
-

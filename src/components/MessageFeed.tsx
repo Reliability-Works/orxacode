@@ -71,6 +71,11 @@ type DelegationEventBlock =
       entry: InternalEvent;
     };
 
+const INTERNAL_USER_TEXT_PREFIXES = [
+  "[ORXA_BROWSER_RESULT]",
+];
+const ORXA_BROWSER_ACTION_TAG_PATTERN = /<orxa_browser_action>\s*([\s\S]*?)\s*<\/orxa_browser_action>/gi;
+
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -206,12 +211,22 @@ function getVisibleParts(role: string, parts: Part[]) {
     return parts.filter((part) => part.type === "text" || part.type === "file");
   }
 
+  const hasInternalMachineResult = parts.some(
+    (part) => part.type === "text" && INTERNAL_USER_TEXT_PREFIXES.some((prefix) => part.text.trim().startsWith(prefix)),
+  );
+  if (hasInternalMachineResult) {
+    return [];
+  }
+
   const firstUserText = parts.find((part) => {
     if (part.type !== "text") {
       return false;
     }
     const text = part.text.trim();
     if (text.length === 0 || text.startsWith("[SUPERMEMORY]")) {
+      return false;
+    }
+    if (INTERNAL_USER_TEXT_PREFIXES.some((prefix) => text.startsWith(prefix))) {
       return false;
     }
     if ("ignored" in part && part.ignored) {
@@ -243,6 +258,62 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
   }
 }
 
+function parseOrxaBrowserActionsFromText(text: string): Array<{ id?: string; action?: string }> {
+  const actions: Array<{ id?: string; action?: string }> = [];
+  let match: RegExpExecArray | null;
+  ORXA_BROWSER_ACTION_TAG_PATTERN.lastIndex = 0;
+  while ((match = ORXA_BROWSER_ACTION_TAG_PATTERN.exec(text)) !== null) {
+    const payload = parseJsonObject((match[1] ?? "").trim());
+    if (!payload) {
+      continue;
+    }
+    const action = typeof payload.action === "string" ? payload.action.trim() : undefined;
+    const id = typeof payload.id === "string" ? payload.id.trim() : undefined;
+    if (!action && !id) {
+      continue;
+    }
+    actions.push({
+      action: action && action.length > 0 ? action : undefined,
+      id: id && id.length > 0 ? id : undefined,
+    });
+  }
+  return actions;
+}
+
+function summarizeOrxaBrowserActionText(text: string) {
+  const actions = parseOrxaBrowserActionsFromText(text);
+  if (actions.length === 0) {
+    return null;
+  }
+  if (actions.length === 1) {
+    const first = actions[0]!;
+    const actionLabel = first.action ?? "action";
+    return `Queued browser action: ${actionLabel}`;
+  }
+  return `Queued ${actions.length} browser actions`;
+}
+
+function parseOrxaBrowserResultText(text: string) {
+  const prefix = INTERNAL_USER_TEXT_PREFIXES[0];
+  if (!prefix || !text.startsWith(prefix)) {
+    return null;
+  }
+  const payload = parseJsonObject(text.slice(prefix.length).trim());
+  if (!payload) {
+    return { action: "action", ok: true } as const;
+  }
+  const action = typeof payload.action === "string" ? payload.action.trim() : "action";
+  const ok = payload.ok !== false;
+  const error = typeof payload.error === "string" ? payload.error.trim() : undefined;
+  const blockedReason = typeof payload.blockedReason === "string" ? payload.blockedReason.trim() : undefined;
+  return {
+    action,
+    ok,
+    error,
+    blockedReason,
+  };
+}
+
 function isLikelyTelemetryJson(value: string) {
   const parsed = parseJsonObject(value);
   if (!parsed) {
@@ -258,6 +329,9 @@ function isLikelyTelemetryJson(value: string) {
 function shouldHideAssistantText(value: string) {
   const text = value.trim();
   if (text.length === 0) {
+    return true;
+  }
+  if (parseOrxaBrowserActionsFromText(text).length > 0) {
     return true;
   }
   if (isLikelyTelemetryJson(text)) {
@@ -1175,6 +1249,10 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
   }
   if (part.type === "text") {
     const text = part.text.trim();
+    const browserActionSummary = summarizeOrxaBrowserActionText(text);
+    if (browserActionSummary) {
+      return { id: part.id, summary: browserActionSummary, actor };
+    }
     if (isLikelyTelemetryJson(text)) {
       const parsed = parseJsonObject(text);
       const summary = typeof parsed?.type === "string" ? parsed.type : "Telemetry event";
@@ -1182,6 +1260,31 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
     }
   }
   return null;
+}
+
+function summarizeInternalUserPart(part: Part): InternalEvent | null {
+  if (part.type !== "text") {
+    return null;
+  }
+  const parsed = parseOrxaBrowserResultText(part.text.trim());
+  if (!parsed) {
+    return null;
+  }
+  const actionLabel = parsed.action && parsed.action.length > 0 ? parsed.action : "action";
+  const summary =
+    parsed.ok
+      ? actionLabel === "screenshot"
+        ? "Captured browser screenshot"
+        : `Completed browser action: ${actionLabel}`
+      : `Browser action failed: ${actionLabel}`;
+  const details = parsed.ok
+    ? undefined
+    : parsed.error || parsed.blockedReason || "Browser action failed";
+  return {
+    id: part.id,
+    summary,
+    details,
+  };
 }
 
 function summarizeDelegationEvent(part: Part, actor?: string, workspaceDirectory?: string | null): InternalEvent | null {
@@ -1598,8 +1701,16 @@ export function MessageFeed({
       const role = message.role;
       const assistantClassification = role === "assistant" ? classifyAssistantParts(bundle.parts, workspaceDirectory) : undefined;
       const visibleParts = assistantClassification?.visible ?? getVisibleParts(role, bundle.parts);
+      if (role === "user") {
+        const userEvents = bundle.parts
+          .map((part) => summarizeInternalUserPart(part))
+          .filter((event): event is InternalEvent => Boolean(event));
+        if (userEvents.length > 0) {
+          nextInternalEvents = [...nextInternalEvents, ...userEvents].slice(-28);
+        }
+      }
       if (role === "assistant" && assistantClassification) {
-        nextInternalEvents = assistantClassification.internal;
+        nextInternalEvents = [...nextInternalEvents, ...assistantClassification.internal].slice(-28);
         nextDelegations = assistantClassification.delegations;
         latestActivity = assistantClassification.activity;
       }

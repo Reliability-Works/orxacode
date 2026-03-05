@@ -17,8 +17,17 @@ import {
 } from "@opencode-ai/sdk/v2/client";
 import WebSocket from "ws";
 import type {
+  ArtifactListQuery,
+  ArtifactExportBundleInput,
+  ArtifactExportBundleResult,
+  ArtifactPruneResult,
+  ArtifactRecord,
+  ArtifactRetentionPolicy,
+  ArtifactRetentionUpdateInput,
+  ArtifactSessionSummary,
   AgentsDocument,
   ChangeProvenanceRecord,
+  ContextSelectionTrace,
   ExecutionEventActor,
   ExecutionEventKind,
   ExecutionEventRecord,
@@ -58,6 +67,9 @@ import type {
   ProjectFileEntry,
   SessionMessageBundle,
   TerminalConnectResult,
+  WorkspaceArtifactSummary,
+  WorkspaceContextFile,
+  WorkspaceContextWriteInput,
   WorktreeSessionResult,
 } from "../../shared/ipc";
 import { PasswordStore } from "./password-store";
@@ -73,6 +85,8 @@ import { ProfileStore } from "./profile-store";
 import { ProvenanceIndex } from "./provenance-index";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 import { MemoryStore } from "./memory-store";
+import { ArtifactStore } from "./artifact-store";
+import { WorkspaceContextStore } from "./workspace-context-store";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
@@ -109,9 +123,18 @@ function sanitizeError(error: unknown) {
 function isMissingGhCliError(error: unknown) {
   const normalized = sanitizeError(error).toLowerCase();
   return (
-    /spawn\s+gh\b.*\benoent\b/.test(normalized) ||
+    /spawn\s+.*\bgh\b.*\benoent\b/.test(normalized) ||
     normalized.includes("gh: command not found") ||
     normalized.includes("'gh' is not recognized as an internal or external command")
+  );
+}
+
+function isGhAuthError(error: unknown) {
+  const normalized = sanitizeError(error).toLowerCase();
+  return (
+    normalized.includes("not logged into any github hosts") ||
+    normalized.includes("try authenticating with") ||
+    normalized.includes("authentication required")
   );
 }
 
@@ -366,6 +389,8 @@ export class OpencodeService {
   private ledgerStore = new ExecutionLedgerStore();
   private provenanceIndex = new ProvenanceIndex();
   private memoryStore = new MemoryStore();
+  private artifactStore = new ArtifactStore();
+  private workspaceContextStore = new WorkspaceContextStore();
 
   private managedProcess: ChildProcess | undefined;
   private state: RuntimeState = {
@@ -1205,6 +1230,72 @@ export class OpencodeService {
     return this.provenanceIndex.getFileHistory(directory, sessionID, toWorkspaceRelativePath(directory, relativePath));
   }
 
+  async listArtifacts(query?: ArtifactListQuery): Promise<ArtifactRecord[]> {
+    const normalized: ArtifactListQuery | undefined = query
+      ? {
+          ...query,
+          workspace: query.workspace ? path.resolve(query.workspace) : undefined,
+        }
+      : undefined;
+    return this.artifactStore.list(normalized);
+  }
+
+  async getArtifact(id: string): Promise<ArtifactRecord | undefined> {
+    return this.artifactStore.get(id);
+  }
+
+  async deleteArtifact(id: string): Promise<boolean> {
+    return this.artifactStore.delete(id);
+  }
+
+  async listArtifactSessions(workspace: string): Promise<ArtifactSessionSummary[]> {
+    return this.artifactStore.listSessions(path.resolve(workspace));
+  }
+
+  async listWorkspaceArtifactSummary(workspace: string): Promise<WorkspaceArtifactSummary> {
+    return this.artifactStore.listWorkspaceSummary(path.resolve(workspace));
+  }
+
+  async getArtifactRetentionPolicy(): Promise<ArtifactRetentionPolicy> {
+    return this.artifactStore.getRetentionPolicy();
+  }
+
+  async setArtifactRetentionPolicy(input: ArtifactRetentionUpdateInput): Promise<ArtifactRetentionPolicy> {
+    return this.artifactStore.setRetentionPolicy(input);
+  }
+
+  async pruneArtifactsNow(workspace?: string): Promise<ArtifactPruneResult> {
+    return this.artifactStore.prune({
+      workspace: workspace ? path.resolve(workspace) : undefined,
+    });
+  }
+
+  async exportArtifactBundle(input: ArtifactExportBundleInput): Promise<ArtifactExportBundleResult> {
+    return this.artifactStore.exportBundle({
+      ...input,
+      workspace: path.resolve(input.workspace),
+    });
+  }
+
+  async listWorkspaceContext(workspace: string): Promise<WorkspaceContextFile[]> {
+    return this.workspaceContextStore.list(path.resolve(workspace));
+  }
+
+  async readWorkspaceContext(workspace: string, id: string): Promise<WorkspaceContextFile> {
+    return this.workspaceContextStore.read(path.resolve(workspace), id);
+  }
+
+  async writeWorkspaceContext(input: WorkspaceContextWriteInput): Promise<WorkspaceContextFile> {
+    return this.workspaceContextStore.write({
+      ...input,
+      workspace: path.resolve(input.workspace),
+    });
+  }
+
+  async deleteWorkspaceContext(workspace: string, id: string): Promise<boolean> {
+    return this.workspaceContextStore.delete(path.resolve(workspace), id);
+  }
+
   async getMemorySettings(directory?: string): Promise<MemorySettings> {
     const normalized = directory ? path.resolve(directory) : undefined;
     return this.memoryStore.getSettings(normalized);
@@ -1342,7 +1433,14 @@ export class OpencodeService {
 
   async sendPrompt(input: PromptRequest) {
     const promptSentAt = Date.now();
-    const dedupeKey = `${input.directory}::${input.sessionID}::${input.text.trim()}`;
+    const dedupeKey = [
+      input.directory,
+      input.sessionID,
+      input.text.trim(),
+      input.contextModeEnabled ? "context:on" : "context:off",
+      input.promptSource ?? "user",
+      input.system?.trim() ?? "",
+    ].join("::");
     const lastAttemptAt = this.promptFence.get(dedupeKey);
     if (lastAttemptAt && promptSentAt - lastAttemptAt < 8_000) {
       return true;
@@ -1379,7 +1477,36 @@ export class OpencodeService {
     }
 
     const memoryContext = await this.memoryStore.buildPromptContext(input.directory, input.text).catch(() => "");
-    const systemPrompt = [input.system, memoryContext]
+    const promptSource = input.promptSource ?? "user";
+    let contextPrompt = "";
+    let contextTrace: ContextSelectionTrace | undefined;
+    if (input.contextModeEnabled === true && promptSource !== "machine") {
+      const contextResult = await this.workspaceContextStore
+        .buildPromptContext(input.directory, input.sessionID, input.text)
+        .catch(() => undefined);
+      contextPrompt = contextResult?.prompt ?? "";
+      contextTrace = contextResult?.trace;
+      if (contextTrace) {
+        this.emit({
+          type: "context.selection",
+          payload: contextTrace,
+        });
+        if (contextTrace.selected.length > 0) {
+          void this.artifactStore.writeContextSelectionArtifact({
+            workspace: input.directory,
+            sessionID: input.sessionID,
+            trace: contextTrace,
+          }).then((artifact) => {
+            this.emit({
+              type: "artifact.created",
+              payload: artifact,
+            });
+          }).catch(() => undefined);
+        }
+      }
+    }
+
+    const systemPrompt = [input.system, memoryContext, contextPrompt]
       .map((item) => (typeof item === "string" ? item.trim() : ""))
       .filter((item) => item.length > 0)
       .join("\n\n");
@@ -1391,6 +1518,7 @@ export class OpencodeService {
       model: input.model,
       variant: input.variant,
       system: systemPrompt.length > 0 ? systemPrompt : undefined,
+      tools: input.tools,
       parts,
     };
 
@@ -1738,7 +1866,12 @@ export class OpencodeService {
     };
   }
 
-  async gitGenerateCommitMessage(directory: string, includeUnstaged: boolean, guidancePrompt: string): Promise<string> {
+  async gitGenerateCommitMessage(
+    directory: string,
+    includeUnstaged: boolean,
+    guidancePrompt: string,
+    options: { requireGeneratedMessage?: boolean } = {},
+  ): Promise<string> {
     const cwd = path.resolve(directory);
     const repoRoot = await this.resolveGitRepoRoot(cwd);
     if (!repoRoot) {
@@ -1776,6 +1909,10 @@ export class OpencodeService {
       return generated.trim();
     }
 
+    if (options.requireGeneratedMessage) {
+      throw new Error("Unable to auto-generate commit message. Enter a commit message manually and try again.");
+    }
+
     return this.fallbackCommitMessage(stats);
   }
 
@@ -1800,13 +1937,38 @@ export class OpencodeService {
       request.guidancePrompt && request.guidancePrompt.trim().length > 0
         ? request.guidancePrompt.trim()
         : DEFAULT_COMMIT_GUIDANCE;
+    const shouldRequireGeneratedMessage = request.nextStep === "commit_and_create_pr" || Boolean(request.guidancePrompt?.trim());
     const message =
       request.message && request.message.trim().length > 0
         ? request.message.trim()
-        : await this.gitGenerateCommitMessage(directory, request.includeUnstaged, guidancePrompt);
+        : await this.gitGenerateCommitMessage(directory, request.includeUnstaged, guidancePrompt, {
+          requireGeneratedMessage: shouldRequireGeneratedMessage,
+        });
 
     if (!message || message.trim().length === 0) {
       throw new Error("Commit message cannot be empty.");
+    }
+
+    let ghCommandPath: string | undefined;
+    let ghUnavailableReason: string | undefined;
+    if (request.nextStep === "commit_and_create_pr") {
+      ghCommandPath = await this.resolveCommandPath("gh", repoRoot);
+      if (!ghCommandPath) {
+        ghUnavailableReason = "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
+      }
+      if (ghCommandPath) {
+        try {
+          await this.runCommandWithOutput(ghCommandPath, ["auth", "status"], repoRoot);
+        } catch (error) {
+          if (isMissingGhCliError(error)) {
+            ghUnavailableReason = "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
+          } else if (isGhAuthError(error)) {
+            ghUnavailableReason = "GitHub CLI is not authenticated. Run `gh auth login` and retry.";
+          } else {
+            throw new Error(`Unable to verify GitHub CLI auth: ${sanitizeError(error)}`);
+          }
+        }
+      }
     }
 
     const commitArgs = ["-C", repoRoot, "commit", ...this.toCommitMessageArgs(message.trim())];
@@ -1832,44 +1994,63 @@ export class OpencodeService {
         });
       }
 
-      const prArgs = ["pr", "create", "--fill", "--head", branch];
-      if (baseBranch) {
-        prArgs.push("--base", baseBranch);
-      }
-      let output: string;
-      try {
-        output = await this.runCommandWithOutput("gh", prArgs, repoRoot);
-      } catch (error) {
-        const detail = sanitizeError(error);
-        if (isMissingGhCliError(error)) {
-          throw new Error("GitHub CLI is not available. Install `gh` and run `gh auth login`.");
-        }
-        const normalized = detail.toLowerCase();
-        const canRetryWithoutFill =
-          normalized.includes("could not compute title or body defaults") ||
-          normalized.includes("unknown revision or path not in the working tree") ||
-          normalized.includes("ambiguous argument");
-        if (!canRetryWithoutFill) {
-          throw new Error(`Unable to create PR: ${detail}`);
-        }
-
-        const [titleLine, ...bodyLines] = message.trim().split(/\r?\n/);
-        const fallbackTitle = titleLine.trim().length > 0 ? titleLine.trim() : `chore: open PR from ${branch}`;
-        const fallbackBody = bodyLines.join("\n").trim() || `Automated PR created from ${branch}.`;
-        const fallbackArgs = ["pr", "create", "--title", fallbackTitle, "--body", fallbackBody, "--head", branch];
+      if (ghUnavailableReason) {
+        prUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
+      } else {
+        const prArgs = ["pr", "create", "--fill", "--head", branch];
         if (baseBranch) {
-          fallbackArgs.push("--base", baseBranch);
+          prArgs.push("--base", baseBranch);
         }
-        output = await this.runCommandWithOutput("gh", fallbackArgs, repoRoot).catch((fallbackError) => {
-          const fallbackDetail = sanitizeError(fallbackError);
-          if (isMissingGhCliError(fallbackError)) {
-            throw new Error("GitHub CLI is not available. Install `gh` and run `gh auth login`.");
+        let output: string;
+        try {
+          output = await this.runCommandWithOutput(ghCommandPath ?? "gh", prArgs, repoRoot);
+        } catch (error) {
+          const detail = sanitizeError(error);
+          if (isMissingGhCliError(error) || isGhAuthError(error)) {
+            prUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
+            if (prUrl) {
+              output = prUrl;
+            } else {
+              throw new Error(`Unable to create PR: ${detail}`);
+            }
+          } else {
+            const normalized = detail.toLowerCase();
+            const canRetryWithoutFill =
+              normalized.includes("could not compute title or body defaults") ||
+              normalized.includes("unknown revision or path not in the working tree") ||
+              normalized.includes("ambiguous argument");
+            if (!canRetryWithoutFill) {
+              throw new Error(`Unable to create PR: ${detail}`);
+            }
+
+            const [titleLine, ...bodyLines] = message.trim().split(/\r?\n/);
+            const fallbackTitle = titleLine.trim().length > 0 ? titleLine.trim() : `chore: open PR from ${branch}`;
+            const fallbackBody = bodyLines.join("\n").trim() || `Automated PR created from ${branch}.`;
+            const fallbackArgs = ["pr", "create", "--title", fallbackTitle, "--body", fallbackBody, "--head", branch];
+            if (baseBranch) {
+              fallbackArgs.push("--base", baseBranch);
+            }
+            output = await this.runCommandWithOutput(ghCommandPath ?? "gh", fallbackArgs, repoRoot).catch(async (fallbackError) => {
+              const fallbackDetail = sanitizeError(fallbackError);
+              if (isMissingGhCliError(fallbackError) || isGhAuthError(fallbackError)) {
+                const fallbackUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
+                if (fallbackUrl) {
+                  return fallbackUrl;
+                }
+              }
+              throw new Error(`Unable to create PR: ${fallbackDetail}`);
+            });
           }
-          throw new Error(`Unable to create PR: ${fallbackDetail}`);
-        });
+        }
+        const urlMatch = output.match(/https?:\/\/[^\s]+/i);
+        prUrl = urlMatch ? urlMatch[0] : prUrl;
       }
-      const urlMatch = output.match(/https?:\/\/[^\s]+/i);
-      prUrl = urlMatch ? urlMatch[0] : undefined;
+      if (!prUrl) {
+        if (ghUnavailableReason) {
+          throw new Error(ghUnavailableReason);
+        }
+        throw new Error("Unable to determine pull request URL.");
+      }
     }
 
     return {
@@ -3224,6 +3405,68 @@ export class OpencodeService {
     });
   }
 
+  private async resolveCommandPath(command: string, cwd: string) {
+    if (await this.canRunCommand(command, ["--version"], cwd)) {
+      return command;
+    }
+
+    const candidates = await this.commandPathCandidates(command);
+    for (const candidate of candidates) {
+      if (await this.canRunCommand(candidate, ["--version"], cwd)) {
+        return candidate;
+      }
+    }
+
+    return this.commandPathViaLoginShell(command, cwd);
+  }
+
+  private async commandPathViaLoginShell(command: string, cwd: string) {
+    const shell = process.env.SHELL || "/bin/zsh";
+    const quotedCommand = this.shellQuote(command);
+    const probe = `command -v ${quotedCommand} || exit 127`;
+
+    return new Promise<string | undefined>((resolve) => {
+      let settled = false;
+      const finish = (value: string | undefined) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(value);
+      };
+
+      const child = spawn(shell, ["-ilc", probe], {
+        cwd,
+        env: process.env,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+
+      const stdout: string[] = [];
+      child.stdout?.on("data", (chunk) => {
+        stdout.push(String(chunk));
+      });
+
+      const timer = setTimeout(() => {
+        child.kill();
+        finish(undefined);
+      }, DEPENDENCY_CHECK_TIMEOUT_MS);
+
+      child.on("error", () => {
+        clearTimeout(timer);
+        finish(undefined);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        if (code !== 0) {
+          finish(undefined);
+          return;
+        }
+        const resolved = stdout.join("").trim();
+        finish(resolved.length > 0 ? resolved : undefined);
+      });
+    });
+  }
+
   private shellQuote(value: string) {
     return `'${value.replace(/'/g, "'\\''")}'`;
   }
@@ -3435,6 +3678,65 @@ export class OpencodeService {
     await this.runCommand("git", ["-C", repoRoot, "push", "-u", "origin", branch], repoRoot);
   }
 
+  private normalizeGitHubRemote(remoteUrl: string) {
+    const trimmed = remoteUrl.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    let slug: string | undefined;
+    const sshMatch = trimmed.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
+    if (sshMatch) {
+      slug = sshMatch[1];
+    }
+
+    if (!slug) {
+      const sshProtocolMatch = trimmed.match(/^ssh:\/\/git@github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/i);
+      if (sshProtocolMatch) {
+        slug = sshProtocolMatch[1];
+      }
+    }
+
+    if (!slug) {
+      const httpsMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/i);
+      if (httpsMatch) {
+        slug = httpsMatch[1];
+      }
+    }
+
+    if (!slug) {
+      return undefined;
+    }
+
+    return `https://github.com/${slug.replace(/\.git$/i, "")}`;
+  }
+
+  private async resolveOriginBaseBranch(repoRoot: string) {
+    const symbolic = await this.runCommandWithOutput(
+      "git",
+      ["-C", repoRoot, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+      repoRoot,
+    ).catch(() => "");
+    const normalized = symbolic.trim();
+    if (normalized.startsWith("origin/")) {
+      const branch = normalized.slice("origin/".length).trim();
+      if (branch) {
+        return branch;
+      }
+    }
+    return undefined;
+  }
+
+  private async buildManualPrUrl(repoRoot: string, branch: string, baseBranch?: string) {
+    const remote = await this.runCommandWithOutput("git", ["-C", repoRoot, "remote", "get-url", "origin"], repoRoot).catch(() => "");
+    const remoteWebBase = this.normalizeGitHubRemote(remote);
+    if (!remoteWebBase) {
+      return undefined;
+    }
+    const base = baseBranch?.trim() || (await this.resolveOriginBaseBranch(repoRoot)) || "main";
+    return `${remoteWebBase}/compare/${encodeURIComponent(base)}...${encodeURIComponent(branch)}?expand=1`;
+  }
+
   private async generateCommitMessageWithAgent(directory: string, prompt: string) {
     const helperSession = await this.unwrap(
       this.client(directory).session.create({
@@ -3453,7 +3755,6 @@ export class OpencodeService {
             text: prompt,
           },
         ],
-        agent: "orxa",
       });
 
       const startedAt = Date.now();
