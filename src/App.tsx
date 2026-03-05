@@ -78,6 +78,7 @@ import { syncAgentModelPreference } from "./lib/agent-model-preferences";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   MEMORY_MODE_TOOLS_POLICY,
+  PLAN_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
 } from "./lib/browser-tool-guardrails";
 import { opencodeClient } from "./lib/services/opencodeClient";
@@ -208,8 +209,9 @@ function commitFlowSuccessMessage(nextStep: CommitNextStep) {
 const DEFAULT_COMPACTION_THRESHOLD = 120_000;
 const MIN_COMPACTION_THRESHOLD = 24_000;
 const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
-const BROWSER_MODE_KEY = "orxa:browserModeEnabled:v1";
-const CONTEXT_MODE_KEY = "orxa:contextModeEnabled:v1";
+const BROWSER_MODE_BY_SESSION_KEY = "orxa:browserModeBySession:v1";
+const CONTEXT_MODE_BY_SESSION_KEY = "orxa:contextModeBySession:v1";
+const BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY = "orxa:browserAutomationHaltedBySession:v1";
 const DEFAULT_BROWSER_LANDING_URL = "about:blank";
 const STARTUP_TOTAL_STEPS = 8;
 const STARTUP_STEP_TIMEOUT_MS = 12_000;
@@ -766,14 +768,18 @@ export default function App() {
   const [orxaModels, setOrxaModels] = useState<{ orxa?: string; plan?: string }>({});
   const [orxaPrompts, setOrxaPrompts] = useState<{ orxa?: string; plan?: string }>({});
   const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files" | "browser">("git");
-  const [browserModeEnabled, setBrowserModeEnabled] = usePersistedState<boolean>(BROWSER_MODE_KEY, false, {
-    deserialize: (raw) => raw === "1" || raw === "true",
-    serialize: (value) => (value ? "1" : "0"),
-  });
-  const [contextModeEnabled, setContextModeEnabled] = usePersistedState<boolean>(CONTEXT_MODE_KEY, false, {
-    deserialize: (raw) => raw === "1" || raw === "true",
-    serialize: (value) => (value ? "1" : "0"),
-  });
+  const [browserModeBySession, setBrowserModeBySession] = usePersistedState<Record<string, boolean>>(
+    BROWSER_MODE_BY_SESSION_KEY,
+    {},
+  );
+  const [contextModeBySession, setContextModeBySession] = usePersistedState<Record<string, boolean>>(
+    CONTEXT_MODE_BY_SESSION_KEY,
+    {},
+  );
+  const [browserAutomationHaltedBySession, setBrowserAutomationHaltedBySession] = usePersistedState<Record<string, number>>(
+    BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY,
+    {},
+  );
   const [browserControlOwner, setBrowserControlOwner] = useState<BrowserControlOwner>("agent");
   const [browserRuntimeState, setBrowserRuntimeState] = useState<BrowserState>(EMPTY_BROWSER_RUNTIME_STATE);
   const [browserHistoryItems, setBrowserHistoryItems] = useState<BrowserHistoryItem[]>([]);
@@ -846,6 +852,17 @@ export default function App() {
   const [agentsDraft, setAgentsDraft] = useState("");
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentsSaving, setAgentsSaving] = useState(false);
+  const activeSessionKey = useMemo(() => {
+    if (!activeProjectDir || !activeSessionID) {
+      return null;
+    }
+    return `${activeProjectDir}::${activeSessionID}`;
+  }, [activeProjectDir, activeSessionID]);
+  const browserModeEnabled = activeSessionKey ? browserModeBySession[activeSessionKey] === true : false;
+  const contextModeEnabled = activeSessionKey ? contextModeBySession[activeSessionKey] === true : false;
+  const browserAutomationHalted = activeSessionKey
+    ? typeof browserAutomationHaltedBySession[activeSessionKey] === "number"
+    : false;
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
@@ -1173,7 +1190,13 @@ export default function App() {
   }, [activeProjectDir, activeSessionID]);
 
   const setBrowserMode = useCallback(async (enabled: boolean) => {
-    setBrowserModeEnabled(enabled);
+    if (!activeSessionKey) {
+      return;
+    }
+    setBrowserModeBySession((current) => ({
+      ...current,
+      [activeSessionKey]: enabled,
+    }));
     if (!enabled) {
       setBrowserActionRunning(false);
       return;
@@ -1184,7 +1207,17 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [ensureBrowserTab, setBrowserModeEnabled, syncBrowserSnapshot]);
+  }, [activeSessionKey, ensureBrowserTab, setBrowserModeBySession, syncBrowserSnapshot]);
+
+  const setContextModeForSession = useCallback((enabled: boolean) => {
+    if (!activeSessionKey) {
+      return;
+    }
+    setContextModeBySession((current) => ({
+      ...current,
+      [activeSessionKey]: enabled,
+    }));
+  }, [activeSessionKey, setContextModeBySession]);
 
   const browserNavigate = useCallback(async (url: string) => {
     await runBrowserStateCommand(() => window.orxa.browser.navigate(url));
@@ -1294,8 +1327,26 @@ export default function App() {
   }, [activeProjectDir, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData]);
 
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
-    manualSessionStopsRef.current[`${directory}::${sessionID}`] = { requestedAt: Date.now(), noticeEmitted: false };
-  }, []);
+    const now = Date.now();
+    const key = `${directory}::${sessionID}`;
+    manualSessionStopsRef.current[key] = { requestedAt: now, noticeEmitted: false };
+    setBrowserAutomationHaltedBySession((current) => ({
+      ...current,
+      [key]: now,
+    }));
+  }, [setBrowserAutomationHaltedBySession]);
+
+  const clearBrowserAutomationHalt = useCallback((directory: string, sessionID: string) => {
+    const key = `${directory}::${sessionID}`;
+    setBrowserAutomationHaltedBySession((current) => {
+      if (!(key in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }, [setBrowserAutomationHaltedBySession]);
 
   const {
     composer,
@@ -1395,21 +1446,26 @@ export default function App() {
   const activePromptToolsPolicy = useMemo(
     () =>
       mergeModeToolPolicies(
+        isPlanMode ? PLAN_MODE_TOOLS_POLICY : undefined,
         contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
         browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
       ),
-    [browserModeEnabled, contextModeEnabled],
+    [browserModeEnabled, contextModeEnabled, isPlanMode],
   );
 
   const sendComposerPrompt = useCallback(
-    () =>
-      sendPrompt({
+    () => {
+      if (activeProjectDir && activeSessionID) {
+        clearBrowserAutomationHalt(activeProjectDir, activeSessionID);
+      }
+      return sendPrompt({
         systemAddendum: effectiveSystemAddendum,
         contextModeEnabled,
         promptSource: "user",
         tools: activePromptToolsPolicy,
-      }),
-    [activePromptToolsPolicy, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
+      });
+    },
+    [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
   );
 
   const allModelOptions = settingsModelOptions;
@@ -2699,12 +2755,19 @@ export default function App() {
     return Math.max(0, Math.min(100, Math.round((startupState.completed / startupState.total) * 100)));
   }, [startupState.completed, startupState.total]);
 
+  useEffect(() => {
+    if (browserAutomationHalted) {
+      setBrowserActionRunning(false);
+    }
+  }, [browserAutomationHalted]);
+
   useBrowserAgentBridge({
     activeProjectDir: activeProjectDir ?? null,
     activeSessionID: activeSessionID ?? null,
     messages,
     browserModeEnabled,
     controlOwner: browserControlOwner,
+    automationHalted: browserAutomationHalted,
     onActionStart: () => {
       setRightSidebarTab("browser");
       setBrowserActionRunning(true);
@@ -3663,7 +3726,7 @@ export default function App() {
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
                     contextModeEnabled={contextModeEnabled}
-                    setContextModeEnabled={setContextModeEnabled}
+                    setContextModeEnabled={setContextModeForSession}
                     permissionMode={appPreferences.permissionMode}
                     onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                     compactionProgress={compactionMeter.progress}

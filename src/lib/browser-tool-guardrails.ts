@@ -26,8 +26,20 @@ export const MEMORY_MODE_TOOLS_POLICY: Record<string, boolean> = {
   milvus: false,
 };
 
+export const PLAN_MODE_TOOLS_POLICY: Record<string, boolean> = {
+  edit: false,
+  write: false,
+  apply_patch: false,
+  bash: false,
+  run: false,
+  exec_command: false,
+  delete: false,
+  remove: false,
+};
+
 const FORBIDDEN_TOOL_NAME_PATTERN = /(web|search|browse|browser|playwright|mcp|puppeteer|selenium)/i;
 const FORBIDDEN_MEMORY_TOOL_NAME_PATTERN = /(supermemory|mem0|pinecone|qdrant|weaviate|chroma|chromadb|milvus|vector\s*db)/i;
+const FORBIDDEN_PLAN_TOOL_NAME_PATTERN = /(edit|write|apply[_-]?patch|bash|exec|shell|run|delete|remove|rm|mv)/i;
 
 export function isForbiddenToolNameInBrowserMode(toolName: string) {
   const normalized = toolName.trim().toLowerCase();
@@ -60,4 +72,15 @@ export function mergeModeToolPolicies(...policies: Array<Record<string, boolean>
     Object.assign(merged, policy);
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+export function isForbiddenToolNameInPlanMode(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (PLAN_MODE_TOOLS_POLICY[normalized] === false) {
+    return true;
+  }
+  return FORBIDDEN_PLAN_TOOL_NAME_PATTERN.test(normalized);
 }

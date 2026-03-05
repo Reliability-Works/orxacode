@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   MEMORY_MODE_TOOLS_POLICY,
+  PLAN_MODE_TOOLS_POLICY,
   isForbiddenToolNameInBrowserMode,
   isForbiddenToolNameInMemoryMode,
+  isForbiddenToolNameInPlanMode,
   mergeModeToolPolicies,
 } from "./browser-tool-guardrails";
 
@@ -20,11 +22,18 @@ describe("browser-tool-guardrails", () => {
     expect(isForbiddenToolNameInMemoryMode("todowrite")).toBe(false);
   });
 
+  it("flags forbidden plan-mode write/edit tools", () => {
+    expect(isForbiddenToolNameInPlanMode("apply_patch")).toBe(true);
+    expect(isForbiddenToolNameInPlanMode("exec_command")).toBe(true);
+    expect(isForbiddenToolNameInPlanMode("read_file")).toBe(false);
+  });
+
   it("merges active mode tool policies without returning empty maps", () => {
-    const merged = mergeModeToolPolicies(MEMORY_MODE_TOOLS_POLICY, BROWSER_MODE_TOOLS_POLICY);
+    const merged = mergeModeToolPolicies(PLAN_MODE_TOOLS_POLICY, MEMORY_MODE_TOOLS_POLICY, BROWSER_MODE_TOOLS_POLICY);
     expect(merged).toBeDefined();
     expect(merged).toEqual(
       expect.objectContaining({
+        apply_patch: false,
         supermemory: false,
         web_search: false,
       }),
@@ -32,4 +41,3 @@ describe("browser-tool-guardrails", () => {
     expect(mergeModeToolPolicies(undefined, undefined)).toBeUndefined();
   });
 });
-

@@ -152,6 +152,23 @@ export function parseBrowserActionsFromText(text: string) {
   return actions;
 }
 
+function parseBrowserMachineResultID(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith(ORXA_BROWSER_RESULT_PREFIX)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed.slice(ORXA_BROWSER_RESULT_PREFIX.length).trim()) as unknown;
+    if (!isRecord(parsed)) {
+      return null;
+    }
+    const id = parsed.id;
+    return typeof id === "string" && id.trim().length > 0 ? id.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 function collectAssistantBrowserActions(messages: SessionMessageBundle[]) {
   const actions: BrowserActionEnvelope[] = [];
   for (const bundle of messages) {
@@ -168,6 +185,25 @@ function collectAssistantBrowserActions(messages: SessionMessageBundle[]) {
   return actions;
 }
 
+function collectCompletedBrowserActionIDs(messages: SessionMessageBundle[]) {
+  const ids = new Set<string>();
+  for (const bundle of messages) {
+    if (bundle.info.role !== "user") {
+      continue;
+    }
+    for (const part of bundle.parts) {
+      if (part.type !== "text") {
+        continue;
+      }
+      const id = parseBrowserMachineResultID(part.text);
+      if (id) {
+        ids.add(id);
+      }
+    }
+  }
+  return ids;
+}
+
 function toMachineResultText(result: BrowserMachineResult) {
   return `${ORXA_BROWSER_RESULT_PREFIX}${JSON.stringify(result)}`;
 }
@@ -178,6 +214,7 @@ type UseBrowserAgentBridgeOptions = {
   messages: SessionMessageBundle[];
   browserModeEnabled: boolean;
   controlOwner: BrowserControlOwner;
+  automationHalted?: boolean;
   onActionStart?: (action: BrowserActionEnvelope) => void;
   onStatus?: (message: string) => void;
   onGuardrailViolation?: (message: string) => void;
@@ -196,6 +233,7 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
     messages,
     browserModeEnabled,
     controlOwner,
+    automationHalted,
   } = options;
 
   useEffect(() => {
@@ -221,7 +259,18 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
     processedBySessionRef.current[sessionKey] = processed;
     const running = runningBySessionRef.current[sessionKey] ?? new Set<string>();
     runningBySessionRef.current[sessionKey] = running;
+    const completed = collectCompletedBrowserActionIDs(messages);
+    for (const id of completed) {
+      processed.add(id);
+    }
     let cancelled = false;
+
+    if (automationHalted) {
+      for (const action of actions) {
+        running.delete(action.id);
+      }
+      return;
+    }
 
     const sendMachineResult = async (result: BrowserMachineResult, attachments?: PromptAttachment[]) => {
       const text = toMachineResultText(result);
@@ -245,21 +294,19 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
       let result: BrowserMachineResult;
       let resultAttachments: PromptAttachment[] | undefined;
       if (!browserModeEnabled) {
-        result = {
-          id: actionID,
-          action: envelope.action,
-          ok: false,
-          blockedReason: "browser_mode_disabled",
-          error: "Browser mode is disabled.",
-        };
+        onGuardrailViolationRef.current?.(
+          "Blocked browser action because Browser Mode is disabled for this session.",
+        );
+        processed.add(actionID);
+        running.delete(actionID);
+        return;
       } else if (controlOwner === "human") {
-        result = {
-          id: actionID,
-          action: envelope.action,
-          ok: false,
-          blockedReason: "browser_control_owned_by_human",
-          error: "Browser control is currently owned by the human.",
-        };
+        onGuardrailViolationRef.current?.(
+          "Blocked browser action because browser control is currently owned by the human.",
+        );
+        processed.add(actionID);
+        running.delete(actionID);
+        return;
       } else {
         const browser = readBrowserBridge();
         if (!browser?.performAgentAction) {
@@ -327,11 +374,12 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
     activeSessionID,
     browserModeEnabled,
     controlOwner,
+    automationHalted,
     messages,
   ]);
 
   useEffect(() => {
-    if (!browserModeEnabled || controlOwner !== "agent") {
+    if (!browserModeEnabled || controlOwner !== "agent" || automationHalted) {
       return;
     }
     const directory = activeProjectDir;
@@ -405,5 +453,5 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
         return;
       }
     }
-  }, [activeProjectDir, activeSessionID, browserModeEnabled, controlOwner, messages]);
+  }, [activeProjectDir, activeSessionID, automationHalted, browserModeEnabled, controlOwner, messages]);
 }

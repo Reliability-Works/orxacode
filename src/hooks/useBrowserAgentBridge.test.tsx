@@ -128,12 +128,13 @@ describe("useBrowserAgentBridge", () => {
     expect(sentRequest?.contextModeEnabled).toBe(false);
   });
 
-  it("blocks actions when control owner is human", async () => {
+  it("blocks actions when control owner is human without injecting machine prompts", async () => {
     const performAgentAction = vi.fn(async () => ({ ok: true }));
     const sendPrompt = vi.fn(async (input: { text: string }) => {
       void input;
       return true;
     });
+    const onGuardrailViolation = vi.fn();
     Object.defineProperty(window, "orxa", {
       configurable: true,
       value: {
@@ -151,21 +152,80 @@ describe("useBrowserAgentBridge", () => {
         ],
         browserModeEnabled: true,
         controlOwner: "human",
+        onGuardrailViolation,
       }),
     );
 
     await waitFor(() => {
       expect(performAgentAction).not.toHaveBeenCalled();
-      expect(sendPrompt).toHaveBeenCalledTimes(1);
+      expect(sendPrompt).not.toHaveBeenCalled();
+      expect(onGuardrailViolation).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not replay browser actions that already have ORXA machine results in the transcript", async () => {
+    const performAgentAction = vi.fn(async () => ({ ok: true }));
+    const sendPrompt = vi.fn(async () => true);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        browser: { performAgentAction },
+        opencode: { sendPrompt },
+      },
     });
 
-    const sentText = sendPrompt.mock.calls[0]?.[0]?.text as string;
-    const sentRequest = sendPrompt.mock.calls[0]?.[0] as { promptSource?: string; contextModeEnabled?: boolean } | undefined;
-    expect(sentText).toContain('"id":"action-2"');
-    expect(sentText).toContain('"ok":false');
-    expect(sentText).toContain('"blockedReason":"browser_control_owned_by_human"');
-    expect(sentRequest?.promptSource).toBe("machine");
-    expect(sentRequest?.contextModeEnabled).toBe(false);
+    renderHook(() =>
+      useBrowserAgentBridge({
+        activeProjectDir: "/repo",
+        activeSessionID: "session-1",
+        messages: [
+          assistantBundle(
+            '<orxa_browser_action>{"id":"action-7","action":"navigate","args":{"url":"https://example.com"}}</orxa_browser_action>',
+          ),
+          {
+            info: { role: "user" },
+            parts: [{ type: "text", text: '[ORXA_BROWSER_RESULT]{"id":"action-7","action":"navigate","ok":true}' }],
+          } as unknown as SessionMessageBundle,
+        ],
+        browserModeEnabled: true,
+        controlOwner: "agent",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(performAgentAction).not.toHaveBeenCalled();
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
+  });
+
+  it("does not execute browser actions while automation is halted for the session", async () => {
+    const performAgentAction = vi.fn(async () => ({ ok: true }));
+    const sendPrompt = vi.fn(async () => true);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        browser: { performAgentAction },
+        opencode: { sendPrompt },
+      },
+    });
+
+    renderHook(() =>
+      useBrowserAgentBridge({
+        activeProjectDir: "/repo",
+        activeSessionID: "session-1",
+        messages: [
+          assistantBundle('<orxa_browser_action>{"id":"action-8","action":"navigate","args":{"url":"https://example.com"}}</orxa_browser_action>'),
+        ],
+        browserModeEnabled: true,
+        controlOwner: "agent",
+        automationHalted: true,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(performAgentAction).not.toHaveBeenCalled();
+      expect(sendPrompt).not.toHaveBeenCalled();
+    });
   });
 
   it("attaches screenshot artifacts when browser action returns file metadata", async () => {
