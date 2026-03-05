@@ -1223,6 +1223,36 @@ export default function App() {
     }
     return debugLogs.filter((entry) => entry.level === debugLogLevelFilter);
   }, [debugLogLevelFilter, debugLogs]);
+  const copyDebugLogsAsJson = useCallback(async () => {
+    const payload = filteredDebugLogs.map((entry) => ({
+      timestamp: new Date(entry.time).toISOString(),
+      level: entry.level,
+      eventType: entry.eventType,
+      summary: entry.summary,
+      details: entry.details,
+    }));
+    const json = JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        filter: debugLogLevelFilter,
+        count: payload.length,
+        logs: payload,
+      },
+      null,
+      2,
+    );
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard is not available in this environment.");
+      }
+      await navigator.clipboard.writeText(json);
+      setStatusLine(`Copied ${payload.length} debug logs as JSON`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStatusLine(`Failed to copy debug logs: ${message}`);
+      pushToast(`Failed to copy debug logs: ${message}`, "error");
+    }
+  }, [debugLogLevelFilter, filteredDebugLogs, pushToast, setStatusLine]);
 
   const refreshProfiles = useCallback(async () => {
     const [nextRuntime, nextProfiles] = await Promise.all([window.orxa.runtime.getState(), window.orxa.runtime.listProfiles()]);
@@ -4234,6 +4264,9 @@ export default function App() {
                   {level === "all" ? "All" : level.toUpperCase()}
                 </button>
               ))}
+              <button type="button" className="debug-log-copy-btn" onClick={() => void copyDebugLogsAsJson()}>
+                Copy logs as JSON
+              </button>
             </div>
             <div className="debug-log-list" role="log" aria-live="polite">
               {filteredDebugLogs.length === 0 ? (

@@ -1061,6 +1061,10 @@
   color: var(--text-main);
 }
 
+.debug-log-copy-btn {
+  margin-left: auto;
+}
+
 .debug-log-list {
   padding: 14px 18px 18px;
   overflow: auto;
