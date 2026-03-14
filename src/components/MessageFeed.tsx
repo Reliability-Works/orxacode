@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Part } from "@opencode-ai/sdk/v2/client";
 import type { SessionMessageBundle } from "@shared/ipc";
 
@@ -1695,6 +1695,75 @@ function renderLabelWithDiff(label: string) {
   );
 }
 
+function extractVisibleText(parts: Part[]): string {
+  const segments: string[] = [];
+  for (const part of parts) {
+    if (part.type === "text") {
+      const text = part.text.trim();
+      if (text.length > 0) {
+        segments.push(text);
+      }
+    } else if (part.type === "file") {
+      const label = part.filename ?? part.url ?? "file";
+      segments.push(`[Attached file: ${label}]`);
+    }
+  }
+  return segments.join("\n\n");
+}
+
+function CopyMessageButton({ parts }: { parts: Part[] }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    const text = extractVisibleText(parts);
+    if (!text || !navigator.clipboard?.writeText) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => {
+        setCopied(false);
+        timerRef.current = null;
+      }, 1500);
+    } catch {
+      // Clipboard write failed silently
+    }
+  }, [parts]);
+
+  return (
+    <button
+      type="button"
+      className="message-copy-btn"
+      aria-label={copied ? "Copied" : "Copy message"}
+      onClick={handleCopy}
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export function MessageFeed({
   messages,
   sessionNotices = [],
@@ -2007,6 +2076,7 @@ export function MessageFeed({
                 </section>
               ) : null}
             </div>
+            {visibleParts.length > 0 ? <CopyMessageButton parts={visibleParts} /> : null}
           </article>
         );
       })}

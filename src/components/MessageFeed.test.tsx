@@ -1508,6 +1508,126 @@ describe("MessageFeed", () => {
     expect(screen.getByText(/Reason: Permission request rejected by user/i)).toBeInTheDocument();
   });
 
+  it("shows copy button on message bubble hover and copies visible text", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-copy",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-text-copy-1",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-copy",
+            text: "Here is the answer.",
+          },
+          {
+            id: "part-text-copy-2",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-copy",
+            text: "And a follow-up.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    const copyBtn = screen.getByRole("button", { name: /copy message/i });
+    expect(copyBtn).toBeInTheDocument();
+    expect(copyBtn).toHaveClass("message-copy-btn");
+
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("Here is the answer.\n\nAnd a follow-up.");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /copied/i })).toBeInTheDocument();
+    });
+  });
+
+  it("does not show copy button for timeline-only messages", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-timeline-only",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-read-timeline-only",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-timeline-only",
+            callID: "call-read-timeline-only",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/src/app.tsx" },
+              output: "",
+              title: "read_file",
+              metadata: {},
+              time: { start: now, end: now },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    expect(screen.queryByRole("button", { name: /copy message/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show copy button on thinking placeholder", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-thinking-copy",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-step-thinking-copy",
+            type: "step-finish",
+            sessionID: "session-1",
+            messageID: "msg-assistant-thinking-copy",
+            reason: "tool-calls",
+            snapshot: "snap-1",
+            cost: 0,
+            tokens: {
+              input: 10,
+              output: 2,
+              reasoning: 0,
+              cache: { read: 4, write: 0 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy message/i })).not.toBeInTheDocument();
+  });
+
   it("uses mode-aware assistant label", () => {
     const messages: SessionMessageBundle[] = [
       {
