@@ -1,6 +1,5 @@
 import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { IconButton } from "./IconButton";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import {
   AlignJustify,
@@ -516,6 +515,7 @@ export type GitSidebarProps = {
   fileProvenanceByPath?: Record<string, ChangeProvenanceRecord>;
   onAddToChatPath: (filePath: string) => void;
   onStatusChange: (message: string) => void;
+  onCollapse?: () => void;
   browserState: BrowserSidebarState;
   onBrowserOpenTab?: () => Promise<void> | void;
   onBrowserCloseTab?: (tabID: string) => Promise<void> | void;
@@ -553,6 +553,7 @@ export function GitSidebar(props: GitSidebarProps) {
     fileProvenanceByPath,
     onAddToChatPath,
     onStatusChange,
+    onCollapse,
     browserState,
     onBrowserOpenTab,
     onBrowserCloseTab,
@@ -1230,67 +1231,138 @@ export function GitSidebar(props: GitSidebarProps) {
 
   return (
     <aside className="sidebar ops-pane">
-      <section className="ops-toolbar ops-tabs">
-        <IconButton
-          icon="git"
-          label="Git"
-          className={`tab-icon ops-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
+      <div className="ops-panel-tabs">
+        <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("git")}
-        />
-        <IconButton
-          icon="files"
-          label="Files"
-          className={`tab-icon ops-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
+          aria-label="Git"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <circle cx="7" cy="6" r="2.2" />
+              <circle cx="17" cy="12" r="2.2" />
+              <circle cx="7" cy="18" r="2.2" />
+              <path d="M8.9 7.3 15 10.7" />
+              <path d="M8.9 16.7 15 13.3" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Git</span>
+        </button>
+        <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("files")}
-        />
-        <IconButton
-          icon="browser"
-          label="Browser"
-          className={`tab-icon ops-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
+          aria-label="Files"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 18 20H6A2.5 2.5 0 0 1 3.5 17.5z" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Files</span>
+        </button>
+        <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("browser")}
-        />
-      </section>
+          aria-label="Browser"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18" />
+              <path d="M12 3a15 15 0 0 1 0 18" />
+              <path d="M12 3a15 15 0 0 0 0 18" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Browser</span>
+        </button>
+        {onCollapse ? (
+          <button
+            type="button"
+            className="ops-panel-collapse"
+            onClick={onCollapse}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelRightClose size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
 
       {sidebarPanelTab === "git" ? (
         <section className="ops-section ops-section-fill">
-          <h3>Git</h3>
-          <div className="ops-icon-row ops-icon-tabs">
-            <IconButton
-              icon="diff"
-              label="Diff"
-              className={gitPanelTab === "diff" ? "active" : ""}
+          <div className="ops-git-sub-tabs">
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "diff" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("diff");
                 void onLoadGitDiff();
               }}
-            />
-            <IconButton
-              icon="log"
-              label="Log"
-              className={gitPanelTab === "log" ? "active" : ""}
+            >
+              Diff
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "log" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("log");
                 void onLoadGitLog();
               }}
-            />
-            <IconButton
-              icon="issues"
-              label="Issues"
-              className={gitPanelTab === "issues" ? "active" : ""}
+            >
+              Log
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "issues" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("issues");
                 void onLoadGitIssues();
               }}
-            />
-            <IconButton
-              icon="pulls"
-              label="Pull requests"
-              className={gitPanelTab === "prs" ? "active" : ""}
+            >
+              Issues
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "prs" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("prs");
                 void onLoadGitPrs();
               }}
-            />
+            >
+              PRs
+            </button>
+            <div className="ops-git-view-modes">
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
+                aria-label="List view"
+                title="List view"
+                onClick={() => setGitDiffViewMode("list")}
+              >
+                <List size={13} />
+              </button>
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
+                aria-label="Unified view"
+                title="Unified view"
+                onClick={() => setGitDiffViewMode("unified")}
+              >
+                <AlignJustify size={13} />
+              </button>
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
+                aria-label="Split view"
+                title="Split view"
+                onClick={() => setGitDiffViewMode("split")}
+              >
+                <Columns2 size={13} />
+              </button>
+            </div>
           </div>
           {gitPanelTab === "diff" ? (
             <div className="git-files-panel">
@@ -1357,46 +1429,17 @@ export function GitSidebar(props: GitSidebarProps) {
                 <div className={`git-diff-layout git-diff-layout-${gitDiffViewMode}${gitDiffViewMode !== "list" && !showFileTree ? " tree-hidden" : ""}`.trim()}>
                   <div className="git-files-heading">
                     <p className="git-files-count">Files ({parsedDiff.files.length})</p>
-                    <div className="git-diff-mode-toggle" role="group" aria-label="Git diff view mode">
+                    {gitDiffViewMode !== "list" ? (
                       <button
                         type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
-                        aria-label="List view"
-                        title="List view"
-                        onClick={() => setGitDiffViewMode("list")}
+                        className="git-action-icon-btn"
+                        aria-label={showFileTree ? "Hide file tree" : "Show file tree"}
+                        title={showFileTree ? "Hide file tree" : "Show file tree"}
+                        onClick={() => setShowFileTree((v) => !v)}
                       >
-                        <List size={15} />
+                        {showFileTree ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
                       </button>
-                      <button
-                        type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
-                        aria-label="Unified view"
-                        title="Unified view"
-                        onClick={() => setGitDiffViewMode("unified")}
-                      >
-                        <AlignJustify size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
-                        aria-label="Split view"
-                        title="Split view"
-                        onClick={() => setGitDiffViewMode("split")}
-                      >
-                        <Columns2 size={15} />
-                      </button>
-                      {gitDiffViewMode !== "list" ? (
-                        <button
-                          type="button"
-                          className="git-action-icon-btn"
-                          aria-label={showFileTree ? "Hide file tree" : "Show file tree"}
-                          title={showFileTree ? "Hide file tree" : "Show file tree"}
-                          onClick={() => setShowFileTree((v) => !v)}
-                        >
-                          {showFileTree ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
-                        </button>
-                      ) : null}
-                    </div>
+                    ) : null}
                   </div>
 
                   {gitDiffViewMode === "list" ? (

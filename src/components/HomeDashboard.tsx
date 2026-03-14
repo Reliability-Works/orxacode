@@ -64,15 +64,15 @@ export function HomeDashboard({
   return (
     <section className="dashboard">
       <header className="dashboard-header">
-        <h1>Workspace Dashboard</h1>
-        <p>Monitor workspaces and jump into sessions quickly.</p>
+        <h1>orxa dashboard</h1>
+        <p>// monitor workspaces and jump into sessions quickly.</p>
       </header>
 
       <section className="dashboard-section">
         <div className="dashboard-section-title">
-          <h2>Latest Sessions</h2>
+          <h2>latest sessions</h2>
           <button type="button" onClick={onRefresh} disabled={loading}>
-            {loading ? "Refreshing..." : "Refresh"}
+            {loading ? "refreshing..." : "refresh"}
           </button>
         </div>
         <div className="dashboard-session-grid">
@@ -90,58 +90,62 @@ export function HomeDashboard({
           ) : null}
         </div>
         <div className="dashboard-actions">
-          <button type="button" onClick={onAddWorkspace}>
-            + Add Workspace
+          <button type="button" className="dashboard-action-primary" onClick={onAddWorkspace}>
+            + add workspace
           </button>
-          <button type="button" onClick={onOpenSettings}>
-            Settings
+          <button type="button" className="dashboard-action-secondary" onClick={onOpenSettings}>
+            settings
           </button>
         </div>
       </section>
 
       <section className="dashboard-section">
         <div className="dashboard-section-title">
-          <h2>Usage Snapshot</h2>
+          <h2>usage snapshot // 30 days</h2>
           <small>
-            {updatedAt ? `Updated ${timeAgo(updatedAt)}` : "Not updated yet"}
+            {updatedAt ? `updated ${timeAgo(updatedAt)}` : "not updated yet"}
           </small>
         </div>
         <div className="dashboard-metric-grid">
           <article>
-            <span>Workspaces</span>
             <strong>{projects}</strong>
+            <span>workspaces</span>
           </article>
           <article>
-            <span>Sessions (7d)</span>
             <strong>{sessions7d}</strong>
+            <span>sessions, 7d</span>
           </article>
           <article>
-            <span>Sessions (30d)</span>
             <strong>{sessions30d}</strong>
+            <span>sessions, 30d</span>
           </article>
           <article>
-            <span>Providers</span>
             <strong>{providersConnected}</strong>
+            <span>providers</span>
           </article>
           <article>
-            <span>Input Tokens (30d)</span>
             <strong>{compact(tokenInput30d)}</strong>
+            <span>input tokens</span>
           </article>
           <article>
-            <span>Output Tokens (30d)</span>
             <strong>{compact(tokenOutput30d)}</strong>
+            <span>output tokens</span>
           </article>
           <article>
-            <span>Cache Read (30d)</span>
             <strong>{compact(tokenCacheRead30d)}</strong>
+            <span>cache read</span>
           </article>
           <article>
-            <span>Cost (30d)</span>
             <strong>{money(totalCost30d)}</strong>
+            <span>cost, 30d</span>
           </article>
         </div>
+      </section>
 
-        <small>Daily token volume</small>
+      <section className="dashboard-section">
+        <div className="dashboard-section-title">
+          <h2>daily tokens // 7 days</h2>
+        </div>
         <div className="dashboard-chart" aria-label="Token usage by day">
           {daySeries.map((day) => (
             <div key={day.label} className="dashboard-chart-day">
@@ -161,7 +165,12 @@ export function HomeDashboard({
             </div>
           ))}
         </div>
+      </section>
 
+      <section className="dashboard-section">
+        <div className="dashboard-section-title">
+          <h2>top models</h2>
+        </div>
         <div className="dashboard-models">
           {topModels.map((item) => (
             <span key={item.model}>

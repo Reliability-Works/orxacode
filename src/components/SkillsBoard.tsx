@@ -25,30 +25,40 @@ export function SkillsBoard({ skills, loading, error, onRefresh, onUseSkill }: P
 
       {error ? <p className="skills-error">{error}</p> : null}
 
-      <section className="skills-grid">
-        {skills.map((skill) => (
-          <article key={skill.id} className="skills-card">
-            <header>
-              <span className="skills-card-icon">
-                <BrainCircuit size={16} aria-hidden="true" />
-              </span>
-              <strong>{skill.name}</strong>
-            </header>
-            <p>{skill.description}</p>
-            <small>{skill.path}</small>
-            <button type="button" onClick={() => onUseSkill(skill)}>
-              <Sparkles size={13} aria-hidden="true" />
-              Use skill
-            </button>
-          </article>
-        ))}
-      </section>
+      <div className="skills-grid-section">
+        <p className="skills-grid-label">// available skills</p>
+        <section className="skills-grid">
+          {skills.map((skill) => (
+            <article key={skill.id} className="skills-card">
+              <header>
+                <span className="skills-card-icon">
+                  <BrainCircuit size={16} aria-hidden="true" />
+                </span>
+                <strong>{skill.name}</strong>
+              </header>
+              <p>{skill.description}</p>
+              <small>{skill.path}</small>
+              <button type="button" onClick={() => onUseSkill(skill)}>
+                <Sparkles size={13} aria-hidden="true" />
+                Use skill
+              </button>
+            </article>
+          ))}
+        </section>
+      </div>
 
       {!loading && skills.length === 0 ? (
         <div className="skills-empty">
           <BrainCircuit size={16} aria-hidden="true" />
           <span>No skills found in ~/.config/opencode/skill.</span>
         </div>
+      ) : null}
+
+      {!loading && skills.length > 0 ? (
+        <footer className="skills-board-footer">
+          <span>{skills.length} skill{skills.length === 1 ? "" : "s"} found</span>
+          <span>~/.config/opencode/skill</span>
+        </footer>
       ) : null}
     </section>
   );

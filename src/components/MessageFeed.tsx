@@ -2041,6 +2041,7 @@ export function MessageFeed({
         return (
           <article key={key} className={`message-card message-${role}`}>
             <header className="message-header">
+              {role === "assistant" ? <span className="message-agent-icon" aria-hidden="true">{">"}</span> : null}
               <span className="message-role">{getRoleLabel(role, assistantLabel)}</span>
               <span className="message-time">{new Date(timeCreated).toLocaleTimeString()}</span>
             </header>

@@ -558,6 +558,7 @@ export function MemoryBoard({
           )}
         </div>
         <aside className="memory-board-details">
+          <p className="memory-board-details-label">// node details</p>
           {selectedNode ? (
             <>
               <h3>{selectedNode.summary}</h3>

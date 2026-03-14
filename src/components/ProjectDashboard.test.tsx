@@ -52,10 +52,10 @@ describe("ProjectDashboard workspace context and artifacts", () => {
   it("renders workspace context and artifact summaries", () => {
     render(<ProjectDashboard {...buildProps()} />);
 
-    expect(screen.getByRole("heading", { name: "Workspace Context" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Workspace Artifacts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "workspace context" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "workspace artifacts" })).toBeInTheDocument();
     expect(screen.getByText("Architecture decisions")).toBeInTheDocument();
-    expect(screen.getByText("Total Artifacts")).toBeInTheDocument();
+    expect(screen.getByText("total artifacts")).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
   });
 

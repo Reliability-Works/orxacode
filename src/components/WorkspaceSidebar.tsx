@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
 import type { AppMode, ProjectListItem } from "@shared/ipc";
 import { IconButton } from "./IconButton";
 
@@ -95,26 +95,37 @@ export function WorkspaceSidebar({
   return (
     <aside className="sidebar projects-pane">
       <div className="sidebar-inner">
+
+        {/* Logo */}
+        <div className="sidebar-logo">
+          <span className="sidebar-logo-symbol">~</span>
+          <span className="sidebar-logo-name">orxa</span>
+        </div>
+
+        {/* Update CTA (shown above mode tabs when update available) */}
+        {updateAvailableVersion ? (
+          <button
+            type="button"
+            className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
+            onMouseEnter={() => setUpdateButtonHovered(true)}
+            onMouseLeave={() => setUpdateButtonHovered(false)}
+            onClick={() => void onDownloadAndInstallUpdate()}
+            disabled={updateInstallPending}
+            title={`Version ${updateAvailableVersion}`}
+          >
+            <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
+            <small>{updateAvailableVersion}</small>
+          </button>
+        ) : null}
+
+        {/* Mode nav tabs */}
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
-          {updateAvailableVersion ? (
-            <button
-              type="button"
-              className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
-              onMouseEnter={() => setUpdateButtonHovered(true)}
-              onMouseLeave={() => setUpdateButtonHovered(false)}
-              onClick={() => void onDownloadAndInstallUpdate()}
-              disabled={updateInstallPending}
-              title={`Version ${updateAvailableVersion}`}
-            >
-              <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
-              <small>{updateAvailableVersion}</small>
-            </button>
-          ) : null}
           <button
             type="button"
             className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}
             onClick={openWorkspaceDashboard}
           >
+            <LayoutDashboard size={16} aria-hidden="true" />
             Dashboard
           </button>
           <button
@@ -122,37 +133,39 @@ export function WorkspaceSidebar({
             className={sidebarMode === "jobs" ? "active" : ""}
             onClick={() => setSidebarMode("jobs")}
           >
+            <CirclePlay size={16} aria-hidden="true" />
             Jobs
             {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
-          </button>
-          <button
-            type="button"
-            className={sidebarMode === "memory" ? "active" : ""}
-            onClick={() => setSidebarMode("memory")}
-          >
-            Memory
           </button>
           <button
             type="button"
             className={sidebarMode === "skills" ? "active" : ""}
             onClick={() => setSidebarMode("skills")}
           >
+            <Zap size={16} aria-hidden="true" />
             Skills
           </button>
+          <button
+            type="button"
+            className={sidebarMode === "memory" ? "active" : ""}
+            onClick={() => setSidebarMode("memory")}
+          >
+            <Brain size={16} aria-hidden="true" />
+            Memory
+          </button>
         </nav>
-      <>
+
+        {/* Search bar */}
+        <div className="sidebar-search" onClick={() => { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); } }}>
+          <Search size={14} aria-hidden="true" />
+          <span className="sidebar-search-placeholder">search...</span>
+        </div>
+
+        {/* Workspaces section */}
+        <div className="sidebar-workspaces-section">
           <div className="pane-header">
             <h2>Workspaces</h2>
             <div className="pane-header-actions">
-              <IconButton
-                icon="search"
-                className="pane-action-icon"
-                label={projectSearchOpen ? "Close search" : "Search workspaces"}
-                onClick={() => {
-                  setProjectSearchOpen((value) => !value);
-                  setProjectSortOpen(false);
-                }}
-              />
               <IconButton
                 icon="sort"
                 className="pane-action-icon"
@@ -165,6 +178,7 @@ export function WorkspaceSidebar({
               <IconButton icon="folderPlus" className="pane-action-icon" label="Add workspace folder" onClick={() => void addProjectDirectory()} />
             </div>
           </div>
+
           {projectSortOpen ? (
             <div className="project-sort-popover">
               <button
@@ -209,6 +223,7 @@ export function WorkspaceSidebar({
               </button>
             </div>
           ) : null}
+
           {projectSearchOpen ? (
             <div className="project-search-popover">
               <input
@@ -241,6 +256,7 @@ export function WorkspaceSidebar({
               </div>
             </div>
           ) : null}
+
           <div className="project-list">
             {filteredProjects.map((project) => {
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
@@ -285,8 +301,9 @@ export function WorkspaceSidebar({
                       title={projectLabel}
                     >
                       <span className="project-row-arrow" aria-hidden="true">
-                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       </span>
+                      <span className="project-status-dot" aria-hidden="true" />
                       <span className="project-label-text">{projectLabel}</span>
                     </button>
                     <button
@@ -341,24 +358,36 @@ export function WorkspaceSidebar({
               );
             })}
           </div>
-        </>
-      
+        </div>
 
-      <div className="sidebar-footer-actions">
-        <IconButton
-          icon={appMode === "orxa" ? "orxa" : "standard"}
-          label={appMode === "orxa" ? "Orxa Mode (click to switch to Standard)" : "Standard Mode (click to switch to Orxa)"}
-          onClick={() => {
-            const nextMode = appMode === "orxa" ? "standard" : "orxa";
-            void window.orxa.mode.set(nextMode);
-            setAppMode(nextMode);
-          }}
-        />
-        <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
-        <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
-        <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
+        {/* Footer */}
+        <div className="sidebar-footer-actions">
+          <IconButton
+            icon={appMode === "orxa" ? "orxa" : "standard"}
+            label={appMode === "orxa" ? "Orxa Mode (click to switch to Standard)" : "Standard Mode (click to switch to Orxa)"}
+            onClick={() => {
+              const nextMode = appMode === "orxa" ? "standard" : "orxa";
+              void window.orxa.mode.set(nextMode);
+              setAppMode(nextMode);
+            }}
+          />
+          <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
+          <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
+          <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
+          <span className="sidebar-footer-spacer" />
+          <span className="sidebar-footer-avatar" aria-hidden="true">CS</span>
+        </div>
+
       </div>
+
+      {/* Collapsed icon rail — shown when sidebar is collapsed to 48px */}
+      <div className="sidebar-collapsed-rail" aria-hidden="true">
+        <LayoutDashboard size={18} />
+        <CirclePlay size={18} />
+        <Zap size={18} />
+        <Brain size={18} />
       </div>
+
     </aside>
   );
 }

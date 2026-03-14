@@ -482,73 +482,94 @@ export function SettingsDrawer({
       };
 
       return (
-        <section className="settings-section-card settings-pad">
-          <h3>App Preferences</h3>
-          <p className="raw-path">Version: v{appVersion}</p>
-          <div className="settings-controls">
-            <label>
-              Application mode
-              <select value={nextMode} onChange={(event) => setNextMode(event.target.value as AppMode)}>
-                <option value="orxa">Orxa Mode</option>
-                <option value="standard">Standard Mode</option>
-              </select>
+        <section className="settings-section-card">
+          <h3>app settings</h3>
+
+          <div className="settings-app-mode-row">
+            <span className="settings-field-label">application_mode</span>
+            <div className="settings-mode-radio-row">
+              <button
+                type="button"
+                className={`settings-mode-radio-btn${nextMode === "orxa" ? " selected" : ""}`}
+                onClick={() => setNextMode("orxa")}
+              >
+                orxa
+              </button>
+              <button
+                type="button"
+                className={`settings-mode-radio-btn${nextMode === "standard" ? " selected" : ""}`}
+                onClick={() => setNextMode("standard")}
+              >
+                standard
+              </button>
+              <button
+                type="button"
+                className="settings-mode-apply-btn"
+                disabled={modeSwitching || nextMode === mode}
+                onClick={() =>
+                  void onChangeMode(nextMode)
+                    .then(() => setFeedback(`Mode switched to ${nextMode === "orxa" ? "Orxa" : "Standard"}`))
+                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                }
+              >
+                {modeSwitching ? "applying..." : "apply"}
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-toggle-group">
+            <label className="settings-inline-toggle">
+              auto-open terminal when creating PTY
+              <input
+                type="checkbox"
+                checked={appPreferences.autoOpenTerminalOnCreate}
+                onChange={(event) =>
+                  onAppPreferencesChange({ ...appPreferences, autoOpenTerminalOnCreate: event.target.checked })
+                }
+              />
+            </label>
+            <label className="settings-inline-toggle">
+              confirm dangerous actions (reject buttons)
+              <input
+                type="checkbox"
+                checked={appPreferences.confirmDangerousActions}
+                onChange={(event) =>
+                  onAppPreferencesChange({ ...appPreferences, confirmDangerousActions: event.target.checked })
+                }
+              />
+            </label>
+            <label className="settings-inline-toggle">
+              automatically check for updates
+              <input
+                type="checkbox"
+                checked={updatePreferences.autoCheckEnabled}
+                onChange={(event) => applyUpdatePreferences({ autoCheckEnabled: event.target.checked })}
+              />
             </label>
           </div>
-          <p className="raw-path">Current mode: {mode === "orxa" ? "Orxa Mode" : "Standard Mode"}</p>
-          <div className="settings-actions">
-            <button
-              type="button"
-              disabled={modeSwitching || nextMode === mode}
-              onClick={() =>
-                void onChangeMode(nextMode)
-                  .then(() => setFeedback(`Mode switched to ${nextMode === "orxa" ? "Orxa" : "Standard"}`))
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-              }
-            >
-              {modeSwitching ? "Applying..." : "Apply Mode"}
-            </button>
-          </div>
-          <label className="settings-inline-toggle">
-            <input
-              type="checkbox"
-              checked={appPreferences.autoOpenTerminalOnCreate}
-              onChange={(event) =>
-                onAppPreferencesChange({ ...appPreferences, autoOpenTerminalOnCreate: event.target.checked })
-              }
-            />
-            Auto-open terminal when creating PTY
-          </label>
-          <label className="settings-inline-toggle">
-            <input
-              type="checkbox"
-              checked={appPreferences.confirmDangerousActions}
-              onChange={(event) =>
-                onAppPreferencesChange({ ...appPreferences, confirmDangerousActions: event.target.checked })
-              }
-            />
-            Confirm dangerous actions (reject buttons)
-          </label>
-          <label className="settings-inline-toggle">
-            <input
-              type="checkbox"
-              checked={updatePreferences.autoCheckEnabled}
-              onChange={(event) => applyUpdatePreferences({ autoCheckEnabled: event.target.checked })}
-            />
-            Automatically check for updates (packaged app builds only)
-          </label>
+
+          <div className="settings-divider" />
+
           <div className="settings-update-row">
             <label className="settings-update-channel">
-              Release channel
+              release_channel
               <select
                 value={updatePreferences.releaseChannel}
                 onChange={(event) =>
                   applyUpdatePreferences({ releaseChannel: event.target.value as UpdatePreferences["releaseChannel"] })
                 }
               >
-                <option value="stable">Stable (production releases)</option>
-                <option value="prerelease">Prerelease (beta/RC releases)</option>
+                <option value="stable">stable</option>
+                <option value="prerelease">prerelease</option>
               </select>
             </label>
+          </div>
+
+          <div className="settings-divider" />
+
+          <div className="settings-update-section">
             <button
               type="button"
               className="settings-update-check-btn"
@@ -582,10 +603,12 @@ export function SettingsDrawer({
                   .finally(() => setCheckingForUpdates(false));
               }}
             >
-              {checkingForUpdates ? "Checking..." : "Check for updates now"}
+              {checkingForUpdates ? "checking..." : "check for updates now"}
             </button>
+            <p className="settings-update-last-checked">{formatUpdateCheckStatus(updateCheckStatus)}</p>
           </div>
-          <p className="raw-path settings-update-last-checked">{formatUpdateCheckStatus(updateCheckStatus)}</p>
+
+          <p className="settings-version-label">Version: v{appVersion}</p>
         </section>
       );
     }
@@ -593,8 +616,8 @@ export function SettingsDrawer({
     if (section === "git") {
       return (
         <section className="settings-section-card settings-pad">
-          <h3>Git</h3>
           <label className="settings-inline-toggle">
+            show git sidebar
             <input
               type="checkbox"
               checked={appPreferences.showOperationsPane}
@@ -602,18 +625,15 @@ export function SettingsDrawer({
                 onAppPreferencesChange({ ...appPreferences, showOperationsPane: event.target.checked })
               }
             />
-            Show Git sidebar
           </label>
-          <label className="settings-textarea-label">
-            Commit message guidance prompt
-            <textarea
-              rows={8}
-              value={appPreferences.commitGuidancePrompt}
-              onChange={(event) =>
-                onAppPreferencesChange({ ...appPreferences, commitGuidancePrompt: event.target.value })
-              }
-            />
-          </label>
+          <p className="settings-git-textarea-label">commit message guidance prompt</p>
+          <textarea
+            className="settings-git-textarea"
+            value={appPreferences.commitGuidancePrompt}
+            onChange={(event) =>
+              onAppPreferencesChange({ ...appPreferences, commitGuidancePrompt: event.target.value })
+            }
+          />
         </section>
       );
     }
@@ -621,21 +641,20 @@ export function SettingsDrawer({
     if (section === "personalization") {
       return (
         <section className="settings-section-card settings-pad">
-          <h3>Personalization</h3>
-          <p className="raw-path">Your global AGENTS.md which will apply to all workspace sessions.</p>
-          <p className="raw-path">{globalAgentsDoc?.path ?? "~/.config/opencode/AGENTS.md"}</p>
-          <label className="settings-textarea-label">
-            Global AGENTS.md
-            <textarea
-              rows={16}
-              value={globalAgentsText}
-              placeholder="Add personal agent rules for all workspaces..."
-              onChange={(event) => setGlobalAgentsText(event.target.value)}
-            />
-          </label>
-          <div className="settings-actions">
+          <p className="settings-personalization-desc">your global AGENTS.md which will apply to all workspace sessions.</p>
+          <p className="settings-personalization-path">{globalAgentsDoc?.path ?? "~/.config/opencode/AGENTS.md"}</p>
+          <label htmlFor="global-agents-textarea" className="settings-personalization-field-label">global AGENTS.md</label>
+          <textarea
+            id="global-agents-textarea"
+            className="settings-personalization-textarea"
+            value={globalAgentsText}
+            placeholder="Add personal agent rules for all workspaces..."
+            onChange={(event) => setGlobalAgentsText(event.target.value)}
+          />
+          <div className="settings-personalization-actions">
             <button
               type="button"
+              className="settings-personalization-save-btn"
               onClick={() =>
                 void onWriteGlobalAgentsMd(globalAgentsText)
                   .then((doc) => {
@@ -646,10 +665,11 @@ export function SettingsDrawer({
                   .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
               }
             >
-              Save
+              save
             </button>
             <button
               type="button"
+              className="settings-personalization-reload-btn"
               onClick={() =>
                 void onReadGlobalAgentsMd()
                   .then((doc) => {
@@ -660,7 +680,7 @@ export function SettingsDrawer({
                   .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
               }
             >
-              Reload
+              reload
             </button>
           </div>
         </section>
@@ -670,8 +690,8 @@ export function SettingsDrawer({
     if (section === "preferences") {
       return (
         <section className="settings-section-card settings-pad">
-          <h3>Preferences</h3>
-          <p className="raw-path" style={{ margin: "4px 0 12px" }}>Code font — used in the diff viewer, file tree, and file preview.</p>
+          <p className="settings-preferences-title">preferences</p>
+          <p className="settings-preferences-desc">code font — used in the diff viewer, file tree, and file preview.</p>
           <div className="settings-font-list">
             {CODE_FONT_OPTIONS.map((opt) => {
               const isSelected = appPreferences.codeFont === opt.value;
@@ -682,7 +702,12 @@ export function SettingsDrawer({
                   className={`settings-font-option${isSelected ? " active" : ""}`}
                   onClick={() => onAppPreferencesChange({ ...appPreferences, codeFont: opt.value })}
                 >
-                  <span className="settings-font-option-name">{opt.label}</span>
+                  <div className="settings-font-option-header">
+                    {isSelected ? (
+                      <ChevronRight size={12} className="settings-font-option-check" style={{ color: "var(--accent-green)" }} />
+                    ) : null}
+                    <span className="settings-font-option-name">{opt.label}</span>
+                  </div>
                   <span className="settings-font-option-preview" style={{ fontFamily: opt.stack }}>
                     {`const greet = (name) => \`Hello, \${name}!\`;`}
                   </span>
@@ -734,14 +759,17 @@ export function SettingsDrawer({
 
       return (
         <section className="settings-section-card settings-pad">
-          <h3>Memory</h3>
-          <p className="raw-path">
-            Memory is scoped by workspace for retrieval. Graph view can aggregate all workspaces.
+          <h2 className="settings-memory-title">memory</h2>
+          <p className="settings-memory-desc">
+            memory is scoped by workspace for retrieval. graph view can aggregate all workspaces.
           </p>
-          <div className="settings-controls">
-            <label>
-              Global mode
+
+          <div className="settings-memory-section">
+            <p className="settings-memory-section-label">// global settings</p>
+            <div className="settings-memory-row">
+              <span className="settings-memory-row-label">global mode</span>
               <select
+                className="settings-memory-select"
                 value={globalPolicy?.mode ?? "balanced"}
                 onChange={(event) => applyGlobalPatch({ mode: event.target.value as MemoryPolicyMode })}
                 disabled={memoryLoading}
@@ -751,44 +779,48 @@ export function SettingsDrawer({
                 <option value="aggressive">aggressive</option>
                 <option value="codebase-facts">codebase-facts</option>
               </select>
-            </label>
+            </div>
             <label className="settings-inline-toggle">
+              enable memory globally
               <input
                 type="checkbox"
                 checked={globalPolicy?.enabled ?? false}
                 onChange={(event) => applyGlobalPatch({ enabled: event.target.checked })}
                 disabled={memoryLoading}
               />
-              Enable memory globally
             </label>
-            <label>
-              Prompt memory limit
+            <div className="settings-memory-row">
+              <span className="settings-memory-row-label">prompt memory limit</span>
               <input
                 type="number"
+                className="settings-memory-number"
                 min={1}
                 max={12}
                 value={globalPolicy?.maxPromptMemories ?? 6}
                 onChange={(event) => applyGlobalPatch({ maxPromptMemories: Number(event.target.value) })}
                 disabled={memoryLoading}
               />
-            </label>
+            </div>
+            <div className="settings-memory-textarea-group">
+              <span className="settings-memory-textarea-label">global memory guidance</span>
+              <textarea
+                className="settings-memory-textarea"
+                rows={5}
+                value={globalPolicy?.guidance ?? ""}
+                placeholder="enter guidance for how memory should behave globally..."
+                onChange={(event) => applyGlobalPatch({ guidance: event.target.value })}
+                disabled={memoryLoading}
+              />
+            </div>
           </div>
-          <label className="settings-textarea-label">
-            Global memory guidance
-            <textarea
-              rows={6}
-              value={globalPolicy?.guidance ?? ""}
-              onChange={(event) => applyGlobalPatch({ guidance: event.target.value })}
-              disabled={memoryLoading}
-            />
-          </label>
 
-          <h4>Workspace Override</h4>
-          <p className="raw-path">{directory ?? "No workspace selected"}</p>
-          <div className="settings-controls">
-            <label>
-              Workspace mode
+          <div className="settings-memory-section">
+            <p className="settings-memory-section-label">// workspace override</p>
+            <p className="settings-memory-path">{directory ?? "no workspace selected"}</p>
+            <div className="settings-memory-row">
+              <span className="settings-memory-row-label">workspace mode</span>
               <select
+                className="settings-memory-select"
                 value={workspacePolicy?.mode ?? globalPolicy?.mode ?? "balanced"}
                 onChange={(event) => applyWorkspacePatch({ mode: event.target.value as MemoryPolicyMode })}
                 disabled={!directory || memoryLoading}
@@ -798,40 +830,42 @@ export function SettingsDrawer({
                 <option value="aggressive">aggressive</option>
                 <option value="codebase-facts">codebase-facts</option>
               </select>
-            </label>
+            </div>
             <label className="settings-inline-toggle">
+              enable memory for workspace
               <input
                 type="checkbox"
                 checked={workspacePolicy?.enabled ?? globalPolicy?.enabled ?? false}
                 onChange={(event) => applyWorkspacePatch({ enabled: event.target.checked })}
                 disabled={!directory || memoryLoading}
               />
-              Enable memory for workspace
             </label>
-            <label>
-              Capture limit/session
+            <div className="settings-memory-row">
+              <span className="settings-memory-row-label">capture limit/session</span>
               <input
                 type="number"
+                className="settings-memory-number"
                 min={1}
                 max={60}
                 value={workspacePolicy?.maxCapturePerSession ?? globalPolicy?.maxCapturePerSession ?? 24}
                 onChange={(event) => applyWorkspacePatch({ maxCapturePerSession: Number(event.target.value) })}
                 disabled={!directory || memoryLoading}
               />
-            </label>
-          </div>
-          <label className="settings-textarea-label">
-            Workspace guidance
-            <textarea
-              rows={5}
-              value={workspacePolicy?.guidance ?? ""}
-              onChange={(event) => applyWorkspacePatch({ guidance: event.target.value })}
-              disabled={!directory || memoryLoading}
-            />
-          </label>
-          <div className="settings-actions">
+            </div>
+            <div className="settings-memory-textarea-group">
+              <span className="settings-memory-textarea-label">workspace guidance</span>
+              <textarea
+                className="settings-memory-textarea"
+                rows={4}
+                value={workspacePolicy?.guidance ?? ""}
+                placeholder="enter workspace-specific memory guidance..."
+                onChange={(event) => applyWorkspacePatch({ guidance: event.target.value })}
+                disabled={!directory || memoryLoading}
+              />
+            </div>
             <button
               type="button"
+              className="settings-memory-ws-clear-btn"
               disabled={!directory || !hasWorkspaceOverride || memoryLoading}
               onClick={() => {
                 if (!directory) {
@@ -847,98 +881,141 @@ export function SettingsDrawer({
                   .finally(() => setMemoryLoading(false));
               }}
             >
-              Clear workspace override
+              clear workspace override
             </button>
           </div>
 
-          <h4>Template Import</h4>
-          <div className="settings-actions">
-            {memoryTemplates.map((template) => (
+          <div className="settings-memory-section">
+            <p className="settings-memory-section-label">// template import</p>
+            <div className="settings-memory-template-row">
+              {memoryTemplates.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className="settings-memory-tpl-btn"
+                  disabled={memoryLoading}
+                  onClick={() => {
+                    setMemoryLoading(true);
+                    void onApplyMemoryTemplate(template.id, directory, directory ? "workspace" : "global")
+                      .then((next) => {
+                        setMemorySettings(next);
+                        setFeedback(`Applied ${template.name} template`);
+                      })
+                      .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                      .finally(() => setMemoryLoading(false));
+                  }}
+                >
+                  {template.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="settings-memory-section">
+            <p className="settings-memory-section-label">// maintenance</p>
+            <div className="settings-memory-maint-row">
               <button
-                key={template.id}
                 type="button"
+                className="settings-memory-maint-btn"
                 disabled={memoryLoading}
                 onClick={() => {
                   setMemoryLoading(true);
-                  void onApplyMemoryTemplate(template.id, directory, directory ? "workspace" : "global")
-                    .then((next) => {
-                      setMemorySettings(next);
-                      setFeedback(`Applied ${template.name} template`);
+                  void onBackfillMemory(directory)
+                    .then((status) => {
+                      setMemoryBackfillStatus(status);
+                      setFeedback(status.message ?? "Memory backfill completed");
                     })
                     .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
                     .finally(() => setMemoryLoading(false));
                 }}
               >
-                Import {template.name}
+                backfill now
               </button>
-            ))}
+              <button
+                type="button"
+                className="settings-memory-maint-btn settings-memory-maint-btn--danger"
+                disabled={!directory || memoryLoading}
+                onClick={() => {
+                  if (!directory) {
+                    return;
+                  }
+                  if (!window.confirm(`Clear all stored memory for ${directory}?`)) {
+                    return;
+                  }
+                  setMemoryLoading(true);
+                  void onClearWorkspaceMemory(directory)
+                    .then(() => setFeedback("Workspace memory cleared"))
+                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                    .finally(() => setMemoryLoading(false));
+                }}
+              >
+                clear workspace memory
+              </button>
+            </div>
+            {memoryBackfillStatus ? (
+              <p className="settings-memory-path" style={{ marginTop: "4px" }}>
+                {memoryBackfillStatus.message ?? "Backfill"} ({Math.round(memoryBackfillStatus.progress * 100)}% •{" "}
+                {memoryBackfillStatus.scannedSessions}/{memoryBackfillStatus.totalSessions})
+              </p>
+            ) : null}
           </div>
-
-          <h4>Maintenance</h4>
-          <div className="settings-actions">
-            <button
-              type="button"
-              disabled={memoryLoading}
-              onClick={() => {
-                setMemoryLoading(true);
-                void onBackfillMemory(directory)
-                  .then((status) => {
-                    setMemoryBackfillStatus(status);
-                    setFeedback(status.message ?? "Memory backfill completed");
-                  })
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                  .finally(() => setMemoryLoading(false));
-              }}
-            >
-              Backfill now
-            </button>
-            <button
-              type="button"
-              disabled={!directory || memoryLoading}
-              onClick={() => {
-                if (!directory) {
-                  return;
-                }
-                if (!window.confirm(`Clear all stored memory for ${directory}?`)) {
-                  return;
-                }
-                setMemoryLoading(true);
-                void onClearWorkspaceMemory(directory)
-                  .then(() => setFeedback("Workspace memory cleared"))
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                  .finally(() => setMemoryLoading(false));
-              }}
-            >
-              Clear workspace memory
-            </button>
-          </div>
-          {memoryBackfillStatus ? (
-            <p className="raw-path">
-              {memoryBackfillStatus.message ?? "Backfill"} ({Math.round(memoryBackfillStatus.progress * 100)}% •{" "}
-              {memoryBackfillStatus.scannedSessions}/{memoryBackfillStatus.totalSessions})
-            </p>
-          ) : null}
         </section>
       );
     }
 
     if (section === "server") {
+      const statusValue = serverDiagnostics?.runtime.status ?? "unknown";
+      const healthValue = serverDiagnostics?.health ?? "unknown";
+      const isRunning = String(statusValue) === "running";
+      const isHealthy = String(healthValue) === "ok";
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
-          <h3>Server Diagnostics</h3>
-          <p className="raw-path">Status: {serverDiagnostics?.runtime.status ?? "unknown"}</p>
-          <p className="raw-path">Health: {serverDiagnostics?.health ?? "unknown"}</p>
-          <p className="raw-path">Active profile: {serverDiagnostics?.activeProfile?.name ?? "none"}</p>
-          {mode === "orxa" ? (
-            <>
-              <p className="raw-path">Plugin configured: {serverDiagnostics?.plugin.configured ? "yes" : "no"}</p>
-              <p className="raw-path">Plugin installed: {serverDiagnostics?.plugin.installed ? "yes" : "no"}</p>
-              <p className="raw-path">{serverDiagnostics?.plugin.configPath}</p>
-            </>
-          ) : null}
-          <div className="settings-actions">
+          <p className="settings-server-title">server</p>
+          <p className="settings-server-subtitle">// server diagnostics</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">status</span>
+              <span className={`settings-server-status-value${isRunning ? " settings-server-status-value--green" : ""}`}>
+                {statusValue}
+              </span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">health</span>
+              <span className={`settings-server-status-value${isHealthy ? " settings-server-status-value--green" : ""}`}>
+                {healthValue}
+              </span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">active profile</span>
+              <span className="settings-server-status-value">{serverDiagnostics?.activeProfile?.name ?? "default"}</span>
+            </div>
+            {mode === "orxa" ? (
+              <>
+                <div className="settings-server-status-row">
+                  <span className="settings-server-status-key">plugin configured</span>
+                  <span className={`settings-server-status-value${serverDiagnostics?.plugin.configured ? " settings-server-status-value--green" : ""}`}>
+                    {serverDiagnostics?.plugin.configured ? "yes" : "no"}
+                  </span>
+                </div>
+                <div className="settings-server-status-row">
+                  <span className="settings-server-status-key">plugin installed</span>
+                  <span className={`settings-server-status-value${serverDiagnostics?.plugin.installed ? " settings-server-status-value--green" : ""}`}>
+                    {serverDiagnostics?.plugin.installed ? "yes" : "no"}
+                  </span>
+                </div>
+                <div className="settings-server-status-row">
+                  <span className="settings-server-status-key">plugin path</span>
+                  <span className="settings-server-status-value settings-server-status-value--path">
+                    {serverDiagnostics?.plugin.configPath ?? "—"}
+                  </span>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <div className="settings-server-buttons">
             <button
               type="button"
+              className="settings-server-btn"
               onClick={() =>
                 void onGetServerDiagnostics()
                   .then((next) => {
@@ -948,11 +1025,13 @@ export function SettingsDrawer({
                   .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
               }
             >
-              Refresh Diagnostics
+              <ChevronDown size={12} />
+              refresh diagnostics
             </button>
             {mode === "orxa" ? (
               <button
                 type="button"
+                className="settings-server-btn"
                 onClick={() =>
                   void onRepairRuntime()
                     .then((next) => {
@@ -962,7 +1041,8 @@ export function SettingsDrawer({
                     .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
                 }
               >
-                Repair Runtime
+                <ChevronRight size={12} />
+                repair runtime
               </button>
             ) : null}
           </div>
@@ -973,46 +1053,44 @@ export function SettingsDrawer({
     if (section === "config") {
       return (
         <section className="settings-section-card settings-pad settings-config">
-          <div className={`settings-controls settings-config-controls${mode === "standard" ? " settings-config-controls--standard" : ""}`}>
-            <label>
-              Scope
-              <select value={effectiveScope} onChange={(event) => setScope(event.target.value as "project" | "global")}> 
-                <option value="project" disabled={!directory}>
-                  Workspace
-                </option>
-                <option value="global">Global</option>
-              </select>
-            </label>
-            {mode === "standard" ? (
+          <div className="settings-config-top-row">
+            <div className="settings-config-segment">
               <button
                 type="button"
-                className="settings-config-open-btn"
-                onClick={() => openEditor("opencode")}
+                className={`settings-config-segment-btn${effectiveScope === "project" ? " active" : ""}`}
+                disabled={!directory}
+                onClick={() => setScope("project")}
               >
-                Open OpenCode JSON Editor
+                workspace
+              </button>
+              <button
+                type="button"
+                className={`settings-config-segment-btn${effectiveScope === "global" ? " active" : ""}`}
+                onClick={() => setScope("global")}
+              >
+                global
+              </button>
+            </div>
+            <span className="settings-config-spacer" />
+            <button type="button" className="settings-config-top-btn" onClick={() => openEditor("opencode")}>
+              open opencode json editor
+            </button>
+            {mode === "orxa" ? (
+              <button type="button" className="settings-config-top-btn" onClick={() => openEditor("orxa")}>
+                open orxa json editor
               </button>
             ) : null}
           </div>
 
-          {mode === "orxa" ? (
-            <div className="settings-actions settings-top-actions">
-              <button type="button" onClick={() => openEditor("opencode")}>
-                Open OpenCode JSON Editor
-              </button>
-              <button type="button" onClick={() => openEditor("orxa")}>
-                Open Orxa JSON Editor
-              </button>
-            </div>
-          ) : null}
-
           <div className={`settings-config-grid${mode !== "orxa" ? " settings-config-grid--single" : ""}`}>
             <article className="settings-config-card">
-              <h4>OpenCode JSON</h4>
+              <h4>opencode json</h4>
               <p className="raw-path">{rawDoc?.path}</p>
               <textarea value={rawText} onChange={(event) => setRawText(event.target.value)} />
               <div className="settings-actions">
                 <button
                   type="button"
+                  className="settings-config-card-save"
                   onClick={() =>
                     void onWriteRaw(effectiveScope, rawText, directory)
                       .then((next) => {
@@ -1022,7 +1100,7 @@ export function SettingsDrawer({
                       .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
                   }
                 >
-                  Save
+                  save
                 </button>
                 <button
                   type="button"
@@ -1033,19 +1111,20 @@ export function SettingsDrawer({
                     })
                   }
                 >
-                  Reload
+                  reload
                 </button>
               </div>
             </article>
 
             {mode === "orxa" ? (
               <article className="settings-config-card">
-                <h4>Orxa JSON</h4>
+                <h4>orxa json</h4>
                 <p className="raw-path">{orxaDoc?.path}</p>
                 <textarea rows={16} value={orxaText} onChange={(event) => setOrxaText(event.target.value)} />
                 <div className="settings-actions">
                   <button
                     type="button"
+                    className="settings-config-card-save"
                     onClick={() =>
                       void onWriteOrxa(orxaText)
                         .then((next) => {
@@ -1056,7 +1135,7 @@ export function SettingsDrawer({
                         .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
                     }
                   >
-                    Save
+                    save
                   </button>
                   <button
                     type="button"
@@ -1067,7 +1146,7 @@ export function SettingsDrawer({
                       })
                     }
                   >
-                    Reload
+                    reload
                   </button>
                 </div>
               </article>
@@ -1116,8 +1195,9 @@ export function SettingsDrawer({
 
       return (
         <section className="settings-section-card settings-pad">
-          <h3>Provider Models</h3>
-          <p className="raw-path">Toggle which models appear in the model selector. Unticked models will be hidden.</p>
+          <p className="raw-path" style={{ marginBottom: 0, color: "var(--text-secondary)", fontSize: "13px", lineHeight: "1.6", fontFamily: "var(--font-mono)" }}>
+            // toggle which models appear in the model selector. unticked models will be hidden.
+          </p>
           <div className="provider-models-list">
             {providers.map(([providerID, group]) => {
               const allKeys = group.models.map((m) => m.key);
@@ -1131,8 +1211,8 @@ export function SettingsDrawer({
                     </button>
                     <strong onClick={() => toggleCollapse(providerID)} className="provider-models-name">{group.name}</strong>
                     <small>{visibleCount}/{allKeys.length} enabled</small>
-                    <button type="button" className="provider-models-toggle-btn" onClick={() => enableAll(allKeys)}>Enable all</button>
-                    <button type="button" className="provider-models-toggle-btn" onClick={() => disableAll(allKeys)}>Disable all</button>
+                    <button type="button" className="provider-models-enable-link" onClick={() => enableAll(allKeys)}>enable all</button>
+                    <button type="button" className="provider-models-disable-link" onClick={() => disableAll(allKeys)}>disable all</button>
                   </div>
                   {!isCollapsed ? (
                     <div className="provider-models-items">
@@ -1245,9 +1325,9 @@ export function SettingsDrawer({
                 </option>
               ))}
             </select>
-            <button type="button" className="oc-agents-new-btn" onClick={() => void createOcAgent()}>Create new agent</button>
+            <button type="button" className="oc-agents-new-btn" onClick={() => void createOcAgent()}>+ create new agent</button>
             {currentOcAgent ? (
-              <button type="button" className="oc-agents-new-btn" onClick={() => void duplicateOcAgent()}>Duplicate</button>
+              <button type="button" className="oc-agents-new-btn" onClick={() => void duplicateOcAgent()}>duplicate</button>
             ) : null}
           </div>
 
@@ -1263,11 +1343,11 @@ export function SettingsDrawer({
                 onChange={(event) => setOcAgentDraft(event.target.value)}
               />
               <div className="oc-agents-actions">
-                <button type="button" className="oc-agents-action-btn" disabled={ocAgentSaving} onClick={() => void saveOcAgent()}>
-                  {ocAgentSaving ? "Saving..." : "Save"}
+                <button type="button" className="oc-agents-action-btn oc-agents-action-btn--save" disabled={ocAgentSaving} onClick={() => void saveOcAgent()}>
+                  {ocAgentSaving ? "saving..." : "save"}
                 </button>
-                <button type="button" className="oc-agents-action-btn" onClick={() => void loadOcAgents()}>Reload</button>
-                <button type="button" className="oc-agents-action-btn oc-agents-action-btn--danger" onClick={() => void deleteOcAgent()}>Delete</button>
+                <button type="button" className="oc-agents-action-btn" onClick={() => void loadOcAgents()}>reload</button>
+                <button type="button" className="oc-agents-action-btn oc-agents-action-btn--danger" onClick={() => void deleteOcAgent()}>delete</button>
                 <div className="oc-agents-openin-wrap">
                   <button
                     type="button"
@@ -1275,7 +1355,7 @@ export function SettingsDrawer({
                     onClick={() => setOcOpenInMenu((v) => !v)}
                     disabled={!currentOcAgent}
                   >
-                    Open in...
+                    open in...
                   </button>
                   {ocOpenInMenu ? (
                     <div className="oc-agents-openin-menu">
@@ -1476,66 +1556,73 @@ export function SettingsDrawer({
     <>
       <div className="settings-overlay">
         <section className="settings-center">
-          <header className="settings-center-header">
-            <div className="settings-center-title">
-              <button type="button" className="settings-back-button" onClick={onClose}>
-                X
-              </button>
-              <div>
-                <h2>Settings Center</h2>
-                <small>{directory ?? "No workspace selected"}</small>
-              </div>
-            </div>
-          </header>
-
           <div className="settings-layout">
             <aside className="settings-sidebar-nav">
-              <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
-                Config Files
-              </button>
-              {mode === "orxa" ? (
-                <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
-                  Orxa Agents
+              <div className="settings-nav-header">
+                <span className="settings-nav-title">settings</span>
+                <button type="button" className="settings-close-button" onClick={onClose}>
+                  X
                 </button>
-              ) : null}
-              <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
-                Provider Models
-              </button>
-              <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
-                Agents
-              </button>
-              <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
-                Memory
-              </button>
-              <button
-                type="button"
-                className={section === "personalization" ? "active" : ""}
-                onClick={() => setSection("personalization")}
-              >
-                Personalization
-              </button>
-              <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
-                Git
-              </button>
-              <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
-                App
-              </button>
-              <button
-                type="button"
-                className={section === "preferences" ? "active" : ""}
-                onClick={() => setSection("preferences")}
-              >
-                Preferences
-              </button>
-              <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
-                Server
-              </button>
+              </div>
+              <div className="settings-nav-list">
+                <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
+                  {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Config Files
+                </button>
+                {mode === "orxa" ? (
+                  <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
+                    {section === "agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                    Agents
+                  </button>
+                ) : null}
+                <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
+                  {section === "provider-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Provider Models
+                </button>
+                <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
+                  {section === "opencode-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Agents
+                </button>
+                <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
+                  {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Memory
+                </button>
+                <button
+                  type="button"
+                  className={section === "personalization" ? "active" : ""}
+                  onClick={() => setSection("personalization")}
+                >
+                  {section === "personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Personalization
+                </button>
+                <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
+                  {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Git
+                </button>
+                <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
+                  {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  App
+                </button>
+                <button
+                  type="button"
+                  className={section === "preferences" ? "active" : ""}
+                  onClick={() => setSection("preferences")}
+                >
+                  {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Preferences
+                </button>
+                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
+                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Server
+                </button>
+              </div>
             </aside>
 
-            <div className="settings-center-body">{renderSectionContent()}</div>
+            <div className="settings-center-body">
+              {renderSectionContent()}
+              {feedback ? <p className="settings-feedback-inline">{feedback}</p> : null}
+            </div>
           </div>
-
-          {feedback ? <footer className="settings-feedback">{feedback}</footer> : null}
         </section>
       </div>
 

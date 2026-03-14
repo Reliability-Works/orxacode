@@ -420,13 +420,28 @@ export function GlobalModalsHost({
         <div className="overlay permission-overlay">
           <section className="modal permission-modal">
             <header className="modal-header">
-              <h2>Permission Request</h2>
+              <div className="modal-header-title">
+                <h2>permission required</h2>
+                <span className="modal-badge modal-badge--blocking">// blocking</span>
+              </div>
             </header>
             <div className="permission-modal-body">
-              <p className="permission-title">{permissionRequest.permission}</p>
+              <p className="permission-agent-label">// agent wants to execute:</p>
+              <div className="permission-command-card">
+                {(permissionRequest.patterns ?? []).length > 0
+                  ? (permissionRequest.patterns ?? []).map((pattern) => (
+                      <div key={pattern}>&gt;_ {pattern}</div>
+                    ))
+                  : <span>&gt;_ {permissionRequest.permission}</span>
+                }
+              </div>
+              <div className="permission-risk-row">
+                <span>risk_level:</span>
+                <span className="risk-badge risk-badge--high">high</span>
+              </div>
               <p className="permission-description">{formatPermissionDescription(permissionRequest)}</p>
               <div className="permission-patterns">
-                {(permissionRequest.patterns ?? []).map((pattern) => (
+                {(permissionRequest.patterns ?? []).filter((p) => p !== (permissionRequest.patterns ?? [])[0]).map((pattern) => (
                   <code key={pattern}>{pattern}</code>
                 ))}
               </div>
@@ -461,9 +476,12 @@ export function GlobalModalsHost({
 
       {questionRequest && activeProjectDir ? (
         <div className="overlay permission-overlay" onClick={() => void rejectQuestion()}>
-          <section className="modal permission-modal" onClick={(event) => event.stopPropagation()}>
+          <section className="modal question-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
-              <h2>Question</h2>
+              <div className="modal-header-title">
+                <h2>agent question</h2>
+                <span className="modal-badge modal-badge--awaiting">// awaiting response</span>
+              </div>
             </header>
             <div className="permission-modal-body">
               {isStructuredQuestion ? (
@@ -476,6 +494,7 @@ export function GlobalModalsHost({
                       <section key={`${question.header}-${index}`} className="question-block">
                         <h3>{question.header}</h3>
                         <p className="permission-title">
+                          <span className="question-answer-prompt">&gt;</span>
                           {question.question}
                           {question.multiple === true ? " (select all that apply)" : ""}
                         </p>
@@ -501,7 +520,7 @@ export function GlobalModalsHost({
                             <textarea
                               rows={2}
                               value={customDraft}
-                              placeholder="Type your own answer"
+                              placeholder="type your answer..."
                               onChange={(event) => updateCustomAnswer(index, event.target.value)}
                             />
                           </label>
@@ -513,21 +532,23 @@ export function GlobalModalsHost({
                 </div>
               ) : (
                 <>
-                  <p className="permission-title">{formatQuestionPrompt(questionRequest)}</p>
-                  <label className="commit-message-field">
-                    Your answer
-                    <textarea
-                      rows={4}
-                      value={questionFallbackDraft}
-                      placeholder="Type your answer"
-                      onChange={(event) => setQuestionFallbackDraft(event.target.value)}
-                    />
-                  </label>
+                  <div className="question-block">
+                    <p className="permission-title">
+                      <span className="question-answer-prompt">&gt;</span>
+                      {formatQuestionPrompt(questionRequest)}
+                    </p>
+                  </div>
+                  <input
+                    className="question-answer-input"
+                    value={questionFallbackDraft}
+                    placeholder="type your answer..."
+                    onChange={(event) => setQuestionFallbackDraft(event.target.value)}
+                  />
                 </>
               )}
               <div className="permission-actions">
                 <button type="button" className="danger" onClick={() => void rejectQuestion()}>
-                  Reject
+                  reject
                 </button>
                 <button
                   type="button"
@@ -551,21 +572,32 @@ export function GlobalModalsHost({
         <div className="overlay" onClick={() => setAllSessionsModalOpen(false)}>
           <div className="modal session-list-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <h2>All Sessions</h2>
-              <button type="button" onClick={() => setAllSessionsModalOpen(false)}>
-                Close
+              <h2>all sessions</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setAllSessionsModalOpen(false)}>
+                X
               </button>
+            </div>
+            <div className="session-list-search">
+              <input type="text" placeholder="search sessions..." />
             </div>
             <div className="session-list-modal-body">
               {sessions.map((session) => {
                 const status = getSessionStatusType(session.id, activeProjectDir);
                 const busy = status === "busy" || status === "retry";
                 const awaitingPermission = status === "permission";
+                const isActive = session.id === activeSessionID;
+                const statusLabelClass = awaitingPermission
+                  ? "session-status-label--busy"
+                  : busy
+                    ? "session-status-label--busy"
+                    : isActive
+                      ? "session-status-label--active"
+                      : "session-status-label--idle";
                 return (
                   <button
                     key={session.id}
                     type="button"
-                    className={`project-session-row session-modal-row ${session.id === activeSessionID ? "active" : ""}`.trim()}
+                    className={`session-modal-row ${isActive ? "active" : ""}`.trim()}
                     onClick={() => {
                       openSession(session.id);
                       setAllSessionsModalOpen(false);
@@ -578,9 +610,14 @@ export function GlobalModalsHost({
                     >
                       {awaitingPermission ? "!" : null}
                     </span>
-                    <strong>{session.title || session.slug}</strong>
-                    <span>{status}</span>
-                    <small>{new Date(session.time.updated).toLocaleString()}</small>
+                    <div className="session-modal-row-info">
+                      <span className="session-modal-row-title">{session.title || session.slug}</span>
+                      <span className="session-modal-row-workspace">{activeProjectDir}</span>
+                    </div>
+                    <div className="session-modal-row-right">
+                      <span className="session-modal-row-time">{new Date(session.time.updated).toLocaleString()}</span>
+                      <span className={`session-status-label ${statusLabelClass}`}>{isActive ? "active" : status}</span>
+                    </div>
                   </button>
                 );
               })}
@@ -594,7 +631,7 @@ export function GlobalModalsHost({
           <section className="modal job-run-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
               <h2>{jobRunViewer.jobName}</h2>
-              <button type="button" onClick={closeJobRunViewer}>
+              <button type="button" className="modal-close-btn" onClick={closeJobRunViewer}>
                 X
               </button>
             </header>
@@ -615,14 +652,13 @@ export function GlobalModalsHost({
         <div className="overlay" onClick={() => setBranchCreateModalOpen(false)}>
           <section className="modal branch-create-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
-              <h2>Create and checkout new branch</h2>
-              <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
+              <h2>create branch</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setBranchCreateModalOpen(false)}>
                 X
               </button>
             </header>
             <div className="branch-create-modal-body">
               <label className="branch-create-field">
-                Branch name
                 <input
                   type="text"
                   value={branchCreateName}
@@ -639,24 +675,25 @@ export function GlobalModalsHost({
                       setBranchCreateModalOpen(false);
                     }
                   }}
-                  placeholder="feature/my-new-branch"
+                  placeholder="feature/..."
                   autoFocus
                 />
               </label>
+              <p className="branch-create-from-hint">from main</p>
               {branchCreateError ? <p className="branch-create-error">{branchCreateError}</p> : null}
-              <div className="branch-create-actions">
-                <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!branchCreateName.trim() || branchSwitching}
-                  onClick={() => void submitBranchCreate()}
-                >
-                  {branchSwitching ? "Creating..." : "Create and checkout"}
-                </button>
-              </div>
+            </div>
+            <div className="modal-action-bar">
+              <button type="button" onClick={() => setBranchCreateModalOpen(false)}>
+                cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!branchCreateName.trim() || branchSwitching}
+                onClick={() => void submitBranchCreate()}
+              >
+                {branchSwitching ? "creating..." : "create"}
+              </button>
             </div>
           </section>
         </div>
@@ -666,54 +703,67 @@ export function GlobalModalsHost({
         <div className="overlay" onClick={() => setCommitModalOpen(false)}>
           <section className="modal commit-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
-              <h2>Commit your changes</h2>
-              <button type="button" onClick={() => setCommitModalOpen(false)}>
+              <h2>commit changes</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setCommitModalOpen(false)}>
                 X
               </button>
             </header>
             <div className="commit-modal-body">
-              <div className="commit-summary-grid">
-                <div>
-                  <small>Branch</small>
-                  <strong>{commitSummary?.branch ?? "..."}</strong>
-                </div>
-                <div>
-                  <small>Changes</small>
-                  <strong className="commit-summary-values">
-                    {commitSummaryLoading
-                      ? "Loading..."
-                      : (
-                          <>
-                            <span>{`${commitSummary?.filesChanged ?? 0} files`}</span>
-                            <span className="added">+{commitSummary?.insertions ?? 0}</span>
-                            <span className="removed">-{commitSummary?.deletions ?? 0}</span>
-                          </>
-                        )}
-                  </strong>
-                </div>
-              </div>
+              {commitSummaryLoading ? (
+                <p className="permission-description">Loading changes...</p>
+              ) : (
+                <>
+                  <div className="commit-summary-grid">
+                    <div>
+                      <small>Branch</small>
+                      <strong>{commitSummary?.branch ?? "..."}</strong>
+                    </div>
+                    <div>
+                      <small>Changes</small>
+                      <strong className="commit-summary-values">
+                        <span>{`${commitSummary?.filesChanged ?? 0} files`}</span>
+                        <span className="added">+{commitSummary?.insertions ?? 0}</span>
+                        <span className="removed">-{commitSummary?.deletions ?? 0}</span>
+                      </strong>
+                    </div>
+                  </div>
 
-              <label className="commit-include-toggle">
-                <input
-                  type="checkbox"
-                  checked={commitIncludeUnstaged}
-                  onChange={(event) => setCommitIncludeUnstaged(event.target.checked)}
-                />
-                Include unstaged changes
-              </label>
+                  <div>
+                    <p className="commit-section-header">Staged ({commitSummary?.filesChanged ?? 0})</p>
+                    <div className="commit-file-list">
+                      <div className="commit-file-row">
+                        <span className="commit-file-status commit-file-status--modified">M</span>
+                        <span className="commit-file-name">{commitSummary?.branch ?? "..."}</span>
+                      </div>
+                    </div>
+                  </div>
 
-              <label className="commit-message-field">
-                Commit message
+                  <label className="commit-include-toggle">
+                    <input
+                      type="checkbox"
+                      checked={commitIncludeUnstaged}
+                      onChange={(event) => setCommitIncludeUnstaged(event.target.checked)}
+                    />
+                    Include unstaged changes
+                  </label>
+                </>
+              )}
+
+              <div className="commit-message-field">
+                <div className="commit-message-header">
+                  <span>commit message</span>
+                  <button type="button" className="commit-ai-btn">ai</button>
+                </div>
                 <textarea
                   rows={4}
                   value={commitMessageDraft}
                   placeholder="Leave blank to autogenerate a commit message"
                   onChange={(event) => setCommitMessageDraft(event.target.value)}
                 />
-              </label>
+              </div>
 
               <section className="commit-next-steps">
-                <small>Next steps</small>
+                <small>next step</small>
                 {commitNextStepOptions.map((option) => (
                   <button
                     key={option.id}
@@ -721,9 +771,8 @@ export function GlobalModalsHost({
                     className={commitNextStep === option.id ? "active" : ""}
                     onClick={() => setCommitNextStep(option.id)}
                   >
-                    <span className="menu-item-logo">{option.icon}</span>
+                    <span className="commit-radio-dot" aria-hidden="true" />
                     <span>{option.label}</span>
-                    <span>{commitNextStep === option.id ? "✓" : ""}</span>
                   </button>
                 ))}
               </section>
@@ -745,14 +794,18 @@ export function GlobalModalsHost({
                   </select>
                 </label>
               ) : null}
-
+            </div>
+            <div className="modal-action-bar">
+              <button type="button" onClick={() => setCommitModalOpen(false)}>
+                cancel
+              </button>
               <button
                 type="button"
-                className="commit-continue"
+                className="primary"
                 disabled={commitSubmitting || commitSummaryLoading}
                 onClick={() => void submitCommit()}
               >
-                {commitSubmitting ? "Committing..." : "Continue"}
+                {commitSubmitting ? "committing..." : "commit"}
               </button>
             </div>
           </section>
@@ -800,22 +853,20 @@ export function GlobalModalsHost({
         <div className="overlay" onClick={() => setSkillUseModal(null)}>
           <section className="modal skill-use-modal" onClick={(event) => event.stopPropagation()}>
             <header className="modal-header">
-              <h2>Use Skill</h2>
-              <button type="button" onClick={() => setSkillUseModal(null)}>
+              <h2>use skill: {skillUseModal.skill.name}</h2>
+              <button type="button" className="modal-close-btn" onClick={() => setSkillUseModal(null)}>
                 X
               </button>
             </header>
             <div className="skill-use-body">
-              <strong>{skillUseModal.skill.name}</strong>
-              <p>{skillUseModal.skill.description}</p>
               <label>
-                Workspace
+                target workspace
                 <div className="skill-use-project-row">
                   <select
                     value={skillUseModal.projectDir}
                     onChange={(event) => setSkillUseModal((current) => (current ? { ...current, projectDir: event.target.value } : current))}
                   >
-                    <option value="">Choose a workspace</option>
+                    <option value="">choose a workspace</option>
                     {projects.map((project) => (
                       <option key={`skill-use-${project.id}`} value={project.worktree}>
                         {project.name || project.worktree.split("/").at(-1) || project.worktree}
@@ -837,6 +888,7 @@ export function GlobalModalsHost({
                   </button>
                 </div>
               </label>
+              <p className="skill-use-description">{skillUseModal.skill.description}</p>
               {skillTargetSelectorOpen ? (
                 <section className="skill-use-target-selector">
                   <p>Add this prepared prompt to:</p>
@@ -866,19 +918,19 @@ export function GlobalModalsHost({
                   </div>
                 </section>
               ) : null}
-              <footer className="skill-use-actions">
-                <button type="button" disabled={skillPreparing} onClick={() => setSkillUseModal(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!skillUseModal.projectDir || skillPreparing}
-                  onClick={() => setSkillTargetSelectorOpen(true)}
-                >
-                  {skillPreparing ? "Preparing..." : "Prepare prompt"}
-                </button>
-              </footer>
+            </div>
+            <div className="modal-action-bar">
+              <button type="button" disabled={skillPreparing} onClick={() => setSkillUseModal(null)}>
+                cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!skillUseModal.projectDir || skillPreparing}
+                onClick={() => setSkillTargetSelectorOpen(true)}
+              >
+                {skillPreparing ? "Preparing..." : "Prepare prompt"}
+              </button>
             </div>
           </section>
         </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ChevronsUpDown, Copy, Ellipsis, Fingerprint, GitCommitHorizontal, LayoutDashboard, Pencil, Pin, PinOff, Play, Plus, Send, Trash2, X } from "lucide-react";
+import { ChevronsUpDown, GitCommitHorizontal, Pencil, Play, Plus, Send, Trash2, X } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
@@ -74,27 +74,18 @@ export function ContentTopBar({
   setGitPaneVisible,
   gitDiffStats,
   contentPaneTitle,
-  showingProjectDashboard,
   activeProjectDir,
   projectData,
   terminalOpen,
   toggleTerminal,
   artifactsOpen,
   onToggleArtifacts,
-  titleMenuOpen,
   openMenuOpen,
   setOpenMenuOpen,
   commitMenuOpen,
   setCommitMenuOpen,
   setTitleMenuOpen,
-  hasActiveSession,
-  isActiveSessionPinned,
-  onTogglePinSession,
-  onRenameSession,
-  onArchiveSession,
   onViewWorkspace,
-  onCopyPath,
-  onCopySessionId,
   activeOpenTarget,
   openTargets,
   onSelectOpenTarget,
@@ -331,86 +322,36 @@ export function ContentTopBar({
 
   return (
     <div className="content-edge-controls">
+      {/* Left: sidebar toggle */}
       <IconButton
         icon="panelLeft"
         label="Toggle left sidebar"
-        className={`workspace-left-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
+        className={`topbar-sidebar-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
         onClick={toggleProjectsPane}
       />
-      <div className="content-topbar-title-wrap">
-        <h2 className="content-topbar-title" title={contentPaneTitle}>
-          {contentPaneTitle}
-        </h2>
-        {!showingProjectDashboard ? (
-          <>
-            <button
-              type="button"
-              className="title-overflow-button"
-              aria-label="Session and workspace actions"
-              title="Session actions"
-              onClick={() => {
-                setTitleMenuOpen(!titleMenuOpen);
-                setOpenMenuOpen(false);
-                setCommitMenuOpen(false);
-              }}
-            >
-              <Ellipsis size={16} aria-hidden="true" />
-            </button>
-            {titleMenuOpen ? (
-              <div className="title-overflow-menu">
-                <button type="button" disabled={!hasActiveSession} onClick={onTogglePinSession}>
-                  <span className="menu-item-logo">{isActiveSessionPinned ? <PinOff size={14} aria-hidden="true" /> : <Pin size={14} aria-hidden="true" />}</span>
-                  <span>{isActiveSessionPinned ? "Unpin session" : "Pin session"}</span>
-                </button>
-                <button type="button" disabled={!hasActiveSession} onClick={onRenameSession}>
-                  <span className="menu-item-logo">
-                    <Pencil size={14} aria-hidden="true" />
-                  </span>
-                  <span>Rename session</span>
-                </button>
-                <button type="button" disabled={!hasActiveSession} onClick={onArchiveSession}>
-                  <span className="menu-item-logo">
-                    <Archive size={14} aria-hidden="true" />
-                  </span>
-                  <span>Archive session</span>
-                </button>
-                <button type="button" onClick={onViewWorkspace}>
-                  <span className="menu-item-logo">
-                    <LayoutDashboard size={14} aria-hidden="true" />
-                  </span>
-                  <span>View workspace</span>
-                </button>
-                <div className="menu-separator" />
-                <button type="button" onClick={onCopyPath}>
-                  <span className="menu-item-logo">
-                    <Copy size={14} aria-hidden="true" />
-                  </span>
-                  <span>Copy path</span>
-                </button>
-                <button type="button" disabled={!hasActiveSession} onClick={onCopySessionId}>
-                  <span className="menu-item-logo">
-                    <Fingerprint size={14} aria-hidden="true" />
-                  </span>
-                  <span>Copy session id</span>
-                </button>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-        <IconButton
-          icon="terminal"
-          label="Toggle terminal"
-          className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
-          onClick={() => void toggleTerminal()}
-        />
-        <IconButton
-          icon="image"
-          label="Toggle artifacts"
-          className={`titlebar-toggle titlebar-toggle-artifacts ${artifactsOpen ? "active" : ""}`.trim()}
-          onClick={onToggleArtifacts}
-        />
-      </div>
-      <div className="content-edge-right-actions">
+
+      {/* Workspace name */}
+      <h2 className="topbar-title" title={activeProjectDir ?? contentPaneTitle}>
+        {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
+      </h2>
+
+      {/* Spacer */}
+      <div className="topbar-spacer" />
+
+      {/* Dashboard button */}
+      <button
+        type="button"
+        className="topbar-dash-btn"
+        onClick={onViewWorkspace}
+      >
+        dashboard
+      </button>
+
+      {/* Spacer */}
+      <div className="topbar-spacer" />
+
+      {/* Right actions group */}
+      <div className="topbar-right-group">
         <div ref={runMenuRootRef} className={`titlebar-run-wrap ${runMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
@@ -549,6 +490,18 @@ export function ContentTopBar({
           ) : null}
         </div>
 
+        <IconButton
+          icon="image"
+          label="Toggle artifacts"
+          className={`titlebar-toggle titlebar-toggle-artifacts ${artifactsOpen ? "active" : ""}`.trim()}
+          onClick={onToggleArtifacts}
+        />
+        <IconButton
+          icon="terminal"
+          label="Toggle terminal"
+          className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
+          onClick={() => void toggleTerminal()}
+        />
         <div className={`titlebar-git-toggle-group${gitDiffStats.hasChanges ? " has-changes" : ""}`}>
           {gitDiffStats.hasChanges ? (
             <button

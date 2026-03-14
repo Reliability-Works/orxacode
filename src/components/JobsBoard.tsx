@@ -159,10 +159,10 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title jobs-inbox-title">
-          <h2>Inbox</h2>
+          <h2>inbox // recent runs</h2>
           {unreadRuns > 0 ? (
             <button type="button" className="jobs-mark-read" onClick={onMarkAllRunsRead}>
-              Mark all read
+              mark all read
             </button>
           ) : null}
         </div>
@@ -187,7 +187,7 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title">
-          <h2>Configured jobs</h2>
+          <h2>configured_jobs</h2>
         </div>
         <div className="jobs-config-grid">
           {sortedJobs.map((job) => (
@@ -229,7 +229,7 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title">
-          <h2>Templates</h2>
+          <h2>templates</h2>
         </div>
         <div className="jobs-template-grid">
           {templates.map((template) => (
@@ -241,7 +241,7 @@ export function JobsBoard({
               <p>{template.description}</p>
               <small>{scheduleSummary(template.schedule)}</small>
               <button type="button" onClick={() => onUseTemplate(template)}>
-                Use template
+                use template
               </button>
             </article>
           ))}

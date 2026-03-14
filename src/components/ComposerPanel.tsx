@@ -438,15 +438,18 @@ export function ComposerPanel(props: ComposerPanelProps) {
       ) : null}
 
       <div className="composer-controls">
-        <label className="agent-mode-toggle plan-toggle-inline">
-          <input
-            type="checkbox"
-            checked={isPlanMode}
-            disabled={!hasPlanAgent}
-            onChange={(event) => togglePlanMode(event.target.checked)}
-          />
-          Plan mode
-        </label>
+        <button
+          type="button"
+          className={`plan-toggle-inline${isPlanMode ? " is-active" : ""}`}
+          disabled={!hasPlanAgent}
+          onClick={() => togglePlanMode(!isPlanMode)}
+          aria-pressed={isPlanMode}
+          title={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+          aria-label={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+        >
+          <span className="plan-toggle-square" aria-hidden="true" />
+          plan mode
+        </button>
         <button
           type="button"
           className={`composer-mode-toggle-icon ${browserModeEnabled ? "is-active" : ""}`.trim()}
@@ -455,7 +458,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
           title={browserModeEnabled ? "Browser mode enabled" : "Browser mode disabled"}
           aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
         >
-          <Compass size={13} aria-hidden="true" />
+          <Compass size={11} aria-hidden="true" />
+          <span className="composer-mode-toggle-label">browser</span>
         </button>
         <button
           type="button"
@@ -465,7 +469,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
           title={contextModeEnabled ? "Context mode enabled" : "Context mode disabled"}
           aria-label={contextModeEnabled ? "Disable Context mode" : "Enable Context mode"}
         >
-          <FileText size={13} aria-hidden="true" />
+          <FileText size={11} aria-hidden="true" />
+          <span className="composer-mode-toggle-label">context</span>
         </button>
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
           <button
@@ -476,9 +481,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
             aria-expanded={permissionMenuOpen}
             aria-haspopup="menu"
           >
-            {permissionMode === "yolo-write" ? <Zap size={13} aria-hidden="true" /> : <Shield size={13} aria-hidden="true" />}
+            {permissionMode === "yolo-write" ? <Zap size={11} aria-hidden="true" /> : <Shield size={11} aria-hidden="true" />}
             <span className="composer-permission-label">{permissionLabel}</span>
-            <ChevronDown size={13} aria-hidden="true" />
+            <ChevronDown size={10} aria-hidden="true" />
           </button>
           {permissionMenuOpen ? (
             <div className="composer-permission-menu" role="menu" aria-label="Permission mode">
@@ -536,10 +541,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
             title={branchCurrent || "Branch"}
           >
             <span className="composer-branch-leading">
-              <GitBranch size={14} aria-hidden="true" />
+              <GitBranch size={11} aria-hidden="true" />
               <span className="composer-branch-label">{branchDisplayValue}</span>
             </span>
-            <ChevronDown size={13} aria-hidden="true" />
+            <ChevronDown size={10} aria-hidden="true" />
           </button>
           {branchMenuOpen ? (
             <div className="composer-branch-menu">
@@ -600,12 +605,14 @@ export function ComposerPanel(props: ComposerPanelProps) {
           setSelectedVariant={setSelectedVariant}
           variantOptions={variantOptions}
         />
+        <div style={{ flex: 1 }} aria-hidden="true" />
         <div
           className={`composer-compaction-indicator composer-compaction-indicator-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
           title={compactionHint}
           aria-label={compactionHint}
         >
           <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
+          <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
         </div>
       </div>
       {previewAttachment ? (

@@ -418,10 +418,10 @@ describe("SettingsDrawer", () => {
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "App" })[0]!);
-    expect(screen.queryByText("Commit message guidance prompt")).not.toBeInTheDocument();
+    expect(screen.queryByText("commit message guidance prompt")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
-    expect(screen.getByText("Commit message guidance prompt")).toBeInTheDocument();
+    expect(screen.getByText("commit message guidance prompt")).toBeInTheDocument();
   });
 
   it("allows editing global AGENTS.md on the Personalization page", async () => {
@@ -529,12 +529,12 @@ describe("SettingsDrawer", () => {
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "Personalization" })[0]!);
-    expect(screen.getByText("Your global AGENTS.md which will apply to all workspace sessions.")).toBeInTheDocument();
+    expect(screen.getByText("your global AGENTS.md which will apply to all workspace sessions.")).toBeInTheDocument();
     await waitFor(() => expect(readGlobalAgentsMd).toHaveBeenCalled());
     expect(screen.getByText("/Users/test/.config/opencode/AGENTS.md")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Global AGENTS.md"), { target: { value: "# Updated Global Rules\n" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.change(screen.getByLabelText("global AGENTS.md"), { target: { value: "# Updated Global Rules\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
 
     expect(writeGlobalAgentsMd).toHaveBeenCalledWith("# Updated Global Rules\n");
   });
@@ -650,7 +650,7 @@ describe("SettingsDrawer", () => {
     );
 
     fireEvent.click(screen.getAllByRole("button", { name: "Memory" })[0]!);
-    expect(screen.getByText("Template Import")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Import Balanced" })).toBeInTheDocument();
+    expect(screen.getByText("// template import")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Balanced" })).toBeInTheDocument();
   });
 });

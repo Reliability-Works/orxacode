@@ -73,7 +73,7 @@ export function ProjectDashboard({
       <section className={`dashboard-section project-agents-section ${agentsMissing ? "project-agents-empty" : ""}`.trim()}>
         {!agentsMissing ? (
           <div className="dashboard-section-title">
-            <h2>AGENTS.md</h2>
+            <h2>agents.md</h2>
             <div className="project-agents-actions">
               <button type="button" className="dashboard-icon-btn" onClick={onRefreshAgents} disabled={agentsLoading} title="Refresh">
                 <RotateCcw size={14} className={agentsLoading ? "spin" : ""} />
@@ -106,7 +106,7 @@ export function ProjectDashboard({
         ) : null}
         <section className="project-workspace-context-summary">
           <div className="project-subsection-title">
-            <h3>Workspace Context</h3>
+            <h3>workspace context</h3>
             <div className="project-subsection-actions">
               <button type="button" className="project-subsection-action" onClick={onViewAllWorkspaceContext} disabled={!onViewAllWorkspaceContext}>
                 View all
@@ -139,7 +139,7 @@ export function ProjectDashboard({
 
       <section className="dashboard-section project-artifacts-summary-section">
         <div className="dashboard-section-title">
-          <h2>Workspace Artifacts</h2>
+          <h2>workspace artifacts</h2>
           <button type="button" className="project-subsection-action" onClick={onViewAllWorkspaceArtifacts} disabled={!onViewAllWorkspaceArtifacts}>
             View all
           </button>
@@ -149,20 +149,20 @@ export function ProjectDashboard({
           <>
             <div className="project-artifacts-summary-grid">
               <article>
-                <span>Total Artifacts</span>
                 <strong>{workspaceArtifactsSummary.artifacts}</strong>
+                <span>total artifacts</span>
               </article>
               <article>
-                <span>Sessions</span>
                 <strong>{workspaceArtifactsSummary.sessions}</strong>
+                <span>sessions</span>
               </article>
               <article>
-                <span>Screenshots</span>
                 <strong>{workspaceArtifactsSummary.screenshots}</strong>
+                <span>screenshots</span>
               </article>
               <article>
-                <span>Context Selections</span>
                 <strong>{workspaceArtifactsSummary.contextSelections}</strong>
+                <span>context selections</span>
               </article>
             </div>
             <small className="project-artifacts-updated">
@@ -177,9 +177,9 @@ export function ProjectDashboard({
 
       <section className="dashboard-section project-usage-section">
         <div className="dashboard-section-title">
-          <h2>Workspace Usage</h2>
+          <h2>workspace usage // 30 days</h2>
           <div className="project-usage-actions">
-            <small>{updatedAt ? `Updated ${timeAgo(updatedAt)}` : "Not updated yet"}</small>
+            <small>{updatedAt ? `updated ${timeAgo(updatedAt)}` : "not updated yet"}</small>
             <button type="button" className="dashboard-icon-btn" onClick={onRefresh} disabled={loading} title="Refresh">
               <RotateCcw size={14} className={loading ? "spin" : ""} />
             </button>
@@ -187,33 +187,39 @@ export function ProjectDashboard({
         </div>
         <div className="dashboard-metric-grid">
           <article>
-            <span>Total Sessions</span>
             <strong>{sessionCount}</strong>
+            <span>total sessions</span>
           </article>
           <article>
-            <span>Sessions (7d)</span>
             <strong>{sessions7d}</strong>
+            <span>sessions, 7d</span>
           </article>
           <article>
-            <span>Sessions (30d)</span>
             <strong>{sessions30d}</strong>
+            <span>sessions, 30d</span>
           </article>
           <article>
-            <span>Input Tokens (30d)</span>
             <strong>{compact(tokenInput30d)}</strong>
+            <span>input tokens</span>
           </article>
           <article>
-            <span>Output Tokens (30d)</span>
             <strong>{compact(tokenOutput30d)}</strong>
+            <span>output tokens</span>
           </article>
           <article>
-            <span>Cache Read (30d)</span>
             <strong>{compact(tokenCacheRead30d)}</strong>
+            <span>cache read</span>
           </article>
           <article>
-            <span>Cost (30d)</span>
             <strong>{money(totalCost30d)}</strong>
+            <span>cost, 30d</span>
           </article>
+        </div>
+      </section>
+
+      <section className="dashboard-section project-models-section">
+        <div className="dashboard-section-title">
+          <h2>top models</h2>
         </div>
         <div className="dashboard-models">
           {topModels.map((item) => (

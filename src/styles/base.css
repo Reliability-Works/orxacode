@@ -1,32 +1,67 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500;600&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap");
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@4.2.1/index.css");
 @import url("https://cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack-subset.css");
 
 :root {
-  --bg-app: hsl(220 8% 8%);
-  --bg-sidebar: hsl(220 8% 12%);
-  --bg-surface: hsl(220 8% 8%);
-  --bg-raised: hsl(220 10% 16%);
-  --bg-terminal: hsl(220 12% 6%);
-  --text-primary: hsl(220 20% 96%);
-  --text-main: hsl(220 20% 96%);
-  --text-muted: hsl(220 10% 65%);
-  --text-dim: hsl(220 10% 45%);
-  --accent: hsl(220 20% 80%);
-  --accent-strong: hsl(220 20% 100%);
-  --success: hsl(151 72% 60%);
-  --warning: hsl(43 95% 66%);
-  --danger: hsl(347 89% 67%);
-  --border: hsl(220 12% 20%);
-  --border-hover: hsl(220 12% 30%);
-  --border-active: hsl(220 15% 45%);
-  --bg-hover: hsl(220 10% 20% / 0.4);
-  --bg-active: hsl(220 10% 25% / 0.6);
-  --shadow: 0 16px 45px hsl(220 40% 2% / 0.55);
-  --code-font: "IBM Plex Mono", monospace;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  /* Pencil design tokens */
+  --bg-page: #0C0C0C;
+  --bg-sidebar: #141414;
+  --bg-surface: #171717;
+  --bg-input: #1A1A1A;
+
+  /* Legacy aliases (mapped to new tokens) */
+  --bg-app: var(--bg-page);
+  --bg-raised: var(--bg-input);
+  --bg-terminal: #0A0A0A;
+
+  /* Text hierarchy */
+  --text-primary: #E5E5E5;
+  --text-main: var(--text-primary);
+  --text-secondary: #A3A3A3;
+  --text-tertiary: #737373;
+  --text-muted: #525252;
+  --text-dim: var(--text-muted);
+
+  /* Accent colors */
+  --accent-green: #22C55E;
+  --accent-error: #EF4444;
+  --accent-warning: #F59E0B;
+  --accent-info: #3B82F6;
+  --accent-neutral: #525252;
+
+  /* Legacy accent aliases */
+  --accent: var(--text-secondary);
+  --accent-strong: var(--text-primary);
+  --success: var(--accent-green);
+  --warning: var(--accent-warning);
+  --danger: var(--accent-error);
+
+  /* Borders */
+  --border: #1F1F1F;
+  --border-secondary: #252525;
+  --border-hover: #2A2A2A;
+  --border-active: var(--accent-green);
+
+  /* Legacy border aliases */
+  --border-primary: var(--border);
+
+  /* Interactive backgrounds */
+  --bg-hover: #1A1A1A;
+  --bg-active: #1F1F1F;
+
+  /* Shadows */
+  --shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
+
+  /* Typography */
+  --font-mono: "JetBrains Mono", monospace;
+  --code-font: var(--font-mono);
+
+  /* Radii - tighter for the developer tool feel */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -34,10 +69,13 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-7: 32px;
+  --space-8: 40px;
+
+  /* Scrollbar */
   --scrollbar-size: 6px;
-  --scrollbar-track: hsl(220 8% 74% / 0.2);
-  --scrollbar-thumb: hsl(220 8% 84% / 0.56);
-  --scrollbar-thumb-hover: hsl(220 8% 92% / 0.76);
+  --scrollbar-track: rgba(30, 30, 30, 0.4);
+  --scrollbar-thumb: rgba(80, 80, 80, 0.5);
+  --scrollbar-thumb-hover: rgba(100, 100, 100, 0.7);
 }
 
 * {
@@ -58,7 +96,6 @@
 *::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--scrollbar-thumb);
-  border: 1px solid hsl(220 8% 30% / 0.18);
 }
 
 *::-webkit-scrollbar-thumb:hover {
@@ -74,10 +111,10 @@ body,
 }
 
 body {
-  background: var(--bg-app);
+  background: var(--bg-page);
   color: var(--text-primary);
-  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
-  font-size: 14px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -92,16 +129,17 @@ textarea {
 button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-raised);
-  color: var(--text-primary);
+  background: transparent;
+  color: var(--text-secondary);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
-  transition: all 120ms ease;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
 button:hover {
-  border-color: var(--border-hover);
-  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+  color: var(--text-primary);
+  background: var(--bg-input);
 }
 
 button:disabled {
@@ -111,13 +149,22 @@ button:disabled {
 }
 
 .icon-button {
-  width: 42px;
-  height: 40px;
-  min-width: 42px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
   padding: 0;
   display: inline-grid;
   place-items: center;
   position: relative;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.icon-button:hover {
+  color: var(--text-secondary);
+  background: var(--bg-input);
 }
 
 .icon-button svg {
@@ -126,8 +173,23 @@ button:disabled {
 
 button.danger,
 button[class*="danger"] {
-  border-color: var(--danger);
-  background: var(--danger); color: #fff;
+  border-color: var(--accent-error);
+  background: var(--accent-error);
+  color: #fff;
+}
+
+button.primary,
+button[class*="primary"] {
+  border-color: var(--accent-green);
+  background: var(--accent-green);
+  color: #0C0C0C;
+  font-weight: 500;
+}
+
+button.primary:hover,
+button[class*="primary"]:hover {
+  background: #1DAF54;
+  border-color: #1DAF54;
 }
 
 input,
@@ -135,18 +197,24 @@ select,
 textarea {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-raised);
-  padding: 10px 12px;
+  background: var(--bg-input);
+  padding: 8px 12px;
+  color: var(--text-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
 }
 
 textarea {
   resize: vertical;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 :focus {
-  outline: 2px solid var(--border-active);
-  outline-offset: 2px;
+  outline: 1px solid var(--accent-green);
+  outline-offset: 1px;
 }
 
 :focus:not(:focus-visible) {
