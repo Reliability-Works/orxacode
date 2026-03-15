@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   AgentsDocument,
-  AppMode,
   MemoryBackfillStatus,
   MemoryPolicyMode,
   MemorySettings,
@@ -10,8 +9,6 @@ import type {
   MemoryTemplate,
   OpenCodeAgentFile,
   OpenDirectoryTarget,
-  OrxaAgentDetails,
-  OrxaAgentDocument,
   RawConfigDocument,
   ServerDiagnostics,
   UpdatePreferences,
@@ -22,27 +19,12 @@ import { CODE_FONT_OPTIONS } from "~/types/app";
 
 type Props = {
   open: boolean;
-  mode: AppMode;
-  modeSwitching: boolean;
   directory: string | undefined;
   onClose: () => void;
   onReadRaw: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
   onWriteRaw: (scope: "project" | "global", content: string, directory?: string) => Promise<RawConfigDocument>;
   onReadGlobalAgentsMd: () => Promise<AgentsDocument>;
   onWriteGlobalAgentsMd: (content: string) => Promise<AgentsDocument>;
-  onReadOrxa: () => Promise<RawConfigDocument>;
-  onWriteOrxa: (content: string) => Promise<RawConfigDocument>;
-  onListOrxaAgents: () => Promise<OrxaAgentDocument[]>;
-  onSaveOrxaAgent: (input: {
-    name: string;
-    mode: "primary" | "subagent" | "all";
-    description?: string;
-    model?: string;
-    prompt?: string;
-  }) => Promise<OrxaAgentDocument>;
-  onGetOrxaAgentDetails: (name: string) => Promise<OrxaAgentDetails>;
-  onResetOrxaAgent: (name: string) => Promise<OrxaAgentDocument | undefined>;
-  onRestoreOrxaAgentHistory: (name: string, historyID: string) => Promise<OrxaAgentDocument | undefined>;
   appPreferences: AppPreferences;
   onAppPreferencesChange: (next: AppPreferences) => void;
   onGetServerDiagnostics: () => Promise<ServerDiagnostics>;
@@ -56,13 +38,11 @@ type Props = {
   onApplyMemoryTemplate: (templateID: string, directory?: string, scope?: "global" | "workspace") => Promise<MemorySettings>;
   onBackfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
   onClearWorkspaceMemory: (directory: string) => Promise<boolean>;
-  onChangeMode: (mode: AppMode) => Promise<void>;
   allModelOptions: ModelOption[];
 };
 
 type SettingsSection =
   | "config"
-  | "agents"
   | "provider-models"
   | "opencode-agents"
   | "memory"
@@ -71,7 +51,6 @@ type SettingsSection =
   | "app"
   | "preferences"
   | "server";
-type EditorKind = "opencode" | "orxa";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
   | { kind: "duplicate"; title: string; content: string };
@@ -82,28 +61,6 @@ type UpdateCheckStatus = {
 };
 
 const UPDATE_CHECK_STATUS_KEY = "orxa:updateCheckStatus:v1";
-
-function buildSimpleDiff(baseText: string, currentText: string) {
-  const base = baseText.split("\n");
-  const current = currentText.split("\n");
-  const max = Math.max(base.length, current.length);
-  const lines: string[] = [];
-  for (let index = 0; index < max; index += 1) {
-    const left = base[index] ?? "";
-    const right = current[index] ?? "";
-    if (left === right) {
-      lines.push(`  ${left}`);
-      continue;
-    }
-    if (left.length > 0) {
-      lines.push(`- ${left}`);
-    }
-    if (right.length > 0) {
-      lines.push(`+ ${right}`);
-    }
-  }
-  return lines.join("\n");
-}
 
 function formatUpdateCheckStatus(status: UpdateCheckStatus | null): string {
   if (!status) {
@@ -125,21 +82,12 @@ function formatUpdateCheckStatus(status: UpdateCheckStatus | null): string {
 
 export function SettingsDrawer({
   open,
-  mode,
-  modeSwitching,
   directory,
   onClose,
   onReadRaw,
   onWriteRaw,
   onReadGlobalAgentsMd,
   onWriteGlobalAgentsMd,
-  onReadOrxa,
-  onWriteOrxa,
-  onListOrxaAgents,
-  onSaveOrxaAgent,
-  onGetOrxaAgentDetails,
-  onResetOrxaAgent,
-  onRestoreOrxaAgentHistory,
   appPreferences,
   onAppPreferencesChange,
   onGetServerDiagnostics,
@@ -153,31 +101,16 @@ export function SettingsDrawer({
   onApplyMemoryTemplate,
   onBackfillMemory,
   onClearWorkspaceMemory,
-  onChangeMode,
   allModelOptions,
 }: Props) {
   const appVersion = __APP_VERSION__?.trim().length ? __APP_VERSION__ : "dev";
   const [section, setSection] = useState<SettingsSection>("config");
   const [scope, setScope] = useState<"project" | "global">("global");
-  const [nextMode, setNextMode] = useState<AppMode>(mode);
 
   const [rawDoc, setRawDoc] = useState<RawConfigDocument | null>(null);
   const [rawText, setRawText] = useState("");
   const [globalAgentsDoc, setGlobalAgentsDoc] = useState<AgentsDocument | null>(null);
   const [globalAgentsText, setGlobalAgentsText] = useState("");
-  const [orxaDoc, setOrxaDoc] = useState<RawConfigDocument | null>(null);
-  const [orxaText, setOrxaText] = useState("");
-
-  const [agents, setAgents] = useState<OrxaAgentDocument[]>([]);
-  const [selectedAgentPath, setSelectedAgentPath] = useState<string | undefined>();
-  const [agentDraft, setAgentDraft] = useState<{
-    name: string;
-    mode: "primary" | "subagent" | "all";
-    description: string;
-    model: string;
-    prompt: string;
-  } | null>(null);
-  const [agentDetails, setAgentDetails] = useState<OrxaAgentDetails | null>(null);
 
   const [serverDiagnostics, setServerDiagnostics] = useState<ServerDiagnostics | null>(null);
   const [updatePreferences, setUpdatePreferences] = useState<UpdatePreferences>({
@@ -223,7 +156,6 @@ export function SettingsDrawer({
   const [collapsedProviders, setCollapsedProviders] = useState<Record<string, boolean>>({});
 
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorKind, setEditorKind] = useState<EditorKind>("opencode");
   const [editorText, setEditorText] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [ocFilenameDialog, setOcFilenameDialog] = useState<OcAgentFilenameDialog | null>(null);
@@ -249,39 +181,16 @@ export function SettingsDrawer({
     return scope;
   }, [scope, directory]);
 
-  const selectedAgent = useMemo(
-    () => agents.find((agent) => agent.path === selectedAgentPath),
-    [agents, selectedAgentPath],
-  );
-  const availableSections = useMemo<SettingsSection[]>(() => {
-    if (mode === "standard") {
-      return ["config", "provider-models", "opencode-agents", "memory", "personalization", "git", "app", "preferences", "server"];
-    }
-    return ["config", "agents", "provider-models", "opencode-agents", "memory", "personalization", "git", "app", "preferences", "server"];
-  }, [mode]);
-
-  useEffect(() => {
-    setNextMode(mode);
-  }, [mode]);
-
-  useEffect(() => {
-    if (availableSections.includes(section)) {
-      return;
-    }
-    setSection("config");
-  }, [availableSections, section]);
 
   useEffect(() => {
     if (!open) {
       return;
     }
     const load = async () => {
-      const [raw, globalAgents, diagnostics, orxa, nextAgents, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
+      const [raw, globalAgents, diagnostics, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
         onReadRaw(effectiveScope, directory),
         onReadGlobalAgentsMd(),
         onGetServerDiagnostics(),
-        mode === "orxa" ? onReadOrxa() : Promise.resolve(null),
-        mode === "orxa" ? onListOrxaAgents() : Promise.resolve([]),
         onGetUpdatePreferences(),
         onGetMemorySettings(directory),
         onListMemoryTemplates(),
@@ -290,14 +199,10 @@ export function SettingsDrawer({
       setRawText(raw.content);
       setGlobalAgentsDoc(globalAgents);
       setGlobalAgentsText(globalAgents.content);
-      setOrxaDoc(orxa);
-      setOrxaText(orxa?.content ?? "");
-      setAgents(nextAgents);
       setUpdatePreferences(updaterPrefs);
       setMemorySettings(nextMemorySettings);
       setMemoryTemplates(templates);
       setMemoryBackfillStatus(null);
-      setSelectedAgentPath((current) => current ?? nextAgents[0]?.path);
       setServerDiagnostics(diagnostics);
       setFeedback(null);
     };
@@ -310,34 +215,11 @@ export function SettingsDrawer({
     directory,
     onReadRaw,
     onReadGlobalAgentsMd,
-    mode,
-    onReadOrxa,
-    onListOrxaAgents,
     onGetServerDiagnostics,
     onGetUpdatePreferences,
     onGetMemorySettings,
     onListMemoryTemplates,
   ]);
-
-  useEffect(() => {
-    if (!selectedAgent) {
-      setAgentDraft(null);
-      setAgentDetails(null);
-      return;
-    }
-
-    setAgentDraft({
-      name: selectedAgent.name,
-      mode: selectedAgent.mode,
-      description: selectedAgent.description ?? "",
-      model: selectedAgent.model ?? "",
-      prompt: selectedAgent.prompt ?? "",
-    });
-
-    void onGetOrxaAgentDetails(selectedAgent.name)
-      .then((details) => setAgentDetails(details))
-      .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
-  }, [onGetOrxaAgentDetails, selectedAgent]);
 
   const loadOcAgents = useCallback(async () => {
     try {
@@ -435,39 +317,17 @@ export function SettingsDrawer({
     return null;
   }
 
-  const openEditor = (kind: EditorKind) => {
-    setEditorKind(kind);
-    setEditorText(kind === "orxa" ? orxaText : rawText);
+  const openEditor = () => {
+    setEditorText(rawText);
     setEditorOpen(true);
   };
 
   const saveEditor = async () => {
-    if (editorKind === "orxa") {
-      const next = await onWriteOrxa(editorText);
-      setOrxaDoc(next);
-      setOrxaText(next.content);
-      setFeedback("Orxa config saved");
-      setEditorOpen(false);
-      return;
-    }
-
     const next = await onWriteRaw(effectiveScope, editorText, directory);
     setRawDoc(next);
     setRawText(next.content);
     setFeedback("OpenCode config saved");
     setEditorOpen(false);
-  };
-
-  const refreshAgents = async (focusPath?: string) => {
-    const next = await onListOrxaAgents();
-    setAgents(next);
-    const nextSelected = focusPath ?? selectedAgentPath ?? next[0]?.path;
-    setSelectedAgentPath(nextSelected);
-    const target = next.find((agent) => agent.path === nextSelected) ?? next[0];
-    if (target) {
-      const details = await onGetOrxaAgentDetails(target.name).catch(() => undefined);
-      setAgentDetails(details ?? null);
-    }
   };
 
   const renderSectionContent = () => {
@@ -484,40 +344,6 @@ export function SettingsDrawer({
       return (
         <section className="settings-section-card">
           <h3>app settings</h3>
-
-          <div className="settings-app-mode-row">
-            <span className="settings-field-label">application_mode</span>
-            <div className="settings-mode-radio-row">
-              <button
-                type="button"
-                className={`settings-mode-radio-btn${nextMode === "orxa" ? " selected" : ""}`}
-                onClick={() => setNextMode("orxa")}
-              >
-                orxa
-              </button>
-              <button
-                type="button"
-                className={`settings-mode-radio-btn${nextMode === "standard" ? " selected" : ""}`}
-                onClick={() => setNextMode("standard")}
-              >
-                standard
-              </button>
-              <button
-                type="button"
-                className="settings-mode-apply-btn"
-                disabled={modeSwitching || nextMode === mode}
-                onClick={() =>
-                  void onChangeMode(nextMode)
-                    .then(() => setFeedback(`Mode switched to ${nextMode === "orxa" ? "Orxa" : "Standard"}`))
-                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                }
-              >
-                {modeSwitching ? "applying..." : "apply"}
-              </button>
-            </div>
-          </div>
-
-          <div className="settings-divider" />
 
           <div className="settings-toggle-group">
             <label className="settings-inline-toggle">
@@ -989,28 +815,24 @@ export function SettingsDrawer({
               <span className="settings-server-status-key">active profile</span>
               <span className="settings-server-status-value">{serverDiagnostics?.activeProfile?.name ?? "default"}</span>
             </div>
-            {mode === "orxa" ? (
-              <>
-                <div className="settings-server-status-row">
-                  <span className="settings-server-status-key">plugin configured</span>
-                  <span className={`settings-server-status-value${serverDiagnostics?.plugin.configured ? " settings-server-status-value--green" : ""}`}>
-                    {serverDiagnostics?.plugin.configured ? "yes" : "no"}
-                  </span>
-                </div>
-                <div className="settings-server-status-row">
-                  <span className="settings-server-status-key">plugin installed</span>
-                  <span className={`settings-server-status-value${serverDiagnostics?.plugin.installed ? " settings-server-status-value--green" : ""}`}>
-                    {serverDiagnostics?.plugin.installed ? "yes" : "no"}
-                  </span>
-                </div>
-                <div className="settings-server-status-row">
-                  <span className="settings-server-status-key">plugin path</span>
-                  <span className="settings-server-status-value settings-server-status-value--path">
-                    {serverDiagnostics?.plugin.configPath ?? "—"}
-                  </span>
-                </div>
-              </>
-            ) : null}
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">plugin configured</span>
+              <span className={`settings-server-status-value${serverDiagnostics?.plugin.configured ? " settings-server-status-value--green" : ""}`}>
+                {serverDiagnostics?.plugin.configured ? "yes" : "no"}
+              </span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">plugin installed</span>
+              <span className={`settings-server-status-value${serverDiagnostics?.plugin.installed ? " settings-server-status-value--green" : ""}`}>
+                {serverDiagnostics?.plugin.installed ? "yes" : "no"}
+              </span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">plugin path</span>
+              <span className="settings-server-status-value settings-server-status-value--path">
+                {serverDiagnostics?.plugin.configPath ?? "—"}
+              </span>
+            </div>
           </div>
           <div className="settings-server-buttons">
             <button
@@ -1028,23 +850,21 @@ export function SettingsDrawer({
               <ChevronDown size={12} />
               refresh diagnostics
             </button>
-            {mode === "orxa" ? (
-              <button
-                type="button"
-                className="settings-server-btn"
-                onClick={() =>
-                  void onRepairRuntime()
-                    .then((next) => {
-                      setServerDiagnostics(next);
-                      setFeedback("Runtime repaired");
-                    })
-                    .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                }
-              >
-                <ChevronRight size={12} />
-                repair runtime
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() =>
+                void onRepairRuntime()
+                  .then((next) => {
+                    setServerDiagnostics(next);
+                    setFeedback("Runtime repaired");
+                  })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+              }
+            >
+              <ChevronRight size={12} />
+              repair runtime
+            </button>
           </div>
         </section>
       );
@@ -1072,17 +892,12 @@ export function SettingsDrawer({
               </button>
             </div>
             <span className="settings-config-spacer" />
-            <button type="button" className="settings-config-top-btn" onClick={() => openEditor("opencode")}>
+            <button type="button" className="settings-config-top-btn" onClick={() => openEditor()}>
               open opencode json editor
             </button>
-            {mode === "orxa" ? (
-              <button type="button" className="settings-config-top-btn" onClick={() => openEditor("orxa")}>
-                open orxa json editor
-              </button>
-            ) : null}
           </div>
 
-          <div className={`settings-config-grid${mode !== "orxa" ? " settings-config-grid--single" : ""}`}>
+          <div className="settings-config-grid settings-config-grid--single">
             <article className="settings-config-card">
               <h4>opencode json</h4>
               <p className="raw-path">{rawDoc?.path}</p>
@@ -1116,41 +931,6 @@ export function SettingsDrawer({
               </div>
             </article>
 
-            {mode === "orxa" ? (
-              <article className="settings-config-card">
-                <h4>orxa json</h4>
-                <p className="raw-path">{orxaDoc?.path}</p>
-                <textarea rows={16} value={orxaText} onChange={(event) => setOrxaText(event.target.value)} />
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    className="settings-config-card-save"
-                    onClick={() =>
-                      void onWriteOrxa(orxaText)
-                        .then((next) => {
-                          setOrxaDoc(next);
-                          setOrxaText(next.content);
-                          setFeedback("Orxa config saved");
-                        })
-                        .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                    }
-                  >
-                    save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void onReadOrxa().then((next) => {
-                        setOrxaDoc(next);
-                        setOrxaText(next.content);
-                      })
-                    }
-                  >
-                    reload
-                  </button>
-                </div>
-              </article>
-            ) : null}
           </div>
         </section>
       );
@@ -1375,181 +1155,7 @@ export function SettingsDrawer({
       );
     }
 
-    return (
-      <section className="settings-section-card settings-pad">
-        <div className="settings-agents">
-          <div className="settings-agents-list">
-            {agents.map((agent) => (
-              <button
-                key={`${agent.path}:${agent.name}`}
-                type="button"
-                className={agent.path === selectedAgentPath ? "active" : ""}
-                onClick={() => setSelectedAgentPath(agent.path)}
-              >
-                <strong>{agent.name}</strong>
-                <small>{agent.mode}</small>
-              </button>
-            ))}
-          </div>
-
-          <div className="settings-agents-editor">
-            {agentDraft ? (
-              <>
-                <div className="settings-controls">
-                  <label>
-                    Name
-                    <input value={agentDraft.name} disabled />
-                  </label>
-                  <label>
-                    Current Source
-                    <input value={selectedAgent?.source ?? "unknown"} disabled />
-                  </label>
-                  <label>
-                    Mode
-                    <select
-                      value={agentDraft.mode}
-                      onChange={(event) =>
-                        setAgentDraft({ ...agentDraft, mode: event.target.value as "primary" | "subagent" | "all" })
-                      }
-                    >
-                      <option value="primary">primary</option>
-                      <option value="subagent">subagent</option>
-                      <option value="all">all</option>
-                    </select>
-                  </label>
-                  <label>
-                    Model
-                    <input
-                      value={agentDraft.model}
-                      placeholder="provider/model"
-                      onChange={(event) => setAgentDraft({ ...agentDraft, model: event.target.value })}
-                    />
-                  </label>
-                </div>
-
-                <label>
-                  Description
-                  <input
-                    value={agentDraft.description}
-                    onChange={(event) => setAgentDraft({ ...agentDraft, description: event.target.value })}
-                  />
-                </label>
-                <label>
-                  System Prompt
-                  <textarea
-                    rows={12}
-                    value={agentDraft.prompt}
-                    onChange={(event) => setAgentDraft({ ...agentDraft, prompt: event.target.value })}
-                  />
-                </label>
-
-                <p className="raw-path">{selectedAgent?.path}</p>
-                <div className="settings-actions">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void onSaveOrxaAgent({
-                        name: agentDraft.name,
-                        mode: agentDraft.mode,
-                        description: agentDraft.description,
-                        model: agentDraft.model,
-                        prompt: agentDraft.prompt,
-                      })
-                        .then(async () => {
-                          await refreshAgents(selectedAgent?.path);
-                          setFeedback(`Saved agent ${agentDraft.name}`);
-                        })
-                        .catch((error: unknown) =>
-                          setFeedback(error instanceof Error ? error.message : String(error)),
-                        )
-                    }
-                  >
-                    Save Agent
-                  </button>
-                  <button type="button" onClick={() => void refreshAgents(selectedAgent?.path)}>
-                    Reload
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedAgent) {
-                        return;
-                      }
-                      if (!window.confirm(`Reset ${selectedAgent.name} to template?`)) {
-                        return;
-                      }
-                      void onResetOrxaAgent(selectedAgent.name)
-                        .then(async () => {
-                          await refreshAgents(selectedAgent.path);
-                          setFeedback(`Reset ${selectedAgent.name} to template`);
-                        })
-                        .catch((error: unknown) =>
-                          setFeedback(error instanceof Error ? error.message : String(error)),
-                        );
-                    }}
-                  >
-                    Reset To Template
-                  </button>
-                </div>
-
-                <div className="settings-advanced-grid">
-                  <div>
-                    <h4>Template Prompt</h4>
-                    <textarea value={agentDetails?.base?.prompt ?? ""} readOnly rows={10} />
-                  </div>
-                  <div>
-                    <h4>Current Prompt</h4>
-                    <textarea value={agentDetails?.current?.prompt ?? ""} readOnly rows={10} />
-                  </div>
-                </div>
-
-                <label>
-                  Prompt Diff
-                  <textarea
-                    rows={10}
-                    readOnly
-                    value={buildSimpleDiff(agentDetails?.base?.prompt ?? "", agentDetails?.current?.prompt ?? "")}
-                  />
-                </label>
-
-                <h4>History</h4>
-                <div className="settings-history-list">
-                  {(agentDetails?.history ?? []).slice(0, 15).map((item) => (
-                    <div key={item.id} className="settings-history-item">
-                      <div>
-                        <strong>{new Date(item.updatedAt).toLocaleString()}</strong>
-                        <p className="raw-path">{item.path}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedAgent) {
-                            return;
-                          }
-                          void onRestoreOrxaAgentHistory(selectedAgent.name, item.id)
-                            .then(async () => {
-                              await refreshAgents(selectedAgent.path);
-                              setFeedback(`Restored snapshot ${item.id}`);
-                            })
-                            .catch((error: unknown) =>
-                              setFeedback(error instanceof Error ? error.message : String(error)),
-                            );
-                        }}
-                      >
-                        Restore
-                      </button>
-                    </div>
-                  ))}
-                  {(agentDetails?.history ?? []).length === 0 ? <p className="raw-path">No history snapshots yet.</p> : null}
-                </div>
-              </>
-            ) : (
-              <p className="raw-path">No agent selected.</p>
-            )}
-          </div>
-        </div>
-      </section>
-    );
+    return null;
   };
 
   return (
@@ -1569,12 +1175,6 @@ export function SettingsDrawer({
                   {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Config Files
                 </button>
-                {mode === "orxa" ? (
-                  <button type="button" className={section === "agents" ? "active" : ""} onClick={() => setSection("agents")}>
-                    {section === "agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                    Agents
-                  </button>
-                ) : null}
                 <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
                   {section === "provider-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Provider Models
@@ -1671,13 +1271,13 @@ export function SettingsDrawer({
         <div className="overlay settings-modal-overlay">
           <div className="modal raw-editor-modal">
             <div className="modal-header">
-              <h2>{editorKind === "orxa" ? "Edit orxa.json" : "Edit opencode.json"}</h2>
+              <h2>Edit opencode.json</h2>
               <button type="button" onClick={() => setEditorOpen(false)}>
                 Close
               </button>
             </div>
             <div className="raw-editor-body">
-              <p className="raw-path">{editorKind === "orxa" ? orxaDoc?.path : rawDoc?.path}</p>
+              <p className="raw-path">{rawDoc?.path}</p>
               <textarea value={editorText} onChange={(event) => setEditorText(event.target.value)} />
               <div className="settings-actions">
                 <button
@@ -1693,7 +1293,7 @@ export function SettingsDrawer({
                 <button
                   type="button"
                   onClick={() =>
-                    void (editorKind === "orxa" ? onReadOrxa() : onReadRaw(effectiveScope, directory)).then((next) => {
+                    void onReadRaw(effectiveScope, directory).then((next) => {
                       setEditorText(next.content);
                     })
                   }

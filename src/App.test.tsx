@@ -1,11 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { OrxaAgentDocument } from "@shared/ipc";
 import { preferredAgentForMode } from "./lib/app-mode";
 
-const modeGetMock = vi.fn(async () => "orxa");
-const modeSetMock = vi.fn(async (mode: "orxa" | "standard") => mode);
 const checkDependenciesMock = vi.fn(async () => ({
   checkedAt: Date.now(),
   missingAny: false,
@@ -37,8 +34,6 @@ const checkDependenciesMock = vi.fn(async () => ({
 beforeEach(() => {
   window.localStorage.clear();
   const subscribe = vi.fn(() => () => undefined);
-  modeGetMock.mockResolvedValue("orxa");
-  modeSetMock.mockImplementation(async (mode: "orxa" | "standard") => mode);
   checkDependenciesMock.mockResolvedValue({
     checkedAt: Date.now(),
     missingAny: false,
@@ -74,10 +69,6 @@ beforeEach(() => {
         openFile: vi.fn(async () => undefined),
         scanPorts: vi.fn(async () => []),
         httpRequest: vi.fn(async () => ({ status: 200, headers: {}, body: "", elapsed: 0 })),
-      },
-      mode: {
-        get: modeGetMock,
-        set: modeSetMock,
       },
       updates: {
         getPreferences: vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" })),
@@ -130,19 +121,6 @@ beforeEach(() => {
         writeRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
         listProviders: vi.fn(async () => ({ all: [], connected: [], default: {} })),
         pickImage: vi.fn(async () => undefined),
-        readOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),
-        writeOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),
-        readOrxaAgentPrompt: vi.fn(async () => undefined),
-        listOrxaAgents: vi.fn(async (): Promise<OrxaAgentDocument[]> => []),
-        saveOrxaAgent: vi.fn(async () => ({
-          name: "orxa",
-          mode: "primary",
-          path: "orxa.yaml",
-          source: "override",
-        })),
-        getOrxaAgentDetails: vi.fn(async () => ({ history: [] })),
-        resetOrxaAgent: vi.fn(async () => undefined),
-        restoreOrxaAgentHistory: vi.fn(async () => undefined),
         getServerDiagnostics: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
@@ -213,36 +191,22 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
   });
 
-  it("chooses preferred agents by mode", () => {
+  it("chooses preferred agents", () => {
     expect(
       preferredAgentForMode({
-        mode: "standard",
-        hasOrxaAgent: true,
         hasPlanAgent: true,
-        serverAgentNames: new Set(["orxa", "plan", "build"]),
-        firstAgentName: "orxa",
+        serverAgentNames: new Set(["plan", "build"]),
+        firstAgentName: "plan",
       }),
     ).toBe("build");
 
     expect(
       preferredAgentForMode({
-        mode: "standard",
-        hasOrxaAgent: false,
         hasPlanAgent: true,
         serverAgentNames: new Set(["plan"]),
         firstAgentName: "plan",
       }),
     ).toBe("plan");
-
-    expect(
-      preferredAgentForMode({
-        mode: "orxa",
-        hasOrxaAgent: true,
-        hasPlanAgent: true,
-        serverAgentNames: new Set(["orxa", "plan"]),
-        firstAgentName: "plan",
-      }),
-    ).toBe("orxa");
   });
 
   it("shows dependency modal when required runtime dependency is missing", async () => {

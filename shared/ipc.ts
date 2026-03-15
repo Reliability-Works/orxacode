@@ -21,8 +21,6 @@ import type {
 
 export const IPC = {
   appOpenExternal: "orxa:app:openExternal",
-  modeGet: "orxa:mode:get",
-  modeSet: "orxa:mode:set",
   updatesGetPreferences: "orxa:updates:getPreferences",
   updatesSetPreferences: "orxa:updates:setPreferences",
   updatesCheckNow: "orxa:updates:checkNow",
@@ -109,16 +107,8 @@ export const IPC = {
   opencodeMemoryGetGraph: "orxa:opencode:memory:getGraph",
   opencodeMemoryBackfill: "orxa:opencode:memory:backfill",
   opencodeMemoryClearWorkspace: "orxa:opencode:memory:clearWorkspace",
-  orxaReadConfig: "orxa:orxa:readConfig",
-  orxaWriteConfig: "orxa:orxa:writeConfig",
-  orxaReadAgentPrompt: "orxa:orxa:readAgentPrompt",
-  orxaListAgents: "orxa:orxa:listAgents",
-  orxaSaveAgent: "orxa:orxa:saveAgent",
-  orxaGetAgentDetails: "orxa:orxa:getAgentDetails",
-  orxaResetAgent: "orxa:orxa:resetAgent",
-  orxaRestoreAgentHistory: "orxa:orxa:restoreAgentHistory",
-  orxaGetServerDiagnostics: "orxa:orxa:getServerDiagnostics",
-  orxaRepairRuntime: "orxa:orxa:repairRuntime",
+  opencodeGetServerDiagnostics: "orxa:opencode:getServerDiagnostics",
+  opencodeRepairRuntime: "orxa:opencode:repairRuntime",
   terminalList: "orxa:terminal:list",
   terminalCreate: "orxa:terminal:create",
   terminalConnect: "orxa:terminal:connect",
@@ -147,8 +137,6 @@ export const IPC = {
   appHttpRequest: "orxa:app:httpRequest",
   events: "orxa:events",
 } as const;
-
-export type AppMode = "orxa" | "standard";
 
 export type UpdateReleaseChannel = "stable" | "prerelease";
 
@@ -635,31 +623,6 @@ export type AgentsDocument = {
   exists: boolean;
 };
 
-export type OrxaAgentDocument = {
-  name: string;
-  mode: "primary" | "subagent" | "all";
-  description?: string;
-  model?: string;
-  prompt?: string;
-  path: string;
-  source: "base" | "override" | "custom";
-};
-
-export type OrxaAgentHistoryDocument = {
-  id: string;
-  path: string;
-  updatedAt: number;
-  model?: string;
-  prompt?: string;
-};
-
-export type OrxaAgentDetails = {
-  current?: OrxaAgentDocument;
-  base?: OrxaAgentDocument;
-  override?: OrxaAgentDocument;
-  history: OrxaAgentHistoryDocument[];
-};
-
 export type ServerDiagnostics = {
   runtime: RuntimeState;
   activeProfile?: RuntimeProfile;
@@ -1015,10 +978,6 @@ export interface OrxaBridge {
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
   };
-  mode: {
-    get: () => Promise<AppMode>;
-    set: (mode: AppMode) => Promise<AppMode>;
-  };
   updates: {
     getPreferences: () => Promise<UpdatePreferences>;
     setPreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
@@ -1115,20 +1074,6 @@ export interface OrxaBridge {
     getMemoryGraph: (input?: MemoryGraphQuery) => Promise<MemoryGraphSnapshot>;
     backfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
     clearWorkspaceMemory: (directory: string) => Promise<boolean>;
-    readOrxaConfig: () => Promise<RawConfigDocument>;
-    writeOrxaConfig: (content: string) => Promise<RawConfigDocument>;
-    readOrxaAgentPrompt: (agent: "orxa" | "plan") => Promise<string | undefined>;
-    listOrxaAgents: () => Promise<OrxaAgentDocument[]>;
-    saveOrxaAgent: (input: {
-      name: string;
-      mode: "primary" | "subagent" | "all";
-      description?: string;
-      model?: string;
-      prompt?: string;
-    }) => Promise<OrxaAgentDocument>;
-    getOrxaAgentDetails: (name: string) => Promise<OrxaAgentDetails>;
-    resetOrxaAgent: (name: string) => Promise<OrxaAgentDocument | undefined>;
-    restoreOrxaAgentHistory: (name: string, historyID: string) => Promise<OrxaAgentDocument | undefined>;
     getServerDiagnostics: () => Promise<ServerDiagnostics>;
     repairRuntime: () => Promise<ServerDiagnostics>;
   };

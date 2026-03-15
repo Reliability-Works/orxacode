@@ -11,7 +11,6 @@ import {
   type BrowserBounds,
   type BrowserLocator,
   IPC,
-  type AppMode,
   type GitCommitRequest,
   type MemoryGraphQuery,
   type MemorySettingsUpdateInput,
@@ -23,8 +22,6 @@ import {
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { BrowserController } from "./services/browser-controller";
-import { shouldRunOrxaBootstrap } from "./services/app-mode";
-import { ModeStore } from "./services/mode-store";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
@@ -37,7 +34,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const service = new OpencodeService();
-const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
@@ -82,13 +78,6 @@ function assertOpenDirectoryTarget(value: unknown): OpenDirectoryTarget {
     throw new Error("Invalid open target");
   }
   return value as OpenDirectoryTarget;
-}
-
-function assertAppMode(value: unknown): AppMode {
-  if (value !== "orxa" && value !== "standard") {
-    throw new Error("Invalid app mode");
-  }
-  return value;
 }
 
 function assertUpdatePreferencesInput(input: unknown): Partial<UpdatePreferences> {
@@ -935,22 +924,6 @@ function inferMimeFromPath(filePath: string) {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle(IPC.modeGet, async () => modeStore.getMode());
-  ipcMain.handle(IPC.modeSet, async (_event, modeInput: unknown) => {
-    const mode = assertAppMode(modeInput);
-    const currentMode = modeStore.getMode();
-    if (mode === currentMode) {
-      return currentMode;
-    }
-    if (mode === "orxa") {
-      await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
-      await service.ensureOrxaPluginRegistration();
-      return modeStore.setMode(mode);
-    }
-    startupBootstrap.clear();
-    await service.removeOrxaPluginFromConfig();
-    return modeStore.setMode(mode);
-  });
   ipcMain.handle(IPC.appOpenExternal, async (_event, url: unknown) => {
     await shell.openExternal(assertExternalUrl(url));
     return true;
@@ -1422,44 +1395,8 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.opencodeMemoryClearWorkspace, async (_event, directory: unknown) =>
     service.clearWorkspaceMemory(assertString(directory, "directory")),
   );
-  ipcMain.handle(IPC.orxaReadConfig, async () => service.readOrxaConfig());
-  ipcMain.handle(IPC.orxaWriteConfig, async (_event, content: unknown) => service.writeOrxaConfig(assertString(content, "content")));
-  ipcMain.handle(IPC.orxaReadAgentPrompt, async (_event, agent: unknown) => {
-    if (agent !== "orxa" && agent !== "plan") {
-      throw new Error("Invalid Orxa agent");
-    }
-    return service.readOrxaAgentPrompt(agent);
-  });
-  ipcMain.handle(IPC.orxaListAgents, async () => service.listOrxaAgents());
-  ipcMain.handle(IPC.orxaSaveAgent, async (_event, input: unknown) => {
-    if (!input || typeof input !== "object") {
-      throw new Error("Agent input is required");
-    }
-    const payload = input as {
-      name?: unknown;
-      mode?: unknown;
-      description?: unknown;
-      model?: unknown;
-      prompt?: unknown;
-    };
-    if (payload.mode !== "primary" && payload.mode !== "subagent" && payload.mode !== "all") {
-      throw new Error("Invalid agent mode");
-    }
-    return service.saveOrxaAgent({
-      name: assertString(payload.name, "name"),
-      mode: payload.mode,
-      description: typeof payload.description === "string" ? payload.description : undefined,
-      model: typeof payload.model === "string" ? payload.model : undefined,
-      prompt: typeof payload.prompt === "string" ? payload.prompt : undefined,
-    });
-  });
-  ipcMain.handle(IPC.orxaGetAgentDetails, async (_event, name: unknown) => service.getOrxaAgentDetails(assertString(name, "name")));
-  ipcMain.handle(IPC.orxaResetAgent, async (_event, name: unknown) => service.resetOrxaAgent(assertString(name, "name")));
-  ipcMain.handle(IPC.orxaRestoreAgentHistory, async (_event, name: unknown, historyID: unknown) =>
-    service.restoreOrxaAgentHistory(assertString(name, "name"), assertString(historyID, "historyID")),
-  );
-  ipcMain.handle(IPC.orxaGetServerDiagnostics, async () => service.getServerDiagnostics());
-  ipcMain.handle(IPC.orxaRepairRuntime, async () => service.repairRuntime(resolveOrxaTemplateDir()));
+  ipcMain.handle(IPC.opencodeGetServerDiagnostics, async () => service.getServerDiagnostics());
+  ipcMain.handle(IPC.opencodeRepairRuntime, async () => service.repairRuntime(resolveOrxaTemplateDir()));
 
   ipcMain.handle(IPC.terminalList, async (_event, directory: unknown) => service.listPtys(assertString(directory, "directory")));
   ipcMain.handle(IPC.terminalCreate, async (_event, directory: unknown, cwd?: unknown, title?: unknown) =>
@@ -1695,18 +1632,6 @@ async function boot() {
       }),
   );
   setupApplicationMenu();
-
-  const startupMode = modeStore.getMode();
-  if (shouldRunOrxaBootstrap(startupMode)) {
-    void startupBootstrap
-      .start(async () => {
-        await service.ensureOrxaWorkspace(resolveOrxaTemplateDir());
-        await service.ensureOrxaPluginRegistration();
-      })
-      .catch((error) => {
-        console.error("Failed to initialize Orxa workspace/plugin:", error);
-      });
-  }
 
   void service.initializeFromStoredProfile().then((runtime) => {
     if (runtime.status === "error" && runtime.lastError) {

@@ -1,6 +1,6 @@
 import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
 import { ChevronDown, ChevronRight, LayoutDashboard, LayoutGrid, CirclePlay, Zap, Brain, Search } from "lucide-react";
-import type { AppMode, ProjectListItem } from "@shared/ipc";
+import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
 import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
@@ -18,8 +18,6 @@ type SessionListItem = {
 };
 
 export type WorkspaceSidebarProps = {
-  appMode: AppMode;
-  setAppMode: Dispatch<SetStateAction<AppMode>>;
   sidebarMode: SidebarMode;
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
@@ -57,8 +55,6 @@ export type WorkspaceSidebarProps = {
 };
 
 export function WorkspaceSidebar({
-  appMode,
-  setAppMode,
   sidebarMode,
   setSidebarMode,
   unreadJobRunsCount,
@@ -393,15 +389,6 @@ export function WorkspaceSidebar({
 
         {/* Footer */}
         <div className="sidebar-footer-actions">
-          <IconButton
-            icon={appMode === "orxa" ? "orxa" : "standard"}
-            label={appMode === "orxa" ? "Orxa Mode (click to switch to Standard)" : "Standard Mode (click to switch to Orxa)"}
-            onClick={() => {
-              const nextMode = appMode === "orxa" ? "standard" : "orxa";
-              void window.orxa.mode.set(nextMode);
-              setAppMode(nextMode);
-            }}
-          />
           <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
           <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
           <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />

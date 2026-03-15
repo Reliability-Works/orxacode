@@ -8,8 +8,6 @@ afterEach(() => {
 
 function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSidebarProps {
   return {
-    appMode: "standard",
-    setAppMode: vi.fn(),
     sidebarMode: "projects",
     setSidebarMode: vi.fn(),
     unreadJobRunsCount: 0,
