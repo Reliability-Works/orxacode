@@ -47,19 +47,10 @@ describe("NewSessionPicker", () => {
     expect(onPick).toHaveBeenCalledWith("claude");
   });
 
-  it("codex option is disabled and does not call onPick", () => {
+  it("clicking codex calls onPick with 'codex'", () => {
     const { onPick } = renderPicker();
-    const codexButton = screen.getByText("codex session").closest("button");
-    expect(codexButton).toBeDisabled();
-    if (codexButton) {
-      fireEvent.click(codexButton);
-    }
-    expect(onPick).not.toHaveBeenCalledWith("codex");
-  });
-
-  it("codex option shows coming soon badge", () => {
-    renderPicker();
-    expect(screen.getByText("coming soon")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("codex session"));
+    expect(onPick).toHaveBeenCalledWith("codex");
   });
 
   it("escape key calls onClose", () => {

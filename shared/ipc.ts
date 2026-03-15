@@ -135,6 +135,14 @@ export const IPC = {
   appOpenFile: "orxa:app:openFile",
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
+  codexStart: "orxa:codex:start",
+  codexStop: "orxa:codex:stop",
+  codexGetState: "orxa:codex:getState",
+  codexStartThread: "orxa:codex:startThread",
+  codexListThreads: "orxa:codex:listThreads",
+  codexStartTurn: "orxa:codex:startTurn",
+  codexApprove: "orxa:codex:approve",
+  codexDeny: "orxa:codex:deny",
   events: "orxa:events",
 } as const;
 
@@ -930,7 +938,59 @@ export type OrxaEvent =
   | {
       type: "mcp.devtools.status";
       payload: McpDevToolsServerStatus;
+    }
+  | {
+      type: "codex.state";
+      payload: CodexState;
+    }
+  | {
+      type: "codex.notification";
+      payload: CodexNotification;
+    }
+  | {
+      type: "codex.approval";
+      payload: CodexApprovalRequest;
     };
+
+export type CodexConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
+
+export type CodexState = {
+  status: CodexConnectionStatus;
+  serverInfo?: { name: string; version: string };
+  lastError?: string;
+};
+
+export type CodexThread = {
+  id: string;
+  preview: string;
+  modelProvider: string;
+  createdAt: number;
+  status?: { type: string };
+  ephemeral?: boolean;
+};
+
+export type CodexNotification = {
+  method: string;
+  params: Record<string, unknown>;
+};
+
+export type CodexApprovalRequest = {
+  id: number;
+  method: string;
+  itemId: string;
+  threadId: string;
+  turnId: string;
+  reason: string;
+  command?: string[];
+  commandActions?: string[];
+  availableDecisions: string[];
+  changes?: Array<{
+    path: string;
+    type: string;
+    insertions?: number;
+    deletions?: number;
+  }>;
+};
 
 export type OpenFileOptions = {
   title?: string;
@@ -1098,6 +1158,16 @@ export interface OrxaBridge {
     stop: (directory: string) => Promise<McpDevToolsServerStatus>;
     getStatus: (directory: string) => Promise<McpDevToolsServerStatus>;
     listTools: () => Promise<unknown[]>;
+  };
+  codex: {
+    start: (cwd?: string) => Promise<CodexState>;
+    stop: () => Promise<CodexState>;
+    getState: () => Promise<CodexState>;
+    startThread: (options?: { model?: string; cwd?: string; title?: string }) => Promise<CodexThread>;
+    listThreads: (options?: { cursor?: string | null; limit?: number; archived?: boolean }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>;
+    startTurn: (threadId: string, prompt: string, cwd?: string) => Promise<void>;
+    approve: (requestId: number, decision: string) => Promise<void>;
+    deny: (requestId: number) => Promise<void>;
   };
   events: {
     subscribe: (listener: (event: OrxaEvent) => void) => () => void;

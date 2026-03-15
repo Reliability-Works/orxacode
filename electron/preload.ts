@@ -141,6 +141,16 @@ const bridge: OrxaBridge = {
     getStatus: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsGetStatus, directory),
     listTools: () => ipcRenderer.invoke(IPC.mcpDevToolsListTools),
   },
+  codex: {
+    start: (cwd) => ipcRenderer.invoke(IPC.codexStart, cwd),
+    stop: () => ipcRenderer.invoke(IPC.codexStop),
+    getState: () => ipcRenderer.invoke(IPC.codexGetState),
+    startThread: (options) => ipcRenderer.invoke(IPC.codexStartThread, options),
+    listThreads: (options) => ipcRenderer.invoke(IPC.codexListThreads, options),
+    startTurn: (threadId, prompt, cwd) => ipcRenderer.invoke(IPC.codexStartTurn, threadId, prompt, cwd),
+    approve: (requestId, decision) => ipcRenderer.invoke(IPC.codexApprove, requestId, decision),
+    deny: (requestId) => ipcRenderer.invoke(IPC.codexDeny, requestId),
+  },
   events: {
     subscribe: (listener) => eventHub.subscribe(listener),
   },

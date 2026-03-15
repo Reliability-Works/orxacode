@@ -21,6 +21,7 @@ import {
   type RuntimeProfileInput,
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
+import { CodexService } from "./services/codex-service";
 import { BrowserController } from "./services/browser-controller";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
@@ -34,6 +35,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const service = new OpencodeService();
+const codexService = new CodexService();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
@@ -1535,6 +1537,60 @@ function registerIpcHandlers() {
     assertBrowserSender(event);
     // Tools are now managed by the SDK and automatically available to the agent.
     return [];
+  });
+
+  // ── Codex App Server ──────────────────────────────────────────────────
+
+  codexService.on("state", (payload: unknown) => {
+    publishEvent({ type: "codex.state", payload } as OrxaEvent);
+  });
+
+  codexService.on("notification", (payload: unknown) => {
+    publishEvent({ type: "codex.notification", payload } as OrxaEvent);
+  });
+
+  codexService.on("approval", (payload: unknown) => {
+    publishEvent({ type: "codex.approval", payload } as OrxaEvent);
+  });
+
+  ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown) => {
+    return codexService.start(typeof cwd === "string" ? cwd : undefined);
+  });
+
+  ipcMain.handle(IPC.codexStop, async () => {
+    return codexService.stop();
+  });
+
+  ipcMain.handle(IPC.codexGetState, async () => {
+    return codexService.state;
+  });
+
+  ipcMain.handle(IPC.codexStartThread, async (_event, options?: unknown) => {
+    const opts = (options ?? {}) as { model?: string; cwd?: string; title?: string };
+    return codexService.startThread(opts);
+  });
+
+  ipcMain.handle(IPC.codexListThreads, async (_event, options?: unknown) => {
+    const opts = (options ?? {}) as { cursor?: string | null; limit?: number; archived?: boolean };
+    return codexService.listThreads(opts);
+  });
+
+  ipcMain.handle(IPC.codexStartTurn, async (_event, threadId: unknown, prompt: unknown, cwd?: unknown) => {
+    return codexService.startTurn({
+      threadId: assertString(threadId, "threadId"),
+      prompt: assertString(prompt, "prompt"),
+      cwd: typeof cwd === "string" ? cwd : undefined,
+    });
+  });
+
+  ipcMain.handle(IPC.codexApprove, async (_event, requestId: unknown, decision: unknown) => {
+    if (typeof requestId !== "number") throw new Error("requestId must be a number");
+    return codexService.respondToApproval(requestId, assertString(decision, "decision"));
+  });
+
+  ipcMain.handle(IPC.codexDeny, async (_event, requestId: unknown) => {
+    if (typeof requestId !== "number") throw new Error("requestId must be a number");
+    return codexService.respondToApproval(requestId, "decline");
   });
 }
 

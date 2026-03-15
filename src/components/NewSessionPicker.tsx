@@ -85,19 +85,15 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
       </button>
       <button
         type="button"
-        className="new-session-picker-option new-session-picker-option--disabled"
+        className="new-session-picker-option"
         role="menuitem"
-        aria-disabled="true"
-        disabled
+        onClick={() => onPick("codex")}
       >
         <span className="new-session-picker-icon new-session-picker-icon--codex" aria-hidden="true">
           <Zap size={14} />
         </span>
         <span className="new-session-picker-text">
-          <span className="new-session-picker-title">
-            codex session
-            <span className="new-session-picker-coming-soon">coming soon</span>
-          </span>
+          <span className="new-session-picker-title">codex session</span>
           <span className="new-session-picker-subtitle">// openai codex app server</span>
         </span>
       </button>

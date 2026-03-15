@@ -41,6 +41,7 @@ import type {
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
 import { ClaudeTerminalPane } from "./components/ClaudeTerminalPane";
+import { CodexPane } from "./components/CodexPane";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
@@ -2465,7 +2466,11 @@ export default function App() {
 
   const createSession = useCallback(
     async (directory?: string, sessionTypeOrPrompt?: SessionType | string) => {
-      const isSessionType = sessionTypeOrPrompt === "standalone" || sessionTypeOrPrompt === "canvas";
+      const isSessionType =
+        sessionTypeOrPrompt === "standalone" ||
+        sessionTypeOrPrompt === "canvas" ||
+        sessionTypeOrPrompt === "claude" ||
+        sessionTypeOrPrompt === "codex";
       const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : "standalone";
       const initialPrompt = isSessionType ? undefined : sessionTypeOrPrompt;
 
@@ -2476,8 +2481,8 @@ export default function App() {
         serverAgentNames,
       });
 
-      if (sessionType === "canvas" && createdSessionId) {
-        setSessionTypes((prev) => ({ ...prev, [createdSessionId]: "canvas" }));
+      if (sessionType !== "standalone" && createdSessionId) {
+        setSessionTypes((prev) => ({ ...prev, [createdSessionId]: sessionType }));
       }
     },
     [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes],
@@ -3940,6 +3945,8 @@ export default function App() {
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
               ) : !showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
                 <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} />
+              ) : !showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "codex" ? (
+                <CodexPane directory={activeProjectDir} onExit={openWorkspaceDashboard} />
               ) : !showingProjectDashboard ? (
                 <>
                   <MessageFeed
@@ -4096,7 +4103,7 @@ export default function App() {
                   onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
                 />
               )}
-              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "claude")) && (
+              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "claude" || sessionTypes[activeSessionID] === "codex")) && (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}
