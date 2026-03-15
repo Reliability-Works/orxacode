@@ -1,4 +1,5 @@
-import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
+import type { ChangeProvenanceRecord, GitBranchState, McpDevToolsServerState } from "@shared/ipc";
+import { McpStatusIndicator } from "./McpStatusIndicator";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import {
@@ -528,6 +529,7 @@ export type GitSidebarProps = {
   onBrowserTakeControl: () => Promise<void> | void;
   onBrowserHandBack: () => Promise<void> | void;
   onBrowserStop: () => Promise<void> | void;
+  mcpDevToolsState?: McpDevToolsServerState;
 };
 
 export function GitSidebar(props: GitSidebarProps) {
@@ -566,6 +568,7 @@ export function GitSidebar(props: GitSidebarProps) {
     onBrowserTakeControl,
     onBrowserHandBack,
     onBrowserStop,
+    mcpDevToolsState,
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
@@ -1194,6 +1197,7 @@ export function GitSidebar(props: GitSidebarProps) {
         <span className={`browser-owner-chip owner-${browserState.controlOwner}`.trim()}>
           {browserState.controlOwner === "human" ? "human" : "agent"}
         </span>
+        {mcpDevToolsState ? <McpStatusIndicator state={mcpDevToolsState} /> : null}
         <div className="browser-control-actions">
           <button
             type="button"

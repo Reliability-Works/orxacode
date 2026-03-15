@@ -37,6 +37,7 @@ import type {
   OrxaEvent,
   WorkspaceArtifactSummary,
   WorkspaceContextFile,
+  McpDevToolsServerState,
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
@@ -984,6 +985,7 @@ export default function App() {
   const [browserRuntimeState, setBrowserRuntimeState] = useState<BrowserState>(EMPTY_BROWSER_RUNTIME_STATE);
   const [browserHistoryItems, setBrowserHistoryItems] = useState<BrowserHistoryItem[]>([]);
   const [browserActionRunning, setBrowserActionRunning] = useState(false);
+  const [mcpDevToolsState, setMcpDevToolsState] = useState<McpDevToolsServerState>("stopped");
   const [artifactsDrawerOpen, setArtifactsDrawerOpen] = useState(false);
   const [artifactsDrawerTab, setArtifactsDrawerTab] = useState<ArtifactScopeTab>("session");
   const [sessionArtifacts, setSessionArtifacts] = useState<ArtifactRecord[]>([]);
@@ -1437,6 +1439,11 @@ export default function App() {
     }));
     if (!enabled) {
       setBrowserActionRunning(false);
+      // Stop MCP DevTools server when browser mode is turned off
+      window.orxa.mcpDevTools.stop().then(
+        (status) => setMcpDevToolsState(status.state),
+        () => setMcpDevToolsState("stopped"),
+      );
       return;
     }
     try {
@@ -1445,6 +1452,14 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
+    // Start MCP DevTools server when browser mode is turned on
+    window.orxa.mcpDevTools.start().then(
+      (status) => setMcpDevToolsState(status.state),
+      (err) => {
+        console.error("Failed to start MCP DevTools server:", err);
+        setMcpDevToolsState("error");
+      },
+    );
   }, [activeSessionKey, ensureBrowserTab, setBrowserModeBySession, syncBrowserSnapshot]);
 
   const setContextModeForSession = useCallback((enabled: boolean) => {
@@ -2092,6 +2107,10 @@ export default function App() {
 
       if (event.type === "browser.state") {
         setBrowserRuntimeState(event.payload);
+      }
+
+      if (event.type === "mcp.devtools.status") {
+        setMcpDevToolsState(event.payload.state);
       }
 
       if (event.type === "browser.history.added") {
@@ -3973,7 +3992,7 @@ export default function App() {
           ) : activeProjectDir ? (
             <>
               {!showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
-                <CanvasPane canvasState={canvasState} directory={activeProjectDir} />
+                <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
               ) : !showingProjectDashboard ? (
                 <>
                   <MessageFeed
@@ -4223,6 +4242,7 @@ export default function App() {
               onBrowserTakeControl={browserTakeControl}
               onBrowserHandBack={browserHandBack}
               onBrowserStop={browserStop}
+              mcpDevToolsState={mcpDevToolsState}
             />
           </div>
         ) : null}

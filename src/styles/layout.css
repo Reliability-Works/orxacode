@@ -3187,6 +3187,50 @@ body.is-resizing * {
   }
 }
 
+/* ── MCP Status Indicator ──────────────────────────────────────────── */
+
+.mcp-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.mcp-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mcp-dot-stopped {
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+.mcp-dot-starting {
+  background: #FBBF24;
+  animation: mcp-pulse 1.2s ease-in-out infinite;
+}
+
+.mcp-dot-running {
+  background: #6EE7A0;
+}
+
+.mcp-dot-error {
+  background: #F87171;
+}
+
+@keyframes mcp-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 .git-files-panel {
   margin-top: 0;
   min-height: 0;

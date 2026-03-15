@@ -23,11 +23,16 @@ import {
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { BrowserController } from "./services/browser-controller";
+import { McpDevToolsServer } from "./services/mcp-devtools-server";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
+
+// Enable CDP remote debugging on a random available port so that
+// chrome-devtools-mcp can connect to our Electron browser views.
+app.commandLine.appendSwitch("remote-debugging-port", "0");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,6 +42,8 @@ const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
+let mcpDevToolsServer: McpDevToolsServer | null = null;
+let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
 const PTY_OUTPUT_FLUSH_MS = 16;
 const SMOKE_TEST_FLAG = "--smoke-test";
@@ -592,6 +599,52 @@ function assertBrowserSender(event: IpcMainInvokeEvent) {
   if (event.sender.id !== mainWindow.webContents.id) {
     throw new Error("Unauthorized browser IPC sender");
   }
+}
+
+async function resolveCdpPort(): Promise<number> {
+  if (resolvedCdpPort !== null) {
+    return resolvedCdpPort;
+  }
+  // Discover the actual CDP port assigned by Electron.
+  // When --remote-debugging-port=0 is used, Electron picks a random port.
+  // We discover it via the webContents debugger or by probing known ports.
+  try {
+    const win = mainWindow;
+    if (win) {
+      const wc = win.webContents;
+      wc.debugger.attach("1.3");
+      const response = (await wc.debugger.sendCommand("Browser.getVersion")) as { webSocketDebuggerUrl?: string };
+      wc.debugger.detach();
+      if (response.webSocketDebuggerUrl) {
+        const url = new URL(response.webSocketDebuggerUrl);
+        const port = parseInt(url.port, 10);
+        if (port > 0) {
+          resolvedCdpPort = port;
+          return port;
+        }
+      }
+    }
+  } catch {
+    // debugger attach may fail, fall through
+  }
+
+  // Fallback: try a range of ports to find the CDP endpoint
+  for (const port of [9222, 9223, 9224, 9225, 9226, 9227, 9228, 9229, 9230]) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 500);
+      const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        resolvedCdpPort = port;
+        return port;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error("Could not resolve CDP debugging port. Ensure the app is running with remote debugging enabled.");
 }
 
 function requireBrowserController(): BrowserController {
@@ -1511,6 +1564,43 @@ function registerIpcHandlers() {
     assertBrowserSender(event);
     return requireBrowserController().performAgentAction(assertBrowserAgentActionRequest(request));
   });
+
+  // ── MCP DevTools Server ──────────────────────────────────────────────
+  ipcMain.handle(IPC.mcpDevToolsStart, async (event) => {
+    assertBrowserSender(event);
+    const cdpPort = await resolveCdpPort();
+    if (!mcpDevToolsServer) {
+      mcpDevToolsServer = new McpDevToolsServer({
+        onStateChange: (status) =>
+          publishEvent({ type: "mcp.devtools.status", payload: status }),
+      });
+    }
+    return mcpDevToolsServer.start(cdpPort);
+  });
+
+  ipcMain.handle(IPC.mcpDevToolsStop, async (event) => {
+    assertBrowserSender(event);
+    if (!mcpDevToolsServer) {
+      return { state: "stopped" as const };
+    }
+    return mcpDevToolsServer.stop();
+  });
+
+  ipcMain.handle(IPC.mcpDevToolsGetStatus, async (event) => {
+    assertBrowserSender(event);
+    if (!mcpDevToolsServer) {
+      return { state: "stopped" as const };
+    }
+    return mcpDevToolsServer.getStatus();
+  });
+
+  ipcMain.handle(IPC.mcpDevToolsListTools, async (event) => {
+    assertBrowserSender(event);
+    if (!mcpDevToolsServer) {
+      return [];
+    }
+    return mcpDevToolsServer.listTools();
+  });
 }
 
 function flushBufferedPtyOutput(key: string) {
@@ -1634,6 +1724,8 @@ async function boot() {
 
   app.on("before-quit", () => {
     autoUpdaterController?.cleanup();
+    void mcpDevToolsServer?.stop();
+    mcpDevToolsServer = null;
     browserController?.dispose();
     browserController = null;
     flushAllPtyOutput();

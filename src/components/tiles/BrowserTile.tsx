@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Globe, Lock, RefreshCw } from "lucide-react";
 import type { CanvasTile, CanvasTheme } from "../../types/canvas";
+import type { McpDevToolsServerState } from "@shared/ipc";
 import { CanvasTileComponent } from "../CanvasTile";
+import { McpStatusIndicator } from "../McpStatusIndicator";
 
 interface BrowserTileProps {
   tile: CanvasTile;
@@ -12,6 +14,7 @@ interface BrowserTileProps {
   snapToGrid?: boolean;
   gridSize?: number;
   allTiles?: CanvasTile[];
+  mcpDevToolsState?: McpDevToolsServerState;
 }
 
 const DEFAULT_URL = "about:blank";
@@ -43,6 +46,7 @@ export function BrowserTile({
   snapToGrid,
   gridSize,
   allTiles,
+  mcpDevToolsState,
 }: BrowserTileProps) {
   const currentUrl =
     typeof tile.meta.url === "string" ? tile.meta.url : DEFAULT_URL;
@@ -194,6 +198,7 @@ export function BrowserTile({
           >
             <RefreshCw size={11} />
           </button>
+          {mcpDevToolsState ? <McpStatusIndicator state={mcpDevToolsState} /> : null}
         </div>
         <div className="browser-tile-frame-wrapper">
           <webview

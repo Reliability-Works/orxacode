@@ -138,6 +138,10 @@ export const IPC = {
   browserListHistory: "orxa:browser:listHistory",
   browserClearHistory: "orxa:browser:clearHistory",
   browserPerformAgentAction: "orxa:browser:performAgentAction",
+  mcpDevToolsStart: "orxa:mcp:devtools:start",
+  mcpDevToolsStop: "orxa:mcp:devtools:stop",
+  mcpDevToolsGetStatus: "orxa:mcp:devtools:getStatus",
+  mcpDevToolsListTools: "orxa:mcp:devtools:listTools",
   appOpenFile: "orxa:app:openFile",
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
@@ -694,6 +698,14 @@ export type TerminalConnectResult = {
   connected: boolean;
 };
 
+export type McpDevToolsServerState = "stopped" | "starting" | "running" | "error";
+
+export type McpDevToolsServerStatus = {
+  state: McpDevToolsServerState;
+  cdpPort?: number;
+  error?: string;
+};
+
 export type BrowserBounds = {
   x: number;
   y: number;
@@ -958,6 +970,10 @@ export type OrxaEvent =
   | {
       type: "context.selection";
       payload: ContextSelectionTrace;
+    }
+  | {
+      type: "mcp.devtools.status";
+      payload: McpDevToolsServerStatus;
     };
 
 export type OpenFileOptions = {
@@ -1138,6 +1154,12 @@ export interface OrxaBridge {
     listHistory: (limit?: number) => Promise<BrowserHistoryItem[]>;
     clearHistory: () => Promise<BrowserHistoryItem[]>;
     performAgentAction: (request: BrowserAgentActionRequest) => Promise<BrowserAgentActionResult>;
+  };
+  mcpDevTools: {
+    start: () => Promise<McpDevToolsServerStatus>;
+    stop: () => Promise<McpDevToolsServerStatus>;
+    getStatus: () => Promise<McpDevToolsServerStatus>;
+    listTools: () => Promise<unknown[]>;
   };
   events: {
     subscribe: (listener: (event: OrxaEvent) => void) => () => void;

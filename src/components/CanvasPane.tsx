@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import type { McpDevToolsServerState } from "@shared/ipc";
 import type { CanvasTile, CanvasSessionState } from "../types/canvas";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { CanvasTileComponent } from "./CanvasTile";
@@ -45,9 +46,10 @@ type CanvasPaneProps = {
   canvasState: CanvasPaneCanvasState;
   directory?: string;
   onTheme?: () => void;
+  mcpDevToolsState?: McpDevToolsServerState;
 };
 
-export function CanvasPane({ canvasState, directory = "", onTheme }: CanvasPaneProps) {
+export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsState }: CanvasPaneProps) {
   const handleAddTile = useCallback(
     (type: CanvasTile["type"]) => {
       const dims = TILE_DIMENSIONS[type];
@@ -152,6 +154,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme }: CanvasPaneP
                 snapToGrid={canvasState.snapToGrid}
                 gridSize={canvasState.gridSize}
                 allTiles={canvasState.tiles}
+                mcpDevToolsState={mcpDevToolsState}
               />
             );
           }
