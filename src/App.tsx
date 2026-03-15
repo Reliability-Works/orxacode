@@ -1155,17 +1155,17 @@ export default function App() {
   }, [projectData?.commands]);
 
   const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
-  // Fetch Orxa agent list (same source as settings agents section)
-  const [orxaAgentsList, setOrxaAgentsList] = useState<Array<{ name: string; mode: string; description?: string }>>([]);
+  // Fetch OpenCode agent files from ~/.config/opencode/agents
+  const [opencodeAgentFiles, setOpencodeAgentFiles] = useState<Array<{ name: string; mode: string; description?: string }>>([]);
   useEffect(() => {
-    void window.orxa.opencode.listOrxaAgents()
-      .then((agents) => setOrxaAgentsList(agents.map((a) => ({ name: a.name, mode: a.mode, description: a.description }))))
+    void window.orxa.opencode.listAgentFiles()
+      .then((files) => setOpencodeAgentFiles(files.map((f) => ({ name: f.name, mode: f.mode, description: f.description }))))
       .catch(() => {});
   }, [activeProjectDir, projectData?.agents]);
 
   const composerAgentOptions = useMemo(() => {
-    // Use only Orxa agents (not SDK internal agents like compaction/summary/title)
-    return orxaAgentsList
+    // Use OpenCode agent files (from ~/.config/opencode/agents), filter to primary/all
+    return opencodeAgentFiles
       .filter((agent) => {
         const mode = agent.mode as string;
         return mode === "primary" || mode === "all";
@@ -1176,7 +1176,7 @@ export default function App() {
         description: agent.description,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [orxaAgentsList]);
+  }, [opencodeAgentFiles]);
   const serverModelOptions = useMemo(
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],

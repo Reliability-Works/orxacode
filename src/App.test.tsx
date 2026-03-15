@@ -165,6 +165,10 @@ beforeEach(() => {
             installed: false,
           },
         })),
+        listAgentFiles: vi.fn(async () => []),
+        readAgentFile: vi.fn(async () => ({ filename: "test.md", name: "test", mode: "primary", model: "", content: "", path: "" })),
+        writeAgentFile: vi.fn(async () => true),
+        deleteAgentFile: vi.fn(async () => true),
       },
       terminal: {
         list: vi.fn(async () => []),
