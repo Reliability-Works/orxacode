@@ -1653,4 +1653,89 @@ describe("MessageFeed", () => {
 
     expect(screen.getByText("Assistant")).toBeInTheDocument();
   });
+
+  it("auto-scrolls to bottom when user is at bottom and new messages arrive", async () => {
+    const now = Date.now();
+    const makeMessage = (id: string, text: string): SessionMessageBundle => ({
+      info: ({
+        id,
+        role: "assistant",
+        sessionID: "session-scroll",
+        time: { created: now, updated: now },
+      } as unknown) as SessionMessageBundle["info"],
+      parts: [
+        {
+          id: `${id}-part`,
+          type: "text",
+          sessionID: "session-scroll",
+          messageID: id,
+          text,
+        },
+      ] as SessionMessageBundle["parts"],
+    });
+
+    const initialMessages = [makeMessage("msg-1", "Hello")];
+    const { rerender } = render(<MessageFeed messages={initialMessages} />);
+
+    const scrollEl = document.querySelector(".messages-scroll") as HTMLElement;
+    expect(scrollEl).toBeTruthy();
+
+    // Simulate user being at the bottom (jsdom starts at scrollTop=0, scrollHeight=0)
+    Object.defineProperty(scrollEl, "scrollHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scrollEl, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollEl, "scrollTop", { configurable: true, writable: true, value: 100 });
+
+    const updatedMessages = [...initialMessages, makeMessage("msg-2", "New message")];
+    rerender(<MessageFeed messages={updatedMessages} />);
+
+    await waitFor(() => {
+      // scrollTop should have been set to scrollHeight (500)
+      expect(scrollEl.scrollTop).toBe(500);
+    });
+  });
+
+  it("does not auto-scroll when user has scrolled up", async () => {
+    const now = Date.now();
+    const makeMessage = (id: string, text: string): SessionMessageBundle => ({
+      info: ({
+        id,
+        role: "assistant",
+        sessionID: "session-scroll-up",
+        time: { created: now, updated: now },
+      } as unknown) as SessionMessageBundle["info"],
+      parts: [
+        {
+          id: `${id}-part`,
+          type: "text",
+          sessionID: "session-scroll-up",
+          messageID: id,
+          text,
+        },
+      ] as SessionMessageBundle["parts"],
+    });
+
+    const initialMessages = [makeMessage("msg-a", "First message")];
+    const { rerender } = render(<MessageFeed messages={initialMessages} />);
+
+    const scrollEl = document.querySelector(".messages-scroll") as HTMLElement;
+    expect(scrollEl).toBeTruthy();
+
+    Object.defineProperty(scrollEl, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scrollEl, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollEl, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    // Simulate user scrolling up — fire a scroll event so the handler marks isAtBottom as false
+    fireEvent.scroll(scrollEl);
+
+    // Record the scrollTop before the rerender
+    const scrollTopBefore = scrollEl.scrollTop;
+
+    const updatedMessages = [...initialMessages, makeMessage("msg-b", "Another message")];
+    rerender(<MessageFeed messages={updatedMessages} />);
+
+    await waitFor(() => {
+      // scrollTop should NOT have changed because user scrolled up
+      expect(scrollEl.scrollTop).toBe(scrollTopBefore);
+    });
+  });
 });

@@ -1805,6 +1805,7 @@ export function MessageFeed({
   bottomClearance = 24,
 }: Props) {
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
+  const isAtBottomRef = useRef(true);
   const [selectedDelegationId, setSelectedDelegationId] = useState<string | null>(null);
   const [thinkingDots, setThinkingDots] = useState(3);
   const [delegationSessionEvents, setDelegationSessionEvents] = useState<InternalEvent[]>([]);
@@ -2060,6 +2061,34 @@ export function MessageFeed({
       window.clearInterval(timer);
     };
   }, [showAssistantPlaceholder]);
+
+  // Track whether the user is scrolled to (or near) the bottom of the feed.
+  useEffect(() => {
+    const el = messageFeedRef.current;
+    if (!el) {
+      return;
+    }
+    const handleScroll = () => {
+      isAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  // Auto-scroll to bottom when new messages arrive, but only when the user is
+  // already at (or near) the bottom. If they have scrolled up, leave them there.
+  useEffect(() => {
+    if (!isAtBottomRef.current) {
+      return;
+    }
+    const el = messageFeedRef.current;
+    if (!el) {
+      return;
+    }
+    el.scrollTop = el.scrollHeight;
+  }, [messages]);
 
   return (
     <div ref={messageFeedRef} className="messages-scroll" style={messageFeedStyle}>

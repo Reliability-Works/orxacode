@@ -296,6 +296,15 @@ export class BrowserController {
       width: Math.max(0, Math.floor(bounds.width)),
       height: Math.max(0, Math.floor(bounds.height)),
     };
+
+    // Safety guard: reject bounds that would expand the browser pane to fill the
+    // full window (x=0 with a non-trivial width). The browser panel is always
+    // inset from the left edge of the window, so x=0 combined with a large width
+    // indicates stale/erroneous bounds from before the sidebar was positioned.
+    if (nextBounds.x === 0 && nextBounds.width > 0) {
+      return this.getState();
+    }
+
     if (
       this.bounds.x === nextBounds.x &&
       this.bounds.y === nextBounds.y &&
@@ -306,7 +315,14 @@ export class BrowserController {
     }
     this.bounds = nextBounds;
 
-    this.applyBoundsToActiveView();
+    // If the controller is visible but the view was previously held back because
+    // bounds were invalid (x=0 / zero-sized), now that we have valid bounds we
+    // need to attach+position the view, not just update its rect.
+    if (this.visible) {
+      this.attachActiveView();
+    } else {
+      this.applyBoundsToActiveView();
+    }
     this.emitState();
     return this.getState();
   }
@@ -941,6 +957,18 @@ export class BrowserController {
 
   private attachActiveView() {
     if (!this.visible || !this.activeTabID) {
+      this.detachCurrentView();
+      return;
+    }
+
+    // Guard: if bounds are zero-sized or indicate full-window coverage (x=0 with
+    // any width), the bounds are stale. Keep the view detached until valid bounds
+    // are delivered via setBounds().
+    const boundsAreValid =
+      this.bounds.width > 0 &&
+      this.bounds.height > 0 &&
+      this.bounds.x > 0;
+    if (!boundsAreValid) {
       this.detachCurrentView();
       return;
     }

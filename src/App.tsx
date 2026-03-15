@@ -1795,6 +1795,14 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (browserPaneVisible) {
+      // Zero out stale bounds before making the view visible so the
+      // ResizeObserver's next report delivers fresh, accurate coordinates.
+      // The browser-controller will keep the view detached until setBounds()
+      // provides valid (x > 0) bounds.
+      lastBrowserBoundsRef.current = null;
+      void window.orxa.browser.setBounds({ x: 0, y: 0, width: 0, height: 0 }).catch(() => undefined);
+    }
     void window.orxa.browser.setVisible(browserPaneVisible)
       .then((nextState) => {
         setBrowserRuntimeState(nextState);

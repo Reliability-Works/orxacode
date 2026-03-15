@@ -263,8 +263,10 @@ describe("BrowserController", () => {
     await setup.controller.openTab("https://example.org");
     expect(setup.addChildViewSpy).not.toHaveBeenCalled();
 
+    // setVisible(true) with zero/invalid bounds should NOT attach the view yet —
+    // it waits for valid bounds via setBounds() to avoid full-window coverage.
     setup.controller.setVisible(true);
-    expect(setup.addChildViewSpy).toHaveBeenCalledTimes(1);
+    expect(setup.addChildViewSpy).not.toHaveBeenCalled();
 
     let state = setup.controller.getState();
     expect(state.tabs).toHaveLength(2);
@@ -272,7 +274,9 @@ describe("BrowserController", () => {
 
     setup.controller.switchTab("tab-1");
     const bounds: BrowserBounds = { x: 10, y: 20, width: 900, height: 600 };
+    // Once valid bounds arrive (x > 0), the view should be attached.
     setup.controller.setBounds(bounds);
+    expect(setup.addChildViewSpy).toHaveBeenCalledTimes(1);
 
     state = setup.controller.getState();
     expect(state.activeTabID).toBe("tab-1");
