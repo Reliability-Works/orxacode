@@ -1566,13 +1566,24 @@ function registerIpcHandlers() {
   // ── MCP DevTools (SDK-managed) ─────────────────────────────────────
   ipcMain.handle(IPC.mcpDevToolsStart, async (event, directory: string) => {
     assertBrowserSender(event);
-    const cdpPort = await resolveCdpPort();
+    let cdpPort = 0;
     try {
+      cdpPort = await resolveCdpPort();
+    } catch (portError) {
+      const message = `CDP port resolution failed: ${portError instanceof Error ? portError.message : String(portError)}`;
+      console.error("[MCP DevTools]", message);
+      publishEvent({ type: "mcp.devtools.status", payload: { state: "error", cdpPort: 0, error: message } });
+      return { state: "error" as const, cdpPort: 0, error: message };
+    }
+    try {
+      console.log(`[MCP DevTools] Registering with CDP port ${cdpPort} for ${directory}`);
       await service.registerMcpDevTools(directory, cdpPort);
+      console.log("[MCP DevTools] Connected successfully");
       publishEvent({ type: "mcp.devtools.status", payload: { state: "running", cdpPort } });
       return { state: "running" as const, cdpPort };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      console.error("[MCP DevTools] Registration failed:", message);
       publishEvent({ type: "mcp.devtools.status", payload: { state: "error", cdpPort, error: message } });
       return { state: "error" as const, cdpPort, error: message };
     }

@@ -1068,7 +1068,7 @@ export default function App() {
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
-  const browserPaneVisible = showGitPane && rightSidebarTab === "browser";
+  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !debugModalOpen && !settingsOpen;
   const {
     branchState,
     gitPanelTab,
@@ -1454,9 +1454,15 @@ export default function App() {
     }
     // Register and connect MCP DevTools via SDK when browser mode is turned on
     window.orxa.mcpDevTools.start(activeProjectDir).then(
-      (status) => setMcpDevToolsState(status.state),
+      (status) => {
+        if (status.state === "error") {
+          setStatusLine(`MCP DevTools error: ${status.error ?? "unknown"}`);
+        }
+        setMcpDevToolsState(status.state);
+      },
       (err) => {
-        console.error("Failed to start MCP DevTools server:", err);
+        const message = err instanceof Error ? err.message : String(err);
+        setStatusLine(`MCP DevTools failed: ${message}`);
         setMcpDevToolsState("error");
       },
     );
