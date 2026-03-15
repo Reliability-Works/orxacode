@@ -170,6 +170,15 @@
   color: var(--text-secondary);
 }
 
+/* Thinking, live events, and status parts should not have card styling */
+.message-assistant .message-part.thinking-panel,
+.message-assistant .message-part:has(.thinking-events),
+.message-assistant .message-part:has(.message-exploration) {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
 .message-part pre {
   margin: 0;
   white-space: pre-wrap;

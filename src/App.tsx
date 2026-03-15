@@ -1069,7 +1069,8 @@ export default function App() {
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
-  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !debugModalOpen && !settingsOpen;
+  const anyOverlayOpen = debugModalOpen || settingsOpen || profileModalOpen || allSessionsModalOpen || dependencyModalOpen;
+  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !anyOverlayOpen;
   const {
     branchState,
     gitPanelTab,
@@ -3223,6 +3224,14 @@ export default function App() {
     setStatusLine,
   ]);
   const pendingQuestion = useMemo(() => (projectData?.questions ?? [])[0] ?? null, [projectData?.questions]);
+
+  // Hide BrowserView when permission/question modals are open
+  useEffect(() => {
+    if (pendingPermission || pendingQuestion) {
+      void window.orxa.browser.setVisible(false).catch(() => {});
+    }
+  }, [pendingPermission, pendingQuestion]);
+
   const workspaceClassName = [
     "workspace",
     showGitPane ? "" : "workspace-no-ops",
