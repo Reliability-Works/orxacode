@@ -51,8 +51,6 @@ export default defineConfig(({ mode }) => ({
       provider: "v8",
       reporter: ["text", "html"],
       include: [
-        "electron/services/app-mode.ts",
-        "electron/services/plugin-config.ts",
         "electron/services/auto-updater.ts",
         "electron/services/startup-bootstrap.ts",
         "electron/services/ipc-event-hub.ts",

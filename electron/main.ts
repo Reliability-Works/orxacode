@@ -874,12 +874,6 @@ function setupApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate()));
 }
 
-function resolveOrxaTemplateDir() {
-  if (app.isPackaged) {
-    return path.join(process.resourcesPath, "orxa-template");
-  }
-  return path.join(process.cwd(), "assets", "orxa-template");
-}
 
 async function configureMacAppIdentity() {
   if (process.platform !== "darwin") {
@@ -1396,7 +1390,7 @@ function registerIpcHandlers() {
     service.clearWorkspaceMemory(assertString(directory, "directory")),
   );
   ipcMain.handle(IPC.opencodeGetServerDiagnostics, async () => service.getServerDiagnostics());
-  ipcMain.handle(IPC.opencodeRepairRuntime, async () => service.repairRuntime(resolveOrxaTemplateDir()));
+  ipcMain.handle(IPC.opencodeRepairRuntime, async () => service.repairRuntime());
 
   ipcMain.handle(IPC.terminalList, async (_event, directory: unknown) => service.listPtys(assertString(directory, "directory")));
   ipcMain.handle(IPC.terminalCreate, async (_event, directory: unknown, cwd?: unknown, title?: unknown) =>

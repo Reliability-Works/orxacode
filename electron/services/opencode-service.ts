@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
@@ -71,12 +71,6 @@ import type {
 } from "../../shared/ipc";
 import { PasswordStore } from "./password-store";
 import { ExecutionLedgerStore } from "./execution-ledger-store";
-import {
-  ORXA_PLUGIN_PACKAGE,
-  ORXA_PLUGIN_SPECIFIER,
-  canonicalPluginName,
-  updateOrxaPluginInConfigDocument,
-} from "./plugin-config";
 import { ProjectStore } from "./project-store";
 import { ProfileStore } from "./profile-store";
 import { ProvenanceIndex } from "./provenance-index";
@@ -88,9 +82,7 @@ import { WorkspaceContextStore } from "./workspace-context-store";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
 const OPENCODE_SOURCE_URL = "https://github.com/anomalyco/opencode";
-const ORXA_SOURCE_URL = "https://github.com/Reliability-Works/orxa-code";
 const OPENCODE_INSTALL_COMMAND = "npm install -g opencode-ai";
-const ORXA_INSTALL_COMMAND = "npm install -g @reliabilityworks/orxa-code";
 const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const DEFAULT_COMMIT_GUIDANCE = [
   "Write a high-quality conventional commit message.",
@@ -622,15 +614,7 @@ export class OpencodeService {
   }
 
   async checkRuntimeDependencies(): Promise<RuntimeDependencyReport> {
-    const configDir = path.join(homedir(), ".config", "opencode");
-    const orxaInstalledPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
-
-    const [opencodeInstalled, orxaInstalledLocal, orxaInstalledGlobal] = await Promise.all([
-      this.canRunCommandWithFallbacks("opencode", ["--version"], homedir()),
-      stat(orxaInstalledPath).then((item) => item.isDirectory()).catch(() => false),
-      this.canRunCommand("npm", ["ls", "-g", ORXA_PLUGIN_PACKAGE, "--depth=0"], homedir()),
-    ]);
-    const orxaInstalled = orxaInstalledLocal || orxaInstalledGlobal;
+    const opencodeInstalled = await this.canRunCommandWithFallbacks("opencode", ["--version"], homedir());
 
     const dependencies: RuntimeDependencyReport["dependencies"] = [
       {
@@ -643,20 +627,10 @@ export class OpencodeService {
         installCommand: OPENCODE_INSTALL_COMMAND,
         sourceUrl: OPENCODE_SOURCE_URL,
       },
-      {
-        key: "orxa",
-        label: "Orxa Code Plugin Package",
-        required: false,
-        installed: orxaInstalled,
-        description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
-        reason: "Optional. Needed only when using Orxa mode features.",
-        installCommand: ORXA_INSTALL_COMMAND,
-        sourceUrl: ORXA_SOURCE_URL,
-      },
     ];
 
     const missingRequired = dependencies.some((item) => item.required && !item.installed);
-    const missingAny = dependencies.some((item) => !item.installed);
+    const missingAny = missingRequired; // Only required deps matter now
     return {
       checkedAt: Date.now(),
       dependencies,
@@ -676,63 +650,9 @@ export class OpencodeService {
     return true;
   }
 
-  async ensureOrxaWorkspace(templateRoot: string) {
-    const resolvedTemplateRoot = path.resolve(templateRoot);
-    const rootInfo = await stat(resolvedTemplateRoot).catch(() => undefined);
-    if (!rootInfo || !rootInfo.isDirectory()) {
-      throw new Error(`Orxa template directory is missing: ${resolvedTemplateRoot}`);
-    }
-
-    const orxaRoot = this.orxaRootDir();
-    await this.copyDirectoryIfMissing(resolvedTemplateRoot, orxaRoot);
-  }
-
-  async ensureOrxaPluginRegistration() {
-    const configDir = path.join(homedir(), ".config", "opencode");
-    await mkdir(configDir, { recursive: true });
-
-    await this.addOrxaPluginToConfig();
-
-    await this.ensureOrxaPluginInstalled(configDir);
-  }
-
-  async addOrxaPluginToConfig() {
-    const configDir = path.join(homedir(), ".config", "opencode");
-    await mkdir(configDir, { recursive: true });
-    const configPath = this.findConfigFile(configDir);
-    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
-    const result = updateOrxaPluginInConfigDocument(raw, "orxa");
-    if (result.changed) {
-      await writeFile(configPath, result.output, "utf8");
-    }
-    return { changed: result.changed, configPath };
-  }
-
-  async removeOrxaPluginFromConfig() {
-    const configDir = path.join(homedir(), ".config", "opencode");
-    await mkdir(configDir, { recursive: true });
-    const configPath = this.findConfigFile(configDir);
-    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
-    const result = updateOrxaPluginInConfigDocument(raw, "standard");
-    if (result.changed) {
-      await writeFile(configPath, result.output, "utf8");
-    }
-    return { changed: result.changed, configPath };
-  }
-
   async getServerDiagnostics(): Promise<ServerDiagnostics> {
     const runtime = this.runtimeState();
     const profile = this.profileStore.list().find((item) => item.id === runtime.activeProfileId);
-    const configDir = path.join(homedir(), ".config", "opencode");
-    const configPath = this.findConfigFile(configDir);
-    const raw = await readFile(configPath, "utf8").catch(() => "{}\n");
-    const parsed = parseJsonc(raw) as Record<string, unknown> | undefined;
-    const configuredPlugins = Array.isArray(parsed?.plugin)
-      ? parsed.plugin.filter((item): item is string => typeof item === "string")
-      : [];
-    const pluginConfigured = configuredPlugins.some((item) => canonicalPluginName(item) === ORXA_PLUGIN_PACKAGE);
-    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
-    const installed = await stat(installedPath).then((item) => item.isDirectory()).catch(() => false);
 
     let health: ServerDiagnostics["health"] = "disconnected";
     if (runtime.status === "connected") {
@@ -750,20 +670,11 @@ export class OpencodeService {
       runtime,
       activeProfile: profile,
       health,
-      plugin: {
-        specifier: ORXA_PLUGIN_SPECIFIER,
-        configPath,
-        installedPath,
-        configured: pluginConfigured,
-        installed,
-      },
       lastError: runtime.lastError,
     };
   }
 
-  async repairRuntime(templateRoot: string): Promise<ServerDiagnostics> {
-    await this.ensureOrxaWorkspace(templateRoot);
-    await this.ensureOrxaPluginRegistration();
+  async repairRuntime(): Promise<ServerDiagnostics> {
     return this.getServerDiagnostics();
   }
 
@@ -3009,46 +2920,6 @@ export class OpencodeService {
     return normalized;
   }
 
-  private orxaRootDir() {
-    return path.join(homedir(), ".config", "opencode", "orxa");
-  }
-
-  private async ensureOrxaPluginInstalled(configDir: string) {
-    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
-    const existing = await stat(installedPath).catch(() => undefined);
-    if (existing?.isDirectory()) {
-      return;
-    }
-
-    const packageJsonPath = path.join(configDir, "package.json");
-    const packageJsonExists = existsSync(packageJsonPath);
-    if (!packageJsonExists) {
-      await writeFile(packageJsonPath, "{\n  \"private\": true\n}\n", "utf8");
-    }
-
-    const packageSpec = ORXA_PLUGIN_SPECIFIER;
-    const installAttempts: Array<{ command: string; args: string[] }> = [
-      { command: "bun", args: ["add", packageSpec, "--exact"] },
-      { command: "pnpm", args: ["add", packageSpec, "--save-exact"] },
-      { command: "npm", args: ["install", packageSpec, "--save-exact"] },
-    ];
-
-    let lastError: Error | undefined;
-    for (const attempt of installAttempts) {
-      try {
-        await this.runCommand(attempt.command, attempt.args, configDir);
-        const installed = await stat(installedPath).catch(() => undefined);
-        if (installed?.isDirectory()) {
-          return;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-      }
-    }
-
-    throw new Error(`Failed to install ${packageSpec}: ${lastError?.message ?? "unknown error"}`);
-  }
-
   private async runCommand(command: string, args: string[], cwd: string) {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(command, args, {
@@ -3638,29 +3509,4 @@ export class OpencodeService {
     };
   }
 
-  private async copyDirectoryIfMissing(sourceDir: string, targetDir: string) {
-    await mkdir(targetDir, { recursive: true });
-    const entries = await readdir(sourceDir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const sourcePath = path.join(sourceDir, entry.name);
-      const targetPath = path.join(targetDir, entry.name);
-
-      if (entry.isDirectory()) {
-        await this.copyDirectoryIfMissing(sourcePath, targetPath);
-        continue;
-      }
-
-      if (!entry.isFile()) {
-        continue;
-      }
-
-      const existing = await stat(targetPath).catch(() => undefined);
-      if (existing?.isFile()) {
-        continue;
-      }
-      await mkdir(path.dirname(targetPath), { recursive: true });
-      await copyFile(sourcePath, targetPath);
-    }
-  }
 }

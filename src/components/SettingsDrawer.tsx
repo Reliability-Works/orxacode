@@ -815,24 +815,6 @@ export function SettingsDrawer({
               <span className="settings-server-status-key">active profile</span>
               <span className="settings-server-status-value">{serverDiagnostics?.activeProfile?.name ?? "default"}</span>
             </div>
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">plugin configured</span>
-              <span className={`settings-server-status-value${serverDiagnostics?.plugin.configured ? " settings-server-status-value--green" : ""}`}>
-                {serverDiagnostics?.plugin.configured ? "yes" : "no"}
-              </span>
-            </div>
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">plugin installed</span>
-              <span className={`settings-server-status-value${serverDiagnostics?.plugin.installed ? " settings-server-status-value--green" : ""}`}>
-                {serverDiagnostics?.plugin.installed ? "yes" : "no"}
-              </span>
-            </div>
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">plugin path</span>
-              <span className="settings-server-status-value settings-server-status-value--path">
-                {serverDiagnostics?.plugin.configPath ?? "—"}
-              </span>
-            </div>
           </div>
           <div className="settings-server-buttons">
             <button

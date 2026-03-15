@@ -15,13 +15,6 @@ describe("SettingsDrawer", () => {
     const diagnostics: ServerDiagnostics = {
       runtime: { status: "disconnected", managedServer: false },
       health: "disconnected",
-      plugin: {
-        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-        configPath: "opencode.jsonc",
-        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-        configured: false,
-        installed: false,
-      },
     };
 
     render(
@@ -126,13 +119,6 @@ describe("SettingsDrawer", () => {
     const diagnostics: ServerDiagnostics = {
       runtime: { status: "disconnected", managedServer: false },
       health: "disconnected",
-      plugin: {
-        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-        configPath: "opencode.jsonc",
-        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-        configured: false,
-        installed: false,
-      },
     };
 
     render(
@@ -218,13 +204,6 @@ describe("SettingsDrawer", () => {
     const diagnostics: ServerDiagnostics = {
       runtime: { status: "disconnected", managedServer: false },
       health: "disconnected",
-      plugin: {
-        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-        configPath: "opencode.jsonc",
-        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-        configured: false,
-        installed: false,
-      },
     };
 
     render(
@@ -312,13 +291,6 @@ describe("SettingsDrawer", () => {
     const diagnostics: ServerDiagnostics = {
       runtime: { status: "disconnected", managedServer: false },
       health: "disconnected",
-      plugin: {
-        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-        configPath: "opencode.jsonc",
-        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-        configured: false,
-        installed: false,
-      },
     };
     const readGlobalAgentsMd = vi.fn(async () => ({
       path: "/Users/test/.config/opencode/AGENTS.md",
@@ -420,13 +392,6 @@ describe("SettingsDrawer", () => {
     const diagnostics: ServerDiagnostics = {
       runtime: { status: "disconnected", managedServer: false },
       health: "disconnected",
-      plugin: {
-        specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-        configPath: "opencode.jsonc",
-        installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-        configured: false,
-        installed: false,
-      },
     };
 
     render(

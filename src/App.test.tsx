@@ -124,24 +124,10 @@ beforeEach(() => {
         getServerDiagnostics: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
-          plugin: {
-            specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-            configPath: "opencode.jsonc",
-            installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-            configured: false,
-            installed: false,
-          },
         })),
         repairRuntime: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
-          plugin: {
-            specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-            configPath: "opencode.jsonc",
-            installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-            configured: false,
-            installed: false,
-          },
         })),
         listAgentFiles: vi.fn(async () => []),
         readAgentFile: vi.fn(async () => ({ filename: "test.md", name: "test", mode: "primary", model: "", content: "", path: "" })),

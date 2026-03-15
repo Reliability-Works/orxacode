@@ -627,13 +627,6 @@ export type ServerDiagnostics = {
   runtime: RuntimeState;
   activeProfile?: RuntimeProfile;
   health: "connected" | "disconnected" | "error";
-  plugin: {
-    specifier: string;
-    configPath: string;
-    installedPath: string;
-    configured: boolean;
-    installed: boolean;
-  };
   lastError?: string;
 };
 

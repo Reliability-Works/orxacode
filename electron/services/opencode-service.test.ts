@@ -1,7 +1,6 @@
 /** @vitest-environment node */
 
 import { describe, expect, it, vi } from "vitest";
-import { updateOrxaPluginInConfigDocument } from "./plugin-config";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 import { OpencodeService } from "./opencode-service";
 import type { SessionMessageBundle } from "../../shared/ipc";
@@ -13,37 +12,6 @@ vi.mock("electron", () => ({
   },
 }));
 
-describe("updateOrxaPluginInConfigDocument", () => {
-  it("adds Orxa plugin in Orxa mode", () => {
-    const input = `{
-  "plugin": [
-    "example/plugin@1.2.3"
-  ]
-}\n`;
-
-    const result = updateOrxaPluginInConfigDocument(input, "orxa");
-    expect(result.changed).toBe(true);
-    expect(result.output).toContain('"example/plugin@1.2.3"');
-    expect(result.output).toContain('"@reliabilityworks/orxa-code@1.0.43"');
-  });
-
-  it("removes Orxa plugin in standard mode and stays idempotent", () => {
-    const input = `{
-  "plugin": [
-    "example/plugin@1.2.3",
-    "@reliabilityworks/orxa-code@1.0.43"
-  ]
-}\n`;
-
-    const removed = updateOrxaPluginInConfigDocument(input, "standard");
-    expect(removed.changed).toBe(true);
-    expect(removed.output).toContain('"example/plugin@1.2.3"');
-    expect(removed.output).not.toContain("orxa-code");
-
-    const secondPass = updateOrxaPluginInConfigDocument(removed.output, "standard");
-    expect(secondPass.changed).toBe(false);
-  });
-});
 
 describe("hasRecentMatchingUserPrompt", () => {
   it("detects a matching recent user prompt", () => {
