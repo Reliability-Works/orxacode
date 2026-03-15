@@ -1155,7 +1155,7 @@ export default function App() {
   }, [projectData?.commands]);
 
   const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
-  // Fetch Orxa agent list (same source as settings) to ensure all user-created agents appear
+  // Fetch Orxa agent list (same source as settings agents section)
   const [orxaAgentsList, setOrxaAgentsList] = useState<Array<{ name: string; mode: string; description?: string }>>([]);
   useEffect(() => {
     void window.orxa.opencode.listOrxaAgents()
@@ -1164,18 +1164,8 @@ export default function App() {
   }, [activeProjectDir, projectData?.agents]);
 
   const composerAgentOptions = useMemo(() => {
-    // Merge SDK agents + Orxa agents, deduplicate by name, filter to primary/all
-    const sdkAgents = projectData?.agents ?? [];
-    const byName = new Map<string, { name: string; mode: string; description?: string }>();
-    for (const agent of sdkAgents) {
-      byName.set(agent.name, { name: agent.name, mode: agent.mode, description: agent.description });
-    }
-    for (const agent of orxaAgentsList) {
-      if (!byName.has(agent.name)) {
-        byName.set(agent.name, agent);
-      }
-    }
-    return [...byName.values()]
+    // Use only Orxa agents (not SDK internal agents like compaction/summary/title)
+    return orxaAgentsList
       .filter((agent) => {
         const mode = agent.mode as string;
         return mode === "primary" || mode === "all";
@@ -1186,7 +1176,7 @@ export default function App() {
         description: agent.description,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [projectData?.agents, orxaAgentsList]);
+  }, [orxaAgentsList]);
   const serverModelOptions = useMemo(
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
