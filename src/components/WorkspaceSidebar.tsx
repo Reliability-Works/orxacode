@@ -1,5 +1,5 @@
 import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight, LayoutDashboard, LayoutGrid, CirclePlay, Zap, Brain, Search } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, LayoutDashboard, LayoutGrid, CirclePlay, Zap, Brain, Search } from "lucide-react";
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
 import { IconButton } from "./IconButton";
@@ -361,6 +361,14 @@ export function WorkspaceSidebar({
                             {sessionTypes[session.id] === "canvas" ? (
                               <span className="session-type-icon session-type-icon--canvas" aria-hidden="true">
                                 <LayoutGrid size={10} />
+                              </span>
+                            ) : sessionTypes[session.id] === "claude" ? (
+                              <span className="session-type-icon session-type-icon--claude" aria-hidden="true">
+                                <Bot size={10} />
+                              </span>
+                            ) : sessionTypes[session.id] === "codex" ? (
+                              <span className="session-type-icon session-type-icon--codex" aria-hidden="true">
+                                <Zap size={10} />
                               </span>
                             ) : (
                               <span

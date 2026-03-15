@@ -1,4 +1,4 @@
-export type SessionType = "standalone" | "canvas";
+export type SessionType = "standalone" | "canvas" | "codex" | "claude";
 
 export interface CanvasTile {
   id: string;

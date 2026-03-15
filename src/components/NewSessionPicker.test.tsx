@@ -13,21 +13,25 @@ function renderPicker(overrides: { isOpen?: boolean; onPick?: (type: SessionType
 }
 
 describe("NewSessionPicker", () => {
-  it("renders both session type options when open", () => {
+  it("renders all session type options when open", () => {
     renderPicker();
-    expect(screen.getByText("standalone session")).toBeInTheDocument();
+    expect(screen.getByText("opencode session")).toBeInTheDocument();
     expect(screen.getByText("canvas session")).toBeInTheDocument();
+    expect(screen.getByText("claude session")).toBeInTheDocument();
+    expect(screen.getByText("codex session")).toBeInTheDocument();
   });
 
   it("renders nothing when not open", () => {
     renderPicker({ isOpen: false });
-    expect(screen.queryByText("standalone session")).not.toBeInTheDocument();
+    expect(screen.queryByText("opencode session")).not.toBeInTheDocument();
     expect(screen.queryByText("canvas session")).not.toBeInTheDocument();
+    expect(screen.queryByText("claude session")).not.toBeInTheDocument();
+    expect(screen.queryByText("codex session")).not.toBeInTheDocument();
   });
 
-  it("clicking standalone calls onPick with 'standalone'", () => {
+  it("clicking opencode calls onPick with 'standalone'", () => {
     const { onPick } = renderPicker();
-    fireEvent.click(screen.getByText("standalone session"));
+    fireEvent.click(screen.getByText("opencode session"));
     expect(onPick).toHaveBeenCalledWith("standalone");
   });
 
@@ -35,6 +39,27 @@ describe("NewSessionPicker", () => {
     const { onPick } = renderPicker();
     fireEvent.click(screen.getByText("canvas session"));
     expect(onPick).toHaveBeenCalledWith("canvas");
+  });
+
+  it("clicking claude calls onPick with 'claude'", () => {
+    const { onPick } = renderPicker();
+    fireEvent.click(screen.getByText("claude session"));
+    expect(onPick).toHaveBeenCalledWith("claude");
+  });
+
+  it("codex option is disabled and does not call onPick", () => {
+    const { onPick } = renderPicker();
+    const codexButton = screen.getByText("codex session").closest("button");
+    expect(codexButton).toBeDisabled();
+    if (codexButton) {
+      fireEvent.click(codexButton);
+    }
+    expect(onPick).not.toHaveBeenCalledWith("codex");
+  });
+
+  it("codex option shows coming soon badge", () => {
+    renderPicker();
+    expect(screen.getByText("coming soon")).toBeInTheDocument();
   });
 
   it("escape key calls onClose", () => {

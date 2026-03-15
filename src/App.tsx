@@ -40,6 +40,7 @@ import type {
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
+import { ClaudeTerminalPane } from "./components/ClaudeTerminalPane";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
@@ -3792,6 +3793,7 @@ export default function App() {
           setTitleMenuOpen={setTitleMenuOpen}
           hasActiveSession={Boolean(activeSessionID)}
           isActiveSessionCanvasSession={Boolean(activeSessionID && sessionTypes[activeSessionID] === "canvas")}
+          activeSessionType={activeSessionID ? sessionTypes[activeSessionID] : undefined}
           isActiveSessionPinned={isActiveSessionPinned}
           onTogglePinSession={() => {
             if (!activeProjectDir || !activeSessionID) {
@@ -3936,6 +3938,8 @@ export default function App() {
             <>
               {!showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
+              ) : !showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
+                <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} />
               ) : !showingProjectDashboard ? (
                 <>
                   <MessageFeed
@@ -4092,7 +4096,7 @@ export default function App() {
                   onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
                 />
               )}
-              {!(activeSessionID && sessionTypes[activeSessionID] === "canvas") && (
+              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "claude")) && (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}

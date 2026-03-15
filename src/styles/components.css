@@ -5875,6 +5875,39 @@ button.primary {
   color: var(--accent-green, #22C55E);
 }
 
+.new-session-picker-icon--claude {
+  color: #A78BFA;
+}
+
+.new-session-picker-icon--codex {
+  color: #10A37F;
+}
+
+.new-session-picker-option--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.new-session-picker-option--disabled:hover {
+  background: transparent;
+}
+
+.new-session-picker-coming-soon {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted, #555);
+  background: var(--bg-surface-1, #1a1a1a);
+  border: 1px solid var(--border-primary, #232323);
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
 .new-session-picker-text {
   display: flex;
   flex-direction: column;
@@ -5908,6 +5941,18 @@ button.primary {
 
 .session-type-icon--canvas {
   color: var(--accent-green, #22C55E);
+  width: 10px;
+  height: 10px;
+}
+
+.session-type-icon--claude {
+  color: #A78BFA;
+  width: 10px;
+  height: 10px;
+}
+
+.session-type-icon--codex {
+  color: #10A37F;
   width: 10px;
   height: 10px;
 }
@@ -7249,4 +7294,78 @@ button.primary {
   width: 1px;
   top: -9999px;
   bottom: -9999px;
+}
+
+/* ── Claude terminal pane ─────────────────────────────── */
+
+.claude-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-page);
+}
+
+.claude-toolbar {
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  background: #0E0E0E;
+  border-bottom: 1px solid var(--border);
+}
+
+.claude-toolbar-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.claude-toolbar-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claude-toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.claude-toolbar-btn:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.05));
+  color: var(--text-primary);
+}
+
+.claude-terminal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.claude-terminal-body .xterm {
+  height: 100%;
+}
+
+.claude-unavailable {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+  flex-direction: column;
+  gap: 8px;
 }

@@ -46,6 +46,7 @@ type ContentTopBarProps = {
   setTitleMenuOpen: (open: boolean) => void;
   hasActiveSession: boolean;
   isActiveSessionCanvasSession?: boolean;
+  activeSessionType?: string;
   isActiveSessionPinned: boolean;
   onTogglePinSession: () => void;
   onRenameSession: () => void;
@@ -100,6 +101,7 @@ export function ContentTopBar({
   onRunCustomRunCommand,
   onDeleteCustomRunCommand,
   isActiveSessionCanvasSession,
+  activeSessionType,
 }: ContentTopBarProps) {
   const hasProjectContext = Boolean(activeProjectDir ?? projectData?.directory);
   const runMenuRootRef = useRef<HTMLDivElement | null>(null);
@@ -334,8 +336,12 @@ export function ContentTopBar({
       {/* Workspace + session name */}
       <h2 className="topbar-title" title={contentPaneTitle}>
         {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
-        {isActiveSessionCanvasSession ? (
+        {activeSessionType === "canvas" || isActiveSessionCanvasSession ? (
           <span className="topbar-title-session-suffix"> / canvas</span>
+        ) : activeSessionType === "claude" ? (
+          <span className="topbar-title-session-suffix"> / claude</span>
+        ) : activeSessionType === "codex" ? (
+          <span className="topbar-title-session-suffix"> / codex</span>
         ) : contentPaneTitle && activeProjectDir ? (
           <span className="topbar-title-session-suffix"> / {contentPaneTitle}</span>
         ) : null}
