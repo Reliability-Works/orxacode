@@ -81,6 +81,7 @@ import { preferredAgentForMode } from "./lib/app-mode";
 import { syncAgentModelPreference } from "./lib/agent-model-preferences";
 import {
   BROWSER_MODE_TOOLS_POLICY,
+  BROWSER_MODE_TOOLS_POLICY_WITH_MCP,
   MEMORY_MODE_TOOLS_POLICY,
   PLAN_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
@@ -1728,14 +1729,17 @@ export default function App() {
     return parts.join("\n\n");
   }, [browserAutopilotHint, browserSystemAddendum, contextModeSystemAddendum]);
 
+  const mcpConnected = mcpDevToolsState === "running";
   const activePromptToolsPolicy = useMemo(
     () =>
       mergeModeToolPolicies(
         isPlanMode ? PLAN_MODE_TOOLS_POLICY : undefined,
         contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
-        browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+        browserModeEnabled
+          ? mcpConnected ? BROWSER_MODE_TOOLS_POLICY_WITH_MCP : BROWSER_MODE_TOOLS_POLICY
+          : undefined,
       ),
-    [browserModeEnabled, contextModeEnabled, isPlanMode],
+    [browserModeEnabled, contextModeEnabled, isPlanMode, mcpConnected],
   );
 
   const sendComposerPrompt = useCallback(

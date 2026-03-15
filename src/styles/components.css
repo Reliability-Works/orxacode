@@ -745,6 +745,42 @@
   color: var(--accent-error);
 }
 
+.part-text-md {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+.part-text-md strong { color: var(--text-primary); font-weight: 600; }
+.part-text-md em { font-style: italic; }
+.part-text-md .md-h1 { font-size: 18px; font-weight: 600; color: var(--text-primary); margin: 12px 0 8px; }
+.part-text-md .md-h2 { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 10px 0 6px; }
+.part-text-md .md-h3 { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 8px 0 4px; }
+.part-text-md .md-inline-code {
+  background: var(--bg-input);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.part-text-md .md-code-block {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.part-text-md .md-code-block code { background: none; padding: 0; }
+.part-text-md .md-link { color: var(--accent-green); text-decoration: underline; }
+.part-text-md .md-hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
 .part-file {
   font-size: 12px;
   color: var(--text-secondary);

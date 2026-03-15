@@ -12,8 +12,13 @@ import {
 describe("browser-tool-guardrails", () => {
   it("flags forbidden browser-mode tools", () => {
     expect(isForbiddenToolNameInBrowserMode("web_search")).toBe(true);
-    expect(isForbiddenToolNameInBrowserMode("playwright_click")).toBe(true);
+    expect(isForbiddenToolNameInBrowserMode("playwright")).toBe(true);
+    expect(isForbiddenToolNameInBrowserMode("puppeteer")).toBe(true);
+    expect(isForbiddenToolNameInBrowserMode("selenium")).toBe(true);
     expect(isForbiddenToolNameInBrowserMode("todowrite")).toBe(false);
+    // MCP tools should NOT be blocked (chrome-devtools-mcp)
+    expect(isForbiddenToolNameInBrowserMode("navigate_page")).toBe(false);
+    expect(isForbiddenToolNameInBrowserMode("take_screenshot")).toBe(false);
   });
 
   it("flags forbidden memory-mode tools", () => {
@@ -33,7 +38,6 @@ describe("browser-tool-guardrails", () => {
     expect(merged).toBeDefined();
     expect(merged).toEqual(
       expect.objectContaining({
-        "*": false,
         apply_patch: false,
         supermemory: false,
         web_search: false,
