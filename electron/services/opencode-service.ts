@@ -88,9 +88,9 @@ import { WorkspaceContextStore } from "./workspace-context-store";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
 const OPENCODE_SOURCE_URL = "https://github.com/anomalyco/opencode";
-const ORXA_SOURCE_URL = "https://github.com/Reliability-Works/opencode-orxa";
+const ORXA_SOURCE_URL = "https://github.com/Reliability-Works/orxa-code";
 const OPENCODE_INSTALL_COMMAND = "npm install -g opencode-ai";
-const ORXA_INSTALL_COMMAND = "npm install -g @reliabilityworks/opencode-orxa";
+const ORXA_INSTALL_COMMAND = "npm install -g @reliabilityworks/orxa-code";
 const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const DEFAULT_COMMIT_GUIDANCE = [
   "Write a high-quality conventional commit message.",
@@ -623,7 +623,7 @@ export class OpencodeService {
 
   async checkRuntimeDependencies(): Promise<RuntimeDependencyReport> {
     const configDir = path.join(homedir(), ".config", "opencode");
-    const orxaInstalledPath = path.join(configDir, "node_modules", "@reliabilityworks", "opencode-orxa");
+    const orxaInstalledPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
 
     const [opencodeInstalled, orxaInstalledLocal, orxaInstalledGlobal] = await Promise.all([
       this.canRunCommandWithFallbacks("opencode", ["--version"], homedir()),
@@ -731,7 +731,7 @@ export class OpencodeService {
       ? parsed.plugin.filter((item): item is string => typeof item === "string")
       : [];
     const pluginConfigured = configuredPlugins.some((item) => canonicalPluginName(item) === ORXA_PLUGIN_PACKAGE);
-    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "opencode-orxa");
+    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
     const installed = await stat(installedPath).then((item) => item.isDirectory()).catch(() => false);
 
     let health: ServerDiagnostics["health"] = "disconnected";
@@ -3014,7 +3014,7 @@ export class OpencodeService {
   }
 
   private async ensureOrxaPluginInstalled(configDir: string) {
-    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "opencode-orxa");
+    const installedPath = path.join(configDir, "node_modules", "@reliabilityworks", "orxa-code");
     const existing = await stat(installedPath).catch(() => undefined);
     if (existing?.isDirectory()) {
       return;

@@ -1,6 +1,6 @@
 # Architecture
 
-Opencode Orxa is an Electron app with a strict process split.
+Orxa Code is an Electron app with a strict process split.
 
 ```mermaid
 flowchart LR

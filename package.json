@@ -1,5 +1,5 @@
 {
-  "name": "opencode-orxa",
+  "name": "orxa-code",
   "private": true,
   "version": "0.1.0-beta.10",
   "description": "Orxa Code Electron desktop app",
@@ -23,7 +23,7 @@
     "prepare": "husky"
   },
   "build": {
-    "appId": "ai.orxa.opencode.monitor",
+    "appId": "ai.orxa.code",
     "productName": "Orxa Code",
     "files": [
       "dist/**",

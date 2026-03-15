@@ -1,6 +1,6 @@
-# Opencode Orxa
+# Orxa Code
 
-![Opencode Orxa workspace dashboard](assets/readme/workspace-dashboard.png)
+![Orxa Code workspace dashboard](assets/readme/workspace-dashboard.png)
 
 ## Table of Contents
 
@@ -47,7 +47,7 @@ Memory graph with workspace hub and typed memory nodes:
 ![Memory graph with typed nodes](assets/readme/orxa-memory.png)
 [Open full-size: memory graph with typed nodes](assets/readme/orxa-memory.png)
 
-Opencode Orxa is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
+Orxa Code is an Electron desktop app for operating OpenCode workspaces with a local-first, multi-project interface.
 
 Powered by OpenCode and the `@opencode-ai/sdk` ecosystem.
 Source of truth: [anomalyco/opencode](https://github.com/anomalyco/opencode).
@@ -58,7 +58,7 @@ Quick links:
 
 ## At a Glance
 
-Opencode Orxa ships as a full workspace operations desktop for OpenCode with:
+Orxa Code ships as a full workspace operations desktop for OpenCode with:
 
 - Multi-workspace management and session-first execution timeline.
 - Rich model/agent composition with session controls and permission mode switching.
@@ -73,7 +73,7 @@ Opencode Orxa ships as a full workspace operations desktop for OpenCode with:
 ### Required: OpenCode
 
 - Repository: [anomalyco/opencode](https://github.com/anomalyco/opencode)
-- Why required: Opencode Orxa depends on the OpenCode CLI/server runtime for sessions, tools, and streaming.
+- Why required: Orxa Code depends on the OpenCode CLI/server runtime for sessions, tools, and streaming.
 - Install command:
 
 ```bash
@@ -82,7 +82,7 @@ npm install -g opencode-ai
 
 ### Optional: Orxa Package (for Orxa mode)
 
-- Repository: [Reliability-Works/opencode-orxa](https://github.com/Reliability-Works/opencode-orxa)
+- Repository: [Reliability-Works/orxa-code](https://github.com/Reliability-Works/orxa-code)
 - Why optional: needed only for Orxa mode workflows, templates, and agent assets.
 - Install command:
 
@@ -274,5 +274,5 @@ Notes:
 
 ## Notes
 
-- This repository customizes UX, workflows, and operational defaults for Opencode Orxa.
+- This repository customizes UX, workflows, and operational defaults for Orxa Code.
 - It is not the upstream OpenCode project; see the upstream repo link above.

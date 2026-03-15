@@ -24,21 +24,21 @@ describe("updateOrxaPluginInConfigDocument", () => {
     const result = updateOrxaPluginInConfigDocument(input, "orxa");
     expect(result.changed).toBe(true);
     expect(result.output).toContain('"example/plugin@1.2.3"');
-    expect(result.output).toContain('"@reliabilityworks/opencode-orxa@1.0.43"');
+    expect(result.output).toContain('"@reliabilityworks/orxa-code@1.0.43"');
   });
 
   it("removes Orxa plugin in standard mode and stays idempotent", () => {
     const input = `{
   "plugin": [
     "example/plugin@1.2.3",
-    "@reliabilityworks/opencode-orxa@1.0.43"
+    "@reliabilityworks/orxa-code@1.0.43"
   ]
 }\n`;
 
     const removed = updateOrxaPluginInConfigDocument(input, "standard");
     expect(removed.changed).toBe(true);
     expect(removed.output).toContain('"example/plugin@1.2.3"');
-    expect(removed.output).not.toContain("opencode-orxa");
+    expect(removed.output).not.toContain("orxa-code");
 
     const secondPass = updateOrxaPluginInConfigDocument(removed.output, "standard");
     expect(secondPass.changed).toBe(false);

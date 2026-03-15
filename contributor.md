@@ -1,10 +1,10 @@
 # Contributor Guide
 
-Thanks for contributing to Opencode Orxa.
+Thanks for contributing to Orxa Code.
 
 ## Scope
 
-Opencode Orxa is an Electron desktop frontend for OpenCode.  
+Orxa Code is an Electron desktop frontend for OpenCode.  
 When behavior differs between UI labels and backend behavior, align to upstream OpenCode semantics:
 
 - Upstream reference: [anomalyco/opencode](https://github.com/anomalyco/opencode)

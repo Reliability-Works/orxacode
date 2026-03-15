@@ -1,6 +1,6 @@
 import { applyEdits, modify, parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 
-export const ORXA_PLUGIN_PACKAGE = "@reliabilityworks/opencode-orxa";
+export const ORXA_PLUGIN_PACKAGE = "@reliabilityworks/orxa-code";
 export const ORXA_PLUGIN_VERSION = "1.0.43";
 export const ORXA_PLUGIN_SPECIFIER = `${ORXA_PLUGIN_PACKAGE}@${ORXA_PLUGIN_VERSION}`;
 
@@ -32,7 +32,7 @@ export function updateOrxaPluginInConfigDocument(sourceInput: string, targetMode
     ? doc.plugin.filter((item): item is string => typeof item === "string")
     : [];
   const cleanedPlugins = configuredPlugins.filter((item) => {
-    if (item.includes("opencode-orxa")) {
+    if (item.includes("orxa-code")) {
       return false;
     }
     return canonicalPluginName(item) !== ORXA_PLUGIN_PACKAGE;
