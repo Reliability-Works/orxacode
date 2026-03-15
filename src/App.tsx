@@ -1054,8 +1054,22 @@ export default function App() {
   const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
   const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
-  const anyOverlayOpen = debugModalOpen || settingsOpen || profileModalOpen || allSessionsModalOpen || dependencyModalOpen;
-  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !anyOverlayOpen;
+  // Track whether any overlay/modal is visible in the DOM.
+  // The BrowserView is a native Electron overlay that sits on top of the renderer,
+  // so we must hide it whenever ANY modal/overlay appears — not just ones we track in state.
+  const [anyOverlayInDom, setAnyOverlayInDom] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const hasOverlay = document.querySelector(".overlay, .model-modal-overlay, .settings-overlay, .run-command-modal-overlay") !== null;
+      setAnyOverlayInDom(hasOverlay);
+    };
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !anyOverlayInDom;
   const {
     branchState,
     gitPanelTab,
