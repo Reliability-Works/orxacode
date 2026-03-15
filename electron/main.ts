@@ -29,9 +29,9 @@ import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-up
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
 
-// Enable CDP remote debugging on a random available port so that
-// chrome-devtools-mcp can connect to our Electron browser views.
-app.commandLine.appendSwitch("remote-debugging-port", "0");
+// Enable CDP remote debugging so that chrome-devtools-mcp can connect
+// to our Electron browser views. Use a fixed port to make discovery reliable.
+app.commandLine.appendSwitch("remote-debugging-port", "9222");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -603,37 +603,16 @@ async function resolveCdpPort(): Promise<number> {
   if (resolvedCdpPort !== null) {
     return resolvedCdpPort;
   }
-  // Discover the actual CDP port assigned by Electron.
-  // When --remote-debugging-port=0 is used, Electron picks a random port.
-  // We discover it via the webContents debugger or by probing known ports.
-  try {
-    const win = mainWindow;
-    if (win) {
-      const wc = win.webContents;
-      wc.debugger.attach("1.3");
-      const response = (await wc.debugger.sendCommand("Browser.getVersion")) as { webSocketDebuggerUrl?: string };
-      wc.debugger.detach();
-      if (response.webSocketDebuggerUrl) {
-        const url = new URL(response.webSocketDebuggerUrl);
-        const port = parseInt(url.port, 10);
-        if (port > 0) {
-          resolvedCdpPort = port;
-          return port;
-        }
-      }
-    }
-  } catch {
-    // debugger attach may fail, fall through
-  }
 
-  // Fallback: try a range of ports to find the CDP endpoint
-  for (const port of [9222, 9223, 9224, 9225, 9226, 9227, 9228, 9229, 9230]) {
+  // Try the configured port (9222) and nearby ports in case of conflict
+  for (const port of [9222, 9223, 9224, 9225, 9226]) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 500);
+      const timeout = setTimeout(() => controller.abort(), 1000);
       const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: controller.signal });
       clearTimeout(timeout);
       if (res.ok) {
+        console.log(`[MCP DevTools] Found CDP endpoint on port ${port}`);
         resolvedCdpPort = port;
         return port;
       }
@@ -642,7 +621,7 @@ async function resolveCdpPort(): Promise<number> {
     }
   }
 
-  throw new Error("Could not resolve CDP debugging port. Ensure the app is running with remote debugging enabled.");
+  throw new Error("Could not resolve CDP debugging port. The app may need to be restarted for the debugging port to take effect.");
 }
 
 function requireBrowserController(): BrowserController {
