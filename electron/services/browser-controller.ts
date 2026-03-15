@@ -329,9 +329,16 @@ export class BrowserController {
 
     try {
       await record.view.webContents.loadURL(target);
-    } catch (error) {
-      this.removeTabRecord(tabID);
-      throw new Error(normalizeErrorMessage(error));
+    } catch {
+      // If the URL fails to load (e.g. connection refused), keep the tab
+      // open on about:blank instead of destroying it
+      if (target !== "about:blank") {
+        try {
+          await record.view.webContents.loadURL("about:blank");
+        } catch {
+          // Silently ignore — tab remains in whatever state it's in
+        }
+      }
     }
 
     this.emitState();
@@ -370,7 +377,7 @@ export class BrowserController {
   back(tabID?: string): BrowserState {
     const record = this.requireTab(tabID);
     const webContents = record.view.webContents;
-    if (webContents.canGoBack()) {
+    if (webContents.navigationHistory?.canGoBack?.()) {
       webContents.goBack();
     }
     this.emitState();
@@ -380,7 +387,7 @@ export class BrowserController {
   forward(tabID?: string): BrowserState {
     const record = this.requireTab(tabID);
     const webContents = record.view.webContents;
-    if (webContents.canGoForward()) {
+    if (webContents.navigationHistory?.canGoForward?.()) {
       webContents.goForward();
     }
     this.emitState();
@@ -799,8 +806,8 @@ export class BrowserController {
       url: isAllowedBrowserUrl(url) ? url : DEFAULT_NEW_TAB_URL,
       title: this.titleForRecord(record),
       loading: webContents.isLoading(),
-      canGoBack: webContents.canGoBack(),
-      canGoForward: webContents.canGoForward(),
+      canGoBack: webContents.navigationHistory?.canGoBack?.() ?? false,
+      canGoForward: webContents.navigationHistory?.canGoForward?.() ?? false,
       lastNavigatedAt: record.lastNavigatedAt,
     };
   }

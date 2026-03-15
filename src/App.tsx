@@ -39,6 +39,7 @@ import type {
   WorkspaceContextFile,
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
+import { CanvasPane } from "./components/CanvasPane";
 import { ComposerPanel } from "./components/ComposerPanel";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
@@ -58,6 +59,7 @@ import { TextInputDialog, type TextInputDialogProps } from "./components/TextInp
 import { WorkspaceContextManager } from "./components/WorkspaceContextManager";
 import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
+import { useCanvasState } from "./hooks/useCanvasState";
 import { useComposerState } from "./hooks/useComposerState";
 import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
@@ -84,6 +86,7 @@ import {
 } from "./lib/browser-tool-guardrails";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
+import type { SessionType } from "~/types/canvas";
 import { CODE_FONT_OPTIONS } from "~/types/app";
 import antigravityLogo from "./assets/app-icons/antigravity.png";
 import cursorLogo from "./assets/app-icons/cursor.png";
@@ -126,6 +129,7 @@ const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
+const SESSION_TYPES_KEY = "orxa:sessionTypes:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 
@@ -197,13 +201,13 @@ type DebugLogEntry = {
 };
 
 const OPEN_TARGETS: OpenTargetOption[] = [
-  { id: "cursor", label: "Cursor", logo: cursorLogo },
-  { id: "antigravity", label: "Antigravity", logo: antigravityLogo },
-  { id: "finder", label: "Finder", logo: finderLogo },
-  { id: "terminal", label: "Terminal", logo: terminalLogo },
-  { id: "ghostty", label: "Ghostty", logo: ghosttyLogo },
-  { id: "xcode", label: "Xcode", logo: xcodeLogo },
-  { id: "zed", label: "Zed", logo: zedLogo },
+  { id: "cursor", label: "cursor", logo: cursorLogo },
+  { id: "antigravity", label: "antigravity", logo: antigravityLogo },
+  { id: "finder", label: "finder", logo: finderLogo },
+  { id: "terminal", label: "terminal", logo: terminalLogo },
+  { id: "ghostty", label: "ghostty", logo: ghosttyLogo },
+  { id: "xcode", label: "xcode", logo: xcodeLogo },
+  { id: "zed", label: "zed", logo: zedLogo },
 ];
 
 function commitFlowRunningMessage(nextStep: CommitNextStep) {
@@ -909,6 +913,8 @@ export default function App() {
     serialize: (value) => value,
   });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
+  const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {});
+  const canvasState = useCanvasState(activeSessionID ?? "__none__");
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
     deserialize: (raw) => {
@@ -2484,15 +2490,23 @@ export default function App() {
   }, [activeProjectDir, activeSessionID]);
 
   const createSession = useCallback(
-    async (directory?: string, initialPrompt?: string) => {
-      await createWorkspaceSession(directory, initialPrompt, {
+    async (directory?: string, sessionTypeOrPrompt?: SessionType | string) => {
+      const isSessionType = sessionTypeOrPrompt === "standalone" || sessionTypeOrPrompt === "canvas";
+      const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : "standalone";
+      const initialPrompt = isSessionType ? undefined : sessionTypeOrPrompt;
+
+      const createdSessionId = await createWorkspaceSession(directory, initialPrompt, {
         selectedAgent,
         selectedModelPayload,
         selectedVariant,
         serverAgentNames,
       });
+
+      if (sessionType === "canvas" && createdSessionId) {
+        setSessionTypes((prev) => ({ ...prev, [createdSessionId]: "canvas" }));
+      }
     },
-    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames],
+    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -3185,6 +3199,7 @@ export default function App() {
     showGitPane ? "" : "workspace-no-ops",
     showProjectsPane ? "" : "workspace-left-collapsed",
     showGitPane ? "" : "workspace-right-collapsed",
+    hasProjectContext ? "workspace-has-topbar" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -3812,6 +3827,7 @@ export default function App() {
           setCommitMenuOpen={setCommitMenuOpen}
           setTitleMenuOpen={setTitleMenuOpen}
           hasActiveSession={Boolean(activeSessionID)}
+          isActiveSessionCanvasSession={Boolean(activeSessionID && sessionTypes[activeSessionID] === "canvas")}
           isActiveSessionPinned={isActiveSessionPinned}
           onTogglePinSession={() => {
             if (!activeProjectDir || !activeSessionID) {
@@ -3898,6 +3914,7 @@ export default function App() {
             activeSessionID={activeSessionID ?? undefined}
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionStatusType={getSessionStatusType}
+            sessionTypes={sessionTypes}
             selectProject={selectProject}
             createSession={createSession}
             openSession={openSession}
@@ -3955,7 +3972,9 @@ export default function App() {
             />
           ) : activeProjectDir ? (
             <>
-              {!showingProjectDashboard ? (
+              {!showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
+                <CanvasPane canvasState={canvasState} directory={activeProjectDir} />
+              ) : !showingProjectDashboard ? (
                 <>
                   <MessageFeed
                     messages={messages}
@@ -4110,15 +4129,17 @@ export default function App() {
                   onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
                 />
               )}
-              <TerminalPanel
-                directory={activeProjectDir}
-                tabs={terminalTabs}
-                activeTabId={activeTerminalId}
-                open={terminalOpen}
-                onCreateTab={createTerminal}
-                onCloseTab={closeTerminalTab}
-                onSwitchTab={setActiveTerminalId}
-              />
+              {!(activeSessionID && sessionTypes[activeSessionID] === "canvas") && (
+                <TerminalPanel
+                  directory={activeProjectDir}
+                  tabs={terminalTabs}
+                  activeTabId={activeTerminalId}
+                  open={terminalOpen}
+                  onCreateTab={createTerminal}
+                  onCloseTab={closeTerminalTab}
+                  onSwitchTab={setActiveTerminalId}
+                />
+              )}
             </>
           ) : (
             <HomeDashboard

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProjectFileDocument, ProjectFileEntry } from "@shared/ipc";
-import { ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
+import { getFileIcon } from "../lib/file-icons";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-css";
@@ -11,6 +12,11 @@ import "prismjs/components/prism-sql";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/themes/prism-tomorrow.css";
+
+function FileEntryIcon({ name }: { name: string }) {
+  const { icon, color } = getFileIcon(name);
+  return <span style={{ color, display: "inline-flex", flexShrink: 0 }}>{icon}</span>;
+}
 
 type Props = {
   directory: string;
@@ -529,7 +535,9 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                 {isDir ? (isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : <span className="file-tree-caret-dot" />}
               </span>
               <span className="file-tree-icon" aria-hidden="true">
-                {isDir ? (isOpen ? <FolderOpen size={14} /> : <Folder size={14} />) : <FileCode2 size={14} />}
+                {isDir
+                  ? (isOpen ? <FolderOpen size={14} /> : <Folder size={14} />)
+                  : <FileEntryIcon name={entry.name} />}
               </span>
               <span className="file-tree-label">{renderLabel(entry.name)}</span>
             </button>

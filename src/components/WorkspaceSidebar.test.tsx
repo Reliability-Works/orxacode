@@ -34,6 +34,7 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     activeSessionID: undefined,
     setAllSessionsModalOpen: vi.fn(),
     getSessionStatusType: vi.fn(() => "idle"),
+    sessionTypes: {},
     selectProject: vi.fn(),
     createSession: vi.fn(),
     openSession: vi.fn(),

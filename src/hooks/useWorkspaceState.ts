@@ -363,10 +363,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   );
 
   const createSession = useCallback(
-    async (directory?: string, initialPrompt?: string, promptOptions?: CreateSessionPromptOptions) => {
+    async (directory?: string, initialPrompt?: string, promptOptions?: CreateSessionPromptOptions): Promise<string | undefined> => {
       const targetDirectory = directory ?? activeProjectDir;
       if (!targetDirectory) {
-        return;
+        return undefined;
       }
 
       const firstPrompt = initialPrompt?.trim() ?? "";
@@ -413,8 +413,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           }
           setStatusLine("Session created");
         }
+        return resolvedSessionID;
       } catch (error) {
         setStatusLine(error instanceof Error ? error.message : String(error));
+        return undefined;
       }
     },
     [activeProjectDir, refreshProject, selectProject, setStatusLine, startResponsePolling, stopResponsePolling],

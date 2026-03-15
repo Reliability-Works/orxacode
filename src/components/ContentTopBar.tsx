@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronsUpDown, GitCommitHorizontal, Pencil, Play, Plus, Send, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Pencil, Play, Plus, Trash2, X } from "lucide-react";
 import type { ProjectData } from "../hooks/useDashboards";
 import type { CommitNextStep, GitDiffStats } from "../hooks/useGitPanel";
 import { IconButton } from "./IconButton";
@@ -45,6 +45,7 @@ type ContentTopBarProps = {
   setCommitMenuOpen: (open: boolean) => void;
   setTitleMenuOpen: (open: boolean) => void;
   hasActiveSession: boolean;
+  isActiveSessionCanvasSession?: boolean;
   isActiveSessionPinned: boolean;
   onTogglePinSession: () => void;
   onRenameSession: () => void;
@@ -99,6 +100,7 @@ export function ContentTopBar({
   onUpsertCustomRunCommand,
   onRunCustomRunCommand,
   onDeleteCustomRunCommand,
+  isActiveSessionCanvasSession,
 }: ContentTopBarProps) {
   const hasProjectContext = Boolean(activeProjectDir ?? projectData?.directory);
   const runMenuRootRef = useRef<HTMLDivElement | null>(null);
@@ -333,6 +335,7 @@ export function ContentTopBar({
       {/* Workspace name */}
       <h2 className="topbar-title" title={activeProjectDir ?? contentPaneTitle}>
         {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
+        {isActiveSessionCanvasSession ? <span className="topbar-title-canvas-suffix"> / canvas</span> : null}
       </h2>
 
       {/* Spacer */}
@@ -439,36 +442,20 @@ export function ContentTopBar({
         <div className={`titlebar-split titlebar-commit ${commitMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
-            className="titlebar-action"
+            className="titlebar-action titlebar-commit-btn"
             onClick={() => {
               if (pendingPrUrl) {
                 onOpenPendingPullRequest();
               } else {
-                openCommitModal();
+                setCommitMenuOpen(!commitMenuOpen);
+                setOpenMenuOpen(false);
+                setTitleMenuOpen(false);
               }
-              setOpenMenuOpen(false);
-              setTitleMenuOpen(false);
             }}
             disabled={!hasProjectContext && !pendingPrUrl}
           >
-            <span className="titlebar-action-logo">
-              {pendingPrUrl ? <Send size={13} aria-hidden="true" /> : <GitCommitHorizontal size={13} aria-hidden="true" />}
-            </span>
-            <span>{pendingPrUrl ? "View PR" : "Commit"}</span>
-          </button>
-          <button
-            type="button"
-            className="titlebar-action-arrow"
-            onClick={() => {
-              setCommitMenuOpen(!commitMenuOpen);
-              setOpenMenuOpen(false);
-              setTitleMenuOpen(false);
-            }}
-            aria-label="Commit options"
-            title="Commit options"
-            disabled={!hasProjectContext}
-          >
-            <ChevronsUpDown size={12} aria-hidden="true" />
+            <span>{pendingPrUrl ? "view pr" : "commit"}</span>
+            <ChevronDown size={10} aria-hidden="true" />
           </button>
           {commitMenuOpen ? (
             <div className="titlebar-menu">

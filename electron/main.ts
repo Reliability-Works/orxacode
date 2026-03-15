@@ -791,6 +791,7 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
   });
 
@@ -924,6 +925,109 @@ function registerIpcHandlers() {
     await shell.openExternal(assertExternalUrl(url));
     return true;
   });
+
+  ipcMain.handle(IPC.appOpenFile, async (_event, options?: unknown) => {
+    const opts: Electron.OpenDialogOptions = { properties: ["openFile"] };
+    if (options && typeof options === "object") {
+      const input = options as { title?: unknown; filters?: unknown };
+      if (typeof input.title === "string") opts.title = input.title;
+      if (Array.isArray(input.filters)) {
+        opts.filters = input.filters.filter(
+          (f: unknown): f is { name: string; extensions: string[] } =>
+            !!f && typeof f === "object" && typeof (f as Record<string, unknown>).name === "string" && Array.isArray((f as Record<string, unknown>).extensions),
+        );
+      }
+    }
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, opts)
+      : await dialog.showOpenDialog(opts);
+    if (result.canceled || result.filePaths.length === 0) return undefined;
+    const filePath = result.filePaths[0]!;
+    return {
+      path: filePath,
+      filename: path.basename(filePath),
+      url: pathToFileURL(filePath).toString(),
+    };
+  });
+
+  ipcMain.handle(IPC.appScanPorts, async (_event, directory?: unknown) => {
+    const { exec } = await import("node:child_process");
+    const dir = typeof directory === "string" ? directory : undefined;
+    return new Promise((resolve) => {
+      exec("lsof -iTCP -sTCP:LISTEN -nP -Fn -Fp -Fc", { timeout: 5000 }, (err, stdout) => {
+        if (err || !stdout) {
+          resolve([]);
+          return;
+        }
+        const entries: Array<{ port: number; pid: number; process: string; command: string }> = [];
+        let currentPid = 0;
+        let currentProcess = "";
+        let currentCommand = "";
+        for (const line of stdout.split("\n")) {
+          if (!line) continue;
+          const prefix = line[0];
+          const value = line.slice(1);
+          if (prefix === "p") {
+            currentPid = parseInt(value, 10);
+          } else if (prefix === "c") {
+            currentCommand = value;
+          } else if (prefix === "n") {
+            currentProcess = currentCommand;
+            const portMatch = value.match(/:(\d+)$/);
+            if (portMatch) {
+              const port = parseInt(portMatch[1]!, 10);
+              if (!isNaN(port) && port > 0) {
+                entries.push({ port, pid: currentPid, process: currentProcess, command: currentCommand });
+              }
+            }
+          }
+        }
+        // Deduplicate by port
+        const seen = new Set<number>();
+        const unique = entries.filter((e) => {
+          if (seen.has(e.port)) return false;
+          seen.add(e.port);
+          return true;
+        });
+        // If directory provided, we still return all — filtering by cwd would require
+        // reading /proc which is Linux-only; on macOS we return all listening ports
+        void dir;
+        resolve(unique);
+      });
+    });
+  });
+
+  ipcMain.handle(IPC.appHttpRequest, async (_event, options: unknown) => {
+    if (!options || typeof options !== "object") throw new Error("options is required");
+    const input = options as { method?: unknown; url?: unknown; headers?: unknown; body?: unknown };
+    const method = assertString(input.method, "method");
+    const url = assertString(input.url, "url");
+    const headers: Record<string, string> = {};
+    if (input.headers && typeof input.headers === "object") {
+      for (const [k, v] of Object.entries(input.headers as Record<string, unknown>)) {
+        if (typeof v === "string") headers[k] = v;
+      }
+    }
+    const bodyStr = typeof input.body === "string" ? input.body : undefined;
+
+    const start = Date.now();
+    const init: RequestInit = { method, headers };
+    if (bodyStr && method !== "GET" && method !== "HEAD") {
+      init.body = bodyStr;
+    }
+    try {
+      const response = await fetch(url, init);
+      const elapsed = Date.now() - start;
+      const text = await response.text();
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((v, k) => { responseHeaders[k] = v; });
+      return { status: response.status, headers: responseHeaders, body: text, elapsed };
+    } catch (err) {
+      const elapsed = Date.now() - start;
+      return { status: 0, headers: {}, body: err instanceof Error ? err.message : String(err), elapsed };
+    }
+  });
+
   ipcMain.handle(IPC.updatesGetPreferences, async () =>
     autoUpdaterController?.getPreferences() ?? { autoCheckEnabled: true, releaseChannel: "stable" },
   );

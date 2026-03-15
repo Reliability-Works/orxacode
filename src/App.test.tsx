@@ -69,6 +69,12 @@ beforeEach(() => {
 
   Object.defineProperty(window, "orxa", {
     value: {
+      app: {
+        openExternal: vi.fn(async () => true),
+        openFile: vi.fn(async () => undefined),
+        scanPorts: vi.fn(async () => []),
+        httpRequest: vi.fn(async () => ({ status: 200, headers: {}, body: "", elapsed: 0 })),
+      },
       mode: {
         get: modeGetMock,
         set: modeSetMock,

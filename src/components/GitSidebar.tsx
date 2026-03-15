@@ -19,7 +19,6 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
-  Square,
   X,
 } from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
@@ -1067,7 +1066,6 @@ export function GitSidebar(props: GitSidebarProps) {
 
   const renderBrowserPane = () => (
     <section className="ops-section ops-section-fill browser-pane">
-      <h3>Browser</h3>
       <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
         {browserState.tabs.length === 0 ? (
           <span className="browser-tab-empty">No tabs</span>
@@ -1116,7 +1114,7 @@ export function GitSidebar(props: GitSidebarProps) {
             aria-label="Open new tab"
           >
             <Plus size={12} />
-            <span>New tab</span>
+            <span>new tab</span>
           </button>
         ) : null}
       </div>
@@ -1192,20 +1190,9 @@ export function GitSidebar(props: GitSidebarProps) {
         </select>
       </div>
 
-      <div className="browser-viewport-pane">
-        <div ref={browserViewportHostRef} className="browser-viewport-host">
-          <span className="browser-viewport-label">Renderer viewport host</span>
-          <span className="browser-viewport-url">{browserState.activeUrl || "No active URL"}</span>
-        </div>
-      </div>
-
-      {!browserState.modeEnabled ? (
-        <p className="browser-mode-note">Browser mode is disabled. Enable Browser mode to allow agent actions.</p>
-      ) : null}
-
       <div className="browser-control-strip">
         <span className={`browser-owner-chip owner-${browserState.controlOwner}`.trim()}>
-          Control: {browserState.controlOwner === "human" ? "Human" : "Agent"}
+          {browserState.controlOwner === "human" ? "human" : "agent"}
         </span>
         <div className="browser-control-actions">
           <button
@@ -1213,7 +1200,7 @@ export function GitSidebar(props: GitSidebarProps) {
             className="browser-control-btn"
             onClick={() => runBrowserAction(browserState.controlOwner === "human" ? onBrowserHandBack : onBrowserTakeControl)}
           >
-            {browserState.controlOwner === "human" ? "Hand back to agent" : "Take control"}
+            {browserState.controlOwner === "human" ? "hand back" : "take control"}
           </button>
           <button
             type="button"
@@ -1221,9 +1208,19 @@ export function GitSidebar(props: GitSidebarProps) {
             onClick={() => runBrowserAction(onBrowserStop)}
             disabled={!(browserState.canStop ?? browserState.actionRunning)}
           >
-            <Square size={12} />
-            Stop
+            stop
           </button>
+        </div>
+      </div>
+
+      {!browserState.modeEnabled ? (
+        <p className="browser-mode-note">browser mode disabled</p>
+      ) : null}
+
+      <div className="browser-viewport-pane">
+        <div ref={browserViewportHostRef} className="browser-viewport-host">
+          <span className="browser-viewport-label">Renderer viewport host</span>
+          <span className="browser-viewport-url">{browserState.activeUrl || "No active URL"}</span>
         </div>
       </div>
     </section>

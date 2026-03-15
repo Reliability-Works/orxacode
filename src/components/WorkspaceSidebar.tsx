@@ -1,7 +1,9 @@
-import { useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
+import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
+import { ChevronDown, ChevronRight, LayoutDashboard, LayoutGrid, CirclePlay, Zap, Brain, Search } from "lucide-react";
 import type { AppMode, ProjectListItem } from "@shared/ipc";
+import type { SessionType } from "../types/canvas";
 import { IconButton } from "./IconButton";
+import { NewSessionPicker } from "./NewSessionPicker";
 
 type SidebarMode = "projects" | "jobs" | "skills" | "memory";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
@@ -42,8 +44,9 @@ export type WorkspaceSidebarProps = {
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionStatusType: (sessionID: string, directory?: string) => string;
+  sessionTypes: Record<string, SessionType>;
   selectProject: (directory: string) => Promise<void> | void;
-  createSession: (directory?: string) => Promise<void> | void;
+  createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void;
   openSession: (sessionID: string) => void;
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
@@ -80,6 +83,7 @@ export function WorkspaceSidebar({
   activeSessionID,
   setAllSessionsModalOpen,
   getSessionStatusType,
+  sessionTypes,
   selectProject,
   createSession,
   openSession,
@@ -91,6 +95,8 @@ export function WorkspaceSidebar({
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
   const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
+  const [pickerOpenForProject, setPickerOpenForProject] = useState<string | null>(null);
+  const pickerAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   return (
     <aside className="sidebar projects-pane">
@@ -306,18 +312,37 @@ export function WorkspaceSidebar({
                       <span className="project-status-dot" aria-hidden="true" />
                       <span className="project-label-text">{projectLabel}</span>
                     </button>
-                    <button
-                      type="button"
-                      className="project-add-session"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void createSession(project.worktree);
-                      }}
-                      aria-label={`Create session for ${projectLabel}`}
-                      title="New session"
-                    >
-                      +
-                    </button>
+                    <div className="project-add-session-wrapper">
+                      <button
+                        ref={(el) => {
+                          if (pickerOpenForProject === project.worktree) {
+                            pickerAnchorRef.current = el;
+                          }
+                        }}
+                        type="button"
+                        className="project-add-session"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPickerOpenForProject((current) =>
+                            current === project.worktree ? null : project.worktree,
+                          );
+                        }}
+                        aria-label={`Create session for ${projectLabel}`}
+                        aria-haspopup="menu"
+                        aria-expanded={pickerOpenForProject === project.worktree}
+                        title="New session"
+                      >
+                        +
+                      </button>
+                      <NewSessionPicker
+                        isOpen={pickerOpenForProject === project.worktree}
+                        onPick={(sessionType) => {
+                          setPickerOpenForProject(null);
+                          void createSession(project.worktree, sessionType);
+                        }}
+                        onClose={() => setPickerOpenForProject(null)}
+                      />
+                    </div>
                   </div>
                   {isExpanded ? (
                     <div className="project-session-list">
@@ -337,12 +362,18 @@ export function WorkspaceSidebar({
                             }
                             title={session.title || session.slug}
                           >
-                            <span
-                              className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
-                              aria-hidden="true"
-                            >
-                              {awaitingPermission ? "!" : null}
-                            </span>
+                            {sessionTypes[session.id] === "canvas" ? (
+                              <span className="session-type-icon session-type-icon--canvas" aria-hidden="true">
+                                <LayoutGrid size={10} />
+                              </span>
+                            ) : (
+                              <span
+                                className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
+                                aria-hidden="true"
+                              >
+                                {awaitingPermission ? "!" : null}
+                              </span>
+                            )}
                             <span>{session.title || session.slug}</span>
                           </button>
                         );

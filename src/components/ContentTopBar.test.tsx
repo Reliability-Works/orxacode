@@ -35,10 +35,10 @@ function buildProps() {
       onViewWorkspace: vi.fn(),
       onCopyPath: vi.fn(),
       onCopySessionId: vi.fn(),
-      activeOpenTarget: { id: "finder" as const, label: "Finder", logo: "/finder.png" },
+      activeOpenTarget: { id: "finder" as const, label: "finder", logo: "/finder.png" },
       openTargets: [
-        { id: "cursor" as const, label: "Cursor", logo: "/cursor.png" },
-        { id: "finder" as const, label: "Finder", logo: "/finder.png" },
+        { id: "cursor" as const, label: "cursor", logo: "/cursor.png" },
+        { id: "finder" as const, label: "finder", logo: "/finder.png" },
       ],
       onSelectOpenTarget,
       openDirectoryInTarget,
@@ -67,7 +67,7 @@ describe("ContentTopBar open target control", () => {
     const { props, onSelectOpenTarget, openDirectoryInTarget } = buildProps();
     render(<ContentTopBar {...props} openMenuOpen setOpenMenuOpen={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Cursor" }));
+    fireEvent.click(screen.getByRole("button", { name: "cursor" }));
 
     expect(onSelectOpenTarget).toHaveBeenCalledWith("cursor");
     expect(openDirectoryInTarget).not.toHaveBeenCalled();
@@ -77,7 +77,7 @@ describe("ContentTopBar open target control", () => {
     const { props, openDirectoryInTarget } = buildProps();
     render(<ContentTopBar {...props} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Finder" }));
+    fireEvent.click(screen.getByRole("button", { name: "finder" }));
 
     expect(openDirectoryInTarget).toHaveBeenCalledWith("finder");
   });

@@ -138,6 +138,9 @@ export const IPC = {
   browserListHistory: "orxa:browser:listHistory",
   browserClearHistory: "orxa:browser:clearHistory",
   browserPerformAgentAction: "orxa:browser:performAgentAction",
+  appOpenFile: "orxa:app:openFile",
+  appScanPorts: "orxa:app:scanPorts",
+  appHttpRequest: "orxa:app:httpRequest",
   events: "orxa:events",
 } as const;
 
@@ -957,9 +960,44 @@ export type OrxaEvent =
       payload: ContextSelectionTrace;
     };
 
+export type OpenFileOptions = {
+  title?: string;
+  filters?: Array<{ name: string; extensions: string[] }>;
+};
+
+export type OpenFileResult = {
+  path: string;
+  filename: string;
+  url: string;
+};
+
+export type ListeningPort = {
+  port: number;
+  pid: number;
+  process: string;
+  command: string;
+};
+
+export type HttpRequestOptions = {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+};
+
+export type HttpRequestResult = {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  elapsed: number;
+};
+
 export interface OrxaBridge {
   app: {
     openExternal: (url: string) => Promise<boolean>;
+    openFile: (options?: OpenFileOptions) => Promise<OpenFileResult | undefined>;
+    scanPorts: (directory?: string) => Promise<ListeningPort[]>;
+    httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
   };
   mode: {
     get: () => Promise<AppMode>;

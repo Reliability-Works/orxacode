@@ -7,6 +7,9 @@ const eventHub = createIpcEventHub(ipcRenderer, IPC.events);
 const bridge: OrxaBridge = {
   app: {
     openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
+    openFile: (options) => ipcRenderer.invoke(IPC.appOpenFile, options),
+    scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
+    httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
   },
   mode: {
     get: () => ipcRenderer.invoke(IPC.modeGet),

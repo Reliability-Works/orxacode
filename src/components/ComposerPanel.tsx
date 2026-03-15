@@ -376,6 +376,13 @@ export function ComposerPanel(props: ComposerPanelProps) {
         />
         <div className="composer-input-actions">
           <IconButton icon="plus" className="composer-attach-button" label="Add attachment" onClick={() => void pickImageAttachment()} />
+          <div
+            className={`composer-compaction-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
+            title={compactionHint}
+          >
+            <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
+            <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
+          </div>
           <IconButton
             icon={isSessionBusy ? "stop" : "send"}
             className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}

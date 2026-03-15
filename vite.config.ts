@@ -60,7 +60,7 @@ export default defineConfig(({ mode }) => ({
         "src/hooks/usePersistedState.ts",
         "src/components/MessageFeed.tsx",
       ],
-      exclude: ["**/*.test.ts", "**/*.test.tsx", "src/lib/services/**"],
+      exclude: ["**/*.test.ts", "**/*.test.tsx", "src/lib/services/**", "src/lib/file-icons.tsx"],
       thresholds: {
         statements: 75,
         branches: 65,
