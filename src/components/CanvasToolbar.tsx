@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Magnet, Palette, Plus, RotateCcw } from "lucide-react";
+import { Lock, Palette, Plus, RotateCcw } from "lucide-react";
 import type { CanvasTile, CanvasTheme } from "../types/canvas";
 import { AddTileDropdown } from "./AddTileDropdown";
 import { CanvasThemePicker } from "./CanvasThemePicker";
@@ -90,12 +90,12 @@ export function CanvasToolbar({
         type="button"
         className={`canvas-toolbar-btn${snapToGrid ? " active" : ""}`}
         onClick={onToggleSnap}
-        aria-label="Snap to grid"
-        title="Snap to grid"
+        aria-label="Lock tiles"
+        title={snapToGrid ? "Unlock tiles" : "Lock tiles"}
         aria-pressed={snapToGrid}
       >
-        <Magnet size={12} aria-hidden="true" />
-        <span>snap</span>
+        <Lock size={12} aria-hidden="true" />
+        <span>{snapToGrid ? "locked" : "lock"}</span>
       </button>
 
       <button

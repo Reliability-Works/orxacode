@@ -190,6 +190,7 @@ export function CanvasTileComponent({
       if (e.button !== 0) return;
       if ((e.target as HTMLElement).closest(".canvas-tile-ctrl")) return;
       if (tile.maximized) return;
+      if (snapToGrid) return; // Locked — prevent drag
 
       e.preventDefault();
       e.stopPropagation();
@@ -204,7 +205,7 @@ export function CanvasTileComponent({
       };
       isDraggingRef.current = true;
     },
-    [onBringToFront, tile.id, tile.x, tile.y, tile.maximized],
+    [onBringToFront, tile.id, tile.x, tile.y, tile.maximized, snapToGrid],
   );
 
   // Keep refs up-to-date for use inside event handlers without adding to deps
@@ -266,6 +267,7 @@ export function CanvasTileComponent({
     (e: React.MouseEvent, direction: ResizeDirection) => {
       if (e.button !== 0) return;
       if (tile.maximized || tile.minimized) return;
+      if (snapToGrid) return; // Locked — prevent resize
 
       e.preventDefault();
       e.stopPropagation();
@@ -283,7 +285,7 @@ export function CanvasTileComponent({
       };
       isResizingRef.current = true;
     },
-    [onBringToFront, tile.id, tile.x, tile.y, tile.width, tile.height, tile.maximized, tile.minimized],
+    [onBringToFront, tile.id, tile.x, tile.y, tile.width, tile.height, tile.maximized, tile.minimized, snapToGrid],
   );
 
   useEffect(() => {
@@ -428,8 +430,8 @@ export function CanvasTileComponent({
       style={tileStyle}
       onMouseDown={handleTileMouseDown}
     >
-      {/* Resize handles — only when not maximized/minimized */}
-      {!tile.maximized && !tile.minimized && (
+      {/* Resize handles — only when not maximized/minimized/locked */}
+      {!tile.maximized && !tile.minimized && !snapToGrid && (
         <>
           <div
             className="canvas-tile-resize canvas-tile-resize-n"
@@ -466,7 +468,7 @@ export function CanvasTileComponent({
         </>
       )}
 
-      <div className="canvas-tile-header" onMouseDown={handleHeaderMouseDown}>
+      <div className={`canvas-tile-header${snapToGrid ? " locked" : ""}`} onMouseDown={handleHeaderMouseDown}>
         <span className="canvas-tile-icon" style={{ color: iconColor }}>
           {icon}
         </span>

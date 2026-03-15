@@ -86,7 +86,6 @@ export function ContentTopBar({
   commitMenuOpen,
   setCommitMenuOpen,
   setTitleMenuOpen,
-  onViewWorkspace,
   activeOpenTarget,
   openTargets,
   onSelectOpenTarget,
@@ -332,23 +331,15 @@ export function ContentTopBar({
         onClick={toggleProjectsPane}
       />
 
-      {/* Workspace name */}
-      <h2 className="topbar-title" title={activeProjectDir ?? contentPaneTitle}>
+      {/* Workspace + session name */}
+      <h2 className="topbar-title" title={contentPaneTitle}>
         {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
-        {isActiveSessionCanvasSession ? <span className="topbar-title-canvas-suffix"> / canvas</span> : null}
+        {isActiveSessionCanvasSession ? (
+          <span className="topbar-title-session-suffix"> / canvas</span>
+        ) : contentPaneTitle && activeProjectDir ? (
+          <span className="topbar-title-session-suffix"> / {contentPaneTitle}</span>
+        ) : null}
       </h2>
-
-      {/* Spacer */}
-      <div className="topbar-spacer" />
-
-      {/* Dashboard button */}
-      <button
-        type="button"
-        className="topbar-dash-btn"
-        onClick={onViewWorkspace}
-      >
-        dashboard
-      </button>
 
       {/* Spacer */}
       <div className="topbar-spacer" />

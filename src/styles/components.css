@@ -6361,6 +6361,8 @@ button.primary {
 }
 
 .canvas-tile-header:active { cursor: grabbing; }
+.canvas-tile-header.locked { cursor: default; }
+.canvas-tile-header.locked:active { cursor: default; }
 
 .canvas-tile-icon { display: flex; align-items: center; flex-shrink: 0; }
 .canvas-tile-icon svg { width: 12px; height: 12px; }
