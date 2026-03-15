@@ -1156,9 +1156,9 @@ export interface OrxaBridge {
     performAgentAction: (request: BrowserAgentActionRequest) => Promise<BrowserAgentActionResult>;
   };
   mcpDevTools: {
-    start: () => Promise<McpDevToolsServerStatus>;
-    stop: () => Promise<McpDevToolsServerStatus>;
-    getStatus: () => Promise<McpDevToolsServerStatus>;
+    start: (directory: string) => Promise<McpDevToolsServerStatus>;
+    stop: (directory: string) => Promise<McpDevToolsServerStatus>;
+    getStatus: (directory: string) => Promise<McpDevToolsServerStatus>;
     listTools: () => Promise<unknown[]>;
   };
   events: {

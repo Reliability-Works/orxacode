@@ -1430,7 +1430,7 @@ export default function App() {
   }, [activeProjectDir, activeSessionID]);
 
   const setBrowserMode = useCallback(async (enabled: boolean) => {
-    if (!activeSessionKey) {
+    if (!activeSessionKey || !activeProjectDir) {
       return;
     }
     setBrowserModeBySession((current) => ({
@@ -1439,8 +1439,8 @@ export default function App() {
     }));
     if (!enabled) {
       setBrowserActionRunning(false);
-      // Stop MCP DevTools server when browser mode is turned off
-      window.orxa.mcpDevTools.stop().then(
+      // Disconnect MCP DevTools via SDK when browser mode is turned off
+      window.orxa.mcpDevTools.stop(activeProjectDir).then(
         (status) => setMcpDevToolsState(status.state),
         () => setMcpDevToolsState("stopped"),
       );
@@ -1452,15 +1452,15 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-    // Start MCP DevTools server when browser mode is turned on
-    window.orxa.mcpDevTools.start().then(
+    // Register and connect MCP DevTools via SDK when browser mode is turned on
+    window.orxa.mcpDevTools.start(activeProjectDir).then(
       (status) => setMcpDevToolsState(status.state),
       (err) => {
         console.error("Failed to start MCP DevTools server:", err);
         setMcpDevToolsState("error");
       },
     );
-  }, [activeSessionKey, ensureBrowserTab, setBrowserModeBySession, syncBrowserSnapshot]);
+  }, [activeProjectDir, activeSessionKey, ensureBrowserTab, setBrowserModeBySession, syncBrowserSnapshot]);
 
   const setContextModeForSession = useCallback((enabled: boolean) => {
     if (!activeSessionKey) {

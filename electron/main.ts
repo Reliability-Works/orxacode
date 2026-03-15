@@ -23,7 +23,6 @@ import {
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { BrowserController } from "./services/browser-controller";
-import { McpDevToolsServer } from "./services/mcp-devtools-server";
 import { shouldRunOrxaBootstrap } from "./services/app-mode";
 import { ModeStore } from "./services/mode-store";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
@@ -42,7 +41,6 @@ const modeStore = new ModeStore();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
-let mcpDevToolsServer: McpDevToolsServer | null = null;
 let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
 const PTY_OUTPUT_FLUSH_MS = 16;
@@ -1565,41 +1563,57 @@ function registerIpcHandlers() {
     return requireBrowserController().performAgentAction(assertBrowserAgentActionRequest(request));
   });
 
-  // ── MCP DevTools Server ──────────────────────────────────────────────
-  ipcMain.handle(IPC.mcpDevToolsStart, async (event) => {
+  // ── MCP DevTools (SDK-managed) ─────────────────────────────────────
+  ipcMain.handle(IPC.mcpDevToolsStart, async (event, directory: string) => {
     assertBrowserSender(event);
     const cdpPort = await resolveCdpPort();
-    if (!mcpDevToolsServer) {
-      mcpDevToolsServer = new McpDevToolsServer({
-        onStateChange: (status) =>
-          publishEvent({ type: "mcp.devtools.status", payload: status }),
-      });
+    try {
+      await service.registerMcpDevTools(directory, cdpPort);
+      publishEvent({ type: "mcp.devtools.status", payload: { state: "running", cdpPort } });
+      return { state: "running" as const, cdpPort };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      publishEvent({ type: "mcp.devtools.status", payload: { state: "error", cdpPort, error: message } });
+      return { state: "error" as const, cdpPort, error: message };
     }
-    return mcpDevToolsServer.start(cdpPort);
   });
 
-  ipcMain.handle(IPC.mcpDevToolsStop, async (event) => {
+  ipcMain.handle(IPC.mcpDevToolsStop, async (event, directory: string) => {
     assertBrowserSender(event);
-    if (!mcpDevToolsServer) {
-      return { state: "stopped" as const };
+    try {
+      await service.disconnectMcpDevTools(directory);
+    } catch {
+      // ignore — may already be disconnected
     }
-    return mcpDevToolsServer.stop();
+    publishEvent({ type: "mcp.devtools.status", payload: { state: "stopped" } });
+    return { state: "stopped" as const };
   });
 
-  ipcMain.handle(IPC.mcpDevToolsGetStatus, async (event) => {
+  ipcMain.handle(IPC.mcpDevToolsGetStatus, async (event, directory: string) => {
     assertBrowserSender(event);
-    if (!mcpDevToolsServer) {
+    try {
+      const status = await service.getMcpDevToolsStatus(directory);
+      const mcpMap = status as Record<string, { status?: string }> | undefined;
+      const entry = mcpMap?.["chrome-devtools"];
+      if (entry?.status === "connected") {
+        return { state: "running" as const };
+      }
+      if (entry?.status === "connecting") {
+        return { state: "starting" as const };
+      }
+      if (entry?.status === "error") {
+        return { state: "error" as const };
+      }
+      return { state: "stopped" as const };
+    } catch {
       return { state: "stopped" as const };
     }
-    return mcpDevToolsServer.getStatus();
   });
 
   ipcMain.handle(IPC.mcpDevToolsListTools, async (event) => {
     assertBrowserSender(event);
-    if (!mcpDevToolsServer) {
-      return [];
-    }
-    return mcpDevToolsServer.listTools();
+    // Tools are now managed by the SDK and automatically available to the agent.
+    return [];
   });
 }
 
@@ -1724,8 +1738,6 @@ async function boot() {
 
   app.on("before-quit", () => {
     autoUpdaterController?.cleanup();
-    void mcpDevToolsServer?.stop();
-    mcpDevToolsServer = null;
     browserController?.dispose();
     browserController = null;
     flushAllPtyOutput();

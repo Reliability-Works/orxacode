@@ -148,9 +148,9 @@ const bridge: OrxaBridge = {
     performAgentAction: (request) => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
   },
   mcpDevTools: {
-    start: () => ipcRenderer.invoke(IPC.mcpDevToolsStart),
-    stop: () => ipcRenderer.invoke(IPC.mcpDevToolsStop),
-    getStatus: () => ipcRenderer.invoke(IPC.mcpDevToolsGetStatus),
+    start: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsStart, directory),
+    stop: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsStop, directory),
+    getStatus: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsGetStatus, directory),
     listTools: () => ipcRenderer.invoke(IPC.mcpDevToolsListTools),
   },
   events: {

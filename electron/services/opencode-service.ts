@@ -2478,6 +2478,34 @@ export class OpencodeService {
     }
   }
 
+  // ── MCP DevTools (SDK-managed) ─────────────────────────────────────
+
+  async registerMcpDevTools(directory: string, cdpPort: number): Promise<void> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const client = this.client(normalizedDirectory);
+    await client.mcp.add({
+      name: "chrome-devtools",
+      directory: normalizedDirectory,
+      config: {
+        type: "local",
+        command: ["npx", "chrome-devtools-mcp", "--browser-url", `http://127.0.0.1:${cdpPort}`],
+      },
+    });
+    await client.mcp.connect({ name: "chrome-devtools", directory: normalizedDirectory });
+  }
+
+  async disconnectMcpDevTools(directory: string): Promise<void> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const client = this.client(normalizedDirectory);
+    await client.mcp.disconnect({ name: "chrome-devtools", directory: normalizedDirectory });
+  }
+
+  async getMcpDevToolsStatus(directory: string): Promise<unknown> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const client = this.client(normalizedDirectory);
+    return this.unwrap(client.mcp.status({ directory: normalizedDirectory })).catch(() => ({}));
+  }
+
   async listPtys(directory: string) {
     const response = await this.client(directory).pty.list({ directory });
     return this.unwrap<Pty[]>(response);
