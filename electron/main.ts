@@ -886,7 +886,7 @@ async function configureMacAppIdentity() {
     return;
   }
 
-  app.setName("Opencode Orxa");
+  app.setName("Orxa Code");
 
   const dockIconPath = path.join(process.cwd(), "build", "icon.png");
   try {

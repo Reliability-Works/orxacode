@@ -2,7 +2,7 @@
   "name": "opencode-orxa",
   "private": true,
   "version": "0.1.0-beta.10",
-  "description": "Opencode Orxa Electron desktop app",
+  "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
   "main": "dist-electron/main.js",
@@ -24,7 +24,7 @@
   },
   "build": {
     "appId": "ai.orxa.opencode.monitor",
-    "productName": "Opencode Orxa",
+    "productName": "Orxa Code",
     "files": [
       "dist/**",
       "dist-electron/**",

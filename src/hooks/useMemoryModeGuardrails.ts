@@ -59,7 +59,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
         if (FORBIDDEN_EXTERNAL_MEMORY_PATTERN.test(text)) {
           seen.add(key);
           onGuardrailViolationRef.current?.(
-            "Blocked external memory tooling in Context Mode. Use only Opencode Orxa in-app memory/context.",
+            "Blocked external memory tooling in Context Mode. Use only Orxa Code in-app memory/context.",
           );
           return;
         }
@@ -79,7 +79,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
         }
         seen.add(key);
         onGuardrailViolationRef.current?.(
-          `Blocked forbidden memory tool in Context Mode ("${toolName}"). Use only Opencode Orxa in-app memory/context.`,
+          `Blocked forbidden memory tool in Context Mode ("${toolName}"). Use only Orxa Code in-app memory/context.`,
         );
         return;
       }

@@ -12,7 +12,7 @@ const JOB_RUNS_KEY = "orxa:jobRuns:v1";
 
 const DEFAULT_JOB_SCHEDULE: JobRecord["schedule"] = { type: "daily", time: "09:00", days: [1, 2, 3, 4, 5] };
 const JOB_BROWSER_MODE_SYSTEM_ADDENDUM = [
-  "Browser Mode is enabled in Opencode Orxa.",
+  "Browser Mode is enabled in Orxa Code.",
   "To request browser automation, emit exactly one tag per action:",
   "<orxa_browser_action>{\"id\":\"unique-action-id\",\"action\":\"navigate\",\"args\":{\"url\":\"https://example.com\"}}</orxa_browser_action>",
   "Supported actions: open_tab, close_tab, switch_tab, navigate, back, forward, reload, click, type, press, scroll, extract_text, exists, visible, wait_for, wait_for_navigation, wait_for_idle, screenshot.",

@@ -94,7 +94,7 @@ async function withRetry<T>(operation: string, run: () => Promise<T>, options: R
 
 function getBridge() {
   if (!window.orxa?.opencode) {
-    throw new OpencodeClientError("Desktop bridge unavailable. Restart Opencode Orxa to reconnect.", "IPC_UNAVAILABLE", false);
+    throw new OpencodeClientError("Desktop bridge unavailable. Restart Orxa Code to reconnect.", "IPC_UNAVAILABLE", false);
   }
   return window.orxa.opencode;
 }

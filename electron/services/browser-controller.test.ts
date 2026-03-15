@@ -7,7 +7,7 @@ import type { BrowserHistoryItem, BrowserBounds, OrxaEvent } from "../../shared/
 
 const electronMocks = vi.hoisted(() => ({
   fromPartition: vi.fn(),
-  getPath: vi.fn(() => "/tmp/opencode-orxa-test"),
+  getPath: vi.fn(() => "/tmp/orxa-code-test"),
 }));
 
 vi.mock("electron", () => ({

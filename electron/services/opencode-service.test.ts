@@ -8,7 +8,7 @@ import type { SessionMessageBundle } from "../../shared/ipc";
 
 vi.mock("electron", () => ({
   app: {
-    getName: () => "Opencode Orxa Test",
+    getName: () => "Orxa Code Test",
     getPath: () => "/tmp/orxa-opencode-service-test",
   },
 }));

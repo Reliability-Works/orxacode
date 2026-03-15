@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const electronMocks = vi.hoisted(() => ({
-  getPath: vi.fn(() => "/tmp/opencode-orxa-test"),
+  getPath: vi.fn(() => "/tmp/orxa-code-test"),
 }));
 
 vi.mock("electron", () => ({

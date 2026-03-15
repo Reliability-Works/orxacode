@@ -988,7 +988,7 @@ export default function App() {
   const [latestContextTrace, setLatestContextTrace] = useState<ContextSelectionTrace | null>(null);
   const [startupState, setStartupState] = useState<StartupState>({
     phase: "running",
-    message: "Initializing Opencode Orxa…",
+    message: "Initializing Orxa Code…",
     completed: 0,
     total: STARTUP_TOTAL_STEPS,
   });
@@ -1632,7 +1632,7 @@ export default function App() {
       return undefined;
     }
     return [
-      "Browser Mode is enabled in Opencode Orxa.",
+      "Browser Mode is enabled in Orxa Code.",
       browserControlOwner === "agent"
         ? "Agent currently owns browser control."
         : "Human currently owns browser control. Browser actions will be blocked until hand-back.",
@@ -1884,12 +1884,19 @@ export default function App() {
   }, [activeProjectDir, activeSessionID, messages]);
 
   useEffect(() => {
-    const available = new Set(agentOptions.map((item) => item.name));
+    // Use composerAgentOptions (from listAgentFiles) for availability check,
+    // not agentOptions (from SDK which may have a different/stale list)
+    const available = new Set([
+      ...agentOptions.map((item) => item.name),
+      ...composerAgentOptions.map((item) => item.name),
+    ]);
     if (hasPlanAgent) available.add("plan");
 
     let nextAgent = selectedAgent;
     if (!selectedAgent || !available.has(selectedAgent)) {
-      nextAgent = preferredAgentForMode({
+      // Prefer first composerAgentOption (user's actual primary agents)
+      const firstPrimary = composerAgentOptions[0]?.name;
+      nextAgent = firstPrimary ?? preferredAgentForMode({
         hasPlanAgent,
         serverAgentNames,
         firstAgentName: agentOptions[0]?.name,
@@ -1920,6 +1927,7 @@ export default function App() {
     selectedModel,
     setSelectedModel,
     serverAgentNames,
+    composerAgentOptions,
   ]);
 
   const prevSelectedAgentRef = useRef<string | undefined>(selectedAgent);
@@ -1953,7 +1961,7 @@ export default function App() {
   useEffect(() => {
     const events = window.orxa?.events;
     if (!events) {
-      setStatusLine("Desktop bridge unavailable. Restart Opencode Orxa to reconnect.");
+      setStatusLine("Desktop bridge unavailable. Restart Orxa Code to reconnect.");
       return;
     }
 
@@ -2681,7 +2689,7 @@ export default function App() {
       try {
         const confirmed = await requestConfirmation({
           title: "Remove workspace",
-          message: `Remove "${label}" from Opencode Orxa workspace list?`,
+          message: `Remove "${label}" from Orxa Code workspace list?`,
           confirmLabel: "Remove",
           cancelLabel: "Cancel",
           variant: "danger",
@@ -3719,7 +3727,7 @@ export default function App() {
       {startupState.phase === "running" ? (
         <section className="startup-overlay" aria-live="polite" role="status">
           <div className="startup-card">
-            <h2>Initializing Opencode Orxa</h2>
+            <h2>Initializing Orxa Code</h2>
             <p>{startupState.message}</p>
             <div className="startup-meter" aria-label="Startup progress">
               <div className="startup-meter-fill" style={{ width: `${startupProgressPercent}%` }} />
