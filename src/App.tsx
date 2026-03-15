@@ -1155,11 +1155,28 @@ export default function App() {
   }, [projectData?.commands]);
 
   const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
+  // Fetch Orxa agent list (same source as settings) to ensure all user-created agents appear
+  const [orxaAgentsList, setOrxaAgentsList] = useState<Array<{ name: string; mode: string; description?: string }>>([]);
+  useEffect(() => {
+    void window.orxa.opencode.listOrxaAgents()
+      .then((agents) => setOrxaAgentsList(agents.map((a) => ({ name: a.name, mode: a.mode, description: a.description }))))
+      .catch(() => {});
+  }, [activeProjectDir, projectData?.agents]);
+
   const composerAgentOptions = useMemo(() => {
-    const agents = projectData?.agents ?? [];
-    return agents
+    // Merge SDK agents + Orxa agents, deduplicate by name, filter to primary/all
+    const sdkAgents = projectData?.agents ?? [];
+    const byName = new Map<string, { name: string; mode: string; description?: string }>();
+    for (const agent of sdkAgents) {
+      byName.set(agent.name, { name: agent.name, mode: agent.mode, description: agent.description });
+    }
+    for (const agent of orxaAgentsList) {
+      if (!byName.has(agent.name)) {
+        byName.set(agent.name, agent);
+      }
+    }
+    return [...byName.values()]
       .filter((agent) => {
-        if ((agent as { hidden?: boolean }).hidden === true) return false;
         const mode = agent.mode as string;
         return mode === "primary" || mode === "all";
       })
@@ -1167,8 +1184,9 @@ export default function App() {
         name: agent.name,
         mode: agent.mode as "primary" | "subagent" | "all",
         description: agent.description,
-      }));
-  }, [projectData?.agents]);
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [projectData?.agents, orxaAgentsList]);
   const serverModelOptions = useMemo(
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
