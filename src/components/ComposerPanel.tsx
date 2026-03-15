@@ -10,10 +10,16 @@ import {
   type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
-import { Check, ChevronDown, Compass, FileText, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
+
+type AgentOption = {
+  name: string;
+  mode: "primary" | "subagent" | "all";
+  description?: string;
+};
 import { IconButton } from "./IconButton";
 
 type Command = {
@@ -44,8 +50,9 @@ type ComposerPanelProps = {
   togglePlanMode: (enabled: boolean) => void;
   browserModeEnabled: boolean;
   setBrowserModeEnabled: (enabled: boolean) => void;
-  contextModeEnabled: boolean;
-  setContextModeEnabled: (enabled: boolean) => void;
+  agentOptions: AgentOption[];
+  selectedAgent?: string;
+  onAgentChange: (name: string) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   compactionProgress: number;
@@ -125,8 +132,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
     togglePlanMode,
     browserModeEnabled,
     setBrowserModeEnabled,
-    contextModeEnabled,
-    setContextModeEnabled,
+    agentOptions,
+    selectedAgent,
+    onAgentChange,
     permissionMode,
     onPermissionModeChange,
     compactionProgress,
@@ -157,6 +165,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
     onLayoutHeightChange,
   } = props;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const agentMenuRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const [composerResizeActive, setComposerResizeActive] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
@@ -202,6 +212,36 @@ export function ComposerPanel(props: ComposerPanelProps) {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [permissionMenuOpen]);
+
+  useEffect(() => {
+    if (!agentMenuOpen) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (agentMenuRef.current?.contains(target)) {
+        return;
+      }
+      setAgentMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      setAgentMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [agentMenuOpen]);
 
   useEffect(() => {
     if (!composerResizeActive) {
@@ -445,6 +485,45 @@ export function ComposerPanel(props: ComposerPanelProps) {
       ) : null}
 
       <div className="composer-controls">
+        {agentOptions.length > 0 ? (
+          <div ref={agentMenuRef} className={`composer-agent-wrap ${agentMenuOpen ? "open" : ""}`.trim()}>
+            <button
+              type="button"
+              className="composer-agent-control"
+              title={selectedAgent ? `Agent: ${selectedAgent}` : "Select agent"}
+              onClick={() => setAgentMenuOpen((value) => !value)}
+              aria-expanded={agentMenuOpen}
+              aria-haspopup="menu"
+            >
+              <Bot size={11} aria-hidden="true" />
+              <span className="composer-agent-label">{selectedAgent ?? "agent"}</span>
+              <ChevronDown size={10} aria-hidden="true" />
+            </button>
+            {agentMenuOpen ? (
+              <div className="composer-agent-menu" role="menu" aria-label="Select agent">
+                {agentOptions.map((agent) => (
+                  <button
+                    key={agent.name}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={agent.name === selectedAgent}
+                    className={agent.name === selectedAgent ? "active" : ""}
+                    onClick={() => {
+                      onAgentChange(agent.name);
+                      setAgentMenuOpen(false);
+                    }}
+                  >
+                    <span className="composer-agent-option-main">
+                      <span>{agent.name}</span>
+                      <span className={`composer-agent-mode-badge ${agent.mode}`}>{agent.mode}</span>
+                    </span>
+                    {agent.name === selectedAgent ? <Check size={13} aria-hidden="true" /> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <button
           type="button"
           className={`plan-toggle-inline${isPlanMode ? " is-active" : ""}`}
@@ -467,17 +546,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
         >
           <Compass size={11} aria-hidden="true" />
           <span className="composer-mode-toggle-label">browser</span>
-        </button>
-        <button
-          type="button"
-          className={`composer-mode-toggle-icon ${contextModeEnabled ? "is-active" : ""}`.trim()}
-          aria-pressed={contextModeEnabled}
-          onClick={() => setContextModeEnabled(!contextModeEnabled)}
-          title={contextModeEnabled ? "Context mode enabled" : "Context mode disabled"}
-          aria-label={contextModeEnabled ? "Disable Context mode" : "Enable Context mode"}
-        >
-          <FileText size={11} aria-hidden="true" />
-          <span className="composer-mode-toggle-label">context</span>
         </button>
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
           <button
@@ -788,4 +856,4 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
   );
 }
 
-export type { Command, ComposerPanelProps };
+export type { AgentOption, Command, ComposerPanelProps };

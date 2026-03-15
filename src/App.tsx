@@ -66,7 +66,6 @@ import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useBrowserAgentBridge } from "./hooks/useBrowserAgentBridge";
-import { useMemoryModeGuardrails } from "./hooks/useMemoryModeGuardrails";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import {
   filterHiddenModelOptions,
@@ -82,7 +81,6 @@ import { syncAgentModelPreference } from "./lib/agent-model-preferences";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   BROWSER_MODE_TOOLS_POLICY_WITH_MCP,
-  MEMORY_MODE_TOOLS_POLICY,
   PLAN_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
 } from "./lib/browser-tool-guardrails";
@@ -235,7 +233,6 @@ const DEFAULT_COMPACTION_THRESHOLD = 120_000;
 const MIN_COMPACTION_THRESHOLD = 24_000;
 const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
 const BROWSER_MODE_BY_SESSION_KEY = "orxa:browserModeBySession:v1";
-const CONTEXT_MODE_BY_SESSION_KEY = "orxa:contextModeBySession:v1";
 const BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY = "orxa:browserAutomationHaltedBySession:v1";
 const DEFAULT_BROWSER_LANDING_URL = "about:blank";
 const STARTUP_TOTAL_STEPS = 8;
@@ -974,10 +971,6 @@ export default function App() {
     BROWSER_MODE_BY_SESSION_KEY,
     {},
   );
-  const [contextModeBySession, setContextModeBySession] = usePersistedState<Record<string, boolean>>(
-    CONTEXT_MODE_BY_SESSION_KEY,
-    {},
-  );
   const [browserAutomationHaltedBySession, setBrowserAutomationHaltedBySession] = usePersistedState<Record<string, number>>(
     BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY,
     {},
@@ -1062,7 +1055,6 @@ export default function App() {
     return `${activeProjectDir}::${activeSessionID}`;
   }, [activeProjectDir, activeSessionID]);
   const browserModeEnabled = activeSessionKey ? browserModeBySession[activeSessionKey] === true : false;
-  const contextModeEnabled = activeSessionKey ? contextModeBySession[activeSessionKey] === true : false;
   const browserAutomationHalted = activeSessionKey
     ? typeof browserAutomationHaltedBySession[activeSessionKey] === "number"
     : false;
@@ -1163,6 +1155,20 @@ export default function App() {
   }, [projectData?.commands]);
 
   const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
+  const composerAgentOptions = useMemo(() => {
+    const agents = projectData?.agents ?? [];
+    return agents
+      .filter((agent) => {
+        if ((agent as { hidden?: boolean }).hidden === true) return false;
+        const mode = agent.mode as string;
+        return mode === "primary" || mode === "all";
+      })
+      .map((agent) => ({
+        name: agent.name,
+        mode: agent.mode as "primary" | "subagent" | "all",
+        description: agent.description,
+      }));
+  }, [projectData?.agents]);
   const serverModelOptions = useMemo(
     () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
     [projectData],
@@ -1470,15 +1476,6 @@ export default function App() {
     );
   }, [activeProjectDir, activeSessionKey, ensureBrowserTab, setBrowserModeBySession, syncBrowserSnapshot]);
 
-  const setContextModeForSession = useCallback((enabled: boolean) => {
-    if (!activeSessionKey) {
-      return;
-    }
-    setContextModeBySession((current) => ({
-      ...current,
-      [activeSessionKey]: enabled,
-    }));
-  }, [activeSessionKey, setContextModeBySession]);
 
   const browserNavigate = useCallback(async (url: string) => {
     await runBrowserStateCommand(() => window.orxa.browser.navigate(url));
@@ -1589,12 +1586,6 @@ export default function App() {
     }
   }, [activeProjectDir, activeSessionID, appendDebugLog, setBrowserAutomationHaltedBySession, setStatusLine]);
 
-  const handleMemoryGuardrailViolation = useCallback((message: string) => {
-    setStatusLine(message);
-    void abortSessionViaComposer().catch((error) => {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    });
-  }, [abortSessionViaComposer, setStatusLine]);
 
   const bootstrap = useCallback(async () => {
     try {
@@ -1708,39 +1699,26 @@ export default function App() {
     return buildBrowserAutopilotHint(composer);
   }, [browserControlOwner, browserModeEnabled, composer]);
 
-  const contextModeSystemAddendum = useMemo(() => {
-    if (!contextModeEnabled) {
-      return undefined;
-    }
-    return [
-      "Context Mode is enabled in Opencode Orxa.",
-      "Use only in-app workspace context and local Opencode Orxa memory.",
-      "Do not use external memory services or memory MCP integrations.",
-      "Do not request external memory access when Context Mode is enabled.",
-    ].join("\n");
-  }, [contextModeEnabled]);
-
   const effectiveSystemAddendum = useMemo(() => {
-    const parts = [browserSystemAddendum, browserAutopilotHint, contextModeSystemAddendum]
+    const parts = [browserSystemAddendum, browserAutopilotHint]
       .map((item) => item?.trim())
       .filter((item): item is string => Boolean(item));
     if (parts.length === 0) {
       return undefined;
     }
     return parts.join("\n\n");
-  }, [browserAutopilotHint, browserSystemAddendum, contextModeSystemAddendum]);
+  }, [browserAutopilotHint, browserSystemAddendum]);
 
   const mcpConnected = mcpDevToolsState === "running";
   const activePromptToolsPolicy = useMemo(
     () =>
       mergeModeToolPolicies(
         isPlanMode ? PLAN_MODE_TOOLS_POLICY : undefined,
-        contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
         browserModeEnabled
           ? mcpConnected ? BROWSER_MODE_TOOLS_POLICY_WITH_MCP : BROWSER_MODE_TOOLS_POLICY
           : undefined,
       ),
-    [browserModeEnabled, contextModeEnabled, isPlanMode, mcpConnected],
+    [browserModeEnabled, isPlanMode, mcpConnected],
   );
 
   const sendComposerPrompt = useCallback(
@@ -1750,12 +1728,11 @@ export default function App() {
       }
       return sendPrompt({
         systemAddendum: effectiveSystemAddendum,
-        contextModeEnabled,
         promptSource: "user",
         tools: activePromptToolsPolicy,
       });
     },
-    [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, contextModeEnabled, effectiveSystemAddendum, sendPrompt],
+    [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, effectiveSystemAddendum, sendPrompt],
   );
 
   const allModelOptions = settingsModelOptions;
@@ -3124,13 +3101,6 @@ export default function App() {
     onGuardrailViolation: handleBrowserGuardrailViolation,
   });
 
-  useMemoryModeGuardrails({
-    activeProjectDir: activeProjectDir ?? null,
-    activeSessionID: activeSessionID ?? null,
-    messages,
-    memoryModeEnabled: contextModeEnabled,
-    onGuardrailViolation: handleMemoryGuardrailViolation,
-  });
 
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const messageFeedBottomClearance = useMemo(() => {
@@ -4098,8 +4068,9 @@ export default function App() {
                     togglePlanMode={togglePlanMode}
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
-                    contextModeEnabled={contextModeEnabled}
-                    setContextModeEnabled={setContextModeForSession}
+                    agentOptions={composerAgentOptions}
+                    selectedAgent={selectedAgent}
+                    onAgentChange={setSelectedAgent}
                     permissionMode={appPreferences.permissionMode}
                     onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                     compactionProgress={compactionMeter.progress}
