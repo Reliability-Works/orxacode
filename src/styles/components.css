@@ -3956,6 +3956,20 @@
   margin-top: var(--space-2);
 }
 
+.settings-claude-dirs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-dir-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
 .raw-editor-modal {
   width: min(1120px, 95vw);
   max-height: 90vh;

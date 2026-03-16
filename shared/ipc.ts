@@ -133,6 +133,8 @@ export const IPC = {
   mcpDevToolsGetStatus: "orxa:mcp:devtools:getStatus",
   mcpDevToolsListTools: "orxa:mcp:devtools:listTools",
   appOpenFile: "orxa:app:openFile",
+  appReadTextFile: "orxa:app:readTextFile",
+  appRevealInFinder: "orxa:app:revealInFinder",
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
   codexStart: "orxa:codex:start",
@@ -1055,6 +1057,8 @@ export interface OrxaBridge {
   app: {
     openExternal: (url: string) => Promise<boolean>;
     openFile: (options?: OpenFileOptions) => Promise<OpenFileResult | undefined>;
+    readTextFile: (filePath: string) => Promise<string>;
+    revealInFinder: (dirPath: string) => Promise<boolean>;
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
   };

@@ -8,6 +8,8 @@ const bridge: OrxaBridge = {
   app: {
     openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
     openFile: (options) => ipcRenderer.invoke(IPC.appOpenFile, options),
+    readTextFile: (filePath) => ipcRenderer.invoke(IPC.appReadTextFile, filePath),
+    revealInFinder: (dirPath) => ipcRenderer.invoke(IPC.appRevealInFinder, dirPath),
     scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
     httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
   },

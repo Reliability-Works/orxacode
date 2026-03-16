@@ -157,6 +157,14 @@ export function SettingsDrawer({
   const [ocOpenInMenu, setOcOpenInMenu] = useState(false);
   const [collapsedProviders, setCollapsedProviders] = useState<Record<string, boolean>>({});
 
+  const [claudeSettingsJson, setClaudeSettingsJson] = useState("");
+  const [claudeMd, setClaudeMd] = useState("");
+  const [claudeLoading, setClaudeLoading] = useState(false);
+  const [codexConfigToml, setCodexConfigToml] = useState("");
+  const [codexAgentsMd, setCodexAgentsMd] = useState("");
+  const [codexLoading, setCodexLoading] = useState(false);
+  const [codexState, setCodexState] = useState<{ status: string } | null>(null);
+
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -314,6 +322,38 @@ export function SettingsDrawer({
       void loadOcAgents();
     }
   }, [open, section, loadOcAgents, ocAgents.length]);
+
+  useEffect(() => {
+    if (!open || section !== "claude-settings") return;
+    setClaudeLoading(true);
+    void Promise.all([
+      window.orxa.app.readTextFile("~/.claude/settings.json"),
+      window.orxa.app.readTextFile("~/.claude/CLAUDE.md"),
+    ])
+      .then(([settingsJson, claudeMdContent]) => {
+        setClaudeSettingsJson(settingsJson);
+        setClaudeMd(claudeMdContent);
+      })
+      .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+      .finally(() => setClaudeLoading(false));
+  }, [open, section]);
+
+  useEffect(() => {
+    if (!open || section !== "codex-settings") return;
+    setCodexLoading(true);
+    void Promise.all([
+      window.orxa.app.readTextFile("~/.codex/config.toml"),
+      window.orxa.app.readTextFile("~/.codex/AGENTS.md"),
+      window.orxa.codex.getState(),
+    ])
+      .then(([configToml, agentsMd, state]) => {
+        setCodexConfigToml(configToml);
+        setCodexAgentsMd(agentsMd);
+        setCodexState(state);
+      })
+      .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+      .finally(() => setCodexLoading(false));
+  }, [open, section]);
 
   if (!open) {
     return null;
@@ -954,7 +994,7 @@ export function SettingsDrawer({
       };
 
       const toggleCollapse = (providerID: string) => {
-        setCollapsedProviders((prev) => ({ ...prev, [providerID]: !prev[providerID] }));
+        setCollapsedProviders((prev) => ({ ...prev, [providerID]: prev[providerID] === false ? true : false }));
       };
 
       return (
@@ -966,7 +1006,7 @@ export function SettingsDrawer({
             {providers.map(([providerID, group]) => {
               const allKeys = group.models.map((m) => m.key);
               const visibleCount = allKeys.filter((k) => !hidden.has(k)).length;
-              const isCollapsed = Boolean(collapsedProviders[providerID]);
+              const isCollapsed = collapsedProviders[providerID] !== false;
               return (
                 <div key={providerID} className="provider-models-group">
                   <div className="provider-models-header">
@@ -1004,56 +1044,206 @@ export function SettingsDrawer({
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
           <p className="settings-server-title">claude</p>
-          <p className="settings-server-subtitle">// CLI settings</p>
+
+          <p className="settings-server-subtitle">// settings.json</p>
+          <p className="raw-path">~/.claude/settings.json</p>
+          {claudeLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={claudeSettingsJson}
+              readOnly
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "120px" }}
+            />
+          )}
+          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
+            read-only -- edit in your editor or via the claude CLI
+          </p>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// global instructions (CLAUDE.md)</p>
+          <p className="raw-path">~/.claude/CLAUDE.md</p>
+          {claudeLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={claudeMd}
+              readOnly
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "120px" }}
+            />
+          )}
+          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
+            read-only -- edit in your editor
+          </p>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// permission mode</p>
           <div className="settings-server-status-card">
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">CLI path</span>
-              <span className="settings-server-status-value">claude</span>
-            </div>
             <div className="settings-server-status-row">
               <span className="settings-server-status-key">default permission mode</span>
               <span className="settings-server-status-value">{appPreferences.permissionMode ?? "ask-write"}</span>
             </div>
           </div>
-          <p className="settings-server-subtitle">// config</p>
-          <div className="settings-server-status-card">
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">config directory</span>
-              <span className="settings-server-status-value">~/.claude/</span>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// directories</p>
+          <div className="settings-claude-dirs">
+            <div className="settings-dir-row">
+              <span className="settings-server-status-key">~/.claude/agents/</span>
+              <button
+                type="button"
+                className="settings-server-btn"
+                onClick={() => void window.orxa.app.revealInFinder("~/.claude/agents")}
+              >
+                open in finder
+              </button>
+            </div>
+            <div className="settings-dir-row">
+              <span className="settings-server-status-key">~/.claude/skills/</span>
+              <button
+                type="button"
+                className="settings-server-btn"
+                onClick={() => void window.orxa.app.revealInFinder("~/.claude/skills")}
+              >
+                open in finder
+              </button>
+            </div>
+            <div className="settings-dir-row">
+              <span className="settings-server-status-key">~/.claude/plugins/</span>
+              <button
+                type="button"
+                className="settings-server-btn"
+                onClick={() => void window.orxa.app.revealInFinder("~/.claude/plugins")}
+              >
+                open in finder
+              </button>
             </div>
           </div>
-          <p className="settings-memory-desc" style={{ marginTop: "8px" }}>
-            edit claude settings directly in ~/.claude/ or via the claude CLI. MCP server config lives in ~/.claude.json.
-          </p>
+
+          <button
+            type="button"
+            className="settings-server-btn"
+            style={{ marginTop: "8px" }}
+            onClick={() => {
+              setClaudeLoading(true);
+              void Promise.all([
+                window.orxa.app.readTextFile("~/.claude/settings.json"),
+                window.orxa.app.readTextFile("~/.claude/CLAUDE.md"),
+              ])
+                .then(([settingsJson, claudeMdContent]) => {
+                  setClaudeSettingsJson(settingsJson);
+                  setClaudeMd(claudeMdContent);
+                  setFeedback("Claude settings reloaded");
+                })
+                .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                .finally(() => setClaudeLoading(false));
+            }}
+          >
+            reload
+          </button>
         </section>
       );
     }
 
     if (section === "codex-settings") {
+      const codexStatus = codexState?.status ?? "unknown";
+      const codexConnected = codexStatus === "connected";
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
           <p className="settings-server-title">codex</p>
-          <p className="settings-server-subtitle">// app server</p>
-          <div className="settings-server-status-card">
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">binary path</span>
-              <span className="settings-server-status-value">codex</span>
-            </div>
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">status</span>
-              <span className="settings-server-status-value">placeholder</span>
-            </div>
-          </div>
-          <p className="settings-server-subtitle">// config</p>
-          <div className="settings-server-status-card">
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">config directory</span>
-              <span className="settings-server-status-value">~/.codex/</span>
-            </div>
-          </div>
-          <p className="settings-memory-desc" style={{ marginTop: "8px" }}>
-            edit codex settings directly in ~/.codex/ or via the codex CLI.
+
+          <p className="settings-server-subtitle">// config.toml</p>
+          <p className="raw-path">~/.codex/config.toml</p>
+          {codexLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={codexConfigToml}
+              readOnly
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "120px" }}
+            />
+          )}
+          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
+            read-only -- edit in your editor or via the codex CLI
           </p>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// agent instructions (AGENTS.md)</p>
+          <p className="raw-path">~/.codex/AGENTS.md</p>
+          {codexLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={codexAgentsMd}
+              readOnly
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "120px" }}
+            />
+          )}
+          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
+            read-only -- edit in your editor
+          </p>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// connection status</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">codex app-server</span>
+              <span className={`settings-server-status-value${codexConnected ? " settings-server-status-value--green" : ""}`}>
+                {codexStatus}
+              </span>
+            </div>
+          </div>
+
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// directories</p>
+          <div className="settings-claude-dirs">
+            <div className="settings-dir-row">
+              <span className="settings-server-status-key">~/.codex/memories/</span>
+              <button
+                type="button"
+                className="settings-server-btn"
+                onClick={() => void window.orxa.app.revealInFinder("~/.codex/memories")}
+              >
+                open in finder
+              </button>
+            </div>
+            <div className="settings-dir-row">
+              <span className="settings-server-status-key">~/.codex/skills/</span>
+              <button
+                type="button"
+                className="settings-server-btn"
+                onClick={() => void window.orxa.app.revealInFinder("~/.codex/skills")}
+              >
+                open in finder
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="settings-server-btn"
+            style={{ marginTop: "8px" }}
+            onClick={() => {
+              setCodexLoading(true);
+              void Promise.all([
+                window.orxa.app.readTextFile("~/.codex/config.toml"),
+                window.orxa.app.readTextFile("~/.codex/AGENTS.md"),
+                window.orxa.codex.getState(),
+              ])
+                .then(([configToml, agentsMd, state]) => {
+                  setCodexConfigToml(configToml);
+                  setCodexAgentsMd(agentsMd);
+                  setCodexState(state);
+                  setFeedback("Codex settings reloaded");
+                })
+                .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                .finally(() => setCodexLoading(false));
+            }}
+          >
+            reload
+          </button>
         </section>
       );
     }

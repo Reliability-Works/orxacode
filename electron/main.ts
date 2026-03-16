@@ -973,6 +973,38 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle(IPC.appReadTextFile, async (_event, filePath: unknown) => {
+    if (typeof filePath !== "string") throw new Error("filePath must be a string");
+    const homeDir = app.getPath("home");
+    const resolved = path.resolve(filePath.replace(/^~/, homeDir));
+    const allowedPrefixes = [
+      path.join(homeDir, ".claude"),
+      path.join(homeDir, ".codex"),
+    ];
+    const isAllowed = allowedPrefixes.some((prefix) => resolved.startsWith(prefix + path.sep) || resolved === prefix);
+    if (!isAllowed) throw new Error(`Reading files outside ~/.claude/ and ~/.codex/ is not allowed`);
+    // Reject sensitive files
+    const basename = path.basename(resolved);
+    if (basename === "auth.json" || basename === "credentials.json") {
+      throw new Error(`Reading ${basename} is not allowed for security reasons`);
+    }
+    const { readFile } = await import("node:fs/promises");
+    try {
+      const content = await readFile(resolved, "utf-8");
+      return content;
+    } catch {
+      return "";
+    }
+  });
+
+  ipcMain.handle(IPC.appRevealInFinder, async (_event, dirPath: unknown) => {
+    if (typeof dirPath !== "string") throw new Error("dirPath must be a string");
+    const homeDir = app.getPath("home");
+    const resolved = path.resolve(dirPath.replace(/^~/, homeDir));
+    shell.showItemInFolder(resolved);
+    return true;
+  });
+
   ipcMain.handle(IPC.appScanPorts, async (_event, directory?: unknown) => {
     const { exec } = await import("node:child_process");
     const dir = typeof directory === "string" ? directory : undefined;
