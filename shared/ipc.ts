@@ -143,6 +143,10 @@ export const IPC = {
   codexStartTurn: "orxa:codex:startTurn",
   codexApprove: "orxa:codex:approve",
   codexDeny: "orxa:codex:deny",
+  claudeTerminalCreate: "orxa:claude-terminal:create",
+  claudeTerminalWrite: "orxa:claude-terminal:write",
+  claudeTerminalResize: "orxa:claude-terminal:resize",
+  claudeTerminalClose: "orxa:claude-terminal:close",
   events: "orxa:events",
 } as const;
 
@@ -662,6 +666,13 @@ export type TerminalConnectResult = {
   connected: boolean;
 };
 
+export type ClaudeTerminalCreateResult = {
+  processId: string;
+  directory: string;
+};
+
+export type ClaudeTerminalMode = "standard" | "full";
+
 export type McpDevToolsServerState = "stopped" | "starting" | "running" | "error";
 
 export type McpDevToolsServerStatus = {
@@ -883,6 +894,22 @@ export type OrxaEvent =
       payload: {
         ptyID: string;
         directory: string;
+      };
+    }
+  | {
+      type: "claude-terminal.output";
+      payload: {
+        processId: string;
+        directory: string;
+        chunk: string;
+      };
+    }
+  | {
+      type: "claude-terminal.closed";
+      payload: {
+        processId: string;
+        directory: string;
+        exitCode: number | null;
       };
     }
   | {
@@ -1137,6 +1164,12 @@ export interface OrxaBridge {
     write: (directory: string, ptyID: string, data: string) => Promise<boolean>;
     resize: (directory: string, ptyID: string, cols: number, rows: number) => Promise<boolean>;
     close: (directory: string, ptyID: string) => Promise<boolean>;
+  };
+  claudeTerminal: {
+    create: (directory: string, mode: ClaudeTerminalMode, cols?: number, rows?: number) => Promise<ClaudeTerminalCreateResult>;
+    write: (processId: string, data: string) => Promise<boolean>;
+    resize: (processId: string, cols: number, rows: number) => Promise<boolean>;
+    close: (processId: string) => Promise<boolean>;
   };
   browser: {
     getState: () => Promise<BrowserState>;

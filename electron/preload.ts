@@ -120,6 +120,12 @@ const bridge: OrxaBridge = {
     resize: (directory, ptyID, cols, rows) => ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
     close: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
   },
+  claudeTerminal: {
+    create: (directory, mode, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalCreate, directory, mode, cols, rows),
+    write: (processId, data) => ipcRenderer.invoke(IPC.claudeTerminalWrite, processId, data),
+    resize: (processId, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
+    close: (processId) => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
+  },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),
     setVisible: (visible) => ipcRenderer.invoke(IPC.browserSetVisible, visible),

@@ -52,6 +52,26 @@ function storePermissionMode(directory: string, mode: "standard" | "full"): void
   }
 }
 
+// ── Persistence layer ──
+// Module-level maps that survive React unmount/remount cycles.
+// Keyed by `directory:mode` to uniquely identify a claude terminal session.
+
+type PersistedSession = {
+  processId: string;
+  directory: string;
+  mode: string;
+  outputChunks: string[];
+  exited: boolean;
+  exitCode: number | null;
+  unsubscribe: (() => void) | null;
+};
+
+const persistedSessions = new Map<string, PersistedSession>();
+
+function sessionKey(directory: string, mode: string): string {
+  return `${directory}::${mode}`;
+}
+
 interface Props {
   directory: string;
   onExit: () => void;
@@ -61,7 +81,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const ptyIdRef = useRef<string | null>(null);
+  const processIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<Array<() => void>>([]);
   const [unavailable, setUnavailable] = useState(false);
   const [rememberChoice, setRememberChoice] = useState(false);
@@ -80,20 +100,16 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
       const container = containerRef.current;
       if (!container) return;
 
-      if (!window.orxa?.terminal) {
+      if (!window.orxa?.claudeTerminal) {
         setUnavailable(true);
         return;
       }
 
-      // Dispose any previous instance
+      // Dispose any previous xterm instance (but NOT the underlying process — that's persistent)
       runCleanups();
       if (terminalRef.current) {
         terminalRef.current.dispose();
         terminalRef.current = null;
-      }
-      if (ptyIdRef.current && window.orxa?.terminal) {
-        void window.orxa.terminal.close(directory, ptyIdRef.current);
-        ptyIdRef.current = null;
       }
       // Clear the container DOM so xterm can re-attach
       container.innerHTML = "";
@@ -115,60 +131,124 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
 
       const cleanups: Array<() => void> = [];
 
-      // Use exec to replace the shell process with claude — prevents command echo.
-      // Strip ANTHROPIC_* env vars to prevent API billing override.
-      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
-      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
-      const command = `exec ${envPrefix} ${claudeCmd}\n`;
+      const key = sessionKey(directory, mode);
+      const existing = persistedSessions.get(key);
 
-      void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
-        ptyIdRef.current = pty.id;
+      if (existing && !existing.exited) {
+        // Reattach to an existing process — replay buffered output
+        processIdRef.current = existing.processId;
 
-        void window.orxa.terminal.connect(directory, pty.id).then(() => {
-          void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
+        // Replay all buffered output into the new xterm instance
+        for (const chunk of existing.outputChunks) {
+          terminal.write(chunk);
+        }
 
-          // Send the exec command FIRST — before subscribing to output.
-          // This runs in the shell background. The shell will echo the command
-          // and then exec into claude. We delay subscribing to output so the
-          // user never sees the shell prompt or command echo.
-          void window.orxa.terminal.write(directory, pty.id, command);
+        if (existing.exited) {
+          terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+        }
 
-          // Wait for the shell to exec into claude before showing output.
-          // 300ms is enough for exec to replace the shell with claude.
-          const timerId = window.setTimeout(() => {
-            if (!window.orxa?.events) return;
+        // Detach old event listener and subscribe a new one that also writes to this terminal
+        if (existing.unsubscribe) {
+          existing.unsubscribe();
+          existing.unsubscribe = null;
+        }
 
+        if (window.orxa?.events) {
+          const unsubscribe = window.orxa.events.subscribe((event) => {
+            if (
+              event.type === "claude-terminal.output" &&
+              event.payload.processId === existing.processId &&
+              event.payload.directory === directory
+            ) {
+              existing.outputChunks.push(event.payload.chunk);
+              terminal.write(event.payload.chunk);
+            }
+            if (
+              event.type === "claude-terminal.closed" &&
+              event.payload.processId === existing.processId &&
+              event.payload.directory === directory
+            ) {
+              existing.exited = true;
+              existing.exitCode = event.payload.exitCode;
+              terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+            }
+          });
+          existing.unsubscribe = unsubscribe;
+          cleanups.push(() => {
+            // On unmount, DON'T unsubscribe — keep collecting output in the background.
+            // We only detach the terminal display. The session's own listener stays.
+          });
+        }
+      } else {
+        // Clean up any stale exited session
+        if (existing) {
+          if (existing.unsubscribe) existing.unsubscribe();
+          persistedSessions.delete(key);
+        }
+
+        // Create a new claude terminal process
+        const cols = terminal.cols;
+        const rows = terminal.rows;
+
+        void window.orxa.claudeTerminal.create(directory, mode, cols, rows).then((result) => {
+          processIdRef.current = result.processId;
+
+          const session: PersistedSession = {
+            processId: result.processId,
+            directory,
+            mode,
+            outputChunks: [],
+            exited: false,
+            exitCode: null,
+            unsubscribe: null,
+          };
+
+          if (window.orxa?.events) {
             const unsubscribe = window.orxa.events.subscribe((event) => {
               if (
-                event.type === "pty.output" &&
-                event.payload.ptyID === pty.id &&
+                event.type === "claude-terminal.output" &&
+                event.payload.processId === result.processId &&
                 event.payload.directory === directory
               ) {
-                terminal.write(event.payload.chunk as string);
+                session.outputChunks.push(event.payload.chunk);
+                // Only write to terminal if it's still the current one
+                if (terminalRef.current === terminal) {
+                  terminal.write(event.payload.chunk);
+                }
               }
               if (
-                event.type === "pty.closed" &&
-                event.payload.ptyID === pty.id &&
+                event.type === "claude-terminal.closed" &&
+                event.payload.processId === result.processId &&
                 event.payload.directory === directory
               ) {
-                terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+                session.exited = true;
+                session.exitCode = event.payload.exitCode;
+                if (terminalRef.current === terminal) {
+                  terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+                }
               }
             });
-            cleanups.push(unsubscribe);
-          }, 300);
-          cleanups.push(() => window.clearTimeout(timerId));
-        });
+            session.unsubscribe = unsubscribe;
+          }
 
-        const disposeInput = terminal.onData((data) => {
-          void window.orxa.terminal.write(directory, pty.id, data);
+          persistedSessions.set(key, session);
         });
-        cleanups.push(() => disposeInput.dispose());
+      }
+
+      // Forward user keyboard input to the process
+      const disposeInput = terminal.onData((data) => {
+        const pid = processIdRef.current;
+        if (pid && window.orxa?.claudeTerminal) {
+          void window.orxa.claudeTerminal.write(pid, data);
+        }
       });
+      cleanups.push(() => disposeInput.dispose());
 
       const resizeObs = new ResizeObserver(() => {
         fit.fit();
-        if (ptyIdRef.current) {
-          void window.orxa.terminal.resize(directory, ptyIdRef.current, terminal.cols, terminal.rows);
+        const pid = processIdRef.current;
+        if (pid && window.orxa?.claudeTerminal) {
+          void window.orxa.claudeTerminal.resize(pid, terminal.cols, terminal.rows);
         }
       });
       resizeObs.observe(container);
@@ -189,16 +269,15 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
     return () => {
       runCleanups();
 
+      // Dispose xterm display but do NOT kill the process — it persists
       if (terminalRef.current) {
         terminalRef.current.dispose();
         terminalRef.current = null;
       }
       fitAddonRef.current = null;
 
-      if (ptyIdRef.current && window.orxa?.terminal) {
-        void window.orxa.terminal.close(directory, ptyIdRef.current);
-        ptyIdRef.current = null;
-      }
+      // Do NOT close the process here — persistence means it stays alive
+      processIdRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissionMode]);
@@ -212,7 +291,34 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
 
   function handleRestart() {
     if (permissionMode === "pending") return;
+    // Kill the existing persisted session so a fresh one is created
+    const key = sessionKey(directory, permissionMode);
+    const existing = persistedSessions.get(key);
+    if (existing) {
+      if (existing.unsubscribe) existing.unsubscribe();
+      if (!existing.exited && window.orxa?.claudeTerminal) {
+        void window.orxa.claudeTerminal.close(existing.processId);
+      }
+      persistedSessions.delete(key);
+    }
+    processIdRef.current = null;
     launchTerminal(permissionMode);
+  }
+
+  // On exit, kill the process and clean up
+  function handleExit() {
+    if (permissionMode !== "pending") {
+      const key = sessionKey(directory, permissionMode);
+      const existing = persistedSessions.get(key);
+      if (existing) {
+        if (existing.unsubscribe) existing.unsubscribe();
+        if (!existing.exited && window.orxa?.claudeTerminal) {
+          void window.orxa.claudeTerminal.close(existing.processId);
+        }
+        persistedSessions.delete(key);
+      }
+    }
+    onExit();
   }
 
   if (unavailable) {
@@ -222,7 +328,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
           <Bot size={14} color="#8b5cf6" />
           <span className="claude-toolbar-label">claude code</span>
           <span className="claude-toolbar-path">{directory}</span>
-          <button type="button" className="claude-toolbar-btn" onClick={onExit}>
+          <button type="button" className="claude-toolbar-btn" onClick={handleExit}>
             exit
           </button>
         </div>
@@ -241,7 +347,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
           <Bot size={14} color="#8b5cf6" />
           <span className="claude-toolbar-label">claude code</span>
           <span className="claude-toolbar-path">{directory}</span>
-          <button type="button" className="claude-toolbar-btn" onClick={onExit} aria-label="exit">
+          <button type="button" className="claude-toolbar-btn" onClick={handleExit} aria-label="exit">
             <X size={11} />
             exit
           </button>
@@ -300,7 +406,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
           <RefreshCw size={11} />
           restart
         </button>
-        <button type="button" className="claude-toolbar-btn" onClick={onExit} aria-label="exit">
+        <button type="button" className="claude-toolbar-btn" onClick={handleExit} aria-label="exit">
           <X size={11} />
           exit
         </button>

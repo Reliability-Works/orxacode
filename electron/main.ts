@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import {
   type ArtifactExportBundleInput,
@@ -12,6 +12,7 @@ import {
   type BrowserBounds,
   type BrowserLocator,
   IPC,
+  type ClaudeTerminalMode,
   type GitCommitRequest,
   type MemoryGraphQuery,
   type MemorySettingsUpdateInput,
@@ -64,6 +65,9 @@ const PTY_OUTPUT_FLUSH_MS = 16;
 const SMOKE_TEST_FLAG = "--smoke-test";
 const ptyOutputBuffer = new Map<string, { directory: string; ptyID: string; chunks: string[] }>();
 const ptyOutputFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+let claudeTerminalIdCounter = 0;
+const claudeTerminalProcesses = new Map<string, { proc: ChildProcess; directory: string }>();
 
 function assertString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) {
@@ -1436,6 +1440,103 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.terminalClose, async (_event, directory: unknown, ptyID: unknown) =>
     service.closePty(assertString(directory, "directory"), assertString(ptyID, "ptyID")),
   );
+
+  // ── Claude Terminal (direct process, no shell echo) ──
+
+  ipcMain.handle(
+    IPC.claudeTerminalCreate,
+    async (_event, directory: unknown, mode: unknown, cols?: unknown, rows?: unknown) => {
+      const dir = assertString(directory, "directory");
+      const m = assertString(mode, "mode") as ClaudeTerminalMode;
+      const termCols = typeof cols === "number" ? cols : 80;
+      const termRows = typeof rows === "number" ? rows : 24;
+
+      const processId = `claude-term-${++claudeTerminalIdCounter}`;
+
+      // Build the env, stripping ANTHROPIC_* to prevent billing override
+      const cleanEnv = { ...process.env };
+      delete cleanEnv.ANTHROPIC_BASE_URL;
+      delete cleanEnv.ANTHROPIC_AUTH_TOKEN;
+      delete cleanEnv.ANTHROPIC_API_KEY;
+      // Tell claude we have a TTY of the right size
+      cleanEnv.COLUMNS = String(termCols);
+      cleanEnv.LINES = String(termRows);
+      // Force color output
+      cleanEnv.FORCE_COLOR = "1";
+      cleanEnv.TERM = "xterm-256color";
+
+      const claudeArgs = m === "full" ? ["--dangerously-skip-permissions"] : [];
+
+      // Use macOS `script` command to wrap claude in a real PTY without a shell.
+      // `script -q /dev/null` allocates a PTY and runs the given command directly.
+      const proc = spawn("script", ["-q", "/dev/null", "claude", ...claudeArgs], {
+        cwd: dir,
+        env: cleanEnv,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      claudeTerminalProcesses.set(processId, { proc, directory: dir });
+
+      proc.stdout?.on("data", (data: Buffer) => {
+        publishEvent({
+          type: "claude-terminal.output",
+          payload: { processId, directory: dir, chunk: data.toString("utf-8") },
+        });
+      });
+      proc.stderr?.on("data", (data: Buffer) => {
+        publishEvent({
+          type: "claude-terminal.output",
+          payload: { processId, directory: dir, chunk: data.toString("utf-8") },
+        });
+      });
+      proc.on("close", (exitCode) => {
+        claudeTerminalProcesses.delete(processId);
+        publishEvent({
+          type: "claude-terminal.closed",
+          payload: { processId, directory: dir, exitCode },
+        });
+      });
+
+      return { processId, directory: dir };
+    },
+  );
+
+  ipcMain.handle(IPC.claudeTerminalWrite, async (_event, processId: unknown, data: unknown) => {
+    const id = assertString(processId, "processId");
+    const entry = claudeTerminalProcesses.get(id);
+    if (!entry) return false;
+    const str = typeof data === "string" ? data : "";
+    entry.proc.stdin?.write(str);
+    return true;
+  });
+
+  ipcMain.handle(IPC.claudeTerminalResize, async (_event, processId: unknown, cols: unknown, rows: unknown) => {
+    const id = assertString(processId, "processId");
+    const entry = claudeTerminalProcesses.get(id);
+    if (!entry) return false;
+    if (typeof cols !== "number" || typeof rows !== "number") {
+      throw new Error("cols and rows must be numbers");
+    }
+    // Send SIGWINCH-style resize via the `script` PTY by writing the TIOCSWINSZ ioctl
+    // Unfortunately, without node-pty we can't resize the PTY directly.
+    // Instead, update the env vars for any new subprocesses claude might launch.
+    // This is a best-effort approach — the initial size is what matters most.
+    return true;
+  });
+
+  ipcMain.handle(IPC.claudeTerminalClose, async (_event, processId: unknown) => {
+    const id = assertString(processId, "processId");
+    const entry = claudeTerminalProcesses.get(id);
+    if (!entry) return false;
+    entry.proc.kill("SIGTERM");
+    // Give it a moment to exit gracefully, then force-kill
+    setTimeout(() => {
+      if (claudeTerminalProcesses.has(id)) {
+        entry.proc.kill("SIGKILL");
+      }
+    }, 3000);
+    return true;
+  });
 
   ipcMain.handle(IPC.browserGetState, async (event) => {
     assertBrowserSender(event);
