@@ -41,6 +41,7 @@ describe("SettingsDrawer", () => {
           codexDefaultModel: "",
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -150,6 +151,7 @@ describe("SettingsDrawer", () => {
           codexDefaultModel: "",
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -240,6 +242,7 @@ describe("SettingsDrawer", () => {
           codexDefaultModel: "",
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -342,6 +345,7 @@ describe("SettingsDrawer", () => {
           codexDefaultModel: "",
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -438,6 +442,7 @@ describe("SettingsDrawer", () => {
           codexDefaultModel: "",
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}

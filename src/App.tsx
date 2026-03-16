@@ -126,6 +126,7 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   codexDefaultModel: "",
   codexReasoningEffort: "medium",
   codexAccessMode: "on-request",
+  gitAgent: "opencode",
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";

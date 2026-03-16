@@ -13,6 +13,7 @@ export type AppPreferences = {
   codexDefaultModel: string;
   codexReasoningEffort: string;
   codexAccessMode: string;
+  gitAgent: "opencode" | "claude" | "codex";
 };
 
 export type CodeFontOption = {

@@ -57,11 +57,12 @@ type SettingsSection =
   | "claude-config"
   | "claude-permissions"
   | "claude-dirs"
+  | "claude-personalization"
   | "codex-general"
   | "codex-models"
   | "codex-access"
   | "codex-config"
-  | "codex-agents"
+  | "codex-personalization"
   | "codex-dirs";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
@@ -339,7 +340,7 @@ export function SettingsDrawer({
     }
   }, [open, section, loadOcAgents, ocAgents.length]);
 
-  const isClaudeSection = section === "claude-config" || section === "claude-permissions" || section === "claude-dirs";
+  const isClaudeSection = section === "claude-config" || section === "claude-permissions" || section === "claude-dirs" || section === "claude-personalization";
   useEffect(() => {
     if (!open || !isClaudeSection) return;
     setClaudeLoading(true);
@@ -360,7 +361,7 @@ export function SettingsDrawer({
     section === "codex-models" ||
     section === "codex-access" ||
     section === "codex-config" ||
-    section === "codex-agents" ||
+    section === "codex-personalization" ||
     section === "codex-dirs";
   useEffect(() => {
     if (!open || !isCodexSection) return;
@@ -528,6 +529,20 @@ export function SettingsDrawer({
               onAppPreferencesChange({ ...appPreferences, commitGuidancePrompt: event.target.value })
             }
           />
+          <label className="settings-update-channel" style={{ marginTop: "16px" }}>
+            git command agent
+            <select
+              value={appPreferences.gitAgent}
+              onChange={(event) =>
+                onAppPreferencesChange({ ...appPreferences, gitAgent: event.target.value as "opencode" | "claude" | "codex" })
+              }
+            >
+              <option value="opencode">opencode</option>
+              <option value="claude">claude</option>
+              <option value="codex">codex</option>
+            </select>
+          </label>
+          <p className="settings-codex-help">// which ai agent handles git commits, pushes, and PR creation</p>
         </section>
       );
     }
@@ -1108,8 +1123,16 @@ export function SettingsDrawer({
               refresh
             </button>
           </div>
+        </section>
+      );
+    }
 
-          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// global instructions (CLAUDE.md)</p>
+    if (section === "claude-personalization") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">claude / personalization</p>
+
+          <p className="settings-server-subtitle">// global instructions (CLAUDE.md)</p>
           <p className="raw-path">~/.claude/CLAUDE.md</p>
           {claudeLoading ? (
             <p className="settings-memory-desc">loading...</p>
@@ -1119,7 +1142,7 @@ export function SettingsDrawer({
               value={claudeMd}
               onChange={(e) => setClaudeMd(e.target.value)}
               placeholder="(file not found or empty)"
-              style={{ minHeight: "160px" }}
+              style={{ minHeight: "280px" }}
             />
           )}
           <div className="settings-codex-field-row">
@@ -1469,10 +1492,10 @@ export function SettingsDrawer({
       );
     }
 
-    if (section === "codex-agents") {
+    if (section === "codex-personalization") {
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
-          <p className="settings-server-title">codex / agents</p>
+          <p className="settings-server-title">codex / personalization</p>
 
           <p className="settings-server-subtitle">// agent instructions (AGENTS.md)</p>
           <p className="raw-path">~/.codex/AGENTS.md</p>
@@ -1715,6 +1738,15 @@ export function SettingsDrawer({
                   {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Preferences
                 </button>
+                <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
+                  {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Git
+                </button>
+                <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
+                  {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Memory
+                </button>
+
                 <span className="settings-nav-group-label">OPENCODE</span>
                 <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
                   {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
@@ -1728,10 +1760,6 @@ export function SettingsDrawer({
                   {section === "opencode-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Agents
                 </button>
-                <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
-                  {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Memory
-                </button>
                 <button
                   type="button"
                   className={section === "personalization" ? "active" : ""}
@@ -1739,10 +1767,6 @@ export function SettingsDrawer({
                 >
                   {section === "personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Personalization
-                </button>
-                <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
-                  {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Git
                 </button>
                 <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
                   {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
@@ -1753,6 +1777,10 @@ export function SettingsDrawer({
                 <button type="button" className={section === "claude-config" ? "active" : ""} onClick={() => setSection("claude-config")}>
                   {section === "claude-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Config
+                </button>
+                <button type="button" className={section === "claude-personalization" ? "active" : ""} onClick={() => setSection("claude-personalization")}>
+                  {section === "claude-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Personalization
                 </button>
                 <button type="button" className={section === "claude-permissions" ? "active" : ""} onClick={() => setSection("claude-permissions")}>
                   {section === "claude-permissions" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
@@ -1780,9 +1808,9 @@ export function SettingsDrawer({
                   {section === "codex-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Config
                 </button>
-                <button type="button" className={section === "codex-agents" ? "active" : ""} onClick={() => setSection("codex-agents")}>
-                  {section === "codex-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Agents
+                <button type="button" className={section === "codex-personalization" ? "active" : ""} onClick={() => setSection("codex-personalization")}>
+                  {section === "codex-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Personalization
                 </button>
                 <button type="button" className={section === "codex-dirs" ? "active" : ""} onClick={() => setSection("codex-dirs")}>
                   {section === "codex-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
