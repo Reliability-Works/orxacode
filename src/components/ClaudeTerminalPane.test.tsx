@@ -13,6 +13,8 @@ vi.mock("xterm", () => {
       onData: vi.fn(() => ({ dispose: vi.fn() })),
       writeln: vi.fn(),
       write: vi.fn(),
+      clear: vi.fn(),
+      reset: vi.fn(),
       cols: 80,
       rows: 24,
     };
@@ -186,5 +188,159 @@ describe("ClaudeTerminalPane", () => {
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
 
     expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
+  });
+
+  // ── Multi-tab tests ──
+
+  it("shows tab bar with initial tab after choosing mode", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    // Should show the tab bar with at least one tab
+    const tabBar = document.querySelector(".claude-tab-bar");
+    expect(tabBar).toBeInTheDocument();
+  });
+
+  it("adds a new tab when + button is clicked", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    const addBtn = screen.getByRole("button", { name: /new claude tab/i });
+    fireEvent.click(addBtn);
+
+    // Should now have two tabs
+    const tabs = document.querySelectorAll(".claude-tab:not(.claude-tab-add)");
+    expect(tabs.length).toBe(2);
+  });
+
+  it("switches active tab when clicked", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    // Add a second tab
+    const addBtn = screen.getByRole("button", { name: /new claude tab/i });
+    fireEvent.click(addBtn);
+
+    // Get the tabs
+    const tabs = document.querySelectorAll(".claude-tab:not(.claude-tab-add)");
+    expect(tabs.length).toBe(2);
+
+    // Click the first tab
+    fireEvent.click(tabs[0]);
+    expect(tabs[0].classList.contains("active")).toBe(true);
+  });
+
+  // ── Split view tests ──
+
+  it("shows split menu when split button is clicked", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    const splitBtn = screen.getByRole("button", { name: /split/i });
+    fireEvent.click(splitBtn);
+
+    expect(screen.getByText("Split horizontal")).toBeInTheDocument();
+    expect(screen.getByText("Split vertical")).toBeInTheDocument();
+  });
+
+  it("creates a split view when horizontal split is selected", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    const splitBtn = screen.getByRole("button", { name: /split/i });
+    fireEvent.click(splitBtn);
+    fireEvent.click(screen.getByText("Split horizontal"));
+
+    const container = document.querySelector(".claude-split-container");
+    expect(container?.classList.contains("claude-split-horizontal")).toBe(true);
+
+    const panels = document.querySelectorAll(".claude-split-panel");
+    expect(panels.length).toBe(2);
+  });
+
+  it("creates a split view when vertical split is selected", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    const splitBtn = screen.getByRole("button", { name: /split/i });
+    fireEvent.click(splitBtn);
+    fireEvent.click(screen.getByText("Split vertical"));
+
+    const container = document.querySelector(".claude-split-container");
+    expect(container?.classList.contains("claude-split-vertical")).toBe(true);
+
+    const panels = document.querySelectorAll(".claude-split-panel");
+    expect(panels.length).toBe(2);
+  });
+
+  it("shows unsplit option when already split", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    // Split first
+    const splitBtn = screen.getByRole("button", { name: /split/i });
+    fireEvent.click(splitBtn);
+    fireEvent.click(screen.getByText("Split horizontal"));
+
+    // Open menu again
+    fireEvent.click(splitBtn);
+    expect(screen.getByText("Unsplit")).toBeInTheDocument();
+  });
+
+  it("removes split when unsplit is selected", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    // Split
+    const splitBtn = screen.getByRole("button", { name: /split/i });
+    fireEvent.click(splitBtn);
+    fireEvent.click(screen.getByText("Split horizontal"));
+
+    // Unsplit
+    fireEvent.click(splitBtn);
+    fireEvent.click(screen.getByText("Unsplit"));
+
+    const panels = document.querySelectorAll(".claude-split-panel");
+    expect(panels.length).toBe(1);
   });
 });

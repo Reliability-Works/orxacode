@@ -4103,7 +4103,7 @@ export default function App() {
                   onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
                 />
               )}
-              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "claude" || sessionTypes[activeSessionID] === "codex")) && (
+              {!(activeSessionID && sessionTypes[activeSessionID] === "canvas") && (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}

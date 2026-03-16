@@ -7454,6 +7454,163 @@ button.primary {
   margin: 0;
 }
 
+/* ── Claude Tab Bar ─────────────────────────────────────────────────── */
+
+.claude-tab-bar {
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  gap: 2px;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.claude-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  height: 22px;
+}
+
+.claude-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.claude-tab.active {
+  color: var(--text-primary);
+  background: var(--bg-input, rgba(255, 255, 255, 0.06));
+  box-shadow: inset 0 -2px 0 #22C55E;
+}
+
+.claude-tab-label {
+  pointer-events: none;
+}
+
+.claude-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.claude-tab-close:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.claude-tab-add {
+  padding: 2px 6px;
+  color: var(--text-muted);
+}
+
+.claude-tab-add:hover {
+  color: var(--text-primary);
+}
+
+/* ── Claude Split View ──────────────────────────────────────────────── */
+
+.claude-split-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.claude-split-container.claude-split-horizontal {
+  flex-direction: column;
+}
+
+.claude-split-container.claude-split-vertical {
+  flex-direction: row;
+}
+
+.claude-split-panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.claude-split-panel .claude-terminal-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.claude-split-divider {
+  flex-shrink: 0;
+  background: var(--border);
+}
+
+.claude-split-horizontal > .claude-split-divider {
+  height: 2px;
+  width: 100%;
+  cursor: row-resize;
+}
+
+.claude-split-vertical > .claude-split-divider {
+  width: 2px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+/* ── Claude Split Menu ──────────────────────────────────────────────── */
+
+.claude-toolbar-split-wrap {
+  position: relative;
+}
+
+.claude-split-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  min-width: 160px;
+  margin-top: 4px;
+  padding: 4px;
+  background: #1a1a1a;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.claude-split-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.claude-split-menu-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
 /* ── Codex Pane ────────────────────────────────────────────────────── */
 
 .codex-pane {
