@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
+import { readdirSync, accessSync, constants as fsConstants } from "node:fs";
 import { execSync, spawn, type ChildProcess } from "node:child_process";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import {
@@ -1467,9 +1468,30 @@ function registerIpcHandlers() {
 
       const claudeArgs = m === "full" ? ["--dangerously-skip-permissions"] : [];
 
-      // Use macOS `script` command to wrap claude in a real PTY without a shell.
-      // `script -q /dev/null` allocates a PTY and runs the given command directly.
-      const proc = spawn("script", ["-q", "/dev/null", "claude", ...claudeArgs], {
+      // Resolve the claude binary path (may be in nvm/volta/etc.)
+      let claudeBin = "claude";
+      try {
+        const home = process.env.HOME ?? "";
+        const nvmDir = path.join(home, ".nvm", "versions", "node");
+        const candidates = [
+          "/opt/homebrew/bin/claude",
+          "/usr/local/bin/claude",
+          path.join(home, ".volta", "bin", "claude"),
+        ];
+        try {
+          const versions = readdirSync(nvmDir);
+          for (const v of versions) {
+            candidates.push(path.join(nvmDir, v, "bin", "claude"));
+          }
+        } catch { /* nvm not installed */ }
+        for (const c of candidates) {
+          try { accessSync(c, fsConstants.X_OK); claudeBin = c; break; } catch { continue; }
+        }
+      } catch { /* use default */ }
+
+      // Spawn claude directly — no shell wrapper, no echo.
+      // Claude Code detects TTY availability and adjusts output.
+      const proc = spawn(claudeBin, claudeArgs, {
         cwd: dir,
         env: cleanEnv,
         stdio: ["pipe", "pipe", "pipe"],
