@@ -2712,7 +2712,7 @@ body.is-resizing * {
   height: 100%;
   flex: 1;
   background: var(--bg-page);
-  border-left: 1px solid var(--border);
+  border-left: none;
   display: flex;
   flex-direction: column;
   transition: opacity 340ms ease, transform 340ms ease;
