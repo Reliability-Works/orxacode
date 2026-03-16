@@ -39,9 +39,11 @@ window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
 const mockOnExit = vi.fn();
 
-function buildOrxaClaudeTerminal() {
+function buildOrxaTerminal() {
   return {
-    create: vi.fn(async () => ({ processId: "claude-term-1", directory: "/workspace/project" })),
+    list: vi.fn(async () => []),
+    create: vi.fn(async () => ({ id: "pty-claude-1" })),
+    connect: vi.fn(async () => ({})),
     write: vi.fn(async () => true),
     resize: vi.fn(async () => true),
     close: vi.fn(async () => true),
@@ -68,7 +70,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders permission modal when no stored preference", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -81,7 +83,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders toolbar with claude code label in permission modal state", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -92,7 +94,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders workspace directory path in toolbar", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -103,7 +105,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("launches terminal after choosing standard mode", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -119,7 +121,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("launches terminal after choosing full access mode", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -133,7 +135,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("remembers choice when checkbox is checked", () => {
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -149,7 +151,7 @@ describe("ClaudeTerminalPane", () => {
     localStorage.setItem("claude-permission-mode:/workspace/project", "full");
 
     window.orxa = {
-      claudeTerminal: buildOrxaClaudeTerminal(),
+      terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 

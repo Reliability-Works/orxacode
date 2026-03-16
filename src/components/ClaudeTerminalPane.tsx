@@ -100,7 +100,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
       const container = containerRef.current;
       if (!container) return;
 
-      if (!window.orxa?.claudeTerminal) {
+      if (!window.orxa?.terminal) {
         setUnavailable(true);
         return;
       }
@@ -156,20 +156,20 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
         if (window.orxa?.events) {
           const unsubscribe = window.orxa.events.subscribe((event) => {
             if (
-              event.type === "claude-terminal.output" &&
-              event.payload.processId === existing.processId &&
+              event.type === "pty.output" &&
+              event.payload.ptyID === existing.processId &&
               event.payload.directory === directory
             ) {
-              existing.outputChunks.push(event.payload.chunk);
-              terminal.write(event.payload.chunk);
+              const chunk = event.payload.chunk as string;
+              existing.outputChunks.push(chunk);
+              terminal.write(chunk);
             }
             if (
-              event.type === "claude-terminal.closed" &&
-              event.payload.processId === existing.processId &&
+              event.type === "pty.closed" &&
+              event.payload.ptyID === existing.processId &&
               event.payload.directory === directory
             ) {
               existing.exited = true;
-              existing.exitCode = event.payload.exitCode;
               terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
             }
           });
@@ -186,15 +186,17 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
           persistedSessions.delete(key);
         }
 
-        // Create a new claude terminal process
-        const cols = terminal.cols;
-        const rows = terminal.rows;
+        // Build the claude command — use exec to replace the shell, strip env vars
+        const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
+        const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
+        const command = `exec ${envPrefix} ${claudeCmd}\n`;
 
-        void window.orxa.claudeTerminal.create(directory, mode, cols, rows).then((result) => {
-          processIdRef.current = result.processId;
+        // Create PTY via OpenCode (gives us a real TTY for claude's TUI)
+        void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
+          processIdRef.current = pty.id;
 
           const session: PersistedSession = {
-            processId: result.processId,
+            processId: pty.id,
             directory,
             mode,
             outputChunks: [],
@@ -203,43 +205,73 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
             unsubscribe: null,
           };
 
-          if (window.orxa?.events) {
+          void window.orxa.terminal.connect(directory, pty.id).then(() => {
+            void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
+
+            // Track whether claude has started (detect "Claude Code" in output)
+            let claudeStarted = false;
+            let pendingChunks: string[] = [];
+
             const unsubscribe = window.orxa.events.subscribe((event) => {
               if (
-                event.type === "claude-terminal.output" &&
-                event.payload.processId === result.processId &&
+                event.type === "pty.output" &&
+                event.payload.ptyID === pty.id &&
                 event.payload.directory === directory
               ) {
-                session.outputChunks.push(event.payload.chunk);
-                // Only write to terminal if it's still the current one
-                if (terminalRef.current === terminal) {
-                  terminal.write(event.payload.chunk);
+                const chunk = event.payload.chunk as string;
+                session.outputChunks.push(chunk);
+
+                if (!claudeStarted) {
+                  // Buffer output until we see Claude Code has started
+                  pendingChunks.push(chunk);
+                  const allOutput = pendingChunks.join("");
+                  if (allOutput.includes("Claude Code") || allOutput.includes("Welcome")) {
+                    // Claude has started — clear xterm and replay from Claude's output
+                    claudeStarted = true;
+                    terminal.clear();
+                    terminal.reset();
+                    // Find the start of Claude's output and write from there
+                    const claudeIdx = allOutput.indexOf("─");
+                    if (claudeIdx >= 0) {
+                      terminal.write(allOutput.slice(claudeIdx));
+                    } else {
+                      // Fallback — just write everything after clearing
+                      terminal.write(allOutput);
+                    }
+                    pendingChunks = [];
+                  }
+                } else {
+                  if (terminalRef.current === terminal) {
+                    terminal.write(chunk);
+                  }
                 }
               }
               if (
-                event.type === "claude-terminal.closed" &&
-                event.payload.processId === result.processId &&
+                event.type === "pty.closed" &&
+                event.payload.ptyID === pty.id &&
                 event.payload.directory === directory
               ) {
                 session.exited = true;
-                session.exitCode = event.payload.exitCode;
                 if (terminalRef.current === terminal) {
                   terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
                 }
               }
             });
             session.unsubscribe = unsubscribe;
-          }
+
+            // Send the command to start claude
+            void window.orxa.terminal.write(directory, pty.id, command);
+          });
 
           persistedSessions.set(key, session);
         });
       }
 
-      // Forward user keyboard input to the process
+      // Forward user keyboard input to the PTY
       const disposeInput = terminal.onData((data) => {
         const pid = processIdRef.current;
-        if (pid && window.orxa?.claudeTerminal) {
-          void window.orxa.claudeTerminal.write(pid, data);
+        if (pid && window.orxa?.terminal) {
+          void window.orxa.terminal.write(directory, pid, data);
         }
       });
       cleanups.push(() => disposeInput.dispose());
@@ -247,8 +279,8 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
       const resizeObs = new ResizeObserver(() => {
         fit.fit();
         const pid = processIdRef.current;
-        if (pid && window.orxa?.claudeTerminal) {
-          void window.orxa.claudeTerminal.resize(pid, terminal.cols, terminal.rows);
+        if (pid && window.orxa?.terminal) {
+          void window.orxa.terminal.resize(directory, pid, terminal.cols, terminal.rows);
         }
       });
       resizeObs.observe(container);
@@ -296,8 +328,8 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
     const existing = persistedSessions.get(key);
     if (existing) {
       if (existing.unsubscribe) existing.unsubscribe();
-      if (!existing.exited && window.orxa?.claudeTerminal) {
-        void window.orxa.claudeTerminal.close(existing.processId);
+      if (!existing.exited && window.orxa?.terminal) {
+        void window.orxa.terminal.close(directory, existing.processId);
       }
       persistedSessions.delete(key);
     }
