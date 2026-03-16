@@ -81,24 +81,26 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
 
     const cleanups: Array<() => void> = [];
 
+    // Connect first, then subscribe to PTY output AFTER connect resolves
+    // to avoid the connect response (e.g. {"cursor":0}) leaking into the terminal display
     void window.orxa.terminal.connect(directory, activeTabId).then(() => {
       void window.orxa.terminal.resize(directory, activeTabId, terminal.cols, terminal.rows);
+
+      const unsubscribe = window.orxa.events.subscribe((event) => {
+        if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
+          terminal.write(event.payload.chunk);
+        }
+        if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
+          terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
+        }
+      });
+      cleanups.push(unsubscribe);
     });
 
     const disposeInput = terminal.onData((data) => {
       void window.orxa.terminal.write(directory, activeTabId, data);
     });
     cleanups.push(() => disposeInput.dispose());
-
-    const unsubscribe = window.orxa.events.subscribe((event) => {
-      if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
-        terminal.write(event.payload.chunk);
-      }
-      if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
-        terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
-      }
-    });
-    cleanups.push(unsubscribe);
 
     const resizeObs = new ResizeObserver(() => {
       fit.fit();

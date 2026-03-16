@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ClaudeTerminalPane } from "./ClaudeTerminalPane";
 
@@ -59,6 +59,7 @@ function buildOrxaEvents() {
 describe("ClaudeTerminalPane", () => {
   beforeEach(() => {
     mockOnExit.mockReset();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -67,7 +68,20 @@ describe("ClaudeTerminalPane", () => {
     delete window.orxa;
   });
 
-  it("renders toolbar with claude code label", () => {
+  it("renders permission modal when no stored preference", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+
+    expect(screen.getByText("Claude Code Permissions")).toBeInTheDocument();
+    expect(screen.getByText("Standard Mode")).toBeInTheDocument();
+    expect(screen.getByText("Full Access Mode")).toBeInTheDocument();
+  });
+
+  it("renders toolbar with claude code label in permission modal state", () => {
     window.orxa = {
       terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
@@ -89,7 +103,7 @@ describe("ClaudeTerminalPane", () => {
     expect(screen.getByText("/workspace/my-project")).toBeInTheDocument();
   });
 
-  it("renders restart and exit buttons", () => {
+  it("launches terminal after choosing standard mode", () => {
     window.orxa = {
       terminal: buildOrxaTerminal(),
       events: buildOrxaEvents(),
@@ -97,8 +111,55 @@ describe("ClaudeTerminalPane", () => {
 
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
 
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    // After choosing, the permission modal should be gone
+    expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
+  });
+
+  it("launches terminal after choosing full access mode", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+
+    fireEvent.click(screen.getByText("Full Access Mode"));
+
+    expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
+  });
+
+  it("remembers choice when checkbox is checked", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+
+    fireEvent.click(screen.getByText("Remember this choice for this workspace"));
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    expect(localStorage.getItem("claude-permission-mode:/workspace/project")).toBe("standard");
+  });
+
+  it("skips modal when stored preference exists", () => {
+    localStorage.setItem("claude-permission-mode:/workspace/project", "full");
+
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+
+    // Should skip directly to terminal view
+    expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
   });
 
   it("shows unavailable message when terminal API is not available", () => {
@@ -106,6 +167,9 @@ describe("ClaudeTerminalPane", () => {
     window.orxa = {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
+
+    // Need to pick a mode first for the unavailable check to trigger
+    localStorage.setItem("claude-permission-mode:/workspace/project", "standard");
 
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
 
@@ -116,6 +180,8 @@ describe("ClaudeTerminalPane", () => {
     window.orxa = {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
+
+    localStorage.setItem("claude-permission-mode:/workspace/project", "standard");
 
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
 

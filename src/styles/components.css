@@ -7370,6 +7370,90 @@ button.primary {
   gap: 8px;
 }
 
+.claude-permission-modal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  padding: 24px;
+}
+
+.claude-permission-content {
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+
+.claude-permission-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.claude-permission-desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}
+
+.claude-permission-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.claude-permission-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  background: var(--bg-card, rgba(255, 255, 255, 0.03));
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.claude-permission-option:hover {
+  border-color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.06);
+}
+
+.claude-permission-option--full:hover {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.claude-permission-option-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.claude-permission-option-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.claude-permission-remember {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.claude-permission-remember input[type="checkbox"] {
+  margin: 0;
+}
+
 /* ── Codex Pane ────────────────────────────────────────────────────── */
 
 .codex-pane {

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Bot, RefreshCw, X } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Bot, RefreshCw, Shield, ShieldOff, X } from "lucide-react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
@@ -26,6 +26,30 @@ const TERMINAL_THEME = {
   brightWhite: "#ffffff",
 };
 
+type PermissionMode = "pending" | "standard" | "full";
+
+function getStorageKey(directory: string): string {
+  return `claude-permission-mode:${directory}`;
+}
+
+function getStoredPermissionMode(directory: string): PermissionMode | null {
+  try {
+    const stored = localStorage.getItem(getStorageKey(directory));
+    if (stored === "standard" || stored === "full") return stored;
+  } catch {
+    // localStorage may not be available
+  }
+  return null;
+}
+
+function storePermissionMode(directory: string, mode: "standard" | "full"): void {
+  try {
+    localStorage.setItem(getStorageKey(directory), mode);
+  } catch {
+    // localStorage may not be available
+  }
+}
+
 interface Props {
   directory: string;
   onExit: () => void;
@@ -38,92 +62,116 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
   const ptyIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<Array<() => void>>([]);
   const [unavailable, setUnavailable] = useState(false);
+  const [rememberChoice, setRememberChoice] = useState(false);
+
+  // Check for a stored permission mode; otherwise start in "pending" to show the modal
+  const storedMode = getStoredPermissionMode(directory);
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(storedMode ?? "pending");
 
   function runCleanups() {
     for (const cleanup of cleanupRef.current) cleanup();
     cleanupRef.current = [];
   }
 
-  function launchTerminal() {
-    const container = containerRef.current;
-    if (!container) return;
+  const launchTerminal = useCallback(
+    (mode: "standard" | "full") => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    if (!window.orxa?.terminal) {
-      setUnavailable(true);
-      return;
-    }
-
-    // Dispose any previous instance
-    runCleanups();
-    if (terminalRef.current) {
-      terminalRef.current.dispose();
-      terminalRef.current = null;
-    }
-    if (ptyIdRef.current && window.orxa?.terminal) {
-      void window.orxa.terminal.close(directory, ptyIdRef.current);
-      ptyIdRef.current = null;
-    }
-    // Clear the container DOM so xterm can re-attach
-    container.innerHTML = "";
-
-    const terminal = new Terminal({
-      fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
-      fontSize: 13,
-      lineHeight: 1.45,
-      cursorBlink: true,
-      theme: TERMINAL_THEME,
-    });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(container);
-    fit.fit();
-
-    terminalRef.current = terminal;
-    fitAddonRef.current = fit;
-
-    const cleanups: Array<() => void> = [];
-
-    void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
-      ptyIdRef.current = pty.id;
-
-      void window.orxa.terminal.connect(directory, pty.id).then(() => {
-        void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
-        // Launch claude inside the shell
-        void window.orxa.terminal.write(directory, pty.id, `claude --cwd ${directory}\n`);
-      });
-
-      const disposeInput = terminal.onData((data) => {
-        void window.orxa.terminal.write(directory, pty.id, data);
-      });
-      cleanups.push(() => disposeInput.dispose());
-
-      const unsubscribe = window.orxa.events.subscribe((event) => {
-        if (event.type === "pty.output" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
-          terminal.write(event.payload.chunk);
-        }
-        if (event.type === "pty.closed" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
-          terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-        }
-      });
-      cleanups.push(unsubscribe);
-    });
-
-    const resizeObs = new ResizeObserver(() => {
-      fit.fit();
-      if (ptyIdRef.current) {
-        void window.orxa.terminal.resize(directory, ptyIdRef.current, terminal.cols, terminal.rows);
+      if (!window.orxa?.terminal) {
+        setUnavailable(true);
+        return;
       }
-    });
-    resizeObs.observe(container);
-    cleanups.push(() => resizeObs.disconnect());
 
-    cleanupRef.current = cleanups;
+      // Dispose any previous instance
+      runCleanups();
+      if (terminalRef.current) {
+        terminalRef.current.dispose();
+        terminalRef.current = null;
+      }
+      if (ptyIdRef.current && window.orxa?.terminal) {
+        void window.orxa.terminal.close(directory, ptyIdRef.current);
+        ptyIdRef.current = null;
+      }
+      // Clear the container DOM so xterm can re-attach
+      container.innerHTML = "";
 
-    requestAnimationFrame(() => terminal.focus());
-  }
+      const terminal = new Terminal({
+        fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
+        fontSize: 13,
+        lineHeight: 1.45,
+        cursorBlink: true,
+        theme: TERMINAL_THEME,
+      });
+      const fit = new FitAddon();
+      terminal.loadAddon(fit);
+      terminal.open(container);
+      fit.fit();
 
+      terminalRef.current = terminal;
+      fitAddonRef.current = fit;
+
+      const cleanups: Array<() => void> = [];
+
+      const command = mode === "full" ? "claude --dangerously-skip-permissions\n" : "claude\n";
+
+      void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
+        ptyIdRef.current = pty.id;
+
+        // Connect first, then subscribe to output events AFTER connect resolves
+        // to avoid the connect response (e.g. {"cursor":0}) leaking into the terminal
+        void window.orxa.terminal.connect(directory, pty.id).then(() => {
+          void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
+
+          // Subscribe to PTY output only after connect has resolved
+          const unsubscribe = window.orxa.events.subscribe((event) => {
+            if (
+              event.type === "pty.output" &&
+              event.payload.ptyID === pty.id &&
+              event.payload.directory === directory
+            ) {
+              terminal.write(event.payload.chunk);
+            }
+            if (
+              event.type === "pty.closed" &&
+              event.payload.ptyID === pty.id &&
+              event.payload.directory === directory
+            ) {
+              terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+            }
+          });
+          cleanups.push(unsubscribe);
+
+          // Launch claude inside the shell
+          void window.orxa.terminal.write(directory, pty.id, command);
+        });
+
+        const disposeInput = terminal.onData((data) => {
+          void window.orxa.terminal.write(directory, pty.id, data);
+        });
+        cleanups.push(() => disposeInput.dispose());
+      });
+
+      const resizeObs = new ResizeObserver(() => {
+        fit.fit();
+        if (ptyIdRef.current) {
+          void window.orxa.terminal.resize(directory, ptyIdRef.current, terminal.cols, terminal.rows);
+        }
+      });
+      resizeObs.observe(container);
+      cleanups.push(() => resizeObs.disconnect());
+
+      cleanupRef.current = cleanups;
+
+      requestAnimationFrame(() => terminal.focus());
+    },
+    [directory],
+  );
+
+  // Launch terminal when permission mode is resolved (not "pending")
   useEffect(() => {
-    launchTerminal();
+    if (permissionMode === "pending") return;
+    launchTerminal(permissionMode);
 
     return () => {
       runCleanups();
@@ -139,12 +187,19 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
         ptyIdRef.current = null;
       }
     };
-    // Mount once — directory is stable for the lifetime of this pane
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [permissionMode]);
+
+  function handlePermissionChoice(mode: "standard" | "full") {
+    if (rememberChoice) {
+      storePermissionMode(directory, mode);
+    }
+    setPermissionMode(mode);
+  }
 
   function handleRestart() {
-    launchTerminal();
+    if (permissionMode === "pending") return;
+    launchTerminal(permissionMode);
   }
 
   if (unavailable) {
@@ -161,6 +216,62 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
         <div className="claude-unavailable">
           <Bot size={32} color="var(--text-muted)" />
           <span>Terminal API is not available in this environment.</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (permissionMode === "pending") {
+    return (
+      <div className="claude-pane">
+        <div className="claude-toolbar">
+          <Bot size={14} color="#8b5cf6" />
+          <span className="claude-toolbar-label">claude code</span>
+          <span className="claude-toolbar-path">{directory}</span>
+          <button type="button" className="claude-toolbar-btn" onClick={onExit} aria-label="exit">
+            <X size={11} />
+            exit
+          </button>
+        </div>
+        <div className="claude-permission-modal">
+          <div className="claude-permission-content">
+            <h3 className="claude-permission-title">Claude Code Permissions</h3>
+            <p className="claude-permission-desc">
+              Choose how Claude Code should run in this workspace.
+            </p>
+            <div className="claude-permission-options">
+              <button
+                type="button"
+                className="claude-permission-option"
+                onClick={() => handlePermissionChoice("standard")}
+              >
+                <Shield size={20} />
+                <span className="claude-permission-option-label">Standard Mode</span>
+                <span className="claude-permission-option-desc">
+                  Claude will ask for permission before executing commands or modifying files.
+                </span>
+              </button>
+              <button
+                type="button"
+                className="claude-permission-option claude-permission-option--full"
+                onClick={() => handlePermissionChoice("full")}
+              >
+                <ShieldOff size={20} />
+                <span className="claude-permission-option-label">Full Access Mode</span>
+                <span className="claude-permission-option-desc">
+                  Claude can execute commands and modify files without asking. Use with caution.
+                </span>
+              </button>
+            </div>
+            <label className="claude-permission-remember">
+              <input
+                type="checkbox"
+                checked={rememberChoice}
+                onChange={(e) => setRememberChoice(e.target.checked)}
+              />
+              Remember this choice for this workspace
+            </label>
+          </div>
         </div>
       </div>
     );

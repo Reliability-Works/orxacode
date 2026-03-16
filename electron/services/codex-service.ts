@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import { EventEmitter } from "node:events";
 
@@ -103,6 +103,18 @@ export class CodexService extends EventEmitter {
     this.emit("state", this._state);
 
     try {
+      // Verify the codex binary exists in PATH before attempting to spawn
+      try {
+        execSync("which codex", { stdio: "ignore" });
+      } catch {
+        const message = "codex binary not found in PATH. Install it with: npm install -g @openai/codex";
+        console.error("[CodexService]", message);
+        this._state = { status: "error", lastError: message };
+        this.emit("state", this._state);
+        return this.state;
+      }
+
+      console.info("[CodexService] Spawning: codex app-server --listen stdio://");
       const child = spawn("codex", ["app-server", "--listen", "stdio://"], {
         cwd: cwd ?? process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
@@ -112,12 +124,14 @@ export class CodexService extends EventEmitter {
       this.process = child;
 
       child.on("error", (err) => {
+        console.error("[CodexService] Process error:", err.message);
         this._state = { status: "error", lastError: err.message };
         this.emit("state", this._state);
         this.cleanup();
       });
 
-      child.on("exit", () => {
+      child.on("exit", (code, signal) => {
+        console.info("[CodexService] Process exited, code:", code, "signal:", signal);
         this._state = { status: "disconnected" };
         this.emit("state", this._state);
         this.cleanup();
@@ -125,7 +139,9 @@ export class CodexService extends EventEmitter {
 
       // stderr → debug logging
       child.stderr?.on("data", (chunk: Buffer) => {
-        this.emit("stderr", chunk.toString());
+        const text = chunk.toString();
+        console.error("[CodexService] stderr:", text);
+        this.emit("stderr", text);
       });
 
       // stdout → JSONL messages
@@ -148,6 +164,7 @@ export class CodexService extends EventEmitter {
       return this.state;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      console.error("[CodexService] Failed to start:", message);
       this._state = { status: "error", lastError: message };
       this.emit("state", this._state);
       this.cleanup();
