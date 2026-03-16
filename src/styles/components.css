@@ -7353,10 +7353,15 @@ button.primary {
 .claude-terminal-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .claude-terminal-body .xterm {
-  height: 100%;
+  height: 100% !important;
+}
+
+.claude-terminal-body .xterm-viewport {
+  overflow-y: hidden !important;
 }
 
 .claude-unavailable {
@@ -7547,11 +7552,47 @@ button.primary {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .claude-split-panel .claude-terminal-body {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Per-panel mini tab bar ────────────────────────────────────────── */
+
+.claude-panel-tab-bar {
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  gap: 2px;
+  background: #0a0a0a;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.claude-panel-close-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.claude-panel-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 .claude-split-divider {

@@ -115,9 +115,9 @@ describe("ClaudeTerminalPane", () => {
 
     fireEvent.click(screen.getByText("Standard Mode"));
 
-    // After choosing, the permission modal should be gone
+    // After choosing, the permission modal should be gone and the terminal toolbar is visible
     expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /split/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe("ClaudeTerminalPane", () => {
     fireEvent.click(screen.getByText("Full Access Mode"));
 
     expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /split/i })).toBeInTheDocument();
   });
 
   it("remembers choice when checkbox is checked", () => {
@@ -161,7 +161,7 @@ describe("ClaudeTerminalPane", () => {
 
     // Should skip directly to terminal view
     expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /restart/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /split/i })).toBeInTheDocument();
   });
 
   it("shows unavailable message when claude terminal API is not available", () => {
@@ -201,8 +201,8 @@ describe("ClaudeTerminalPane", () => {
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
-    // Should show the tab bar with at least one tab
-    const tabBar = document.querySelector(".claude-tab-bar");
+    // Should show the panel tab bar with at least one tab
+    const tabBar = document.querySelector(".claude-panel-tab-bar");
     expect(tabBar).toBeInTheDocument();
   });
 
@@ -215,7 +215,7 @@ describe("ClaudeTerminalPane", () => {
     render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
-    const addBtn = screen.getByRole("button", { name: /new claude tab/i });
+    const addBtn = screen.getByRole("button", { name: /new tab/i });
     fireEvent.click(addBtn);
 
     // Should now have two tabs
@@ -233,7 +233,7 @@ describe("ClaudeTerminalPane", () => {
     fireEvent.click(screen.getByText("Standard Mode"));
 
     // Add a second tab
-    const addBtn = screen.getByRole("button", { name: /new claude tab/i });
+    const addBtn = screen.getByRole("button", { name: /new tab/i });
     fireEvent.click(addBtn);
 
     // Get the tabs

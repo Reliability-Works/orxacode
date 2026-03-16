@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Bot, ChevronDown, Columns, Plus, RefreshCw, Rows, Shield, ShieldOff, X } from "lucide-react";
+import { Bot, ChevronDown, Columns, Plus, Rows, Shield, ShieldOff, X } from "lucide-react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
@@ -7,7 +7,7 @@ import "xterm/css/xterm.css";
 const TERMINAL_THEME = {
   background: "#000000",
   foreground: "#E5E5E5",
-  cursor: "#22C55E",
+  cursor: "#525252",
   cursorAccent: "#000000",
   selectionBackground: "#22C55E33",
   black: "#000000",
@@ -94,6 +94,106 @@ interface Props {
   onExit: () => void;
 }
 
+// ── Panel instance ──
+// A self-contained panel with its own mini tab bar and terminal.
+
+interface ClaudePanelInstanceProps {
+  directory: string;
+  mode: "standard" | "full";
+  onClose?: () => void;
+  onAllTabsClosed?: () => void;
+}
+
+function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: ClaudePanelInstanceProps) {
+  const [initialTab] = useState<ClaudeTab>(createTab);
+  const [panelTabs, setPanelTabs] = useState<ClaudeTab[]>(() => [initialTab]);
+  const [panelActiveTabId, setPanelActiveTabId] = useState<string>(initialTab.id);
+
+  function handleAddTab() {
+    const tab = createTab();
+    setPanelTabs((prev) => [...prev, tab]);
+    setPanelActiveTabId(tab.id);
+  }
+
+  function handleCloseTab(tabId: string) {
+    const key = sessionKey(directory, mode, tabId);
+    const existing = persistedSessions.get(key);
+    if (existing) {
+      if (existing.unsubscribe) existing.unsubscribe();
+      if (!existing.exited && window.orxa?.terminal) {
+        void window.orxa.terminal.close(directory, existing.processId);
+      }
+      persistedSessions.delete(key);
+    }
+
+    setPanelTabs((prev) => {
+      const next = prev.filter((t) => t.id !== tabId);
+      if (next.length === 0) {
+        onAllTabsClosed?.();
+        return prev;
+      }
+      if (panelActiveTabId === tabId) {
+        setPanelActiveTabId(next[0].id);
+      }
+      return next;
+    });
+  }
+
+  return (
+    <div className="claude-split-panel">
+      <div className="claude-panel-tab-bar">
+        {panelTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`claude-tab ${panelActiveTabId === tab.id ? "active" : ""}`}
+            onClick={() => setPanelActiveTabId(tab.id)}
+          >
+            <span className="claude-tab-label">{tab.label}</span>
+            {panelTabs.length > 1 && (
+              <span
+                className="claude-tab-close"
+                role="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseTab(tab.id);
+                }}
+              >
+                <X size={10} />
+              </span>
+            )}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="claude-tab claude-tab-add"
+          onClick={handleAddTab}
+          aria-label="New tab"
+        >
+          <Plus size={12} />
+        </button>
+        {onClose && (
+          <button
+            type="button"
+            className="claude-panel-close-btn"
+            onClick={onClose}
+            aria-label="Close panel"
+          >
+            <X size={11} />
+          </button>
+        )}
+      </div>
+      <ClaudeTerminalInstance
+        key={panelActiveTabId}
+        directory={directory}
+        mode={mode}
+        tabId={panelActiveTabId}
+      />
+    </div>
+  );
+}
+
 // ── Single terminal instance ──
 // Extracted so it can be rendered independently for tabs and split panels.
 
@@ -136,6 +236,7 @@ function ClaudeTerminalInstance({
       fontSize: 13,
       lineHeight: 1.45,
       cursorBlink: true,
+      cursorStyle: "bar",
       theme: TERMINAL_THEME,
     });
     const fit = new FitAddon();
@@ -314,14 +415,11 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
   const storedMode = getStoredPermissionMode(directory);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(storedMode ?? "pending");
 
-  // Multi-tab state
-  const [tabs, setTabs] = useState<ClaudeTab[]>(() => [createTab()]);
-  const [activeTabId, setActiveTabId] = useState<string>(tabs[0].id);
-
   // Split view state
   const [splitMode, setSplitMode] = useState<SplitMode>("none");
-  const [splitTabId, setSplitTabId] = useState<string | null>(null);
   const [showSplitMenu, setShowSplitMenu] = useState(false);
+  // Key used to remount the second panel when a new split is created
+  const [splitPanelKey, setSplitPanelKey] = useState(0);
 
   // Detect unavailable on first render when mode is resolved
   useEffect(() => {
@@ -337,119 +435,20 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
     setPermissionMode(mode);
   }
 
-  function handleAddTab() {
-    const tab = createTab();
-    setTabs((prev) => [...prev, tab]);
-    setActiveTabId(tab.id);
-  }
-
-  function handleCloseTab(tabId: string) {
-    // Kill the persisted session for this tab
-    if (permissionMode !== "pending") {
-      const key = sessionKey(directory, permissionMode, tabId);
-      const existing = persistedSessions.get(key);
-      if (existing) {
-        if (existing.unsubscribe) existing.unsubscribe();
-        if (!existing.exited && window.orxa?.terminal) {
-          void window.orxa.terminal.close(directory, existing.processId);
-        }
-        persistedSessions.delete(key);
-      }
-    }
-
-    // If the split panel references this tab, close the split
-    if (splitTabId === tabId) {
-      setSplitMode("none");
-      setSplitTabId(null);
-    }
-
-    setTabs((prev) => {
-      const next = prev.filter((t) => t.id !== tabId);
-      if (next.length === 0) {
-        // All tabs closed — exit the pane
-        onExit();
-        return prev;
-      }
-      if (activeTabId === tabId) {
-        setActiveTabId(next[0].id);
-      }
-      return next;
-    });
-  }
-
-  function handleRestart() {
-    if (permissionMode === "pending") return;
-    const key = sessionKey(directory, permissionMode, activeTabId);
-    const existing = persistedSessions.get(key);
-    if (existing) {
-      if (existing.unsubscribe) existing.unsubscribe();
-      if (!existing.exited && window.orxa?.terminal) {
-        void window.orxa.terminal.close(directory, existing.processId);
-      }
-      persistedSessions.delete(key);
-    }
-    // Force re-render by cycling the tab id
-    const newTab = createTab();
-    newTab.label = tabs.find((t) => t.id === activeTabId)?.label ?? newTab.label;
-    setTabs((prev) => prev.map((t) => (t.id === activeTabId ? newTab : t)));
-    setActiveTabId(newTab.id);
-  }
-
   function handleExit() {
-    // Kill all persisted sessions for all tabs
-    if (permissionMode !== "pending") {
-      for (const tab of tabs) {
-        const key = sessionKey(directory, permissionMode, tab.id);
-        const existing = persistedSessions.get(key);
-        if (existing) {
-          if (existing.unsubscribe) existing.unsubscribe();
-          if (!existing.exited && window.orxa?.terminal) {
-            void window.orxa.terminal.close(directory, existing.processId);
-          }
-          persistedSessions.delete(key);
-        }
-      }
-      if (splitTabId) {
-        const key = sessionKey(directory, permissionMode, splitTabId);
-        const existing = persistedSessions.get(key);
-        if (existing) {
-          if (existing.unsubscribe) existing.unsubscribe();
-          if (!existing.exited && window.orxa?.terminal) {
-            void window.orxa.terminal.close(directory, existing.processId);
-          }
-          persistedSessions.delete(key);
-        }
-      }
-    }
     onExit();
   }
 
   function handleSplit(mode: "horizontal" | "vertical") {
-    if (splitMode !== "none") {
-      // Already split — just change direction
-      setSplitMode(mode);
-    } else {
-      const tab = createTab();
-      setSplitTabId(tab.id);
-      setSplitMode(mode);
+    if (splitMode === "none") {
+      setSplitPanelKey((k) => k + 1);
     }
+    setSplitMode(mode);
     setShowSplitMenu(false);
   }
 
   function handleUnsplit() {
-    if (splitTabId && permissionMode !== "pending") {
-      const key = sessionKey(directory, permissionMode, splitTabId);
-      const existing = persistedSessions.get(key);
-      if (existing) {
-        if (existing.unsubscribe) existing.unsubscribe();
-        if (!existing.exited && window.orxa?.terminal) {
-          void window.orxa.terminal.close(directory, existing.processId);
-        }
-        persistedSessions.delete(key);
-      }
-    }
     setSplitMode("none");
-    setSplitTabId(null);
     setShowSplitMenu(false);
   }
 
@@ -564,74 +563,30 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
             </div>
           )}
         </div>
-        <button type="button" className="claude-toolbar-btn" onClick={handleRestart} aria-label="restart">
-          <RefreshCw size={11} />
-          restart
-        </button>
         <button type="button" className="claude-toolbar-btn" onClick={handleExit} aria-label="exit">
           <X size={11} />
           exit
         </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="claude-tab-bar">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`claude-tab ${activeTabId === tab.id ? "active" : ""}`}
-            onClick={() => setActiveTabId(tab.id)}
-          >
-            <span className="claude-tab-label">{tab.label}</span>
-            {tabs.length > 1 && (
-              <span
-                className="claude-tab-close"
-                role="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseTab(tab.id);
-                }}
-              >
-                <X size={10} />
-              </span>
-            )}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="claude-tab claude-tab-add"
-          onClick={handleAddTab}
-          aria-label="New claude tab"
-        >
-          <Plus size={12} />
-        </button>
-      </div>
-
-      {/* Terminal area with optional split */}
+      {/* Terminal area — each panel has its own tab bar */}
       <div
         className={`claude-split-container ${splitMode === "horizontal" ? "claude-split-horizontal" : ""} ${splitMode === "vertical" ? "claude-split-vertical" : ""}`}
       >
-        <div className="claude-split-panel">
-          <ClaudeTerminalInstance
-            key={activeTabId}
-            directory={directory}
-            mode={permissionMode}
-            tabId={activeTabId}
-          />
-        </div>
-        {splitMode !== "none" && splitTabId && (
+        <ClaudePanelInstance
+          directory={directory}
+          mode={permissionMode}
+          onAllTabsClosed={onExit}
+        />
+        {splitMode !== "none" && (
           <>
             <div className="claude-split-divider" />
-            <div className="claude-split-panel">
-              <ClaudeTerminalInstance
-                key={splitTabId}
-                directory={directory}
-                mode={permissionMode}
-                tabId={splitTabId}
-              />
-            </div>
+            <ClaudePanelInstance
+              key={splitPanelKey}
+              directory={directory}
+              mode={permissionMode}
+              onClose={handleUnsplit}
+            />
           </>
         )}
       </div>
