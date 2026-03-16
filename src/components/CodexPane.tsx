@@ -194,11 +194,15 @@ export function CodexPane({ directory, onExit }: Props) {
           ref={inputRef}
           className="codex-composer-input"
           placeholder={
-            connectionStatus !== "connected"
-              ? "Connecting to Codex..."
-              : !thread
-                ? "Starting thread..."
-                : "Send a message..."
+            connectionStatus === "error"
+              ? (lastError ?? "error connecting to Codex")
+              : connectionStatus === "disconnected"
+                ? "Codex disconnected. Click to reconnect."
+                : connectionStatus === "connecting"
+                  ? "Connecting to Codex..."
+                  : !thread
+                    ? "Starting thread..."
+                    : "Send a message..."
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}

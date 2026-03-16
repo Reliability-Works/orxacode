@@ -96,7 +96,7 @@ describe("CodexPane", () => {
 
     render(<CodexPane directory="/workspace/project" onExit={mockOnExit} />);
 
-    expect(screen.getByPlaceholderText(/connecting to codex/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/codex disconnected/i)).toBeInTheDocument();
   });
 
   it("renders the send button", () => {

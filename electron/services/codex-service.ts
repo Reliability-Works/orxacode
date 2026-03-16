@@ -1,6 +1,8 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
 import { EventEmitter } from "node:events";
+import { readdirSync, accessSync, constants } from "node:fs";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,6 +76,49 @@ type PendingRequest = {
 };
 
 // ---------------------------------------------------------------------------
+// Binary resolver
+// ---------------------------------------------------------------------------
+
+function resolveCodexBinary(): string | null {
+  const home = process.env.HOME ?? "";
+  const candidates = [
+    // Direct PATH (works when Electron inherits it)
+    "codex",
+    // nvm installations
+    ...(() => {
+      try {
+        const nvmDir = path.join(home, ".nvm", "versions", "node");
+        const versions = readdirSync(nvmDir);
+        return versions.map(v => path.join(nvmDir, v, "bin", "codex"));
+      } catch { return []; }
+    })(),
+    // Homebrew
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+    // Volta
+    path.join(home, ".volta", "bin", "codex"),
+    // pnpm global
+    path.join(home, ".local", "share", "pnpm", "codex"),
+    // npm global
+    "/usr/local/lib/node_modules/.bin/codex",
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (candidate === "codex") {
+        execSync("which codex", { stdio: "ignore" });
+        return "codex";
+      }
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -103,10 +148,9 @@ export class CodexService extends EventEmitter {
     this.emit("state", this._state);
 
     try {
-      // Verify the codex binary exists in PATH before attempting to spawn
-      try {
-        execSync("which codex", { stdio: "ignore" });
-      } catch {
+      // Resolve the codex binary, checking common install locations
+      const codexBin = resolveCodexBinary();
+      if (!codexBin) {
         const message = "codex binary not found in PATH. Install it with: npm install -g @openai/codex";
         console.error("[CodexService]", message);
         this._state = { status: "error", lastError: message };
@@ -114,8 +158,8 @@ export class CodexService extends EventEmitter {
         return this.state;
       }
 
-      console.info("[CodexService] Spawning: codex app-server --listen stdio://");
-      const child = spawn("codex", ["app-server", "--listen", "stdio://"], {
+      console.info(`[CodexService] Spawning: ${codexBin} app-server --listen stdio://`);
+      const child = spawn(codexBin, ["app-server", "--listen", "stdio://"], {
         cwd: cwd ?? process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, LOG_FORMAT: "json" },
@@ -153,12 +197,16 @@ export class CodexService extends EventEmitter {
       const result = (await this.request("initialize", {
         clientInfo: { name: "orxa_code", title: "Orxa Code", version: "1.0.0" },
         capabilities: { experimentalApi: false, optOutNotificationMethods: [] },
-      })) as { server_info?: { name: string; version: string }; serverInfo?: { name: string; version: string } };
+      })) as {
+        server_info?: { name: string; version: string };
+        serverInfo?: { name: string; version: string };
+        userAgent?: { name: string; version: string };
+      };
 
       // Send initialized notification (no id — fire-and-forget)
       this.sendNotification("initialized", {});
 
-      const serverInfo = result.serverInfo ?? result.server_info;
+      const serverInfo = result.serverInfo ?? result.server_info ?? result.userAgent;
       this._state = { status: "connected", serverInfo: serverInfo ?? undefined };
       this.emit("state", this._state);
       return this.state;

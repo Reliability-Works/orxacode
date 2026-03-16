@@ -127,34 +127,37 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
         void window.orxa.terminal.connect(directory, pty.id).then(() => {
           void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
 
-          // Small delay to let the shell initialize and flush any connect artifacts,
-          // then clear the terminal and subscribe to output events
-          const timerId = window.setTimeout(() => {
-            // Guard: component may have unmounted during the delay
-            if (!window.orxa?.events) return;
-            // Subscribe to PTY output
-            const unsubscribe = window.orxa.events.subscribe((event) => {
-              if (
-                event.type === "pty.output" &&
-                event.payload.ptyID === pty.id &&
-                event.payload.directory === directory
-              ) {
-                terminal.write(event.payload.chunk);
+          // Subscribe to PTY output immediately, filtering out the connect artifact
+          let skipInitialJson = true;
+          const unsubscribe = window.orxa.events.subscribe((event) => {
+            if (
+              event.type === "pty.output" &&
+              event.payload.ptyID === pty.id &&
+              event.payload.directory === directory
+            ) {
+              let chunk = event.payload.chunk as string;
+              // Filter out the {"cursor":N} connect response that leaks into output
+              if (skipInitialJson && chunk.includes('{"cursor"')) {
+                chunk = chunk.replace(/\{"cursor":\d+\}/g, "");
+                if (!chunk.trim()) return; // Skip if nothing left after filtering
+                skipInitialJson = false;
+              } else {
+                skipInitialJson = false;
               }
-              if (
-                event.type === "pty.closed" &&
-                event.payload.ptyID === pty.id &&
-                event.payload.directory === directory
-              ) {
-                terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-              }
-            });
-            cleanups.push(unsubscribe);
+              terminal.write(chunk);
+            }
+            if (
+              event.type === "pty.closed" &&
+              event.payload.ptyID === pty.id &&
+              event.payload.directory === directory
+            ) {
+              terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+            }
+          });
+          cleanups.push(unsubscribe);
 
-            // Clear any shell prompt/artifacts, then launch claude
-            void window.orxa.terminal.write(directory, pty.id, `clear && ${command}`);
-          }, 150);
-          cleanups.push(() => window.clearTimeout(timerId));
+          // Launch claude
+          void window.orxa.terminal.write(directory, pty.id, command);
         });
 
         const disposeInput = terminal.onData((data) => {

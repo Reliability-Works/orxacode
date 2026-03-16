@@ -2,6 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
 import {
   type ArtifactExportBundleInput,
@@ -26,6 +27,24 @@ import { BrowserController } from "./services/browser-controller";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
+
+// Fix PATH on macOS — Electron doesn't inherit the user's shell PATH
+if (process.platform === "darwin") {
+  const shellPath = process.env.SHELL ?? "/bin/zsh";
+  try {
+    const stdout = execSync(`${shellPath} -ilc 'echo $PATH'`, { encoding: "utf8", timeout: 5000 });
+    process.env.PATH = stdout.trim() || process.env.PATH;
+  } catch {
+    // If shell PATH extraction fails, append common paths
+    const extraPaths = [
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      `${process.env.HOME}/.nvm/versions/node/current/bin`,
+      `${process.env.HOME}/.volta/bin`,
+    ].join(":");
+    process.env.PATH = `${process.env.PATH}:${extraPaths}`;
+  }
+}
 
 // Enable CDP remote debugging so that chrome-devtools-mcp can connect
 // to our Electron browser views. Use a fixed port to make discovery reliable.
