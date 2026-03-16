@@ -54,8 +54,15 @@ type SettingsSection =
   | "app"
   | "preferences"
   | "server"
-  | "claude-settings"
-  | "codex-settings";
+  | "claude-config"
+  | "claude-permissions"
+  | "claude-dirs"
+  | "codex-general"
+  | "codex-models"
+  | "codex-access"
+  | "codex-config"
+  | "codex-agents"
+  | "codex-dirs";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
   | { kind: "duplicate"; title: string; content: string };
@@ -332,8 +339,9 @@ export function SettingsDrawer({
     }
   }, [open, section, loadOcAgents, ocAgents.length]);
 
+  const isClaudeSection = section === "claude-config" || section === "claude-permissions" || section === "claude-dirs";
   useEffect(() => {
-    if (!open || section !== "claude-settings") return;
+    if (!open || !isClaudeSection) return;
     setClaudeLoading(true);
     void Promise.all([
       window.orxa.app.readTextFile("~/.claude/settings.json"),
@@ -345,10 +353,17 @@ export function SettingsDrawer({
       })
       .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
       .finally(() => setClaudeLoading(false));
-  }, [open, section]);
+  }, [open, isClaudeSection]);
 
+  const isCodexSection =
+    section === "codex-general" ||
+    section === "codex-models" ||
+    section === "codex-access" ||
+    section === "codex-config" ||
+    section === "codex-agents" ||
+    section === "codex-dirs";
   useEffect(() => {
-    if (!open || section !== "codex-settings") return;
+    if (!open || !isCodexSection) return;
     setCodexLoading(true);
     void Promise.all([
       window.orxa.app.readTextFile("~/.codex/config.toml"),
@@ -364,7 +379,7 @@ export function SettingsDrawer({
       })
       .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
       .finally(() => setCodexLoading(false));
-  }, [open, section]);
+  }, [open, isCodexSection]);
 
   if (!open) {
     return null;
@@ -1051,10 +1066,10 @@ export function SettingsDrawer({
       );
     }
 
-    if (section === "claude-settings") {
+    if (section === "claude-config") {
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
-          <p className="settings-server-title">claude</p>
+          <p className="settings-server-title">claude / config</p>
 
           <p className="settings-server-subtitle">// settings.json</p>
           <p className="raw-path">~/.claude/settings.json</p>
@@ -1066,7 +1081,7 @@ export function SettingsDrawer({
               value={claudeSettingsJson}
               onChange={(e) => setClaudeSettingsJson(e.target.value)}
               placeholder="(file not found or empty)"
-              style={{ minHeight: "120px" }}
+              style={{ minHeight: "160px" }}
             />
           )}
           <div className="settings-codex-field-row">
@@ -1094,7 +1109,7 @@ export function SettingsDrawer({
             </button>
           </div>
 
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// global instructions (CLAUDE.md)</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// global instructions (CLAUDE.md)</p>
           <p className="raw-path">~/.claude/CLAUDE.md</p>
           {claudeLoading ? (
             <p className="settings-memory-desc">loading...</p>
@@ -1104,7 +1119,7 @@ export function SettingsDrawer({
               value={claudeMd}
               onChange={(e) => setClaudeMd(e.target.value)}
               placeholder="(file not found or empty)"
-              style={{ minHeight: "120px" }}
+              style={{ minHeight: "160px" }}
             />
           )}
           <div className="settings-codex-field-row">
@@ -1131,8 +1146,16 @@ export function SettingsDrawer({
               refresh
             </button>
           </div>
+        </section>
+      );
+    }
 
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// permission mode</p>
+    if (section === "claude-permissions") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">claude / permissions</p>
+
+          <p className="settings-server-subtitle">// default permission mode</p>
           <div className="settings-server-status-card">
             <div className="settings-server-status-row">
               <span className="settings-server-status-key">default permission mode</span>
@@ -1140,7 +1163,27 @@ export function SettingsDrawer({
             </div>
           </div>
 
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// directories</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// permission mode</p>
+          <select
+            className="settings-codex-input"
+            value={appPreferences.permissionMode}
+            onChange={(e) =>
+              onAppPreferencesChange({ ...appPreferences, permissionMode: e.target.value as "ask-write" | "yolo-write" })
+            }
+          >
+            <option value="ask-write">ask-write (prompt before writing)</option>
+            <option value="yolo-write">yolo-write (auto-approve writes)</option>
+          </select>
+        </section>
+      );
+    }
+
+    if (section === "claude-dirs") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">claude / directories</p>
+
+          <p className="settings-server-subtitle">// claude directories</p>
           <div className="settings-claude-dirs">
             <div className="settings-dir-row">
               <span className="settings-server-status-key">~/.claude/agents/</span>
@@ -1173,41 +1216,17 @@ export function SettingsDrawer({
               </button>
             </div>
           </div>
-
-          <button
-            type="button"
-            className="settings-server-btn"
-            style={{ marginTop: "8px" }}
-            onClick={() => {
-              setClaudeLoading(true);
-              void Promise.all([
-                window.orxa.app.readTextFile("~/.claude/settings.json"),
-                window.orxa.app.readTextFile("~/.claude/CLAUDE.md"),
-              ])
-                .then(([settingsJson, claudeMdContent]) => {
-                  setClaudeSettingsJson(settingsJson);
-                  setClaudeMd(claudeMdContent);
-                  setFeedback("Claude settings reloaded");
-                })
-                .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                .finally(() => setClaudeLoading(false));
-            }}
-          >
-            reload all
-          </button>
         </section>
       );
     }
 
-    if (section === "codex-settings") {
+    if (section === "codex-general") {
       const codexStatus = codexState?.status ?? "unknown";
       const codexConnected = codexStatus === "connected";
-      const selectedModelEntry = codexModels.find((m) => m.id === appPreferences.codexDefaultModel);
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
-          <p className="settings-server-title">codex</p>
+          <p className="settings-server-title">codex / general</p>
 
-          {/* --- Codex binary path --- */}
           <p className="settings-server-subtitle">// codex binary path</p>
           <div className="settings-codex-field-row">
             <input
@@ -1238,8 +1257,7 @@ export function SettingsDrawer({
           </div>
           <p className="settings-codex-help">Leave empty to use the system PATH resolution.</p>
 
-          {/* --- Default Codex args --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// default codex args</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// default codex args</p>
           <div className="settings-codex-field-row">
             <input
               type="text"
@@ -1258,8 +1276,7 @@ export function SettingsDrawer({
           </div>
           <p className="settings-codex-help">Extra flags passed to the codex app-server. Supports --quiet, --no-color, etc.</p>
 
-          {/* --- Doctor + Update --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// diagnostics</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// diagnostics</p>
           <div className="settings-codex-field-row">
             <button
               type="button"
@@ -1322,8 +1339,26 @@ export function SettingsDrawer({
             </div>
           ) : null}
 
-          {/* --- Default model selector --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// default model</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// connection status</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">codex app-server</span>
+              <span className={`settings-server-status-value${codexConnected ? " settings-server-status-value--green" : ""}`}>
+                {codexStatus}
+              </span>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (section === "codex-models") {
+      const selectedModelEntry = codexModels.find((m) => m.id === appPreferences.codexDefaultModel);
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex / models</p>
+
+          <p className="settings-server-subtitle">// default model</p>
           <div className="settings-codex-field-row">
             <select
               className="settings-codex-input"
@@ -1351,8 +1386,7 @@ export function SettingsDrawer({
             </button>
           </div>
 
-          {/* --- Reasoning effort selector --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// reasoning effort</p>
+          <p className="settings-server-subtitle" style={{ marginTop: "16px" }}>// reasoning effort</p>
           <select
             className="settings-codex-input"
             value={appPreferences.codexReasoningEffort}
@@ -1366,9 +1400,16 @@ export function SettingsDrawer({
           {!selectedModelEntry?.supportsReasoningEffort ? (
             <p className="settings-codex-help">Reasoning effort is not supported by the selected model.</p>
           ) : null}
+        </section>
+      );
+    }
 
-          {/* --- Access mode selector --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// access mode</p>
+    if (section === "codex-access") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex / access</p>
+
+          <p className="settings-server-subtitle">// access mode</p>
           <select
             className="settings-codex-input"
             value={appPreferences.codexAccessMode}
@@ -1378,48 +1419,16 @@ export function SettingsDrawer({
             <option value="on-request">on-request (ask for approval)</option>
             <option value="full-access">full-access (auto-approve)</option>
           </select>
+        </section>
+      );
+    }
 
-          {/* --- AGENTS.md editor --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// agent instructions (AGENTS.md)</p>
-          <p className="raw-path">~/.codex/AGENTS.md</p>
-          {codexLoading ? (
-            <p className="settings-memory-desc">loading...</p>
-          ) : (
-            <textarea
-              className="settings-personalization-textarea"
-              value={codexAgentsMd}
-              onChange={(e) => setCodexAgentsMd(e.target.value)}
-              placeholder="(file not found or empty)"
-              style={{ minHeight: "120px" }}
-            />
-          )}
-          <div className="settings-codex-field-row">
-            <button
-              type="button"
-              className="settings-server-btn"
-              onClick={() => {
-                void window.orxa.app.writeTextFile("~/.codex/AGENTS.md", codexAgentsMd)
-                  .then(() => setFeedback("AGENTS.md saved"))
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
-              }}
-            >
-              save
-            </button>
-            <button
-              type="button"
-              className="settings-server-btn"
-              onClick={() => {
-                void window.orxa.app.readTextFile("~/.codex/AGENTS.md")
-                  .then((content) => { setCodexAgentsMd(content); setFeedback("AGENTS.md refreshed"); })
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
-              }}
-            >
-              refresh
-            </button>
-          </div>
+    if (section === "codex-config") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex / config</p>
 
-          {/* --- config.toml editor --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// config.toml</p>
+          <p className="settings-server-subtitle">// config.toml</p>
           <p className="raw-path">~/.codex/config.toml</p>
           {codexLoading ? (
             <p className="settings-memory-desc">loading...</p>
@@ -1429,7 +1438,7 @@ export function SettingsDrawer({
               value={codexConfigToml}
               onChange={(e) => setCodexConfigToml(e.target.value)}
               placeholder="(file not found or empty)"
-              style={{ minHeight: "120px" }}
+              style={{ minHeight: "280px" }}
             />
           )}
           <div className="settings-codex-field-row">
@@ -1456,20 +1465,62 @@ export function SettingsDrawer({
               refresh
             </button>
           </div>
+        </section>
+      );
+    }
 
-          {/* --- Connection status --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// connection status</p>
-          <div className="settings-server-status-card">
-            <div className="settings-server-status-row">
-              <span className="settings-server-status-key">codex app-server</span>
-              <span className={`settings-server-status-value${codexConnected ? " settings-server-status-value--green" : ""}`}>
-                {codexStatus}
-              </span>
-            </div>
+    if (section === "codex-agents") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex / agents</p>
+
+          <p className="settings-server-subtitle">// agent instructions (AGENTS.md)</p>
+          <p className="raw-path">~/.codex/AGENTS.md</p>
+          {codexLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={codexAgentsMd}
+              onChange={(e) => setCodexAgentsMd(e.target.value)}
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "280px" }}
+            />
+          )}
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.writeTextFile("~/.codex/AGENTS.md", codexAgentsMd)
+                  .then(() => setFeedback("AGENTS.md saved"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              save
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.readTextFile("~/.codex/AGENTS.md")
+                  .then((content) => { setCodexAgentsMd(content); setFeedback("AGENTS.md refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              refresh
+            </button>
           </div>
+        </section>
+      );
+    }
 
-          {/* --- Directories --- */}
-          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// directories</p>
+    if (section === "codex-dirs") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex / directories</p>
+
+          <p className="settings-server-subtitle">// codex directories</p>
           <div className="settings-claude-dirs">
             <div className="settings-dir-row">
               <span className="settings-server-status-key">~/.codex/memories/</span>
@@ -1492,32 +1543,6 @@ export function SettingsDrawer({
               </button>
             </div>
           </div>
-
-          <button
-            type="button"
-            className="settings-server-btn"
-            style={{ marginTop: "8px" }}
-            onClick={() => {
-              setCodexLoading(true);
-              void Promise.all([
-                window.orxa.app.readTextFile("~/.codex/config.toml"),
-                window.orxa.app.readTextFile("~/.codex/AGENTS.md"),
-                window.orxa.codex.getState(),
-                window.orxa.codex.listModels(),
-              ])
-                .then(([configToml, agentsMd, state, models]) => {
-                  setCodexConfigToml(configToml);
-                  setCodexAgentsMd(agentsMd);
-                  setCodexState(state);
-                  setCodexModels(models);
-                  setFeedback("Codex settings reloaded");
-                })
-                .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-                .finally(() => setCodexLoading(false));
-            }}
-          >
-            reload all
-          </button>
         </section>
       );
     }
@@ -1726,15 +1751,43 @@ export function SettingsDrawer({
                 </button>
 
                 <span className="settings-nav-group-label">CLAUDE</span>
-                <button type="button" className={section === "claude-settings" ? "active" : ""} onClick={() => setSection("claude-settings")}>
-                  {section === "claude-settings" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Settings
+                <button type="button" className={section === "claude-config" ? "active" : ""} onClick={() => setSection("claude-config")}>
+                  {section === "claude-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Config
+                </button>
+                <button type="button" className={section === "claude-permissions" ? "active" : ""} onClick={() => setSection("claude-permissions")}>
+                  {section === "claude-permissions" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Permissions
+                </button>
+                <button type="button" className={section === "claude-dirs" ? "active" : ""} onClick={() => setSection("claude-dirs")}>
+                  {section === "claude-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Directories
                 </button>
 
                 <span className="settings-nav-group-label">CODEX</span>
-                <button type="button" className={section === "codex-settings" ? "active" : ""} onClick={() => setSection("codex-settings")}>
-                  {section === "codex-settings" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Settings
+                <button type="button" className={section === "codex-general" ? "active" : ""} onClick={() => setSection("codex-general")}>
+                  {section === "codex-general" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  General
+                </button>
+                <button type="button" className={section === "codex-models" ? "active" : ""} onClick={() => setSection("codex-models")}>
+                  {section === "codex-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Models
+                </button>
+                <button type="button" className={section === "codex-access" ? "active" : ""} onClick={() => setSection("codex-access")}>
+                  {section === "codex-access" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Access
+                </button>
+                <button type="button" className={section === "codex-config" ? "active" : ""} onClick={() => setSection("codex-config")}>
+                  {section === "codex-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Config
+                </button>
+                <button type="button" className={section === "codex-agents" ? "active" : ""} onClick={() => setSection("codex-agents")}>
+                  {section === "codex-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Agents
+                </button>
+                <button type="button" className={section === "codex-dirs" ? "active" : ""} onClick={() => setSection("codex-dirs")}>
+                  {section === "codex-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Directories
                 </button>
               </div>
             </aside>
