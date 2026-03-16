@@ -5,25 +5,27 @@ import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 
 const TERMINAL_THEME = {
-  background: "#0d1117",
-  foreground: "#d5e3f0",
-  cursor: "#ffffff",
-  black: "#041018",
-  red: "#ff6f91",
-  green: "#70f1b6",
-  yellow: "#ffd97d",
-  blue: "#8ec7ff",
-  magenta: "#d4a5ff",
-  cyan: "#8ce6ff",
-  white: "#e9f1f7",
-  brightBlack: "#4d6478",
-  brightRed: "#ff8fad",
-  brightGreen: "#9bffd4",
-  brightYellow: "#ffe7a8",
-  brightBlue: "#b6dbff",
-  brightMagenta: "#e5c4ff",
-  brightCyan: "#b6f4ff",
-  brightWhite: "#ffffff",
+  background: "#000000",
+  foreground: "#E5E5E5",
+  cursor: "#22C55E",
+  cursorAccent: "#000000",
+  selectionBackground: "#22C55E33",
+  black: "#000000",
+  red: "#EF4444",
+  green: "#22C55E",
+  yellow: "#F59E0B",
+  blue: "#3B82F6",
+  magenta: "#A78BFA",
+  cyan: "#06B6D4",
+  white: "#E5E5E5",
+  brightBlack: "#525252",
+  brightRed: "#F87171",
+  brightGreen: "#4ADE80",
+  brightYellow: "#FBBF24",
+  brightBlue: "#60A5FA",
+  brightMagenta: "#C4B5FD",
+  brightCyan: "#22D3EE",
+  brightWhite: "#FFFFFF",
 };
 
 type PermissionMode = "pending" | "standard" | "full";
@@ -97,7 +99,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
       container.innerHTML = "";
 
       const terminal = new Terminal({
-        fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
+        fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
         fontSize: 13,
         lineHeight: 1.45,
         cursorBlink: true,
@@ -113,37 +115,46 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
 
       const cleanups: Array<() => void> = [];
 
-      const command = mode === "full" ? "claude --dangerously-skip-permissions\n" : "claude\n";
+      // Strip ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN to prevent API billing
+      // override — Claude Code should use its own OAuth subscription, not inherited env
+      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY ";
+      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
+      const command = `${envPrefix}${claudeCmd}\n`;
 
       void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
         ptyIdRef.current = pty.id;
 
-        // Connect first, then subscribe to output events AFTER connect resolves
-        // to avoid the connect response (e.g. {"cursor":0}) leaking into the terminal
         void window.orxa.terminal.connect(directory, pty.id).then(() => {
           void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
 
-          // Subscribe to PTY output only after connect has resolved
-          const unsubscribe = window.orxa.events.subscribe((event) => {
-            if (
-              event.type === "pty.output" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              terminal.write(event.payload.chunk);
-            }
-            if (
-              event.type === "pty.closed" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-            }
-          });
-          cleanups.push(unsubscribe);
+          // Small delay to let the shell initialize and flush any connect artifacts,
+          // then clear the terminal and subscribe to output events
+          const timerId = window.setTimeout(() => {
+            // Guard: component may have unmounted during the delay
+            if (!window.orxa?.events) return;
+            // Subscribe to PTY output
+            const unsubscribe = window.orxa.events.subscribe((event) => {
+              if (
+                event.type === "pty.output" &&
+                event.payload.ptyID === pty.id &&
+                event.payload.directory === directory
+              ) {
+                terminal.write(event.payload.chunk);
+              }
+              if (
+                event.type === "pty.closed" &&
+                event.payload.ptyID === pty.id &&
+                event.payload.directory === directory
+              ) {
+                terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+              }
+            });
+            cleanups.push(unsubscribe);
 
-          // Launch claude inside the shell
-          void window.orxa.terminal.write(directory, pty.id, command);
+            // Clear any shell prompt/artifacts, then launch claude
+            void window.orxa.terminal.write(directory, pty.id, `clear && ${command}`);
+          }, 150);
+          cleanups.push(() => window.clearTimeout(timerId));
         });
 
         const disposeInput = terminal.onData((data) => {
