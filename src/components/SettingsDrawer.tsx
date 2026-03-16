@@ -1715,11 +1715,6 @@ export function SettingsDrawer({
                   {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Preferences
                 </button>
-                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
-                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Server
-                </button>
-
                 <span className="settings-nav-group-label">OPENCODE</span>
                 <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
                   {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
@@ -1748,6 +1743,10 @@ export function SettingsDrawer({
                 <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
                   {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Git
+                </button>
+                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
+                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Server
                 </button>
 
                 <span className="settings-nav-group-label">CLAUDE</span>
