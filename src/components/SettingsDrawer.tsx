@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   AgentsDocument,
+  CodexDoctorResult,
+  CodexModelEntry,
+  CodexUpdateResult,
   MemoryBackfillStatus,
   MemoryPolicyMode,
   MemorySettings,
@@ -164,6 +167,12 @@ export function SettingsDrawer({
   const [codexAgentsMd, setCodexAgentsMd] = useState("");
   const [codexLoading, setCodexLoading] = useState(false);
   const [codexState, setCodexState] = useState<{ status: string } | null>(null);
+  const [codexDoctorResult, setCodexDoctorResult] = useState<CodexDoctorResult | null>(null);
+  const [codexDoctorRunning, setCodexDoctorRunning] = useState(false);
+  const [codexUpdateResult, setCodexUpdateResult] = useState<CodexUpdateResult | null>(null);
+  const [codexUpdateRunning, setCodexUpdateRunning] = useState(false);
+  const [codexModels, setCodexModels] = useState<CodexModelEntry[]>([]);
+  const [codexModelsLoading, setCodexModelsLoading] = useState(false);
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
@@ -345,11 +354,13 @@ export function SettingsDrawer({
       window.orxa.app.readTextFile("~/.codex/config.toml"),
       window.orxa.app.readTextFile("~/.codex/AGENTS.md"),
       window.orxa.codex.getState(),
+      window.orxa.codex.listModels(),
     ])
-      .then(([configToml, agentsMd, state]) => {
+      .then(([configToml, agentsMd, state, models]) => {
         setCodexConfigToml(configToml);
         setCodexAgentsMd(agentsMd);
         setCodexState(state);
+        setCodexModels(models);
       })
       .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
       .finally(() => setCodexLoading(false));
@@ -1053,14 +1064,35 @@ export function SettingsDrawer({
             <textarea
               className="settings-personalization-textarea"
               value={claudeSettingsJson}
-              readOnly
+              onChange={(e) => setClaudeSettingsJson(e.target.value)}
               placeholder="(file not found or empty)"
               style={{ minHeight: "120px" }}
             />
           )}
-          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
-            read-only -- edit in your editor or via the claude CLI
-          </p>
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.writeTextFile("~/.claude/settings.json", claudeSettingsJson)
+                  .then(() => setFeedback("settings.json saved"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              save
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.readTextFile("~/.claude/settings.json")
+                  .then((content) => { setClaudeSettingsJson(content); setFeedback("settings.json refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              refresh
+            </button>
+          </div>
 
           <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// global instructions (CLAUDE.md)</p>
           <p className="raw-path">~/.claude/CLAUDE.md</p>
@@ -1070,14 +1102,35 @@ export function SettingsDrawer({
             <textarea
               className="settings-personalization-textarea"
               value={claudeMd}
-              readOnly
+              onChange={(e) => setClaudeMd(e.target.value)}
               placeholder="(file not found or empty)"
               style={{ minHeight: "120px" }}
             />
           )}
-          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
-            read-only -- edit in your editor
-          </p>
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.writeTextFile("~/.claude/CLAUDE.md", claudeMd)
+                  .then(() => setFeedback("CLAUDE.md saved"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              save
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.readTextFile("~/.claude/CLAUDE.md")
+                  .then((content) => { setClaudeMd(content); setFeedback("CLAUDE.md refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              refresh
+            </button>
+          </div>
 
           <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// permission mode</p>
           <div className="settings-server-status-card">
@@ -1140,7 +1193,7 @@ export function SettingsDrawer({
                 .finally(() => setClaudeLoading(false));
             }}
           >
-            reload
+            reload all
           </button>
         </section>
       );
@@ -1149,27 +1202,184 @@ export function SettingsDrawer({
     if (section === "codex-settings") {
       const codexStatus = codexState?.status ?? "unknown";
       const codexConnected = codexStatus === "connected";
+      const selectedModelEntry = codexModels.find((m) => m.id === appPreferences.codexDefaultModel);
       return (
         <section className="settings-section-card settings-pad settings-server-grid">
           <p className="settings-server-title">codex</p>
 
-          <p className="settings-server-subtitle">// config.toml</p>
-          <p className="raw-path">~/.codex/config.toml</p>
-          {codexLoading ? (
-            <p className="settings-memory-desc">loading...</p>
-          ) : (
-            <textarea
-              className="settings-personalization-textarea"
-              value={codexConfigToml}
-              readOnly
-              placeholder="(file not found or empty)"
-              style={{ minHeight: "120px" }}
+          {/* --- Codex binary path --- */}
+          <p className="settings-server-subtitle">// codex binary path</p>
+          <div className="settings-codex-field-row">
+            <input
+              type="text"
+              className="settings-codex-input"
+              value={appPreferences.codexPath}
+              onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexPath: e.target.value })}
+              placeholder="(uses system PATH)"
             />
-          )}
-          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
-            read-only -- edit in your editor or via the codex CLI
-          </p>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.openFile({ title: "Select codex binary", filters: [] }).then((result) => {
+                  if (result) onAppPreferencesChange({ ...appPreferences, codexPath: result.path });
+                });
+              }}
+            >
+              browse
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => onAppPreferencesChange({ ...appPreferences, codexPath: "" })}
+            >
+              use PATH
+            </button>
+          </div>
+          <p className="settings-codex-help">Leave empty to use the system PATH resolution.</p>
 
+          {/* --- Default Codex args --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// default codex args</p>
+          <div className="settings-codex-field-row">
+            <input
+              type="text"
+              className="settings-codex-input"
+              value={appPreferences.codexArgs}
+              onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexArgs: e.target.value })}
+              placeholder="e.g. --quiet --no-color"
+            />
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => onAppPreferencesChange({ ...appPreferences, codexArgs: "" })}
+            >
+              clear
+            </button>
+          </div>
+          <p className="settings-codex-help">Extra flags passed to the codex app-server. Supports --quiet, --no-color, etc.</p>
+
+          {/* --- Doctor + Update --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// diagnostics</p>
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              disabled={codexDoctorRunning}
+              onClick={() => {
+                setCodexDoctorRunning(true);
+                setCodexDoctorResult(null);
+                void window.orxa.codex.doctor()
+                  .then((result) => { setCodexDoctorResult(result); setFeedback("Doctor completed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setCodexDoctorRunning(false));
+              }}
+            >
+              {codexDoctorRunning ? "running..." : "run doctor"}
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              disabled={codexUpdateRunning}
+              onClick={() => {
+                setCodexUpdateRunning(true);
+                setCodexUpdateResult(null);
+                void window.orxa.codex.update()
+                  .then((result) => { setCodexUpdateResult(result); setFeedback(result.message); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setCodexUpdateRunning(false));
+              }}
+            >
+              {codexUpdateRunning ? "updating..." : "update codex"}
+            </button>
+          </div>
+          {codexDoctorResult ? (
+            <div className={`settings-codex-doctor ${codexDoctorResult.appServer === "ok" ? "settings-codex-doctor--ok" : "settings-codex-doctor--error"}`}>
+              <div className="settings-server-status-row">
+                <span className="settings-server-status-key">version</span>
+                <span className="settings-server-status-value">{codexDoctorResult.version}</span>
+              </div>
+              <div className="settings-server-status-row">
+                <span className="settings-server-status-key">app-server</span>
+                <span className={`settings-server-status-value${codexDoctorResult.appServer === "ok" ? " settings-server-status-value--green" : ""}`}>
+                  {codexDoctorResult.appServer}
+                </span>
+              </div>
+              <div className="settings-server-status-row">
+                <span className="settings-server-status-key">node</span>
+                <span className={`settings-server-status-value${codexDoctorResult.node === "ok" ? " settings-server-status-value--green" : ""}`}>
+                  {codexDoctorResult.node}
+                </span>
+              </div>
+              <div className="settings-server-status-row">
+                <span className="settings-server-status-key">path</span>
+                <span className="settings-server-status-value settings-server-status-value--path">{codexDoctorResult.path}</span>
+              </div>
+            </div>
+          ) : null}
+          {codexUpdateResult ? (
+            <div className={`settings-codex-doctor ${codexUpdateResult.ok ? "settings-codex-doctor--ok" : "settings-codex-doctor--error"}`}>
+              <p className="settings-memory-desc">{codexUpdateResult.message}</p>
+            </div>
+          ) : null}
+
+          {/* --- Default model selector --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// default model</p>
+          <div className="settings-codex-field-row">
+            <select
+              className="settings-codex-input"
+              value={appPreferences.codexDefaultModel}
+              onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexDefaultModel: e.target.value })}
+            >
+              <option value="">(none -- use codex default)</option>
+              {codexModels.map((m) => (
+                <option key={m.id} value={m.id}>{m.name || m.id}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="settings-server-btn"
+              disabled={codexModelsLoading}
+              onClick={() => {
+                setCodexModelsLoading(true);
+                void window.orxa.codex.listModels()
+                  .then((models) => { setCodexModels(models); setFeedback("Models refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .finally(() => setCodexModelsLoading(false));
+              }}
+            >
+              {codexModelsLoading ? "loading..." : "refresh"}
+            </button>
+          </div>
+
+          {/* --- Reasoning effort selector --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// reasoning effort</p>
+          <select
+            className="settings-codex-input"
+            value={appPreferences.codexReasoningEffort}
+            disabled={!selectedModelEntry?.supportsReasoningEffort}
+            onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexReasoningEffort: e.target.value })}
+          >
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+          {!selectedModelEntry?.supportsReasoningEffort ? (
+            <p className="settings-codex-help">Reasoning effort is not supported by the selected model.</p>
+          ) : null}
+
+          {/* --- Access mode selector --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// access mode</p>
+          <select
+            className="settings-codex-input"
+            value={appPreferences.codexAccessMode}
+            onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexAccessMode: e.target.value })}
+          >
+            <option value="read-only">read-only</option>
+            <option value="on-request">on-request (ask for approval)</option>
+            <option value="full-access">full-access (auto-approve)</option>
+          </select>
+
+          {/* --- AGENTS.md editor --- */}
           <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// agent instructions (AGENTS.md)</p>
           <p className="raw-path">~/.codex/AGENTS.md</p>
           {codexLoading ? (
@@ -1178,15 +1388,76 @@ export function SettingsDrawer({
             <textarea
               className="settings-personalization-textarea"
               value={codexAgentsMd}
-              readOnly
+              onChange={(e) => setCodexAgentsMd(e.target.value)}
               placeholder="(file not found or empty)"
               style={{ minHeight: "120px" }}
             />
           )}
-          <p className="settings-memory-desc" style={{ marginTop: "4px", fontSize: "11px" }}>
-            read-only -- edit in your editor
-          </p>
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.writeTextFile("~/.codex/AGENTS.md", codexAgentsMd)
+                  .then(() => setFeedback("AGENTS.md saved"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              save
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.readTextFile("~/.codex/AGENTS.md")
+                  .then((content) => { setCodexAgentsMd(content); setFeedback("AGENTS.md refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              refresh
+            </button>
+          </div>
 
+          {/* --- config.toml editor --- */}
+          <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// config.toml</p>
+          <p className="raw-path">~/.codex/config.toml</p>
+          {codexLoading ? (
+            <p className="settings-memory-desc">loading...</p>
+          ) : (
+            <textarea
+              className="settings-personalization-textarea"
+              value={codexConfigToml}
+              onChange={(e) => setCodexConfigToml(e.target.value)}
+              placeholder="(file not found or empty)"
+              style={{ minHeight: "120px" }}
+            />
+          )}
+          <div className="settings-codex-field-row">
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.writeTextFile("~/.codex/config.toml", codexConfigToml)
+                  .then(() => setFeedback("config.toml saved"))
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              save
+            </button>
+            <button
+              type="button"
+              className="settings-server-btn"
+              onClick={() => {
+                void window.orxa.app.readTextFile("~/.codex/config.toml")
+                  .then((content) => { setCodexConfigToml(content); setFeedback("config.toml refreshed"); })
+                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)));
+              }}
+            >
+              refresh
+            </button>
+          </div>
+
+          {/* --- Connection status --- */}
           <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// connection status</p>
           <div className="settings-server-status-card">
             <div className="settings-server-status-row">
@@ -1197,6 +1468,7 @@ export function SettingsDrawer({
             </div>
           </div>
 
+          {/* --- Directories --- */}
           <p className="settings-server-subtitle" style={{ marginTop: "12px" }}>// directories</p>
           <div className="settings-claude-dirs">
             <div className="settings-dir-row">
@@ -1231,18 +1503,20 @@ export function SettingsDrawer({
                 window.orxa.app.readTextFile("~/.codex/config.toml"),
                 window.orxa.app.readTextFile("~/.codex/AGENTS.md"),
                 window.orxa.codex.getState(),
+                window.orxa.codex.listModels(),
               ])
-                .then(([configToml, agentsMd, state]) => {
+                .then(([configToml, agentsMd, state, models]) => {
                   setCodexConfigToml(configToml);
                   setCodexAgentsMd(agentsMd);
                   setCodexState(state);
+                  setCodexModels(models);
                   setFeedback("Codex settings reloaded");
                 })
                 .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
                 .finally(() => setCodexLoading(false));
             }}
           >
-            reload
+            reload all
           </button>
         </section>
       );

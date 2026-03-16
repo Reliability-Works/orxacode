@@ -9,6 +9,7 @@ const bridge: OrxaBridge = {
     openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
     openFile: (options) => ipcRenderer.invoke(IPC.appOpenFile, options),
     readTextFile: (filePath) => ipcRenderer.invoke(IPC.appReadTextFile, filePath),
+    writeTextFile: (filePath, content) => ipcRenderer.invoke(IPC.appWriteTextFile, filePath, content),
     revealInFinder: (dirPath) => ipcRenderer.invoke(IPC.appRevealInFinder, dirPath),
     scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
     httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
@@ -150,6 +151,9 @@ const bridge: OrxaBridge = {
     listTools: () => ipcRenderer.invoke(IPC.mcpDevToolsListTools),
   },
   codex: {
+    doctor: () => ipcRenderer.invoke(IPC.codexDoctor),
+    update: () => ipcRenderer.invoke(IPC.codexUpdate),
+    listModels: () => ipcRenderer.invoke(IPC.codexListModels),
     start: (cwd) => ipcRenderer.invoke(IPC.codexStart, cwd),
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),

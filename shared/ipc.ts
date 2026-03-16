@@ -134,9 +134,13 @@ export const IPC = {
   mcpDevToolsListTools: "orxa:mcp:devtools:listTools",
   appOpenFile: "orxa:app:openFile",
   appReadTextFile: "orxa:app:readTextFile",
+  appWriteTextFile: "orxa:app:writeTextFile",
   appRevealInFinder: "orxa:app:revealInFinder",
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
+  codexDoctor: "orxa:codex:doctor",
+  codexUpdate: "orxa:codex:update",
+  codexListModels: "orxa:codex:listModels",
   codexStart: "orxa:codex:start",
   codexStop: "orxa:codex:stop",
   codexGetState: "orxa:codex:getState",
@@ -981,6 +985,25 @@ export type OrxaEvent =
       payload: CodexApprovalRequest;
     };
 
+export type CodexDoctorResult = {
+  version: string;
+  appServer: "ok" | "error" | "unknown";
+  node: "ok" | "error" | "unknown";
+  path: string;
+  raw: string;
+};
+
+export type CodexUpdateResult = {
+  ok: boolean;
+  message: string;
+};
+
+export type CodexModelEntry = {
+  id: string;
+  name: string;
+  supportsReasoningEffort: boolean;
+};
+
 export type CodexConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
 export type CodexState = {
@@ -1058,6 +1081,7 @@ export interface OrxaBridge {
     openExternal: (url: string) => Promise<boolean>;
     openFile: (options?: OpenFileOptions) => Promise<OpenFileResult | undefined>;
     readTextFile: (filePath: string) => Promise<string>;
+    writeTextFile: (filePath: string, content: string) => Promise<boolean>;
     revealInFinder: (dirPath: string) => Promise<boolean>;
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
@@ -1197,6 +1221,9 @@ export interface OrxaBridge {
     listTools: () => Promise<unknown[]>;
   };
   codex: {
+    doctor: () => Promise<CodexDoctorResult>;
+    update: () => Promise<CodexUpdateResult>;
+    listModels: () => Promise<CodexModelEntry[]>;
     start: (cwd?: string) => Promise<CodexState>;
     stop: () => Promise<CodexState>;
     getState: () => Promise<CodexState>;

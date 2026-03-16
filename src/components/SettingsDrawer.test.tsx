@@ -36,6 +36,11 @@ describe("SettingsDrawer", () => {
           commitGuidancePrompt: "",
           codeFont: "IBM Plex Mono",
           hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -140,6 +145,11 @@ describe("SettingsDrawer", () => {
           commitGuidancePrompt: "",
           codeFont: "IBM Plex Mono",
           hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -225,6 +235,11 @@ describe("SettingsDrawer", () => {
           commitGuidancePrompt: "",
           codeFont: "IBM Plex Mono",
           hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -322,6 +337,11 @@ describe("SettingsDrawer", () => {
           commitGuidancePrompt: "",
           codeFont: "IBM Plex Mono",
           hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -413,6 +433,11 @@ describe("SettingsDrawer", () => {
           commitGuidancePrompt: "",
           codeFont: "IBM Plex Mono",
           hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}

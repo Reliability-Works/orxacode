@@ -3970,6 +3970,56 @@
   padding: 4px 0;
 }
 
+.settings-codex-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-codex-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.settings-codex-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-codex-doctor {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-codex-doctor--ok {
+  border-color: var(--accent-green);
+}
+
+.settings-codex-doctor--error {
+  border-color: var(--accent-red, #e55);
+}
+
+.settings-codex-help {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .raw-editor-modal {
   width: min(1120px, 95vw);
   max-height: 90vh;

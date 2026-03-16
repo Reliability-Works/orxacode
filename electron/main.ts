@@ -997,6 +997,27 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPC.appWriteTextFile, async (_event, filePath: unknown, content: unknown) => {
+    if (typeof filePath !== "string") throw new Error("filePath must be a string");
+    if (typeof content !== "string") throw new Error("content must be a string");
+    const homeDir = app.getPath("home");
+    const resolved = path.resolve(filePath.replace(/^~/, homeDir));
+    const allowedPrefixes = [
+      path.join(homeDir, ".claude"),
+      path.join(homeDir, ".codex"),
+    ];
+    const isAllowed = allowedPrefixes.some((prefix) => resolved.startsWith(prefix + path.sep) || resolved === prefix);
+    if (!isAllowed) throw new Error(`Writing files outside ~/.claude/ and ~/.codex/ is not allowed`);
+    const basename = path.basename(resolved);
+    if (basename === "auth.json" || basename === "credentials.json") {
+      throw new Error(`Writing ${basename} is not allowed for security reasons`);
+    }
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    await mkdir(path.dirname(resolved), { recursive: true });
+    await writeFile(resolved, content, "utf-8");
+    return true;
+  });
+
   ipcMain.handle(IPC.appRevealInFinder, async (_event, dirPath: unknown) => {
     if (typeof dirPath !== "string") throw new Error("dirPath must be a string");
     const homeDir = app.getPath("home");
@@ -1725,6 +1746,70 @@ function registerIpcHandlers() {
 
   codexService.on("approval", (payload: unknown) => {
     publishEvent({ type: "codex.approval", payload } as OrxaEvent);
+  });
+
+  ipcMain.handle(IPC.codexDoctor, async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFile);
+    try {
+      const { stdout, stderr } = await execFileAsync("codex", ["doctor"], {
+        timeout: 15000,
+        env: { ...process.env },
+      });
+      const output = (stdout + "\n" + stderr).trim();
+      const versionMatch = output.match(/version[:\s]+([^\n]+)/i);
+      const version = versionMatch ? versionMatch[1]!.trim() : "unknown";
+      const appServerOk = /app.server[:\s]*(ok|running|connected)/i.test(output) ? "ok" as const : /app.server/i.test(output) ? "error" as const : "unknown" as const;
+      const nodeOk = /node[:\s]*(ok|found|v\d)/i.test(output) ? "ok" as const : /node/i.test(output) ? "error" as const : "unknown" as const;
+      let codexPath = "codex";
+      try {
+        const whichResult = await execFileAsync("which", ["codex"], { timeout: 5000 });
+        codexPath = whichResult.stdout.trim() || "codex";
+      } catch { /* keep default */ }
+      return { version, appServer: appServerOk, node: nodeOk, path: codexPath, raw: output };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { version: "unknown", appServer: "error" as const, node: "unknown" as const, path: "", raw: `codex doctor failed: ${message}` };
+    }
+  });
+
+  ipcMain.handle(IPC.codexUpdate, async () => {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execFileAsync = promisify(execFile);
+    try {
+      const { stdout, stderr } = await execFileAsync("npm", ["update", "-g", "@openai/codex"], {
+        timeout: 60000,
+        env: { ...process.env },
+      });
+      const output = (stdout + "\n" + stderr).trim();
+      const alreadyUpToDate = /up to date|already|unchanged/i.test(output);
+      return { ok: true, message: alreadyUpToDate ? "Already up to date" : `Updated: ${output.slice(0, 200)}` };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, message: `Update failed: ${message}` };
+    }
+  });
+
+  ipcMain.handle(IPC.codexListModels, async () => {
+    const homeDir = app.getPath("home");
+    const cachePath = path.join(homeDir, ".codex", "models_cache.json");
+    const { readFile } = await import("node:fs/promises");
+    try {
+      const raw = await readFile(cachePath, "utf-8");
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry: Record<string, unknown>) => ({
+          id: typeof entry.id === "string" ? entry.id : String(entry.id ?? entry.model ?? ""),
+          name: typeof entry.name === "string" ? entry.name : typeof entry.id === "string" ? entry.id : String(entry.id ?? ""),
+          supportsReasoningEffort: typeof entry.supportsReasoningEffort === "boolean" ? entry.supportsReasoningEffort : typeof entry.supports_reasoning_effort === "boolean" ? entry.supports_reasoning_effort : false,
+        }));
+      }
+      return [];
+    } catch {
+      return [];
+    }
   });
 
   ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown) => {

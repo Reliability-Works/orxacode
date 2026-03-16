@@ -121,6 +121,11 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
   codeFont: "IBM Plex Mono",
   hiddenModels: [],
+  codexPath: "",
+  codexArgs: "",
+  codexDefaultModel: "",
+  codexReasoningEffort: "medium",
+  codexAccessMode: "on-request",
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";

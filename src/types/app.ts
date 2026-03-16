@@ -8,6 +8,11 @@ export type AppPreferences = {
   commitGuidancePrompt: string;
   codeFont: string;
   hiddenModels: string[];
+  codexPath: string;
+  codexArgs: string;
+  codexDefaultModel: string;
+  codexReasoningEffort: string;
+  codexAccessMode: string;
 };
 
 export type CodeFontOption = {
