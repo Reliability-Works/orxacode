@@ -511,16 +511,6 @@ export function SettingsDrawer({
     if (section === "git") {
       return (
         <section className="settings-section-card settings-pad">
-          <label className="settings-inline-toggle">
-            show git sidebar
-            <input
-              type="checkbox"
-              checked={appPreferences.showOperationsPane}
-              onChange={(event) =>
-                onAppPreferencesChange({ ...appPreferences, showOperationsPane: event.target.checked })
-              }
-            />
-          </label>
           <p className="settings-git-textarea-label">commit message guidance prompt</p>
           <textarea
             className="settings-git-textarea"
