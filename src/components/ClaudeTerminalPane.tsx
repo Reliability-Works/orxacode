@@ -130,6 +130,7 @@ function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: Clau
       const next = prev.filter((t) => t.id !== tabId);
       if (next.length === 0) {
         onAllTabsClosed?.();
+        onClose?.();
         return prev;
       }
       if (panelActiveTabId === tabId) {
@@ -150,19 +151,17 @@ function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: Clau
             onClick={() => setPanelActiveTabId(tab.id)}
           >
             <span className="claude-tab-label">{tab.label}</span>
-            {panelTabs.length > 1 && (
-              <span
-                className="claude-tab-close"
-                role="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCloseTab(tab.id);
-                }}
-              >
-                <X size={10} />
-              </span>
-            )}
+            <span
+              className="claude-tab-close"
+              role="button"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCloseTab(tab.id);
+              }}
+            >
+              <X size={10} />
+            </span>
           </button>
         ))}
         <button

@@ -130,6 +130,7 @@ const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
 const SESSION_TYPES_KEY = "orxa:sessionTypes:v1";
+const SESSION_TITLES_KEY = "orxa:sessionTitles:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 
@@ -910,6 +911,7 @@ export default function App() {
   });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
   const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {});
+  const [sessionTitles, setSessionTitles] = usePersistedState<Record<string, string>>(SESSION_TITLES_KEY, {});
   const canvasState = useCanvasState(activeSessionID ?? "__none__");
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
@@ -2483,9 +2485,13 @@ export default function App() {
 
       if (sessionType !== "standalone" && createdSessionId) {
         setSessionTypes((prev) => ({ ...prev, [createdSessionId]: sessionType }));
+        const titleMap: Record<string, string> = { claude: "Claude Code", canvas: "Canvas", codex: "Codex Session" };
+        if (titleMap[sessionType]) {
+          setSessionTitles((prev) => ({ ...prev, [createdSessionId]: titleMap[sessionType] }));
+        }
       }
     },
-    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes],
+    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -3884,6 +3890,7 @@ export default function App() {
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionStatusType={getSessionStatusType}
             sessionTypes={sessionTypes}
+            sessionTitles={sessionTitles}
             selectProject={selectProject}
             createSession={createSession}
             openSession={openSession}

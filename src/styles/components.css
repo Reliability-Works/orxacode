@@ -1244,7 +1244,7 @@
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   padding: 6px;
   display: grid;
   gap: 4px;
@@ -1253,15 +1253,17 @@
 .context-menu button {
   width: 100%;
   text-align: left;
-  padding: 9px 10px;
+  padding: 8px 12px;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg-input);
+  border: none;
+  background: transparent;
   transform: none;
+  font-size: 12px;
+  font-family: var(--font-mono);
 }
 
 .context-menu button:hover {
-  border-color: var(--border-hover);
+  background: var(--bg-input);
   transform: none;
 }
 
@@ -2584,6 +2586,25 @@
   flex-shrink: 0;
 }
 
+.settings-nav-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 12px 12px 2px;
+  line-height: 1;
+  user-select: none;
+}
+
+.settings-nav-group-label:first-child {
+  padding-top: 0;
+}
+
+.settings-nav-list > button {
+  padding-left: 20px;
+}
+
 .settings-center-body {
   overflow: auto;
   padding: 32px 40px;
@@ -3301,20 +3322,21 @@
   right: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   display: flex;
   flex-direction: column;
   min-width: 120px;
   z-index: 10;
-  padding: 4px;
+  padding: 6px;
 }
 
 .oc-agents-openin-menu button {
   text-align: left;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  border-radius: 4px;
   font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   background: transparent;
   border: none;
@@ -3322,7 +3344,7 @@
 }
 
 .oc-agents-openin-menu button:hover {
-  background: var(--bg-hover);
+  background: var(--bg-input);
 }
 
 .oc-agents-empty {
@@ -4012,6 +4034,11 @@
     width: auto;
     padding: 6px 10px;
     font-size: 12px;
+  }
+
+  .settings-nav-group-label {
+    width: 100%;
+    padding: 8px 8px 0;
   }
 
   .settings-center-body {
@@ -5483,11 +5510,11 @@
   width: min(520px, 68vw);
   max-height: 280px;
   overflow: auto;
-  border: 1px solid var(--border-hover);
+  border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-surface);
-  box-shadow: var(--shadow);
-  padding: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 6px;
   display: grid;
   gap: 4px;
 }
@@ -5818,12 +5845,13 @@ button.primary {
   top: calc(100% + 4px);
   right: 0;
   z-index: 200;
-  background: var(--bg-surface, #141414);
-  border: 1px solid var(--border-primary, #232323);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
   min-width: 240px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   overflow: hidden;
+  padding: 6px;
 }
 
 .new-session-picker-header {
@@ -5840,14 +5868,16 @@ button.primary {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--border-primary, #232323);
-  color: var(--text-primary, #e8e8e8);
+  border-radius: 4px;
+  color: var(--text-primary);
   text-align: left;
   cursor: pointer;
   transition: background 100ms ease;
+  font-size: 12px;
+  font-family: var(--font-mono);
 }
 
 .new-session-picker-option:last-child {
@@ -5855,7 +5885,7 @@ button.primary {
 }
 
 .new-session-picker-option:hover {
-  background: var(--bg-hover, #1c1c1c);
+  background: var(--bg-input);
 }
 
 .new-session-picker-icon {
@@ -6061,12 +6091,13 @@ button.primary {
   width: 220px;
   max-height: 340px;
   background: var(--bg-surface);
-  border: 1px solid var(--border-secondary);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 6px;
 }
 
 .add-tile-dropdown-header {
@@ -6121,9 +6152,10 @@ button.primary {
   padding: 8px 12px;
   background: transparent;
   border: none;
+  border-radius: 4px;
   color: var(--text-secondary);
-  font-size: 13px;
-  font-family: inherit;
+  font-size: 12px;
+  font-family: var(--font-mono);
   cursor: pointer;
   text-align: left;
 }
@@ -7511,8 +7543,13 @@ button.primary {
   width: 14px;
   height: 14px;
   border-radius: 3px;
-  opacity: 0.5;
+  opacity: 0;
   cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.claude-tab:hover .claude-tab-close {
+  opacity: 1;
 }
 
 .claude-tab-close:hover {
@@ -7625,11 +7662,11 @@ button.primary {
   z-index: 100;
   min-width: 160px;
   margin-top: 4px;
-  padding: 4px;
-  background: #1a1a1a;
+  padding: 6px;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .claude-split-menu-item {
@@ -7637,10 +7674,11 @@ button.primary {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border: none;
   border-radius: 4px;
   font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--text-secondary);
   background: transparent;
   cursor: pointer;
@@ -7648,7 +7686,7 @@ button.primary {
 }
 
 .claude-split-menu-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-input);
   color: var(--text-primary);
 }
 

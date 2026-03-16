@@ -50,7 +50,9 @@ type SettingsSection =
   | "git"
   | "app"
   | "preferences"
-  | "server";
+  | "server"
+  | "claude-settings"
+  | "codex-settings";
 type OcAgentFilenameDialog =
   | { kind: "create"; title: string }
   | { kind: "duplicate"; title: string; content: string };
@@ -104,7 +106,7 @@ export function SettingsDrawer({
   allModelOptions,
 }: Props) {
   const appVersion = __APP_VERSION__?.trim().length ? __APP_VERSION__ : "dev";
-  const [section, setSection] = useState<SettingsSection>("config");
+  const [section, setSection] = useState<SettingsSection>("app");
   const [scope, setScope] = useState<"project" | "global">("global");
 
   const [rawDoc, setRawDoc] = useState<RawConfigDocument | null>(null);
@@ -998,6 +1000,64 @@ export function SettingsDrawer({
       );
     }
 
+    if (section === "claude-settings") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">claude</p>
+          <p className="settings-server-subtitle">// CLI settings</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">CLI path</span>
+              <span className="settings-server-status-value">claude</span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">default permission mode</span>
+              <span className="settings-server-status-value">{appPreferences.permissionMode ?? "ask-write"}</span>
+            </div>
+          </div>
+          <p className="settings-server-subtitle">// config</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">config directory</span>
+              <span className="settings-server-status-value">~/.claude/</span>
+            </div>
+          </div>
+          <p className="settings-memory-desc" style={{ marginTop: "8px" }}>
+            edit claude settings directly in ~/.claude/ or via the claude CLI. MCP server config lives in ~/.claude.json.
+          </p>
+        </section>
+      );
+    }
+
+    if (section === "codex-settings") {
+      return (
+        <section className="settings-section-card settings-pad settings-server-grid">
+          <p className="settings-server-title">codex</p>
+          <p className="settings-server-subtitle">// app server</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">binary path</span>
+              <span className="settings-server-status-value">codex</span>
+            </div>
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">status</span>
+              <span className="settings-server-status-value">placeholder</span>
+            </div>
+          </div>
+          <p className="settings-server-subtitle">// config</p>
+          <div className="settings-server-status-card">
+            <div className="settings-server-status-row">
+              <span className="settings-server-status-key">config directory</span>
+              <span className="settings-server-status-value">~/.codex/</span>
+            </div>
+          </div>
+          <p className="settings-memory-desc" style={{ marginTop: "8px" }}>
+            edit codex settings directly in ~/.codex/ or via the codex CLI.
+          </p>
+        </section>
+      );
+    }
+
     if (section === "opencode-agents") {
       const currentOcAgent = ocAgents.find((a) => a.filename === selectedOcAgent);
 
@@ -1153,6 +1213,25 @@ export function SettingsDrawer({
                 </button>
               </div>
               <div className="settings-nav-list">
+                <span className="settings-nav-group-label">ORXA CODE</span>
+                <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
+                  {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  App
+                </button>
+                <button
+                  type="button"
+                  className={section === "preferences" ? "active" : ""}
+                  onClick={() => setSection("preferences")}
+                >
+                  {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Preferences
+                </button>
+                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
+                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Server
+                </button>
+
+                <span className="settings-nav-group-label">OPENCODE</span>
                 <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
                   {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Config Files
@@ -1181,21 +1260,17 @@ export function SettingsDrawer({
                   {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                   Git
                 </button>
-                <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
-                  {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  App
+
+                <span className="settings-nav-group-label">CLAUDE</span>
+                <button type="button" className={section === "claude-settings" ? "active" : ""} onClick={() => setSection("claude-settings")}>
+                  {section === "claude-settings" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Settings
                 </button>
-                <button
-                  type="button"
-                  className={section === "preferences" ? "active" : ""}
-                  onClick={() => setSection("preferences")}
-                >
-                  {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Preferences
-                </button>
-                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
-                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Server
+
+                <span className="settings-nav-group-label">CODEX</span>
+                <button type="button" className={section === "codex-settings" ? "active" : ""} onClick={() => setSection("codex-settings")}>
+                  {section === "codex-settings" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                  Settings
                 </button>
               </div>
             </aside>

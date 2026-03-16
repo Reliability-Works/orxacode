@@ -43,6 +43,7 @@ export type WorkspaceSidebarProps = {
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionStatusType: (sessionID: string, directory?: string) => string;
   sessionTypes: Record<string, SessionType>;
+  sessionTitles: Record<string, string>;
   selectProject: (directory: string) => Promise<void> | void;
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void;
   openSession: (sessionID: string) => void;
@@ -80,6 +81,7 @@ export function WorkspaceSidebar({
   setAllSessionsModalOpen,
   getSessionStatusType,
   sessionTypes,
+  sessionTitles,
   selectProject,
   createSession,
   openSession,
@@ -354,9 +356,9 @@ export function WorkspaceSidebar({
                             className={session.id === activeSessionID ? "active" : ""}
                             onClick={() => openSession(session.id)}
                             onContextMenu={(event) =>
-                              openSessionContextMenu(event, project.worktree, session.id, session.title || session.slug)
+                              openSessionContextMenu(event, project.worktree, session.id, sessionTitles[session.id] ?? session.title ?? session.slug)
                             }
-                            title={session.title || session.slug}
+                            title={sessionTitles[session.id] ?? session.title ?? session.slug}
                           >
                             {sessionTypes[session.id] === "canvas" ? (
                               <span className="session-type-icon session-type-icon--canvas" aria-hidden="true">
@@ -378,7 +380,7 @@ export function WorkspaceSidebar({
                                 {awaitingPermission ? "!" : null}
                               </span>
                             )}
-                            <span>{session.title || session.slug}</span>
+                            <span>{sessionTitles[session.id] ?? session.title ?? session.slug}</span>
                           </button>
                         );
                       })}
