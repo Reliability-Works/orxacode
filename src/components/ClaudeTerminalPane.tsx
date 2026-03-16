@@ -115,11 +115,11 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
 
       const cleanups: Array<() => void> = [];
 
-      // Strip ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN to prevent API billing
-      // override — Claude Code should use its own OAuth subscription, not inherited env
-      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY ";
+      // Use exec to replace the shell process with claude — prevents command echo.
+      // Strip ANTHROPIC_* env vars to prevent API billing override.
+      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
       const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
-      const command = `${envPrefix}${claudeCmd}\n`;
+      const command = `exec ${envPrefix} ${claudeCmd}\n`;
 
       void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
         ptyIdRef.current = pty.id;
