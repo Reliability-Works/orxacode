@@ -127,37 +127,36 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
         void window.orxa.terminal.connect(directory, pty.id).then(() => {
           void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
 
-          // Subscribe to PTY output immediately, filtering out the connect artifact
-          let skipInitialJson = true;
-          const unsubscribe = window.orxa.events.subscribe((event) => {
-            if (
-              event.type === "pty.output" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              let chunk = event.payload.chunk as string;
-              // Filter out the {"cursor":N} connect response that leaks into output
-              if (skipInitialJson && chunk.includes('{"cursor"')) {
-                chunk = chunk.replace(/\{"cursor":\d+\}/g, "");
-                if (!chunk.trim()) return; // Skip if nothing left after filtering
-                skipInitialJson = false;
-              } else {
-                skipInitialJson = false;
-              }
-              terminal.write(chunk);
-            }
-            if (
-              event.type === "pty.closed" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-            }
-          });
-          cleanups.push(unsubscribe);
-
-          // Launch claude
+          // Send the exec command FIRST — before subscribing to output.
+          // This runs in the shell background. The shell will echo the command
+          // and then exec into claude. We delay subscribing to output so the
+          // user never sees the shell prompt or command echo.
           void window.orxa.terminal.write(directory, pty.id, command);
+
+          // Wait for the shell to exec into claude before showing output.
+          // 300ms is enough for exec to replace the shell with claude.
+          const timerId = window.setTimeout(() => {
+            if (!window.orxa?.events) return;
+
+            const unsubscribe = window.orxa.events.subscribe((event) => {
+              if (
+                event.type === "pty.output" &&
+                event.payload.ptyID === pty.id &&
+                event.payload.directory === directory
+              ) {
+                terminal.write(event.payload.chunk as string);
+              }
+              if (
+                event.type === "pty.closed" &&
+                event.payload.ptyID === pty.id &&
+                event.payload.directory === directory
+              ) {
+                terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+              }
+            });
+            cleanups.push(unsubscribe);
+          }, 300);
+          cleanups.push(() => window.clearTimeout(timerId));
         });
 
         const disposeInput = terminal.onData((data) => {
