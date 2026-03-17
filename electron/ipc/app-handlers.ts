@@ -184,10 +184,18 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
       const filePath = path.join(skillPath, "SKILL.md");
       const file = await readFile(filePath, "utf8").catch(() => "");
       if (!file) continue;
-      const lines = file.split(/\r?\n/).map((line) => line.trim());
+      const rawLines = file.split(/\r?\n/).map((line) => line.trim());
+      // Skip YAML frontmatter (lines between opening and closing ---)
+      let lines = rawLines;
+      if (rawLines[0] === "---") {
+        const closeIdx = rawLines.indexOf("---", 1);
+        if (closeIdx > 0) {
+          lines = rawLines.slice(closeIdx + 1);
+        }
+      }
       const title = lines.find((line) => line.startsWith("# "))?.replace(/^#\s+/, "").trim() || entry.name;
       const description =
-        lines.find((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("```")) || "No description available.";
+        lines.find((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("```") && line !== "---") || "No description available.";
       skills.push({ id: entry.name, name: title, description, path: skillPath });
     }
     return skills.sort((left, right) => left.name.localeCompare(right.name));

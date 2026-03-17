@@ -264,6 +264,7 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
       projectDir: editingJob.projectDir,
       prompt: editingJob.prompt,
       browserModeEnabled: editingJob.browserModeEnabled,
+      agentMode: editingJob.agentMode,
       schedule: editingJob.schedule,
       enabled: editingJob.enabled,
     });

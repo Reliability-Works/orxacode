@@ -1147,7 +1147,7 @@ export function GitSidebar(props: GitSidebarProps) {
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
       ) : null}
 
-      {sidebarPanelTab === "browser" ? renderBrowserPane() : null}
+      {sidebarPanelTab === "browser" && browserEnabled ? renderBrowserPane() : null}
 
       {sidebarPanelTab === "git" && gitDiffViewMode === "list" && listViewFocusFile ? (
         <div className="git-list-diff-overlay">

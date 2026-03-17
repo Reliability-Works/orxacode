@@ -38,9 +38,12 @@ export function PlanConfirmationOverlay({
   }, [showInput]);
 
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
     const handler = (e: KeyboardEvent) => {
-      // Only handle if we're the relevant overlay
-      if (!containerRef.current) return;
+      // Only intercept if focus is inside our overlay (or nothing specific is focused)
+      if (!el.contains(document.activeElement) && document.activeElement !== document.body) return;
 
       if (e.key === "Escape") {
         e.preventDefault();
