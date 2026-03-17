@@ -4,71 +4,45 @@ Thanks for contributing to Orxa Code.
 
 ## Scope
 
-Orxa Code is an Electron desktop frontend for OpenCode.  
-When behavior differs between UI labels and backend behavior, align to upstream OpenCode semantics:
+Orxa Code is an Electron desktop app that integrates three AI backends (OpenCode, Codex, Claude Code) into a unified workspace.
 
-- Upstream reference: [anomalyco/opencode](https://github.com/anomalyco/opencode)
-- Renderer: `src/`
-- IPC contract: `shared/ipc.ts`
-- Main process handlers: `electron/main.ts`
-- Runtime bridge/service: `electron/services/opencode-service.ts`
+Key directories:
+
+- `src/` — React renderer (UI components, hooks, styles)
+- `src/components/chat/` — Shared chat UI components used by all providers
+- `electron/` — Main process (IPC handlers, services)
+- `electron/services/` — Backend service bridges (OpenCode, Codex, usage stats, browser)
+- `shared/ipc.ts` — IPC channel definitions and shared types
+- `src/types/app.ts` — App preferences and local types
 
 ## Local Setup
 
-1. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-2. Start dev mode:
-   ```bash
-   pnpm dev
-   ```
-3. Optional mac icon sync variant:
-   ```bash
-   pnpm dev:mac
-   ```
-
-## Before Opening a PR
-
-Run:
-
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
+pnpm install
+pnpm dev
 ```
 
-Prefer small, focused PRs that solve one issue cleanly.
+Mac dev icon sync:
 
-## Coding Expectations
+```bash
+pnpm dev:mac
+```
 
-- Keep changes cohesive and minimal.
-- Reuse existing components/hooks/services before adding new abstractions.
-- Remove dead code introduced by refactors.
-- Preserve established UI language and interaction patterns unless redesign is intentional.
-- For backend-facing changes, keep naming/shape alignment with upstream SDK/server contracts.
+## Testing
 
-## UI and UX Expectations
+```bash
+pnpm test            # run all tests
+pnpm test:coverage   # run with coverage report
+pnpm lint            # eslint
+pnpm typecheck       # tsc -b (strict)
+```
 
-- Keep status and activity messages actionable and specific.
-- Avoid noisy timeline events with low signal.
-- Ensure modal interactions are keyboard-safe (including `Esc`) and visually stable across pane sizes.
-- Verify scroll behavior and overlap behavior around bottom drawers/panels.
+All three must pass before committing (enforced by pre-commit hook).
 
-## Testing Guidance
+## Guidelines
 
-- Add or update regression tests for behavioral fixes.
-- Prefer tests near the changed unit:
-  - `src/components/*.test.tsx` for renderer behavior
-  - `src/hooks/*.test.tsx` for hook logic
-  - `electron/services/*.test.ts` for service/bridge behavior
-- If tests are intentionally skipped, explain why in the PR.
-
-## Documentation
-
-Update docs when behavior or setup changes:
-
-- `README.md` for user-facing app behavior and setup
-- `docs/architecture.md` for architecture-level changes
-- `docs/troubleshooting.md` for user-facing diagnostics
-
+- All providers share the same chat components — don't create provider-specific UI unless the interaction is fundamentally different
+- Use existing design tokens from `src/styles/base.css`
+- New IPC channels must be defined in `shared/ipc.ts` with types
+- Event flow: backend service → `electron/main.ts` publish → `orxa:events` channel → renderer subscription
+- Test coverage thresholds are enforced in CI
