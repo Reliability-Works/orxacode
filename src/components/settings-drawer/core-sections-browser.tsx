@@ -6,7 +6,7 @@ type BrowserSectionProps = {
 };
 
 export function BrowserSection({ appPreferences, onAppPreferencesChange }: BrowserSectionProps) {
-  const enabled = appPreferences.orxaBrowserEnabled;
+  const enabled = appPreferences.orxaBrowserEnabled ?? true;
 
   return (
     <section className="settings-section-card settings-pad">

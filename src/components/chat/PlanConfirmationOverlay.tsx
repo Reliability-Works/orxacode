@@ -122,7 +122,7 @@ export function PlanConfirmationOverlay({
           role="radio"
           aria-checked={selectedOption === 0}
           className={`plan-confirm-option${selectedOption === 0 ? " selected" : ""}`}
-          onClick={() => { setSelectedOption(0); handleSubmit(); }}
+          onClick={() => { setSelectedOption(0); onAccept(); }}
           onMouseEnter={() => setSelectedOption(0)}
         >
           <span className="plan-confirm-radio" />

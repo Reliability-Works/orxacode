@@ -3581,7 +3581,7 @@ export default function App() {
                     togglePlanMode={togglePlanMode}
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
-                    hideBrowserToggle={!appPreferences.orxaBrowserEnabled}
+                    hideBrowserToggle={!(appPreferences.orxaBrowserEnabled ?? true)}
                     agentOptions={composerAgentOptions}
                     selectedAgent={selectedAgent}
                     onAgentChange={setSelectedAgent}
@@ -3712,7 +3712,7 @@ export default function App() {
               onBrowserHandBack={browserHandBack}
               onBrowserStop={browserStop}
               mcpDevToolsState={mcpDevToolsState}
-              browserEnabled={appPreferences.orxaBrowserEnabled}
+              browserEnabled={appPreferences.orxaBrowserEnabled ?? true}
             />
           </div>
         ) : null}
