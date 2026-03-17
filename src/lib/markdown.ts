@@ -20,8 +20,14 @@ export function renderMarkdownText(text: string): string {
     .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
     .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>')
+    // Links (only allow http/https URLs to prevent javascript: XSS)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+      const trimmed = url.trim().toLowerCase();
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:")) {
+        return `<a href="${url}" class="md-link" rel="noopener noreferrer">${label}</a>`;
+      }
+      return `${label} (${url})`;
+    })
     // Horizontal rule
     .replace(/^---$/gm, '<hr class="md-hr" />')
     // Preserve newlines

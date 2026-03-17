@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
 import { getPersistedCodexState, setPersistedCodexState } from "./codex-session-storage";
@@ -25,6 +25,31 @@ export interface CodexMessage {
   timestamp: number;
 }
 
+/** Tracked subagent info for background agents panel */
+export interface SubagentInfo {
+  threadId: string;
+  nickname: string;
+  role: string;
+  status: "thinking" | "awaiting_instruction" | "completed" | "idle";
+  statusText: string;
+  spawnedAt: number;
+}
+
+/** Agent color palette for distinct agent name colors */
+const AGENT_COLORS = ["#22C55E", "#F97316", "#3B82F6", "#A855F7", "#06B6D4", "#EC4899"] as const;
+export function agentColor(index: number): string {
+  return AGENT_COLORS[index % AGENT_COLORS.length];
+}
+
+/** Stable color derived from a threadId string (consistent across UI surfaces) */
+export function agentColorForId(threadId: string): string {
+  let hash = 0;
+  for (let i = 0; i < threadId.length; i++) {
+    hash = ((hash << 5) - hash + threadId.charCodeAt(i)) | 0;
+  }
+  return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
+}
+
 export type CodexMessageItem =
   | { id: string; kind: "message"; role: "user" | "assistant"; content: string; timestamp: number }
   | {
@@ -38,6 +63,10 @@ export type CodexMessageItem =
       exitCode?: number;
       durationMs?: number;
       timestamp: number;
+      /** Collab metadata for subagent task items */
+      collabSender?: { threadId: string; nickname?: string; role?: string };
+      collabReceivers?: Array<{ threadId: string; nickname?: string; role?: string }>;
+      collabStatuses?: Array<{ threadId: string; nickname?: string; role?: string; status: string }>;
     }
   | {
       id: string;
@@ -79,7 +108,7 @@ export interface CodexSessionState {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useCodexSession(directory: string) {
+export function useCodexSession(directory: string, codexOptions?: { codexPath?: string; codexArgs?: string }) {
   const persisted = getPersistedCodexState(directory);
   const [connectionStatus, setConnectionStatus] = useState<CodexState["status"]>("disconnected");
   const [serverInfo, setServerInfo] = useState<CodexState["serverInfo"]>();
@@ -94,8 +123,10 @@ export function useCodexSession(directory: string) {
   const [planReady, setPlanReady] = useState(false);
   const hadPlanUpdate = useRef(false);
 
-  // F2: Subagent thread detection
+  // Subagent thread detection & tracking
   const subagentThreadIds = useRef(new Set<string>());
+  const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
+  const [activeSubagentThreadId, setActiveSubagentThreadId] = useState<string | null>(null);
 
   // Track the current assistant message being streamed
   const streamingItemIdRef = useRef<string | null>(null);
@@ -165,16 +196,23 @@ export function useCodexSession(directory: string) {
       }
 
       if (event.type === "codex.approval") {
-        setPendingApproval(event.payload as CodexApprovalRequest);
+        const approval = event.payload as CodexApprovalRequest;
+        // Only accept approvals for the active thread
+        if (!approval.threadId || !threadRef.current || approval.threadId === threadRef.current.id) {
+          setPendingApproval(approval);
+        }
       }
 
       if (event.type === "codex.userInput") {
-        setPendingUserInput(event.payload as CodexUserInputRequest);
+        const input = event.payload as CodexUserInputRequest;
+        if (!input.threadId || !threadRef.current || input.threadId === threadRef.current.id) {
+          setPendingUserInput(input);
+        }
       }
 
       if (event.type === "codex.notification") {
         const notification = event.payload as CodexNotification;
-        handleNotification(notification);
+        handleNotificationRef.current(notification);
       }
     });
 
@@ -200,6 +238,7 @@ export function useCodexSession(directory: string) {
   // ------------------------------------------------------------------
   // Notification handler
   // ------------------------------------------------------------------
+  const handleNotificationRef = useRef<(notification: CodexNotification) => void>(() => {});
   const handleNotification = useCallback((notification: CodexNotification) => {
     const { method, params } = notification;
 
@@ -259,7 +298,7 @@ export function useCodexSession(directory: string) {
         break;
       }
 
-      // ── F5: Plan mode ──────────────────────────────────────────────
+      // ── Plan mode ──────────────────────────────────────────────────
       case "turn/plan/updated": {
         hadPlanUpdate.current = true;
         const plan = params.plan as unknown;
@@ -281,16 +320,36 @@ export function useCodexSession(directory: string) {
         break;
       }
 
-      // ── F2: Subagent thread detection ──────────────────────────────
+      // ── Subagent thread detection ──────────────────────────────────
       case "thread/started": {
-        const threadMeta = params.thread as { id?: string; source?: { subAgent?: unknown }; kind?: string } | undefined;
+        const threadMeta = params.thread as {
+          id?: string;
+          source?: { subAgent?: { nickname?: string; role?: string; task?: string } };
+          kind?: string;
+        } | undefined;
         if (threadMeta?.id && threadMeta?.source?.subAgent) {
           subagentThreadIds.current.add(threadMeta.id);
+          const sa = threadMeta.source.subAgent;
+          setSubagents((prev) => {
+            // Don't duplicate
+            if (prev.some((a) => a.threadId === threadMeta.id)) return prev;
+            return [
+              ...prev,
+              {
+                threadId: threadMeta.id!,
+                nickname: sa.nickname ?? `Agent-${prev.length + 1}`,
+                role: sa.role ?? "worker",
+                status: "thinking",
+                statusText: "is thinking",
+                spawnedAt: Date.now(),
+              },
+            ];
+          });
         }
         break;
       }
 
-      // ── Thread name (F2) ───────────────────────────────────────────
+      // ── Thread name ────────────────────────────────────────────────
       case "thread/name/updated": {
         const name = params.threadName as string | undefined;
         if (name) {
@@ -326,7 +385,6 @@ export function useCodexSession(directory: string) {
           });
         }
 
-        // F4: Rich item types — started events
         if (item.type === "commandExecution") {
           const msgId = nextMessageID("codex-cmd", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
@@ -450,26 +508,92 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "collabToolCall" || item.type === "collabAgentToolCall") {
+          const collabItem = item as {
+            type: string; id: string;
+            name?: string; toolName?: string; title?: string;
+            collabSender?: { threadId: string; nickname?: string; role?: string };
+            collabReceiver?: { threadId: string; nickname?: string; role?: string };
+            collabReceivers?: Array<{ threadId: string; nickname?: string; role?: string }>;
+            collabStatuses?: Array<{ threadId: string; nickname?: string; role?: string; status: string }>;
+          };
           const msgId = nextMessageID("codex-task", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
+          const receivers = collabItem.collabReceivers ?? (collabItem.collabReceiver ? [collabItem.collabReceiver] : undefined);
           setMessages((prev) => [
             ...prev,
             {
               id: msgId,
               kind: "tool",
               toolType: "task",
-              title: item.name ?? item.toolName ?? "Task",
+              title: collabItem.title ?? collabItem.name ?? collabItem.toolName ?? "Task",
               output: "",
               status: "running",
               timestamp: Date.now(),
+              collabSender: collabItem.collabSender,
+              collabReceivers: receivers,
+              collabStatuses: collabItem.collabStatuses,
             },
           ]);
+
+          // Update subagent statuses from collab metadata
+          if (collabItem.collabStatuses) {
+            setSubagents((prev) => {
+              let next = prev;
+              for (const cs of collabItem.collabStatuses!) {
+                const idx = next.findIndex((a) => a.threadId === cs.threadId);
+                if (idx >= 0) {
+                  if (next === prev) next = [...prev];
+                  const statusText = cs.status || "is thinking";
+                  next[idx] = {
+                    ...next[idx],
+                    nickname: cs.nickname ?? next[idx].nickname,
+                    role: cs.role ?? next[idx].role,
+                    status: statusText.includes("await") ? "awaiting_instruction" : "thinking",
+                    statusText,
+                  };
+                } else if (cs.threadId && cs.nickname) {
+                  // New agent discovered via status
+                  if (next === prev) next = [...prev];
+                  subagentThreadIds.current.add(cs.threadId);
+                  next.push({
+                    threadId: cs.threadId,
+                    nickname: cs.nickname,
+                    role: cs.role ?? "worker",
+                    status: "thinking",
+                    statusText: cs.status || "is thinking",
+                    spawnedAt: Date.now(),
+                  });
+                }
+              }
+              return next;
+            });
+          }
+
+          // Track new agents from receivers
+          if (receivers) {
+            for (const r of receivers) {
+              if (r.threadId && !subagentThreadIds.current.has(r.threadId)) {
+                subagentThreadIds.current.add(r.threadId);
+                setSubagents((prev) => {
+                  if (prev.some((a) => a.threadId === r.threadId)) return prev;
+                  return [...prev, {
+                    threadId: r.threadId,
+                    nickname: r.nickname ?? `Agent-${prev.length + 1}`,
+                    role: r.role ?? "worker",
+                    status: "thinking",
+                    statusText: "is thinking",
+                    spawnedAt: Date.now(),
+                  }];
+                });
+              }
+            }
+          }
         }
 
         break;
       }
 
-      // ── F3: Streaming deltas ───────────────────────────────────────
+      // ── Streaming deltas ───────────────────────────────────────────
       case "item/agentMessage/delta": {
         const delta = params.delta as string;
         if (delta) {
@@ -614,7 +738,7 @@ export function useCodexSession(directory: string) {
           }
         }
 
-        // F4: Update status on completed context/tool items
+        // Update status on completed context/tool items
         if (
           item.type === "fileRead" ||
           item.type === "webSearch" ||
@@ -673,6 +797,20 @@ export function useCodexSession(directory: string) {
         break;
     }
   }, [appendToItemField, messages]);
+  handleNotificationRef.current = handleNotification;
+
+  // Derive subagent messages reactively from current messages
+  const subagentMessages = useMemo(() => {
+    if (!activeSubagentThreadId) return [];
+    return messages.filter((m) => {
+      if (m.kind !== "tool" || m.toolType !== "task") return false;
+      const receivers = m.collabReceivers;
+      const sender = m.collabSender;
+      if (receivers?.some((r) => r.threadId === activeSubagentThreadId)) return true;
+      if (sender?.threadId === activeSubagentThreadId) return true;
+      return false;
+    });
+  }, [messages, activeSubagentThreadId]);
 
   // ------------------------------------------------------------------
   // Actions
@@ -683,7 +821,7 @@ export function useCodexSession(directory: string) {
       return;
     }
     try {
-      const state = await window.orxa.codex.start(directory);
+      const state = await window.orxa.codex.start(directory, codexOptions);
       setConnectionStatus(state.status);
       setServerInfo(state.serverInfo);
       if (state.lastError) setLastError(state.lastError);
@@ -691,7 +829,7 @@ export function useCodexSession(directory: string) {
       setLastError(err instanceof Error ? err.message : String(err));
       setConnectionStatus("error");
     }
-  }, [directory]);
+  }, [directory, codexOptions]);
 
   const disconnect = useCallback(async () => {
     if (!window.orxa?.codex) return;
@@ -707,13 +845,15 @@ export function useCodexSession(directory: string) {
   }, []);
 
   const startThread = useCallback(
-    async (options?: { model?: string; title?: string }) => {
+    async (options?: { model?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => {
       if (!window.orxa?.codex) return;
       try {
         const t = await window.orxa.codex.startThread({
           cwd: directory,
           model: options?.model,
           title: options?.title,
+          approvalPolicy: options?.approvalPolicy,
+          sandbox: options?.sandbox,
         });
         setThread(t);
         setMessages([]);
@@ -726,6 +866,9 @@ export function useCodexSession(directory: string) {
         });
         setPlanItems([]);
         setThreadName(undefined);
+        setSubagents([]);
+        setActiveSubagentThreadId(null);
+        subagentThreadIds.current.clear();
       } catch (err) {
         setLastError(err instanceof Error ? err.message : String(err));
       }
@@ -775,7 +918,7 @@ export function useCodexSession(directory: string) {
     }
   }, [pendingApproval]);
 
-  // F2: Respond to user input request
+  // Respond to user input request
   const respondToUserInput = useCallback(
     async (response: string) => {
       if (!window.orxa?.codex || !pendingUserInput) return;
@@ -818,7 +961,7 @@ export function useCodexSession(directory: string) {
     await sendMessage("Implement this plan.", { model: undefined });
   }, [sendMessage]);
 
-  // F2: Check if a thread is a subagent thread
+  // Check if a thread is a subagent thread
   const isSubagentThread = useCallback((threadId: string) => {
     return subagentThreadIds.current.has(threadId);
   }, []);
@@ -828,6 +971,20 @@ export function useCodexSession(directory: string) {
     setPlanReady(false);
     await sendMessage(`Update the plan with these changes:\n\n${changes}`, { model: undefined });
   }, [sendMessage]);
+
+  // Dismiss plan without accepting or modifying
+  const dismissPlan = useCallback(() => {
+    setPlanReady(false);
+  }, []);
+
+  // Subagent thread navigation
+  const openSubagentThread = useCallback((threadId: string) => {
+    setActiveSubagentThreadId(threadId);
+  }, []);
+
+  const closeSubagentThread = useCallback(() => {
+    setActiveSubagentThreadId(null);
+  }, []);
 
   return {
     connectionStatus,
@@ -841,6 +998,9 @@ export function useCodexSession(directory: string) {
     threadName,
     planItems,
     planReady,
+    subagents,
+    activeSubagentThreadId,
+    subagentMessages,
     connect,
     disconnect,
     startThread,
@@ -852,6 +1012,9 @@ export function useCodexSession(directory: string) {
     interruptTurn,
     acceptPlan,
     submitPlanChanges,
+    dismissPlan,
     isSubagentThread,
+    openSubagentThread,
+    closeSubagentThread,
   };
 }

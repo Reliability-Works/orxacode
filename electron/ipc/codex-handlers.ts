@@ -79,8 +79,9 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
     return codexService.collaborationModes;
   });
 
-  ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown) => {
-    return codexService.start(typeof cwd === "string" ? cwd : undefined);
+  ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown, options?: unknown) => {
+    const opts = options && typeof options === "object" ? options as { codexPath?: string; codexArgs?: string } : undefined;
+    return codexService.start(typeof cwd === "string" ? cwd : undefined, opts);
   });
 
   ipcMain.handle(IPC.codexStop, async () => {
@@ -92,7 +93,7 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
   });
 
   ipcMain.handle(IPC.codexStartThread, async (_event, options?: unknown) => {
-    const opts = (options ?? {}) as { model?: string; cwd?: string; title?: string };
+    const opts = (options ?? {}) as { model?: string; cwd?: string; title?: string; approvalPolicy?: string; sandbox?: string };
     return codexService.startThread(opts);
   });
 

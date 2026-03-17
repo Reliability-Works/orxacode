@@ -17,7 +17,6 @@ export function buildPromptDedupeKey(input: PromptRequest, normalizedDirectory: 
     normalizedDirectory,
     input.sessionID,
     input.text.trim(),
-    input.contextModeEnabled ? "context:on" : "context:off",
     input.promptSource ?? "user",
     input.system?.trim() ?? "",
   ].join("::");

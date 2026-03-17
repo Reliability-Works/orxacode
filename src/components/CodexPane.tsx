@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Zap } from "lucide-react";
 import { useCodexSession } from "../hooks/useCodexSession";
+import { agentColorForId } from "../hooks/useCodexSession";
 import { ComposerPanel } from "./ComposerPanel";
 import { ToolCallCard } from "./chat/ToolCallCard";
 import { CommandOutput } from "./chat/CommandOutput";
@@ -10,7 +11,9 @@ import { MessageHeader } from "./chat/MessageHeader";
 import { TextPart } from "./chat/TextPart";
 import { ReasoningPart } from "./chat/ReasoningPart";
 import { ContextToolGroup } from "./chat/ContextToolGroup";
-import { PlanReadyDock } from "./chat/PlanReadyDock";
+import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
+import { SubagentThreadView } from "./chat/SubagentThreadView";
+import { PlanConfirmationOverlay } from "./chat/PlanConfirmationOverlay";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
 import type { CodexCollaborationMode } from "@shared/ipc";
@@ -24,6 +27,9 @@ interface Props {
   notifyOnAwaitingInput?: boolean;
   subagentSystemNotificationsEnabled?: boolean;
   onAwaitingChange?: (awaiting: boolean) => void;
+  codexAccessMode?: string;
+  codexPath?: string;
+  codexArgs?: string;
   // Branch props (forwarded to ComposerPanel)
   branchMenuOpen: boolean;
   setBranchMenuOpen: (updater: (value: boolean) => boolean) => void;
@@ -57,7 +63,7 @@ function codexModelsToOptions(models: { id: string; model: string; name: string;
   }));
 }
 
-// F3: Derive a human-readable label for collab tool calls
+// Derive a human-readable label for collab tool calls
 function deriveCollabLabel(title: string, status: string): string {
   const raw = title.toLowerCase();
   if (raw.includes("spawn")) return status === "completed" ? "Agent spawned" : "Spawning agent...";
@@ -102,17 +108,33 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
   }
 
   if (item.kind === "tool") {
-    // F3: Enhanced rendering for collab/task tool calls
+    // Enhanced rendering for collab/task tool calls
     if (item.toolType === "task") {
       const collabLabel = deriveCollabLabel(item.title, item.status);
+      // Build a subtitle with agent name (colored) and diff stats
+      const agentName = item.collabReceivers?.[0]?.nickname ?? item.collabSender?.nickname;
+      const subtitle = agentName ?? undefined;
       return (
         <article className="message-card message-assistant">
           <ToolCallCard
             title={collabLabel}
+            subtitle={subtitle}
             status={item.status}
             defaultExpanded={item.status === "error"}
           >
-            {item.output ? (
+            {item.collabStatuses && item.collabStatuses.length > 0 ? (
+              <div className="collab-statuses">
+                {item.collabStatuses.map((cs) => (
+                  <div key={cs.threadId} className="collab-status-row">
+                    <span className="collab-status-name" style={{ color: agentColorForId(cs.threadId) }}>
+                      {cs.nickname ?? cs.threadId.slice(0, 8)}
+                    </span>
+                    {cs.role ? <span className="collab-status-role">({cs.role})</span> : null}
+                    <span className="collab-status-text">{cs.status}</span>
+                  </div>
+                ))}
+              </div>
+            ) : item.output ? (
               <pre className="tool-call-card-output">{item.output}</pre>
             ) : null}
           </ToolCallCard>
@@ -155,7 +177,6 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
     );
   }
 
-  // F4: Reasoning items
   if (item.kind === "reasoning") {
     return (
       <article className="message-card message-assistant">
@@ -167,7 +188,6 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
     );
   }
 
-  // F4: Context items (fileRead, webSearch, mcpToolCall)
   if (item.kind === "context") {
     return (
       <article className="message-card message-assistant">
@@ -185,7 +205,6 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
     );
   }
 
-  // F4: Compaction divider
   if (item.kind === "compaction") {
     return (
       <div className="compaction-divider" role="separator" aria-label="context compacted">
@@ -206,6 +225,9 @@ export function CodexPane({
   notifyOnAwaitingInput,
   subagentSystemNotificationsEnabled,
   onAwaitingChange,
+  codexAccessMode,
+  codexPath,
+  codexArgs,
   branchMenuOpen,
   setBranchMenuOpen,
   branchControlWidthCh,
@@ -244,14 +266,20 @@ export function CodexPane({
     interruptTurn,
     acceptPlan,
     submitPlanChanges,
+    dismissPlan,
     isSubagentThread,
-  } = useCodexSession(directory);
+    subagents,
+    activeSubagentThreadId,
+    subagentMessages,
+    openSubagentThread,
+    closeSubagentThread,
+  } = useCodexSession(directory, { codexPath, codexArgs });
 
   const [input, setInput] = useState("");
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [modelSelectOptions, setModelSelectOptions] = useState<ModelOption[]>([]);
   const [isPlanMode, setIsPlanMode] = useState(false);
-  const [browserModeEnabled, setBrowserModeEnabled] = useState(false);
+  // Browser mode not supported in Codex sessions
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask-write");
   const [todoOpen, setTodoOpen] = useState(false);
   const [codexQueue, setCodexQueue] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
@@ -259,7 +287,7 @@ export function CodexPane({
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationMode[]>([]);
   const [selectedCollabMode, setSelectedCollabMode] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // F4: Track when the current turn started for notification delay
+  // Track when the current turn started for notification delay
   const turnStartedAt = useRef<number>(0);
 
   // Auto-connect on mount (handles React 18 StrictMode double-mount)
@@ -281,9 +309,11 @@ export function CodexPane({
   // Auto-start thread when connected and no thread exists
   useEffect(() => {
     if (connectionStatus === "connected" && !thread) {
-      void startThread({ title: "Orxa Code Session" });
+      const sandbox = codexAccessMode === "full-access" ? "danger-full-access" : "read-only";
+      const approvalPolicy = codexAccessMode === "full-access" ? "never" : "on-request";
+      void startThread({ title: "Orxa Code Session", sandbox, approvalPolicy });
     }
-  }, [connectionStatus, thread, startThread]);
+  }, [connectionStatus, thread, startThread, codexAccessMode]);
 
   // Load models and collaboration modes when connected
   useEffect(() => {
@@ -298,7 +328,7 @@ export function CodexPane({
           setSelectedModel(defaultKey);
         }
       });
-      // Load collaboration modes (F1)
+      // Load collaboration modes
       void window.orxa.codex.listCollaborationModes().then((modes) => {
         setCollaborationModes(modes);
       }).catch(() => {
@@ -313,7 +343,7 @@ export function CodexPane({
     messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
   }, [messages]);
 
-  // F2: Thread name -> sidebar title
+  // Thread name -> sidebar title
   useEffect(() => {
     if (threadName && onTitleChange) {
       onTitleChange(threadName);
@@ -326,16 +356,16 @@ export function CodexPane({
     onAwaitingChange?.(isAwaiting);
   }, [isAwaiting, onAwaitingChange]);
 
-  // Notifications for codex awaiting states (F4: filtered for subagent threads + 60s delay)
+  // Notifications for codex awaiting states (filtered for subagent threads + 60s delay)
   useEffect(() => {
     if (!notifyOnAwaitingInput || document.hasFocus()) return;
     if (pendingApproval || pendingUserInput || planReady) {
-      // F4: Skip notifications if subagent notifications are disabled and this is a subagent event
+      // Skip notifications if subagent notifications are disabled and this is a subagent event
       if (!subagentSystemNotificationsEnabled) {
         const eventThreadId = pendingApproval?.threadId ?? pendingUserInput?.threadId;
         if (eventThreadId && isSubagentThread(eventThreadId)) return;
       }
-      // F4: Only notify if agent has been working > 60s
+      // Only notify if agent has been working > 60s
       const MIN_WORKING_DURATION_MS = 60_000;
       if (turnStartedAt.current > 0 && Date.now() - turnStartedAt.current < MIN_WORKING_DURATION_MS) return;
 
@@ -396,7 +426,7 @@ export function CodexPane({
     await interruptTurn();
   }, [interruptTurn]);
 
-  // F2: Map pendingApproval -> PermissionDock props
+  // Map pendingApproval -> PermissionDock props
   const permissionDockProps = pendingApproval
     ? {
         description: pendingApproval.reason || "Approval required",
@@ -414,7 +444,7 @@ export function CodexPane({
       }
     : null;
 
-  // F2: Map pendingUserInput -> QuestionDock props
+  // Map pendingUserInput -> QuestionDock props
   const questionDockProps = pendingUserInput
     ? {
         questions: [
@@ -455,33 +485,50 @@ export function CodexPane({
     );
   }
 
+  // Find the active subagent for thread view
+  const activeSubagent = activeSubagentThreadId
+    ? subagents.find((a) => a.threadId === activeSubagentThreadId)
+    : null;
+
   return (
     <div className="codex-pane">
-      {/* Messages */}
-      <div className="messages-scroll codex-messages" role="log" aria-label="codex conversation">
-        {messages.length === 0 && connectionStatus === "connected" && thread ? (
-          <div className="codex-empty">
-            <Zap size={24} color="var(--text-muted)" />
-            <span>Send a prompt to start coding with Codex.</span>
-          </div>
-        ) : null}
-
-        {messages.map((msg) => (
-          <CodexMessageRenderer key={msg.id} item={msg} isStreaming={isStreaming} />
-        ))}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Plan ready prompt — shown when codex finishes a plan turn */}
-      {planReady && !isStreaming ? (
-        <PlanReadyDock
-          onAccept={() => void acceptPlan()}
-          onSubmitChanges={(changes) => void submitPlanChanges(changes)}
+      {/* Subagent thread view — replaces main messages when viewing a subagent */}
+      {activeSubagent ? (
+        <SubagentThreadView
+          agent={activeSubagent}
+          messages={subagentMessages}
+          onBack={closeSubagentThread}
+          renderItem={(item) => <CodexMessageRenderer item={item} isStreaming={false} />}
         />
-      ) : null}
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="messages-scroll codex-messages" role="log" aria-label="codex conversation">
+            {messages.length === 0 && connectionStatus === "connected" && thread ? (
+              <div className="codex-empty">
+                <Zap size={24} color="var(--text-muted)" />
+                <span>Send a prompt to start coding with Codex.</span>
+              </div>
+            ) : null}
 
-      {/* F1: Collaboration mode selector */}
+            {messages.map((msg) => (
+              <CodexMessageRenderer key={msg.id} item={msg} isStreaming={isStreaming} />
+            ))}
+
+            {/* Background agents panel — in the chat feed, not sidebar */}
+            {subagents.length > 0 ? (
+              <BackgroundAgentsPanel
+                agents={subagents}
+                onOpenAgent={openSubagentThread}
+              />
+            ) : null}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </>
+      )}
+
+      {/* Collaboration mode selector */}
       {collaborationModes.length > 0 ? (
         <div className="codex-collab-mode-bar">
           <label className="codex-collab-mode-label">
@@ -500,78 +547,89 @@ export function CodexPane({
         </div>
       ) : null}
 
-      {/* Composer — with docks for permission, question, and plan */}
-      <ComposerPanel
-        composer={input}
-        setComposer={setInput}
-        composerAttachments={[]}
-        removeAttachment={() => undefined}
-        slashMenuOpen={false}
-        filteredSlashCommands={[]}
-        slashSelectedIndex={0}
-        insertSlashCommand={() => undefined}
-        handleSlashKeyDown={() => undefined}
-        addComposerAttachments={() => undefined}
-        sendPrompt={sendPrompt}
-        abortActiveSession={abortActiveSession}
-        isSessionBusy={isStreaming}
-        isSendingPrompt={false}
-        pickImageAttachment={() => undefined}
-        hasActiveSession={connectionStatus === "connected" && thread !== null}
-        isPlanMode={isPlanMode}
-        hasPlanAgent={true}
-        togglePlanMode={(enabled) => setIsPlanMode(enabled)}
-        browserModeEnabled={browserModeEnabled}
-        setBrowserModeEnabled={setBrowserModeEnabled}
-        agentOptions={[]}
-        onAgentChange={() => undefined}
-        permissionMode={permissionMode}
-        onPermissionModeChange={setPermissionMode}
-        compactionProgress={0}
-        compactionHint=""
-        compactionCompacted={false}
-        branchMenuOpen={branchMenuOpen}
-        setBranchMenuOpen={setBranchMenuOpen}
-        branchControlWidthCh={branchControlWidthCh}
-        branchLoading={branchLoading}
-        branchSwitching={branchSwitching}
-        hasActiveProject={hasActiveProject}
-        branchCurrent={branchCurrent}
-        branchDisplayValue={branchDisplayValue}
-        branchSearchInputRef={branchSearchInputRef}
-        branchQuery={branchQuery}
-        setBranchQuery={setBranchQuery}
-        branchActionError={branchActionError}
-        clearBranchActionError={clearBranchActionError}
-        checkoutBranch={checkoutBranch}
-        filteredBranches={filteredBranches}
-        openBranchCreateModal={openBranchCreateModal}
-        modelSelectOptions={modelSelectOptions}
-        selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
-        selectedVariant={undefined}
-        setSelectedVariant={() => undefined}
-        variantOptions={[]}
-        placeholder={composerPlaceholder}
-        simpleModelPicker
-        pendingPermission={permissionDockProps}
-        pendingQuestion={questionDockProps}
-        todoItems={planItems.length > 0 ? planItems : undefined}
-        todoOpen={todoOpen}
-        onTodoToggle={() => setTodoOpen((v) => !v)}
-        queuedMessages={codexQueue}
-        sendingQueuedId={codexSendingId}
-        onQueueMessage={queueCodexMessage}
-        onSendQueuedNow={(id) => {
-          const item = codexQueue.find((m) => m.id === id);
-          if (!item || codexSendingId) return;
-          setCodexSendingId(id);
-          setCodexQueue((current) => current.filter((m) => m.id !== id));
-          setInput(item.text);
-        }}
-        onEditQueued={editCodexQueued}
-        onRemoveQueued={removeCodexQueued}
-      />
+      {/* Composer area — with plan confirmation overlay */}
+      <div className="codex-composer-area">
+        {planReady && !isStreaming ? (
+          <PlanConfirmationOverlay
+            onAccept={() => void acceptPlan()}
+            onSubmitChanges={(changes) => void submitPlanChanges(changes)}
+            onDismiss={dismissPlan}
+          />
+        ) : (
+          <ComposerPanel
+            composer={input}
+            setComposer={setInput}
+            composerAttachments={[]}
+            removeAttachment={() => undefined}
+            slashMenuOpen={false}
+            filteredSlashCommands={[]}
+            slashSelectedIndex={0}
+            insertSlashCommand={() => undefined}
+            handleSlashKeyDown={() => undefined}
+            addComposerAttachments={() => undefined}
+            sendPrompt={sendPrompt}
+            abortActiveSession={abortActiveSession}
+            isSessionBusy={isStreaming}
+            isSendingPrompt={false}
+            pickImageAttachment={() => undefined}
+            hasActiveSession={connectionStatus === "connected" && thread !== null}
+            isPlanMode={isPlanMode}
+            hasPlanAgent={true}
+            togglePlanMode={(enabled) => setIsPlanMode(enabled)}
+            browserModeEnabled={false}
+            setBrowserModeEnabled={() => undefined}
+            hideBrowserToggle
+            agentOptions={[]}
+            onAgentChange={() => undefined}
+            permissionMode={permissionMode}
+            onPermissionModeChange={setPermissionMode}
+            compactionProgress={0}
+            compactionHint=""
+            compactionCompacted={false}
+            branchMenuOpen={branchMenuOpen}
+            setBranchMenuOpen={setBranchMenuOpen}
+            branchControlWidthCh={branchControlWidthCh}
+            branchLoading={branchLoading}
+            branchSwitching={branchSwitching}
+            hasActiveProject={hasActiveProject}
+            branchCurrent={branchCurrent}
+            branchDisplayValue={branchDisplayValue}
+            branchSearchInputRef={branchSearchInputRef}
+            branchQuery={branchQuery}
+            setBranchQuery={setBranchQuery}
+            branchActionError={branchActionError}
+            clearBranchActionError={clearBranchActionError}
+            checkoutBranch={checkoutBranch}
+            filteredBranches={filteredBranches}
+            openBranchCreateModal={openBranchCreateModal}
+            modelSelectOptions={modelSelectOptions}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            selectedVariant={undefined}
+            setSelectedVariant={() => undefined}
+            variantOptions={[]}
+            placeholder={composerPlaceholder}
+            simpleModelPicker
+            pendingPermission={permissionDockProps}
+            pendingQuestion={questionDockProps}
+            todoItems={planItems.length > 0 ? planItems : undefined}
+            todoOpen={todoOpen}
+            onTodoToggle={() => setTodoOpen((v) => !v)}
+            queuedMessages={codexQueue}
+            sendingQueuedId={codexSendingId}
+            onQueueMessage={queueCodexMessage}
+            onSendQueuedNow={(id) => {
+              const item = codexQueue.find((m) => m.id === id);
+              if (!item || codexSendingId) return;
+              setCodexSendingId(id);
+              setCodexQueue((current) => current.filter((m) => m.id !== id));
+              setInput(item.text);
+            }}
+            onEditQueued={editCodexQueued}
+            onRemoveQueued={removeCodexQueued}
+          />
+        )}
+      </div>
     </div>
   );
 }

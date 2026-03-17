@@ -68,6 +68,7 @@ export interface OrxaBridge {
     revealInFinder: (dirPath: string) => Promise<boolean>;
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
+    listSkillsFromDir: (directory: string) => Promise<SkillEntry[]>;
   };
   updates: {
     getPreferences: () => Promise<UpdatePreferences>;
@@ -212,10 +213,10 @@ export interface OrxaBridge {
     update: () => Promise<CodexUpdateResult>;
     listModels: () => Promise<CodexModelEntry[]>;
     listCollaborationModes: () => Promise<CodexCollaborationMode[]>;
-    start: (cwd?: string) => Promise<CodexState>;
+    start: (cwd?: string, options?: { codexPath?: string; codexArgs?: string }) => Promise<CodexState>;
     stop: () => Promise<CodexState>;
     getState: () => Promise<CodexState>;
-    startThread: (options?: { model?: string; cwd?: string; title?: string }) => Promise<CodexThread>;
+    startThread: (options?: { model?: string; cwd?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => Promise<CodexThread>;
     listThreads: (options?: { cursor?: string | null; limit?: number; archived?: boolean }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>;
     startTurn: (threadId: string, prompt: string, cwd?: string, model?: string, effort?: string, collaborationMode?: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;

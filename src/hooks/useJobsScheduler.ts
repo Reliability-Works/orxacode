@@ -3,7 +3,6 @@ import type { SessionMessageBundle } from "@shared/ipc";
 import type { JobRecord, JobRunRecord, JobTemplate } from "../components/JobsBoard";
 import {
   BROWSER_MODE_TOOLS_POLICY,
-  MEMORY_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
 } from "../lib/browser-tool-guardrails";
 
@@ -29,7 +28,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     prompt:
       "Draft weekly release notes from merged PRs (include links when available). Scope only the last 7 days and group by feature, fix, and infra.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "book",
     schedule: { type: "daily", time: "09:00", days: [5] },
   },
@@ -40,7 +38,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     prompt:
       "Scan commits from the last 24h and list likely bugs, impact, and minimal fixes. Prioritize risky changes and include file references.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "bug",
     schedule: { type: "daily", time: "10:00", days: [1, 2, 3, 4, 5] },
   },
@@ -51,7 +48,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     prompt:
       "Perform a focused security scan of recent changes and dependencies. Report exploitable paths, confidence, and remediation steps.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "shield",
     schedule: { type: "daily", time: "11:00", days: [1, 3, 5] },
   },
@@ -61,7 +57,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Summarize flaky failures and propose top fixes.",
     prompt: "Summarize CI failures in the last 24h, cluster root causes, and suggest top 3 fixes with owner recommendations.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "activity",
     schedule: { type: "daily", time: "09:30", days: [1, 2, 3, 4, 5] },
   },
@@ -72,7 +67,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     prompt:
       "Scan dependencies for security and compatibility drift; propose minimal safe updates and rollout order.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "package",
     schedule: { type: "interval", intervalMinutes: 1440 },
   },
@@ -83,7 +77,6 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     prompt:
       "Analyze merged PRs in the last week and summarize quality trends, hotspots, and high-risk areas for next sprint planning.",
     browserModeEnabled: false,
-    contextModeEnabled: false,
     icon: "sparkles",
     schedule: { type: "daily", time: "16:00", days: [5] },
   },
@@ -94,7 +87,7 @@ export type JobInput = {
   projectDir: string;
   prompt: string;
   browserModeEnabled?: boolean;
-  contextModeEnabled?: boolean;
+  agentMode?: JobRecord["agentMode"];
   schedule: JobRecord["schedule"];
   enabled?: boolean;
 };
@@ -112,7 +105,7 @@ function createDraft(projectDir?: string, template?: JobTemplate): JobRecord {
     projectDir: projectDir ?? "",
     prompt: template?.prompt ?? "",
     browserModeEnabled: template?.browserModeEnabled ?? false,
-    contextModeEnabled: template?.contextModeEnabled ?? false,
+    agentMode: template?.agentMode ?? "opencode",
     schedule: template?.schedule ?? DEFAULT_JOB_SCHEDULE,
     enabled: true,
     createdAt: now,
@@ -138,7 +131,7 @@ function readStoredJobs() {
   return parsed.map((job) => ({
     ...job,
     browserModeEnabled: job.browserModeEnabled === true,
-    contextModeEnabled: job.contextModeEnabled === true,
+    agentMode: job.agentMode ?? "opencode",
   })) as JobRecord[];
 }
 
@@ -232,7 +225,7 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
           projectDir: trimmedProjectDir,
           prompt: trimmedPrompt,
           browserModeEnabled: job.browserModeEnabled ?? false,
-          contextModeEnabled: job.contextModeEnabled ?? false,
+          agentMode: job.agentMode ?? "opencode",
           schedule: job.schedule,
           enabled: job.enabled ?? true,
           createdAt: now,
@@ -271,7 +264,7 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
       projectDir: editingJob.projectDir,
       prompt: editingJob.prompt,
       browserModeEnabled: editingJob.browserModeEnabled,
-      contextModeEnabled: editingJob.contextModeEnabled,
+      agentMode: editingJob.agentMode,
       schedule: editingJob.schedule,
       enabled: editingJob.enabled,
     });
@@ -335,9 +328,7 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
           sessionID: created.id,
           text: job.prompt,
           promptSource: "job",
-          contextModeEnabled: job.contextModeEnabled === true,
           tools: mergeModeToolPolicies(
-            job.contextModeEnabled ? MEMORY_MODE_TOOLS_POLICY : undefined,
             job.browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
           ),
           ...(job.browserModeEnabled ? { system: JOB_BROWSER_MODE_SYSTEM_ADDENDUM } : {}),

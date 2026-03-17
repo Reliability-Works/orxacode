@@ -280,7 +280,6 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
         text,
         attachments,
         promptSource: "machine",
-        contextModeEnabled: false,
         tools: browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
       });
     };
@@ -323,10 +322,11 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
             const output = await browser.performAgentAction(request);
             const screenshotAttachment = envelope.action === "screenshot" ? screenshotAttachmentFromOutput(output) : undefined;
             resultAttachments = screenshotAttachment ? [screenshotAttachment] : undefined;
+            const actionOk = output && typeof output === "object" && "ok" in output ? Boolean((output as { ok?: unknown }).ok) : true;
             result = {
               id: actionID,
               action: envelope.action,
-              ok: true,
+              ok: actionOk,
               data: output,
             };
           } catch (error) {

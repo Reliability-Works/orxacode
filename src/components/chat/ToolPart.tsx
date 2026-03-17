@@ -114,7 +114,7 @@ function renderQuestion(input: unknown, status: string): JSX.Element {
   );
 }
 
-// F3: Derive collab operation label from the title/name
+// Derive collab operation label from the title/name
 function collabOperationLabel(title: string | undefined, status: string): { label: string; detail: string } {
   const raw = (title ?? "").toLowerCase();
   if (raw.includes("collab: spawn") || raw.includes("spawn")) {
@@ -136,11 +136,11 @@ function renderTask(input: unknown, status: string, output?: string, title?: str
   const safeStatus = toSafeStatus(status);
   const description = getString(input, "description") ?? getString(input, "prompt") ?? "Delegated task";
 
-  // F3: Detect collab tool calls and enhance rendering
+  // Detect collab tool calls and enhance rendering
   const isCollab = (title ?? "").toLowerCase().startsWith("collab");
   const collabInfo = isCollab ? collabOperationLabel(title, status) : null;
 
-  // F3: Extract receiver nickname if available
+  // Extract receiver nickname if available
   const receiver = input && typeof input === "object"
     ? getString((input as Record<string, unknown>).collabReceiver as unknown, "nickname")
       ?? getString(input, "receiverNickname")

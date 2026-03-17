@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   BROWSER_MODE_TOOLS_POLICY,
-  MEMORY_MODE_TOOLS_POLICY,
   PLAN_MODE_TOOLS_POLICY,
   isForbiddenToolNameInBrowserMode,
-  isForbiddenToolNameInMemoryMode,
   isForbiddenToolNameInPlanMode,
   mergeModeToolPolicies,
 } from "./browser-tool-guardrails";
@@ -21,12 +19,6 @@ describe("browser-tool-guardrails", () => {
     expect(isForbiddenToolNameInBrowserMode("take_screenshot")).toBe(false);
   });
 
-  it("flags forbidden memory-mode tools", () => {
-    expect(isForbiddenToolNameInMemoryMode("supermemory_search")).toBe(true);
-    expect(isForbiddenToolNameInMemoryMode("pinecone_query")).toBe(true);
-    expect(isForbiddenToolNameInMemoryMode("todowrite")).toBe(false);
-  });
-
   it("flags forbidden plan-mode write/edit tools", () => {
     expect(isForbiddenToolNameInPlanMode("apply_patch")).toBe(true);
     expect(isForbiddenToolNameInPlanMode("exec_command")).toBe(true);
@@ -34,12 +26,11 @@ describe("browser-tool-guardrails", () => {
   });
 
   it("merges active mode tool policies without returning empty maps", () => {
-    const merged = mergeModeToolPolicies(PLAN_MODE_TOOLS_POLICY, MEMORY_MODE_TOOLS_POLICY, BROWSER_MODE_TOOLS_POLICY);
+    const merged = mergeModeToolPolicies(PLAN_MODE_TOOLS_POLICY, BROWSER_MODE_TOOLS_POLICY);
     expect(merged).toBeDefined();
     expect(merged).toEqual(
       expect.objectContaining({
         apply_patch: false,
-        supermemory: false,
         web_search: false,
       }),
     );

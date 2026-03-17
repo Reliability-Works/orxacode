@@ -8,7 +8,7 @@ describe("useJobsScheduler", () => {
     window.localStorage.clear();
   });
 
-  it("defaults browser and context mode to false for stored jobs that omit those fields", () => {
+  it("defaults browser mode to false for stored jobs that omit the field", () => {
     const stored = [
       {
         id: "legacy-job-1",
@@ -26,10 +26,9 @@ describe("useJobsScheduler", () => {
     const { result } = renderHook(() => useJobsScheduler());
     expect(result.current.jobs).toHaveLength(1);
     expect(result.current.jobs[0]?.browserModeEnabled).toBe(false);
-    expect(result.current.jobs[0]?.contextModeEnabled).toBe(false);
   });
 
-  it("runs jobs with prompt source, context mode, and browser addendum handling", async () => {
+  it("runs jobs with prompt source and browser addendum handling", async () => {
     const createSessionMock = vi.fn(async () => ({
       id: "job-session-1",
       slug: "job-session-1",
@@ -42,7 +41,6 @@ describe("useJobsScheduler", () => {
       text: string;
       agent?: string;
       promptSource?: "job" | "user" | "machine";
-      contextModeEnabled?: boolean;
       tools?: Record<string, boolean>;
     }) => {
       void request;
@@ -71,7 +69,7 @@ describe("useJobsScheduler", () => {
       projectDir: "/tmp/project",
       prompt: "Scan this workspace.",
       browserModeEnabled: true,
-      contextModeEnabled: true,
+      agentMode: "opencode",
       schedule: { type: "interval", intervalMinutes: 60 },
       enabled: true,
       createdAt: Date.now() - 1_000,
@@ -89,22 +87,19 @@ describe("useJobsScheduler", () => {
         sessionID: "job-session-1",
         text: "Scan this workspace.",
         promptSource: "job",
-        contextModeEnabled: true,
-      }),
+        }),
     );
     expect(sendPromptMock).toHaveBeenCalledTimes(1);
     const sentPrompt = sendPromptMock.mock.calls[0]?.[0] as
-      | { agent?: unknown; system?: string; promptSource?: string; contextModeEnabled?: boolean; tools?: Record<string, boolean> }
+      | { agent?: unknown; system?: string; promptSource?: string; tools?: Record<string, boolean> }
       | undefined;
     expect(sentPrompt).toBeDefined();
     expect(sentPrompt?.agent).toBeUndefined();
     expect(sentPrompt?.promptSource).toBe("job");
-    expect(sentPrompt?.contextModeEnabled).toBe(true);
     expect(sentPrompt?.system).toContain("<orxa_browser_action>");
     expect(sentPrompt?.system).toContain("[ORXA_BROWSER_RESULT]");
     expect(sentPrompt?.tools).toEqual(
       expect.objectContaining({
-        supermemory: false,
         web_search: false,
       }),
     );
@@ -123,7 +118,6 @@ describe("useJobsScheduler", () => {
       text: string;
       system?: string;
       promptSource?: "job" | "user" | "machine";
-      contextModeEnabled?: boolean;
       tools?: Record<string, boolean>;
     }) => {
       void request;
@@ -152,7 +146,7 @@ describe("useJobsScheduler", () => {
       projectDir: "/tmp/project",
       prompt: "Scan this workspace.",
       browserModeEnabled: false,
-      contextModeEnabled: false,
+      agentMode: "opencode",
       schedule: { type: "interval", intervalMinutes: 60 },
       enabled: true,
       createdAt: Date.now() - 1_000,
@@ -167,7 +161,6 @@ describe("useJobsScheduler", () => {
     const sentPrompt = sendPromptMock.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
     expect(sentPrompt).toBeDefined();
     expect(sentPrompt?.promptSource).toBe("job");
-    expect(sentPrompt?.contextModeEnabled).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(sentPrompt ?? {}, "system")).toBe(false);
     expect(sentPrompt?.tools).toBeUndefined();
   });

@@ -146,6 +146,7 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   notifyOnTaskComplete: true,
   collaborationModesEnabled: true,
   subagentSystemNotificationsEnabled: true,
+  orxaBrowserEnabled: true,
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
@@ -2051,13 +2052,16 @@ export default function App() {
 
       if (sessionType !== "standalone" && createdSessionId) {
         setSessionTypes((prev) => ({ ...prev, [createdSessionId]: sessionType }));
+        // Non-standalone sessions (canvas, claude, codex) don't send an initial prompt
+        // but should not be treated as empty — prevent cleanup on navigation
+        markSessionUsed(createdSessionId);
         const titleMap: Record<string, string> = { claude: "Claude Code", canvas: "Canvas", codex: "Codex Session" };
         if (titleMap[sessionType]) {
           setSessionTitles((prev) => ({ ...prev, [createdSessionId]: titleMap[sessionType] }));
         }
       }
     },
-    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
+    [createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -3414,7 +3418,6 @@ export default function App() {
             openProjectContextMenu={openProjectContextMenu}
             openSessionContextMenu={openSessionContextMenu}
             addProjectDirectory={() => addProjectDirectory()}
-            setProfileModalOpen={setProfileModalOpen}
             onOpenDebugLogs={() => setDebugModalOpen(true)}
             setSettingsOpen={setSettingsOpen}
           />
@@ -3477,6 +3480,9 @@ export default function App() {
                   onTitleChange={(title) => activeSessionID && setSessionTitles((prev) => ({ ...prev, [activeSessionID]: title }))}
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
+                  codexAccessMode={appPreferences.codexAccessMode}
+                  codexPath={appPreferences.codexPath}
+                  codexArgs={appPreferences.codexArgs}
                   onAwaitingChange={(awaiting) => setCodexAwaiting(awaiting)}
                   branchMenuOpen={branchMenuOpen}
                   setBranchMenuOpen={setBranchMenuOpen}
@@ -3581,6 +3587,7 @@ export default function App() {
                     togglePlanMode={togglePlanMode}
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
+                    hideBrowserToggle={!(appPreferences.orxaBrowserEnabled ?? true)}
                     agentOptions={composerAgentOptions}
                     selectedAgent={selectedAgent}
                     onAgentChange={setSelectedAgent}
@@ -3711,6 +3718,7 @@ export default function App() {
               onBrowserHandBack={browserHandBack}
               onBrowserStop={browserStop}
               mcpDevToolsState={mcpDevToolsState}
+              browserEnabled={appPreferences.orxaBrowserEnabled ?? true}
             />
           </div>
         ) : null}
@@ -4049,6 +4057,31 @@ export default function App() {
         onBackfillMemory={(directory) => window.orxa.opencode.backfillMemory(directory)}
         onClearWorkspaceMemory={(directory) => window.orxa.opencode.clearWorkspaceMemory(directory)}
         allModelOptions={settingsModelOptions}
+        profiles={profiles}
+        runtime={runtime}
+        onSaveProfile={async (profile) => {
+          await window.orxa.runtime.saveProfile(profile);
+          await refreshProfiles();
+        }}
+        onDeleteProfile={async (profileID) => {
+          await window.orxa.runtime.deleteProfile(profileID);
+          await refreshProfiles();
+        }}
+        onAttachProfile={async (profileID) => {
+          await window.orxa.runtime.attach(profileID);
+          await refreshProfiles();
+          await bootstrap();
+        }}
+        onStartLocalProfile={async (profileID) => {
+          await window.orxa.runtime.startLocal(profileID);
+          await refreshProfiles();
+          await bootstrap();
+        }}
+        onStopLocalProfile={async () => {
+          await window.orxa.runtime.stopLocal();
+          await refreshProfiles();
+        }}
+        onRefreshProfiles={refreshProfiles}
       />
 
     </div>

@@ -24,13 +24,15 @@ export type JobSchedule =
       intervalMinutes: number;
     };
 
+export type JobAgentMode = "opencode" | "codex" | "claude";
+
 export type JobRecord = {
   id: string;
   name: string;
   projectDir: string;
   prompt: string;
   browserModeEnabled: boolean;
-  contextModeEnabled: boolean;
+  agentMode: JobAgentMode;
   schedule: JobSchedule;
   enabled: boolean;
   createdAt: number;
@@ -57,7 +59,7 @@ export type JobTemplate = {
   description: string;
   prompt: string;
   browserModeEnabled: boolean;
-  contextModeEnabled: boolean;
+  agentMode?: JobAgentMode;
   icon: "book" | "bug" | "shield" | "activity" | "package" | "sparkles";
   schedule: JobSchedule;
 };
@@ -199,7 +201,7 @@ export function JobsBoard({
                     {job.enabled ? "Enabled" : "Paused"}
                   </span>
                   {job.browserModeEnabled ? <span className="jobs-inbox-label">Browser Mode</span> : null}
-                  {job.contextModeEnabled ? <span className="jobs-inbox-label">Context Mode</span> : null}
+                  <span className="jobs-inbox-label">{(job.agentMode ?? "opencode").charAt(0).toUpperCase() + (job.agentMode ?? "opencode").slice(1)}</span>
                 </div>
               </header>
               <p>{job.prompt}</p>
@@ -330,22 +332,35 @@ export function JobEditorModal({ open, draft, projects, onClose, onChange, onSav
             />
           </label>
 
-          <label className="job-editor-browser-toggle">
-            <input
-              type="checkbox"
-              checked={draft.browserModeEnabled}
-              onChange={(event) => update({ browserModeEnabled: event.target.checked })}
-            />
-            Enable Browser Mode
+          <label>
+            Agent
+            <div className="job-editor-agent-select">
+              {(["opencode", "codex", "claude"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={draft.agentMode === mode ? "active" : ""}
+                  onClick={() => update({ agentMode: mode })}
+                  disabled={mode !== "opencode"}
+                  title={mode !== "opencode" ? `${mode.charAt(0).toUpperCase() + mode.slice(1)} job execution coming soon` : undefined}
+                >
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
           </label>
 
-          <label className="job-editor-browser-toggle">
-            <input
-              type="checkbox"
-              checked={draft.contextModeEnabled}
-              onChange={(event) => update({ contextModeEnabled: event.target.checked })}
-            />
-            Enable Context Mode
+          <label className="job-editor-toggle-row">
+            <span>Enable Browser Mode</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.browserModeEnabled}
+              className={`job-editor-switch${draft.browserModeEnabled ? " on" : ""}`}
+              onClick={() => update({ browserModeEnabled: !draft.browserModeEnabled })}
+            >
+              <span className="job-editor-switch-thumb" />
+            </button>
           </label>
 
           <section className="job-editor-schedule">

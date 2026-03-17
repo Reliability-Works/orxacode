@@ -1811,6 +1811,134 @@
   margin-top: var(--space-2);
 }
 
+/* ─── Profile management in server settings ────────────────────── */
+
+.settings-profiles-layout {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 12px;
+  min-height: 200px;
+}
+
+.settings-profiles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-profile-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  position: relative;
+}
+
+.settings-profile-item:hover {
+  background: var(--bg-hover);
+}
+
+.settings-profile-item.active {
+  border-color: var(--accent-green);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.settings-profile-item-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-profile-item-addr {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.settings-profile-item-connected {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-green);
+}
+
+.settings-profile-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px dashed var(--border-secondary);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.settings-profile-add:hover {
+  color: var(--text-secondary);
+  border-color: var(--text-muted);
+}
+
+.settings-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-profile-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.settings-profile-form input {
+  font-size: 12px;
+}
+
+.settings-profile-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.settings-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.settings-profile-btn-green {
+  border-color: var(--accent-green) !important;
+  color: var(--accent-green) !important;
+}
+
+.settings-profile-btn-green:hover {
+  background: rgba(34, 197, 94, 0.1) !important;
+}
+
+.settings-profile-btn-danger {
+  border-color: #ef4444 !important;
+  color: #ef4444 !important;
+}
+
+.settings-profile-btn-danger:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
 .settings-claude-dirs {
   display: flex;
   flex-direction: column;
@@ -2681,4 +2809,73 @@
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-muted);
+}
+
+/* ─── Settings toggle switch (shared) ──────────────────────────── */
+
+.settings-toggle-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.settings-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-input);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.settings-switch.on {
+  border-color: var(--accent-green);
+  background: rgba(34, 197, 94, 0.25);
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.settings-switch.on .settings-switch-thumb {
+  transform: translateX(16px);
+  background: var(--accent-green);
+}
+
+/* ─── Collapsible settings nav groups ──────────────────────────── */
+
+.settings-nav-group-label {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-nav-group-label::before {
+  content: "▾";
+  font-size: 9px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  display: inline-block;
+  width: 10px;
+}
+
+.settings-nav-group-label.collapsed::before {
+  transform: rotate(-90deg);
 }

@@ -201,7 +201,7 @@ export class CodexService extends EventEmitter {
   // Lifecycle
   // -----------------------------------------------------------------------
 
-  async start(cwd?: string): Promise<CodexState> {
+  async start(cwd?: string, options?: { codexPath?: string; codexArgs?: string }): Promise<CodexState> {
     if (this.process) {
       return this.state;
     }
@@ -210,8 +210,8 @@ export class CodexService extends EventEmitter {
     this.emit("state", this._state);
 
     try {
-      // Resolve the codex binary, checking common install locations
-      const codexBin = resolveCodexBinary();
+      // Use configured binary path if provided, otherwise resolve from PATH
+      const codexBin = (options?.codexPath?.trim()) || resolveCodexBinary();
       if (!codexBin) {
         const message = "codex binary not found in PATH. Install it with: npm install -g @openai/codex";
         console.error("[CodexService]", message);
@@ -220,8 +220,10 @@ export class CodexService extends EventEmitter {
         return this.state;
       }
 
-      console.info(`[CodexService] Spawning: ${codexBin} app-server`);
-      const child = spawn(codexBin, ["app-server"], {
+      const extraArgs = options?.codexArgs?.trim().split(/\s+/).filter(Boolean) ?? [];
+      const args = ["app-server", ...extraArgs];
+      console.info(`[CodexService] Spawning: ${codexBin} ${args.join(" ")}`);
+      const child = spawn(codexBin, args, {
         cwd: cwd ?? process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env },

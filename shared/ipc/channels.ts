@@ -117,6 +117,7 @@ export const IPC = {
   appRevealInFinder: "orxa:app:revealInFinder",
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
+  appListSkillsFromDir: "orxa:app:listSkillsFromDir",
   codexDoctor: "orxa:codex:doctor",
   codexUpdate: "orxa:codex:update",
   codexListModels: "orxa:codex:listModels",

@@ -173,7 +173,6 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Profiles" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
   });
 

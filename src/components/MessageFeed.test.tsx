@@ -323,7 +323,7 @@ describe("MessageFeed", () => {
             messageID: "msg-assistant-orxa-memory",
             text:
               '[ORXA_MEMORY] workspace="/repo-a" type="decision" tags="memory" content="Keep local memory only."\n'
-              + '[ORXA_MEMORY] workspace="/repo-a" type="fact" tags="guardrail" content="External memory tools disabled in context mode."',
+              + '[ORXA_MEMORY] workspace="/repo-a" type="fact" tags="guardrail" content="External memory tools disabled."',
           },
         ] as SessionMessageBundle["parts"],
       },

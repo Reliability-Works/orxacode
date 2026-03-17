@@ -50,7 +50,6 @@ export type WorkspaceSidebarProps = {
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
-  setProfileModalOpen: Dispatch<SetStateAction<boolean>>;
   onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -88,7 +87,6 @@ export function WorkspaceSidebar({
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
-  setProfileModalOpen,
   onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
@@ -395,7 +393,6 @@ export function WorkspaceSidebar({
 
         {/* Footer */}
         <div className="sidebar-footer-actions">
-          <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
           <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
           <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
           <span className="sidebar-footer-spacer" />

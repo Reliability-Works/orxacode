@@ -13,6 +13,7 @@ const bridge: OrxaBridge = {
     revealInFinder: (dirPath) => ipcRenderer.invoke(IPC.appRevealInFinder, dirPath),
     scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
     httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
+    listSkillsFromDir: (directory) => ipcRenderer.invoke(IPC.appListSkillsFromDir, directory),
   },
   updates: {
     getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),
@@ -159,7 +160,7 @@ const bridge: OrxaBridge = {
     update: () => ipcRenderer.invoke(IPC.codexUpdate),
     listModels: () => ipcRenderer.invoke(IPC.codexListModels),
     listCollaborationModes: () => ipcRenderer.invoke(IPC.codexListCollaborationModes),
-    start: (cwd) => ipcRenderer.invoke(IPC.codexStart, cwd),
+    start: (cwd, options) => ipcRenderer.invoke(IPC.codexStart, cwd, options),
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
     startThread: (options) => ipcRenderer.invoke(IPC.codexStartThread, options),

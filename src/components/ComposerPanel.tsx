@@ -60,6 +60,7 @@ type ComposerPanelProps = {
   togglePlanMode: (enabled: boolean) => void;
   browserModeEnabled: boolean;
   setBrowserModeEnabled: (enabled: boolean) => void;
+  hideBrowserToggle?: boolean;
   agentOptions: AgentOption[];
   selectedAgent?: string;
   onAgentChange: (name: string) => void;
@@ -168,6 +169,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     togglePlanMode,
     browserModeEnabled,
     setBrowserModeEnabled,
+    hideBrowserToggle,
     agentOptions,
     selectedAgent,
     onAgentChange,
@@ -237,7 +239,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
       }) as CSSProperties,
     [clampedCompactionProgress],
   );
-  const permissionLabel = permissionMode === "yolo-write" ? "Yolo Mode" : "Default Permissions";
+  const permissionLabel = permissionMode === "yolo-write" ? "yolo mode" : "restricted";
 
   useDismissibleLayer(permissionMenuOpen, permissionMenuRef, () => setPermissionMenuOpen(false));
   useDismissibleLayer(agentMenuOpen, agentMenuRef, () => setAgentMenuOpen(false));
@@ -546,17 +548,19 @@ export function ComposerPanel(props: ComposerPanelProps) {
           <span className="plan-toggle-square" aria-hidden="true" />
           plan mode
         </button>
-        <button
-          type="button"
-          className={`composer-mode-toggle-icon ${browserModeEnabled ? "is-active" : ""}`.trim()}
-          aria-pressed={browserModeEnabled}
-          onClick={() => setBrowserModeEnabled(!browserModeEnabled)}
-          title={browserModeEnabled ? "Browser mode enabled" : "Browser mode disabled"}
-          aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
-        >
-          <Compass size={11} aria-hidden="true" />
-          <span className="composer-mode-toggle-label">browser</span>
-        </button>
+        {!hideBrowserToggle ? (
+          <button
+            type="button"
+            className={`composer-mode-toggle-icon ${browserModeEnabled ? "is-active" : ""}`.trim()}
+            aria-pressed={browserModeEnabled}
+            onClick={() => setBrowserModeEnabled(!browserModeEnabled)}
+            title={browserModeEnabled ? "Browser mode enabled" : "Browser mode disabled"}
+            aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
+          >
+            <Compass size={11} aria-hidden="true" />
+            <span className="composer-mode-toggle-label">browser</span>
+          </button>
+        ) : null}
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
@@ -584,7 +588,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               >
                 <span className="composer-permission-option-main">
                   <Shield size={13} aria-hidden="true" />
-                  <span>Default Permissions</span>
+                  <span>restricted</span>
                 </span>
                 {permissionMode === "ask-write" ? <Check size={13} aria-hidden="true" /> : null}
               </button>
@@ -600,7 +604,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               >
                 <span className="composer-permission-option-main">
                   <Zap size={13} aria-hidden="true" />
-                  <span>Yolo Mode</span>
+                  <span>yolo mode</span>
                 </span>
                 {permissionMode === "yolo-write" ? <Check size={13} aria-hidden="true" /> : null}
               </button>

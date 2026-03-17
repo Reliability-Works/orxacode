@@ -76,7 +76,6 @@ export type PromptRequest = {
   };
   variant?: string;
   system?: string;
-  contextModeEnabled?: boolean;
   promptSource?: "user" | "job" | "machine";
   tools?: Record<string, boolean>;
 };

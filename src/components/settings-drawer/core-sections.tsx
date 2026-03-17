@@ -5,3 +5,4 @@ export { PreferencesSection } from "./core-sections-preferences";
 export { MemorySection } from "./core-sections-memory";
 export { ServerSection } from "./core-sections-server";
 export { ConfigSection } from "./core-sections-config";
+export { BrowserSection } from "./core-sections-browser";

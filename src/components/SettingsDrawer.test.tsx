@@ -46,6 +46,7 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -112,6 +113,14 @@ describe("SettingsDrawer", () => {
             variants: [],
           },
         ]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
       />,
     );
 
@@ -160,6 +169,7 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -209,6 +219,14 @@ describe("SettingsDrawer", () => {
         onClearWorkspaceMemory={vi.fn(async () => true)}
 
         allModelOptions={[]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
       />,
     );
 
@@ -255,6 +273,7 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -304,6 +323,14 @@ describe("SettingsDrawer", () => {
         onClearWorkspaceMemory={vi.fn(async () => true)}
 
         allModelOptions={[]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
       />,
     );
 
@@ -362,6 +389,7 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -411,6 +439,14 @@ describe("SettingsDrawer", () => {
         onClearWorkspaceMemory={vi.fn(async () => true)}
 
         allModelOptions={[]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
       />,
     );
 
@@ -463,6 +499,7 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -528,6 +565,14 @@ describe("SettingsDrawer", () => {
         onClearWorkspaceMemory={vi.fn(async () => true)}
 
         allModelOptions={[]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
       />,
     );
 

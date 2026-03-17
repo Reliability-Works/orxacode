@@ -1,7 +1,10 @@
+import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, dialog, ipcMain, shell, type BrowserWindow } from "electron";
 import { IPC } from "../../shared/ipc";
+import type { SkillEntry } from "../../shared/ipc";
 import { assertExternalUrl, assertString } from "./validators";
 
 type AppHandlersDeps = {
@@ -129,6 +132,8 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
           seen.add(e.port);
           return true;
         });
+        // Note: TCP port scanning is system-wide; there's no reliable way to scope
+        // listening ports to a specific workspace directory at the OS level.
         void dir;
         resolve(unique);
       });
@@ -164,5 +169,48 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
       const elapsed = Date.now() - start;
       return { status: 0, headers: {}, body: err instanceof Error ? err.message : String(err), elapsed };
     }
+  });
+
+  ipcMain.handle(IPC.appListSkillsFromDir, async (_event, directory: unknown) => {
+    const raw = assertString(directory, "directory");
+    const home = homedir();
+    const root = raw.startsWith("~/") ? path.join(home, raw.slice(2)) : raw;
+    // Restrict to known skill directories under home
+    const allowedPrefixes = [
+      path.join(home, ".config", "opencode", "skill"),
+      path.join(home, ".codex", "skills"),
+      path.join(home, ".claude", "skills"),
+    ];
+    const resolved = path.resolve(root);
+    if (!allowedPrefixes.some((p) => resolved === p || resolved.startsWith(p + path.sep))) {
+      throw new Error("Reading skills outside allowed directories is not permitted");
+    }
+    const rootInfo = await stat(root).catch(() => undefined);
+    if (!rootInfo?.isDirectory()) {
+      return [] as SkillEntry[];
+    }
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    const skills: SkillEntry[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillPath = path.join(root, entry.name);
+      const filePath = path.join(skillPath, "SKILL.md");
+      const file = await readFile(filePath, "utf8").catch(() => "");
+      if (!file) continue;
+      const rawLines = file.split(/\r?\n/).map((line) => line.trim());
+      // Skip YAML frontmatter (lines between opening and closing ---)
+      let lines = rawLines;
+      if (rawLines[0] === "---") {
+        const closeIdx = rawLines.indexOf("---", 1);
+        if (closeIdx > 0) {
+          lines = rawLines.slice(closeIdx + 1);
+        }
+      }
+      const title = lines.find((line) => line.startsWith("# "))?.replace(/^#\s+/, "").trim() || entry.name;
+      const description =
+        lines.find((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("```") && line !== "---") || "No description available.";
+      skills.push({ id: entry.name, name: title, description, path: skillPath });
+    }
+    return skills.sort((left, right) => left.name.localeCompare(right.name));
   });
 }

@@ -109,6 +109,7 @@ export type GitSidebarProps = {
   onBrowserHandBack: () => Promise<void> | void;
   onBrowserStop: () => Promise<void> | void;
   mcpDevToolsState?: McpDevToolsServerState;
+  browserEnabled?: boolean;
 };
 
 export function GitSidebar(props: GitSidebarProps) {
@@ -148,6 +149,7 @@ export function GitSidebar(props: GitSidebarProps) {
     onBrowserHandBack,
     onBrowserStop,
     mcpDevToolsState,
+    browserEnabled = true,
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
@@ -161,6 +163,13 @@ export function GitSidebar(props: GitSidebarProps) {
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
   const [browserUrlInput, setBrowserUrlInput] = useState("");
   const [browserHistoryValue, setBrowserHistoryValue] = useState("");
+
+  // Fall back to git tab if browser is disabled while active
+  useEffect(() => {
+    if (!browserEnabled && sidebarPanelTab === "browser") {
+      setSidebarPanelTab("git");
+    }
+  }, [browserEnabled, sidebarPanelTab, setSidebarPanelTab]);
   const browserViewportHostRef = useRef<HTMLDivElement | null>(null);
 
   const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {
@@ -842,7 +851,7 @@ export function GitSidebar(props: GitSidebarProps) {
           </span>
           <span className="ops-panel-tab-label">Files</span>
         </button>
-        <button
+        {browserEnabled ? <button
           type="button"
           className={`ops-panel-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("browser")}
@@ -857,7 +866,7 @@ export function GitSidebar(props: GitSidebarProps) {
             </svg>
           </span>
           <span className="ops-panel-tab-label">Browser</span>
-        </button>
+        </button> : null}
         {onCollapse ? (
           <button
             type="button"
@@ -1145,7 +1154,7 @@ export function GitSidebar(props: GitSidebarProps) {
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
       ) : null}
 
-      {sidebarPanelTab === "browser" ? renderBrowserPane() : null}
+      {sidebarPanelTab === "browser" && browserEnabled ? renderBrowserPane() : null}
 
       {sidebarPanelTab === "git" && gitDiffViewMode === "list" && listViewFocusFile ? (
         <div className="git-list-diff-overlay">
