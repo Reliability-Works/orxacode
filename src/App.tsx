@@ -45,16 +45,22 @@ import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset 
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
-import { GitSidebar, type BrowserControlOwner, type BrowserSidebarState } from "./components/GitSidebar";
+import { GitSidebar, type BrowserControlOwner } from "./components/GitSidebar";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { JobsBoard } from "./components/JobsBoard";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { MemoryBoard } from "./components/MemoryBoard";
-import { ConfirmDialog, type ConfirmDialogProps } from "./components/ConfirmDialog";
-import { TextInputDialog, type TextInputDialogProps } from "./components/TextInputDialog";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { TextInputDialog } from "./components/TextInputDialog";
 import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
+import { useAppShellCommitFlow } from "./hooks/useAppShellCommitFlow";
+import { useAppShellDialogs } from "./hooks/useAppShellDialogs";
+import { useAppShellSessionFeedNotices } from "./hooks/useAppShellSessionFeedNotices";
+import { useAppShellStartupFlow } from "./hooks/useAppShellStartupFlow";
+import { useAppShellToasts } from "./hooks/useAppShellToasts";
+import { useAppShellUpdateFlow } from "./hooks/useAppShellUpdateFlow";
 import { useCanvasState } from "./hooks/useCanvasState";
 import { useComposerState } from "./hooks/useComposerState";
 import { useDashboards } from "./hooks/useDashboards";
@@ -78,6 +84,21 @@ import {
   PLAN_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
 } from "./lib/browser-tool-guardrails";
+import {
+  DEFAULT_BROWSER_LANDING_URL,
+  EMPTY_BROWSER_RUNTIME_STATE,
+  buildBrowserAutopilotHint,
+  deriveSessionTitleFromPrompt,
+  formatMemoryGraphError,
+  isRecoverableSessionError,
+  shouldAutoRenameSessionTitle,
+  toneForStatusLine,
+} from "./lib/app-session-utils";
+import {
+  buildAppShellBrowserSidebarState,
+  buildAppShellHomeDashboardProps,
+  deriveAppShellWorkspaceLayout,
+} from "./lib/app-shell-view-models";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import type { SessionType } from "~/types/canvas";
@@ -147,51 +168,12 @@ type OrxaTodoItem = {
   priority?: string;
 };
 
-type SessionFeedNotice = {
-  id: string;
-  time: number;
-  label: string;
-  detail?: string;
-  tone?: "info" | "error";
-};
-
-type CommitFlowState = {
-  phase: "running" | "success" | "error";
-  nextStep: CommitNextStep;
-  message: string;
-};
-
-type UpdateProgressState = {
-  phase: "downloading" | "installing" | "error";
-  message: string;
-  percent?: number;
-  version?: string;
-};
-
-type StartupState = {
-  phase: "running" | "done";
-  message: string;
-  completed: number;
-  total: number;
-};
-
 const COMPLETED_TODO_STATUSES = new Set(["completed", "complete", "done", "finished", "success", "succeeded"]);
 
 type OpenTargetOption = {
   id: OpenTarget;
   label: string;
   logo: string;
-};
-
-type TextInputDialogState = Omit<TextInputDialogProps, "isOpen" | "onCancel">;
-
-type ConfirmDialogRequest = Omit<ConfirmDialogProps, "isOpen" | "onConfirm" | "onCancel">;
-type AppToastTone = "info" | "warning" | "error";
-
-type AppToast = {
-  id: string;
-  message: string;
-  tone: AppToastTone;
 };
 
 type DebugLogLevel = "info" | "warn" | "error";
@@ -239,55 +221,8 @@ const MIN_COMPACTION_THRESHOLD = 24_000;
 const PERMISSION_REPLY_TIMEOUT_MS = 15_000;
 const BROWSER_MODE_BY_SESSION_KEY = "orxa:browserModeBySession:v1";
 const BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY = "orxa:browserAutomationHaltedBySession:v1";
-const DEFAULT_BROWSER_LANDING_URL = "about:blank";
 const STARTUP_TOTAL_STEPS = 8;
 const STARTUP_STEP_TIMEOUT_MS = 12_000;
-const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
-const WEB_TASK_HINT_PATTERN =
-  /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
-const STATUS_TOAST_ERROR_PATTERN = /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i;
-const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i;
-const RECOVERABLE_SESSION_ERROR_PATTERN =
-  /\b(skill|skills?|working directory|workspace|cwd|enoent|not found|no such file|no longer accessible)\b/i;
-
-const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
-  partition: "persist:orxa-browser",
-  bounds: { x: 0, y: 0, width: 0, height: 0 },
-  tabs: [],
-  activeTabID: undefined,
-};
-
-function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarState["history"] {
-  return items.map((entry) => ({
-    id: entry.id,
-    label: entry.title?.trim() ? entry.title : entry.url,
-    url: entry.url,
-  }));
-}
-
-function toneForStatusLine(status: string): AppToastTone | null {
-  const value = status.trim();
-  if (!value) {
-    return null;
-  }
-  if (STATUS_TOAST_ERROR_PATTERN.test(value)) {
-    return "error";
-  }
-  if (STATUS_TOAST_WARNING_PATTERN.test(value)) {
-    return "warning";
-  }
-  return null;
-}
-
-function isRecoverableSessionError(message: string, code?: string) {
-  if (RECOVERABLE_SESSION_ERROR_PATTERN.test(message)) {
-    return true;
-  }
-  if (typeof code === "string" && RECOVERABLE_SESSION_ERROR_PATTERN.test(code)) {
-    return true;
-  }
-  return false;
-}
 
 function toDebugLogFromEvent(event: OrxaEvent): Omit<DebugLogEntry, "id" | "time"> {
   const stringifyDetails = (value: unknown) => {
@@ -378,88 +313,6 @@ function toDebugLogFromEvent(event: OrxaEvent): Omit<DebugLogEntry, "id" | "time
     summary: event.type,
     details: stringifyDetails(event.payload),
   };
-}
-
-function buildBrowserAutopilotHint(input: string): string | undefined {
-  const text = input.trim();
-  if (!text) {
-    return undefined;
-  }
-  const hasUrl = URL_REFERENCE_PATTERN.test(text);
-  const hasWebTask = WEB_TASK_HINT_PATTERN.test(text);
-  if (!hasUrl && !hasWebTask) {
-    return undefined;
-  }
-
-  const lines = [
-    "Auto Browser Skill Triggered: the latest user request appears to need web browsing.",
-    "Prefer integrated Orxa browser actions over any external/headless browser tool.",
-  ];
-  if (hasUrl) {
-    lines.push("Use URLs mentioned by the user as first navigation targets.");
-  }
-  if (hasWebTask) {
-    lines.push("For research tasks, follow a loop: navigate, wait_for_idle, extract_text, then summarize.");
-  }
-  return lines.join("\n");
-}
-
-function toBrowserSidebarState(input: {
-  runtimeState: BrowserState;
-  history: BrowserHistoryItem[];
-  modeEnabled: boolean;
-  controlOwner: BrowserControlOwner;
-  actionRunning: boolean;
-  canStop: boolean;
-}): BrowserSidebarState {
-  const tabs = input.runtimeState.tabs.map((tab) => ({
-    id: tab.id,
-    title: tab.title?.trim() ? tab.title : tab.url || "New Tab",
-    url: tab.url,
-    isActive: tab.id === input.runtimeState.activeTabID,
-  }));
-  const activeTab = input.runtimeState.tabs.find((tab) => tab.id === input.runtimeState.activeTabID) ?? null;
-
-  return {
-    modeEnabled: input.modeEnabled,
-    controlOwner: input.controlOwner,
-    tabs,
-    activeTabID: input.runtimeState.activeTabID ?? null,
-    activeUrl: activeTab?.url ?? "",
-    history: toBrowserSidebarHistory(input.history),
-    canGoBack: activeTab?.canGoBack ?? false,
-    canGoForward: activeTab?.canGoForward ?? false,
-    isLoading: activeTab?.loading ?? false,
-    actionRunning: input.actionRunning,
-    canStop: input.canStop,
-  };
-}
-
-function shouldAutoRenameSessionTitle(title: string | undefined) {
-  if (!title) {
-    return true;
-  }
-  const normalized = title.trim().toLowerCase();
-  return normalized === "" || normalized === "new session" || normalized === "untitled session";
-}
-
-function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
-  const cleaned = prompt
-    .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N}\s\-_:,.!?/]/gu, "")
-    .trim();
-  if (!cleaned) {
-    return "New session";
-  }
-  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
-}
-
-function formatMemoryGraphError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("No handler registered for 'orxa:opencode:memory:getGraph'")) {
-    return "Memory IPC handlers are unavailable in the current desktop process. Restart the app to load memory routes.";
-  }
-  return message;
 }
 
 function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
@@ -751,38 +604,10 @@ export default function App() {
     const stack = option?.stack ?? `"${appPreferences.codeFont}", monospace`;
     document.documentElement.style.setProperty("--code-font", stack);
   }, [appPreferences.codeFont]);
-  const [confirmDialogRequest, setConfirmDialogRequest] = useState<ConfirmDialogRequest | null>(null);
   const [statusLine, setStatusLine] = useState<string>("Ready");
-  const [toasts, setToasts] = useState<AppToast[]>([]);
   const [debugModalOpen, setDebugModalOpen] = useState(false);
   const [debugLogLevelFilter, setDebugLogLevelFilter] = useState<"all" | DebugLogLevel>("all");
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([]);
-  const toastTimersRef = useRef<Record<string, number>>({});
-  const dismissToast = useCallback((id: string) => {
-    const timer = toastTimersRef.current[id];
-    if (timer) {
-      window.clearTimeout(timer);
-      delete toastTimersRef.current[id];
-    }
-    setToasts((current) => current.filter((item) => item.id !== id));
-  }, []);
-  const pushToast = useCallback((message: string, tone: AppToastTone = "info", durationMs = 5_200) => {
-    const normalized = message.trim();
-    if (!normalized) {
-      return;
-    }
-    const id = `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-    setToasts((current) => {
-      const duplicate = current.find((item) => item.message === normalized && item.tone === tone);
-      if (duplicate) {
-        return current;
-      }
-      return [...current, { id, message: normalized, tone }].slice(-4);
-    });
-    toastTimersRef.current[id] = window.setTimeout(() => {
-      dismissToast(id);
-    }, durationMs);
-  }, [dismissToast]);
   const appendDebugLog = useCallback((entry: Omit<DebugLogEntry, "id" | "time">) => {
     setDebugLogs((current) => {
       const next: DebugLogEntry = {
@@ -793,56 +618,20 @@ export default function App() {
       return [...current, next].slice(-1200);
     });
   }, []);
-  useEffect(() => {
-    return () => {
-      Object.values(toastTimersRef.current).forEach((timer) => window.clearTimeout(timer));
-      toastTimersRef.current = {};
-    };
-  }, []);
-  useEffect(() => {
-    const message = statusLine.trim();
-    if (!message) {
-      return;
-    }
-    const tone = toneForStatusLine(message);
-    if (tone) {
-      pushToast(message, tone);
-    }
-  }, [pushToast, statusLine]);
+  const { toasts, dismissToast, pushToast } = useAppShellToasts({ statusLine, toneForStatusLine });
+  const {
+    confirmDialogRequest,
+    textInputDialog,
+    setTextInputDialog,
+    requestConfirmation,
+    closeConfirmDialog,
+    closeTextInputDialog,
+    submitTextInputDialog,
+  } = useAppShellDialogs();
   const [sessionProvenanceByPath, setSessionProvenanceByPath] = useState<Record<string, ChangeProvenanceRecord>>({});
-  const [sessionFeedNotices, setSessionFeedNotices] = useState<Record<string, SessionFeedNotice[]>>({});
-  const addSessionFeedNotice = useCallback(
-    (directory: string, sessionID: string, notice: Omit<SessionFeedNotice, "id" | "time">) => {
-      const key = `${directory}::${sessionID}`;
-      setSessionFeedNotices((current) => {
-        const nextNotice: SessionFeedNotice = {
-          id: `${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`,
-          time: Date.now(),
-          ...notice,
-        };
-        const existing = current[key] ?? [];
-        const duplicate = existing.some(
-          (item) =>
-            item.label === nextNotice.label &&
-            item.detail === nextNotice.detail &&
-            Math.abs(item.time - nextNotice.time) < 2_500,
-        );
-        if (duplicate) {
-          return current;
-        }
-        const trimmed = [...existing, nextNotice].slice(-8);
-        return {
-          ...current,
-          [key]: trimmed,
-        };
-      });
-    },
-    [],
-  );
   const messageCacheRef = useRef<Record<string, SessionMessageBundle[]>>({});
   const projectLastOpenedRef = useRef<Record<string, number>>({});
   const projectLastUpdatedRef = useRef<Record<string, number>>({});
-  const manualSessionStopsRef = useRef<Record<string, { requestedAt: number; noticeEmitted: boolean }>>({});
   const {
     sidebarMode,
     setSidebarMode,
@@ -971,12 +760,6 @@ export default function App() {
   const [browserHistoryItems, setBrowserHistoryItems] = useState<BrowserHistoryItem[]>([]);
   const [browserActionRunning, setBrowserActionRunning] = useState(false);
   const [mcpDevToolsState, setMcpDevToolsState] = useState<McpDevToolsServerState>("stopped");
-  const [startupState, setStartupState] = useState<StartupState>({
-    phase: "running",
-    message: "Initializing Orxa Code…",
-    completed: 0,
-    total: STARTUP_TOTAL_STEPS,
-  });
   const [titleMenuOpen, setTitleMenuOpen] = useState(false);
   const [openMenuOpen, setOpenMenuOpen] = useState(false);
   const [preferredOpenTarget, setPreferredOpenTarget] = usePersistedState<OpenTarget>(OPEN_TARGET_KEY, "finder", {
@@ -1006,11 +789,27 @@ export default function App() {
   );
   const [agentModelPrefs, setAgentModelPrefs] = usePersistedState<Record<string, string>>(AGENT_MODEL_PREFS_KEY, {});
   const [commitMenuOpen, setCommitMenuOpen] = useState(false);
-  const [commitFlowState, setCommitFlowState] = useState<CommitFlowState | null>(null);
+  const {
+    commitFlowState,
+    clearCommitFlowDismissTimer,
+    scheduleCommitFlowDismiss,
+    startCommitFlow,
+    completeCommitFlow,
+    failCommitFlow,
+    dismissCommitFlowState,
+  } = useAppShellCommitFlow<CommitNextStep>({
+    runningMessage: commitFlowRunningMessage,
+    successMessage: commitFlowSuccessMessage,
+  });
   const [pendingPrUrl, setPendingPrUrl] = useState<string | null>(null);
-  const [availableUpdateVersion, setAvailableUpdateVersion] = useState<string | null>(null);
-  const [updateInstallPending, setUpdateInstallPending] = useState(false);
-  const [updateProgressState, setUpdateProgressState] = useState<UpdateProgressState | null>(null);
+  const {
+    availableUpdateVersion,
+    updateInstallPending,
+    updateProgressState,
+    setUpdateProgressState,
+    handleUpdaterTelemetry,
+    downloadAndInstallUpdate,
+  } = useAppShellUpdateFlow({ setStatusLine });
   const [todosOpen, setTodosOpen] = useState(false);
   const [dockTodosOpen, setDockTodosOpen] = useState(false);
   const [sdkTodoItems, setSdkTodoItems] = useState<TodoItem[]>([]);
@@ -1018,7 +817,6 @@ export default function App() {
   const [permissionDecisionPendingRequestID, setPermissionDecisionPendingRequestID] = useState<string | null>(null);
   const [dependencyReport, setDependencyReport] = useState<RuntimeDependencyReport | null>(null);
   const [dependencyModalOpen, setDependencyModalOpen] = useState(false);
-  const [textInputDialog, setTextInputDialog] = useState<TextInputDialogState | null>(null);
   const { dashboard, refreshDashboard } = useDashboards(
     projects,
     activeProjectDir ?? null,
@@ -1071,9 +869,18 @@ export default function App() {
   const browserAutomationHalted = activeSessionKey
     ? typeof browserAutomationHaltedBySession[activeSessionKey] === "number"
     : false;
-  const hasProjectContext = Boolean(activeProjectDir) && sidebarMode === "projects";
-  const showProjectsPane = !hasProjectContext || projectsSidebarVisible;
-  const showGitPane = hasProjectContext && sidebarMode === "projects" && appPreferences.showOperationsPane;
+  const {
+    addSessionFeedNotice,
+    activeSessionNotices,
+    buildSessionKey: buildSessionFeedNoticeKey,
+    getManualSessionStopState,
+    markManualSessionStopNoticeEmitted,
+    markManualSessionStopRequested,
+    pruneManualSessionStops,
+  } = useAppShellSessionFeedNotices({
+    activeProjectDir,
+    activeSessionID,
+  });
   // Track whether any overlay/modal is visible in the DOM.
   // The BrowserView is a native Electron overlay that sits on top of the renderer,
   // so we must hide it whenever ANY modal/overlay appears — not just ones we track in state.
@@ -1088,8 +895,14 @@ export default function App() {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
-
-  const browserPaneVisible = showGitPane && rightSidebarTab === "browser" && !anyOverlayInDom;
+  const { hasProjectContext, showProjectsPane, showGitPane, browserPaneVisible } = deriveAppShellWorkspaceLayout({
+    activeProjectDir,
+    sidebarMode,
+    projectsSidebarVisible,
+    showOperationsPane: appPreferences.showOperationsPane,
+    rightSidebarTab,
+    anyOverlayInDom,
+  });
   const {
     branchState,
     gitPanelTab,
@@ -1155,10 +968,7 @@ export default function App() {
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null);
   const terminalAutoCreateTried = useRef(false);
   const lastBrowserBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const commitFlowDismissTimerRef = useRef<number | null>(null);
   const abortActiveSessionRef = useRef<(() => Promise<void>) | null>(null);
-  const startupRanRef = useRef(false);
-  const startupCompletedRef = useRef(false);
 
   const sessions = useMemo(() => {
     if (!projectData) {
@@ -1543,13 +1353,13 @@ export default function App() {
 
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
     const now = Date.now();
-    const key = `${directory}::${sessionID}`;
-    manualSessionStopsRef.current[key] = { requestedAt: now, noticeEmitted: false };
+    const key = buildSessionFeedNoticeKey(directory, sessionID);
+    markManualSessionStopRequested(directory, sessionID, now);
     setBrowserAutomationHaltedBySession((current) => ({
       ...current,
       [key]: now,
     }));
-  }, [setBrowserAutomationHaltedBySession]);
+  }, [buildSessionFeedNoticeKey, markManualSessionStopRequested, setBrowserAutomationHaltedBySession]);
 
   const clearBrowserAutomationHalt = useCallback((directory: string, sessionID: string) => {
     const key = `${directory}::${sessionID}`;
@@ -1709,78 +1519,14 @@ export default function App() {
     const model = modelSelectOptions.find((item) => item.key === selectedModel);
     return model?.variants ?? [];
   }, [selectedModel, modelSelectOptions]);
-  useEffect(() => {
-    if (startupRanRef.current) {
-      return;
-    }
-    startupRanRef.current = true;
-    startupCompletedRef.current = false;
-    let cancelled = false;
-    let completed = 0;
-    const total = STARTUP_TOTAL_STEPS;
-    const updateStartup = (message: string, phase: StartupState["phase"] = "running") => {
-      if (cancelled) {
-        return;
-      }
-      setStartupState({
-        phase,
-        message,
-        completed,
-        total,
-      });
-    };
-    const markStepDone = (message: string) => {
-      completed += 1;
-      updateStartup(message);
-    };
-    const runStep = async <T,>(message: string, action: () => Promise<T>): Promise<T | undefined> => {
-      updateStartup(message);
-      let timeoutID: number | undefined;
-      try {
-        return await new Promise<T>((resolve, reject) => {
-          timeoutID = window.setTimeout(() => {
-            reject(new Error(`${message} timed out after ${STARTUP_STEP_TIMEOUT_MS}ms`));
-          }, STARTUP_STEP_TIMEOUT_MS);
-          void action()
-            .then((result) => {
-              resolve(result);
-            })
-            .catch((error) => {
-              reject(error);
-            });
-        });
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error));
-      } finally {
-        if (timeoutID !== undefined) {
-          window.clearTimeout(timeoutID);
-        }
-        markStepDone(message);
-      }
-      return undefined;
-    };
-
-    void (async () => {
-      try {
-        await runStep("Loading runtime profiles…", refreshProfiles);
-        await runStep("Bootstrapping workspaces…", bootstrap);
-        await runStep("Loading model references…", refreshConfigModels);
-        await runStep("Loading provider registry…", refreshGlobalProviders);
-        await runStep("Checking runtime dependencies…", refreshRuntimeDependencies);
-        await runStep("Syncing browser state…", syncBrowserSnapshot);
-      } finally {
-        startupCompletedRef.current = true;
-        updateStartup("Initialization complete", "done");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (!startupCompletedRef.current) {
-        startupRanRef.current = false;
-      }
-    };
-  }, [
+  const startupSteps = useMemo(() => [
+    { message: "Loading runtime profiles…", action: refreshProfiles },
+    { message: "Bootstrapping workspaces…", action: bootstrap },
+    { message: "Loading model references…", action: refreshConfigModels },
+    { message: "Loading provider registry…", action: refreshGlobalProviders },
+    { message: "Checking runtime dependencies…", action: refreshRuntimeDependencies },
+    { message: "Syncing browser state…", action: syncBrowserSnapshot },
+  ], [
     bootstrap,
     refreshConfigModels,
     refreshGlobalProviders,
@@ -1788,6 +1534,16 @@ export default function App() {
     refreshRuntimeDependencies,
     syncBrowserSnapshot,
   ]);
+  const handleStartupStepError = useCallback((error: unknown) => {
+    setStatusLine(error instanceof Error ? error.message : String(error));
+  }, []);
+  const { startupState, startupProgressPercent } = useAppShellStartupFlow({
+    initialMessage: "Initializing Orxa Code…",
+    totalSteps: STARTUP_TOTAL_STEPS,
+    stepTimeoutMs: STARTUP_STEP_TIMEOUT_MS,
+    steps: startupSteps,
+    onStepError: handleStartupStepError,
+  });
 
   useEffect(() => {
     if (browserPaneVisible) {
@@ -1963,57 +1719,7 @@ export default function App() {
       }
 
       if (event.type === "updater.telemetry") {
-        if (event.payload.phase === "check.start") {
-          setStatusLine("Checking for updates...");
-        } else if (event.payload.phase === "update.available") {
-          if (event.payload.version) {
-            setAvailableUpdateVersion(event.payload.version);
-            setStatusLine(`Update available: ${event.payload.version}`);
-          }
-        } else if (event.payload.phase === "check.success") {
-          const timing = typeof event.payload.durationMs === "number" ? ` (${Math.round(event.payload.durationMs)}ms)` : "";
-          if (event.payload.version) {
-            setAvailableUpdateVersion(event.payload.version);
-            setStatusLine(`Update available: ${event.payload.version}${timing}`);
-          } else if (event.payload.manual) {
-            setStatusLine(`Update check complete${timing}`);
-          }
-        } else if (event.payload.phase === "check.error") {
-          setStatusLine(event.payload.message ? `Update check failed: ${event.payload.message}` : "Update check failed");
-          if (updateInstallPending) {
-            setUpdateInstallPending(false);
-            setUpdateProgressState({
-              phase: "error",
-              message: event.payload.message ?? "Unable to update right now.",
-            });
-          }
-        } else if (event.payload.phase === "download.start") {
-          setUpdateProgressState({
-            phase: "downloading",
-            message: "Downloading update...",
-            percent: 0,
-            version: event.payload.version,
-          });
-        } else if (event.payload.phase === "download.progress") {
-          setUpdateProgressState({
-            phase: "downloading",
-            message: "Downloading update...",
-            percent: event.payload.percent,
-            version: event.payload.version,
-          });
-        } else if (event.payload.phase === "download.complete") {
-          setStatusLine("Update downloaded.");
-        } else if (event.payload.phase === "install.start") {
-          setUpdateInstallPending(false);
-          setAvailableUpdateVersion(null);
-          setUpdateProgressState({
-            phase: "installing",
-            message: "Installing update...",
-            percent: 100,
-            version: event.payload.version,
-          });
-          setStatusLine("Installing update...");
-        }
+        handleUpdaterTelemetry(event.payload);
       }
 
       if (event.type === "memory.backfill") {
@@ -2066,14 +1772,10 @@ export default function App() {
           eventProperties && typeof eventProperties.sessionID === "string"
             ? eventProperties.sessionID
             : undefined;
-        const eventSessionKey = eventSessionID ? `${event.payload.directory}::${eventSessionID}` : null;
+        const eventSessionKey = eventSessionID ? buildSessionFeedNoticeKey(event.payload.directory, eventSessionID) : null;
         const now = Date.now();
-        for (const [key, state] of Object.entries(manualSessionStopsRef.current)) {
-          if (now - state.requestedAt > 120_000) {
-            delete manualSessionStopsRef.current[key];
-          }
-        }
-        const manualStopState = eventSessionKey ? manualSessionStopsRef.current[eventSessionKey] : undefined;
+        pruneManualSessionStops(now);
+        const manualStopState = getManualSessionStopState(eventSessionKey);
         const manualStopAt = manualStopState?.requestedAt;
         const isRecentManualStop = typeof manualStopAt === "number" && now - manualStopAt < 30_000;
         if (
@@ -2176,7 +1878,7 @@ export default function App() {
             });
           }
           if (useInterruptedReason && eventSessionKey) {
-            manualSessionStopsRef.current[eventSessionKey] = { requestedAt: manualStopAt ?? now, noticeEmitted: true };
+            markManualSessionStopNoticeEmitted(eventSessionKey, manualStopAt ?? now);
           }
           const detail = useInterruptedReason
             ? interruptedDetail
@@ -2198,7 +1900,7 @@ export default function App() {
             });
             setStatusLine("User interrupted. Send a new message to continue.");
             if (eventSessionKey) {
-              manualSessionStopsRef.current[eventSessionKey] = { requestedAt: manualStopAt ?? now, noticeEmitted: true };
+              markManualSessionStopNoticeEmitted(eventSessionKey, manualStopAt ?? now);
             }
           }
           if (eventSessionID === activeSessionID) {
@@ -2217,66 +1919,18 @@ export default function App() {
     addSessionFeedNotice,
     appendDebugLog,
     bootstrap,
+    buildSessionFeedNoticeKey,
+    getManualSessionStopState,
+    handleUpdaterTelemetry,
     loadMemoryGraph,
+    markManualSessionStopNoticeEmitted,
+    pruneManualSessionStops,
     pushToast,
     queueRefresh,
     scheduleGitRefresh,
     sidebarMode,
     stopResponsePolling,
-    updateInstallPending,
   ]);
-
-  const downloadAndInstallUpdate = useCallback(async () => {
-    if (updateInstallPending) {
-      return;
-    }
-    setUpdateInstallPending(true);
-    setUpdateProgressState((current) => current ?? { phase: "downloading", message: "Preparing update download...", percent: 0 });
-    try {
-      const result = await window.orxa.updates.downloadAndInstall();
-      if (result.status === "error") {
-        setUpdateInstallPending(false);
-        setUpdateProgressState({
-          phase: "error",
-          message: result.message ?? "Unable to start update.",
-        });
-      } else if (result.status === "skipped") {
-        const detail = result.message ?? "Unable to start update.";
-        if (/already in progress/i.test(detail)) {
-          setUpdateProgressState({
-            phase: "downloading",
-            message: "Downloading update...",
-            percent: undefined,
-            version: availableUpdateVersion ?? undefined,
-          });
-        } else {
-          setUpdateInstallPending(false);
-          setUpdateProgressState({
-            phase: "error",
-            message: detail,
-          });
-        }
-      } else {
-        setUpdateProgressState({
-          phase: "downloading",
-          message: "Downloading update...",
-          percent: 0,
-          version: availableUpdateVersion ?? undefined,
-        });
-      }
-      if (result.message) {
-        setStatusLine(result.message);
-      }
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      setUpdateInstallPending(false);
-      setUpdateProgressState({
-        phase: "error",
-        message: detail,
-      });
-      setStatusLine(detail);
-    }
-  }, [availableUpdateVersion, updateInstallPending]);
 
   const activeProject = useMemo(() => projects.find((item) => item.worktree === activeProjectDir), [projects, activeProjectDir]);
 
@@ -2614,22 +2268,6 @@ export default function App() {
     setAllSessionsModalOpen(false);
   }, [activeProjectDir]);
 
-  const requestConfirmation = useCallback((request: ConfirmDialogRequest) => {
-    return new Promise<boolean>((resolve) => {
-      setConfirmDialogRequest(request);
-      confirmDialogResolverRef.current = resolve;
-    });
-  }, []);
-
-  const confirmDialogResolverRef = useRef<((value: boolean) => void) | null>(null);
-
-  const closeConfirmDialog = useCallback((confirmed: boolean) => {
-    const resolver = confirmDialogResolverRef.current;
-    confirmDialogResolverRef.current = null;
-    setConfirmDialogRequest(null);
-    resolver?.(confirmed);
-  }, []);
-
   const removeProjectDirectory = useCallback(
     async (directory: string, label: string) => {
       try {
@@ -2690,7 +2328,7 @@ export default function App() {
         },
       });
     },
-    [refreshProject],
+    [refreshProject, setTextInputDialog],
   );
 
   const archiveSession = useCallback(
@@ -2764,7 +2402,7 @@ export default function App() {
         },
       });
     },
-    [bootstrap, selectProject, setActiveSessionID],
+    [bootstrap, selectProject, setActiveSessionID, setTextInputDialog],
   );
 
   useEffect(() => {
@@ -2928,11 +2566,6 @@ export default function App() {
   const isSessionBusy = currentSessionStatus?.type === "busy" || currentSessionStatus?.type === "retry";
   const isSessionInProgress = isSessionBusy || isSendingPrompt;
   const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
-  const activeSessionNoticeKey = activeProjectDir && activeSessionID ? `${activeProjectDir}::${activeSessionID}` : null;
-  const activeSessionNotices = useMemo(
-    () => (activeSessionNoticeKey ? (sessionFeedNotices[activeSessionNoticeKey] ?? []) : []),
-    [activeSessionNoticeKey, sessionFeedNotices],
-  );
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
@@ -2942,20 +2575,14 @@ export default function App() {
     [orxaTodos],
   );
   const allTodosCompleted = orxaTodos.length > 0 && completedTodoCount === orxaTodos.length;
-  const effectiveBrowserState = useMemo(() => toBrowserSidebarState({
+  const effectiveBrowserState = useMemo(() => buildAppShellBrowserSidebarState({
     runtimeState: browserRuntimeState,
     history: browserHistoryItems,
     modeEnabled: browserModeEnabled,
     controlOwner: browserControlOwner,
     actionRunning: browserActionRunning,
-    canStop: browserActionRunning || isSessionInProgress,
+    isSessionInProgress,
   }), [browserActionRunning, browserControlOwner, browserHistoryItems, browserModeEnabled, browserRuntimeState, isSessionInProgress]);
-  const startupProgressPercent = useMemo(() => {
-    if (startupState.total <= 0) {
-      return 0;
-    }
-    return Math.max(0, Math.min(100, Math.round((startupState.completed / startupState.total) * 100)));
-  }, [startupState.completed, startupState.total]);
 
   useEffect(() => {
     if (browserAutomationHalted) {
@@ -3487,26 +3114,6 @@ export default function App() {
     [setPreferredOpenTarget],
   );
 
-  const clearCommitFlowDismissTimer = useCallback(() => {
-    if (commitFlowDismissTimerRef.current !== null) {
-      window.clearTimeout(commitFlowDismissTimerRef.current);
-      commitFlowDismissTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleCommitFlowDismiss = useCallback(
-    (delayMs: number) => {
-      clearCommitFlowDismissTimer();
-      commitFlowDismissTimerRef.current = window.setTimeout(() => {
-        setCommitFlowState(null);
-        commitFlowDismissTimerRef.current = null;
-      }, delayMs);
-    },
-    [clearCommitFlowDismissTimer],
-  );
-
-  useEffect(() => () => clearCommitFlowDismissTimer(), [clearCommitFlowDismissTimer]);
-
   const openCommitModal = useCallback(
     (nextStep?: CommitNextStep) => {
       if (!activeProjectDir) {
@@ -3561,11 +3168,7 @@ export default function App() {
     try {
       setCommitModalOpen(false);
       setCommitSubmitting(true);
-      setCommitFlowState({
-        phase: "running",
-        nextStep: selectedNextStep,
-        message: commitFlowRunningMessage(selectedNextStep),
-      });
+      startCommitFlow(selectedNextStep);
       const result = await window.orxa.opencode.gitCommit(activeProjectDir, {
         includeUnstaged: commitIncludeUnstaged,
         message: commitMessageDraft.trim().length > 0 ? commitMessageDraft.trim() : undefined,
@@ -3580,11 +3183,7 @@ export default function App() {
       if (result.prUrl) {
         setPendingPrUrl(result.prUrl);
       }
-      setCommitFlowState({
-        phase: "success",
-        nextStep: selectedNextStep,
-        message: commitFlowSuccessMessage(selectedNextStep),
-      });
+      completeCommitFlow(selectedNextStep);
       scheduleCommitFlowDismiss(1150);
       await refreshProject(activeProjectDir);
       if (rightSidebarTab === "git") {
@@ -3593,27 +3192,25 @@ export default function App() {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       setStatusLine(detail);
-      setCommitFlowState({
-        phase: "error",
-        nextStep: selectedNextStep,
-        message: detail,
-      });
-      clearCommitFlowDismissTimer();
+      failCommitFlow(selectedNextStep, detail);
     } finally {
       setCommitSubmitting(false);
     }
   }, [
     activeProjectDir,
     appPreferences.commitGuidancePrompt,
+    completeCommitFlow,
     clearCommitFlowDismissTimer,
     commitBaseBranch,
     commitIncludeUnstaged,
     commitMessageDraft,
     commitNextStep,
+    failCommitFlow,
     loadGitDiff,
     rightSidebarTab,
     refreshProject,
     scheduleCommitFlowDismiss,
+    startCommitFlow,
     setCommitMessageDraft,
     setCommitModalOpen,
     setCommitSubmitting,
@@ -3657,6 +3254,32 @@ export default function App() {
     { id: "commit_and_push", label: "Commit and push", icon: <Upload size={14} aria-hidden="true" /> },
     { id: "commit_and_create_pr", label: "Create PR", icon: <Send size={14} aria-hidden="true" /> },
   ];
+  const homeDashboardProps = useMemo(() => buildAppShellHomeDashboardProps({
+    dashboard,
+    codexSessionCount,
+    claudeSessionCount,
+    codexUsage,
+    claudeUsage,
+    codexUsageLoading,
+    claudeUsageLoading,
+    onRefreshCodexUsage: () => void refreshCodexUsage(),
+    onRefreshClaudeUsage: () => void refreshClaudeUsage(),
+    onRefresh: () => void refreshDashboard(),
+    onAddWorkspace: () => void addProjectDirectory(),
+    onOpenSettings: () => setSettingsOpen(true),
+  }), [
+    addProjectDirectory,
+    claudeSessionCount,
+    claudeUsage,
+    claudeUsageLoading,
+    codexSessionCount,
+    codexUsage,
+    codexUsageLoading,
+    dashboard,
+    refreshClaudeUsage,
+    refreshCodexUsage,
+    refreshDashboard,
+  ]);
 
   return (
     <div className="app-shell">
@@ -4024,33 +3647,7 @@ export default function App() {
               )}
             </>
           ) : (
-            <HomeDashboard
-              loading={dashboard.loading}
-              projects={dashboard.projects}
-              sessions7d={dashboard.sessions7d}
-              sessions30d={dashboard.sessions30d}
-              providersConnected={dashboard.providersConnected}
-              topModels={dashboard.topModels}
-              tokenInput30d={dashboard.tokenInput30d}
-              tokenOutput30d={dashboard.tokenOutput30d}
-              tokenCacheRead30d={dashboard.tokenCacheRead30d}
-              totalCost30d={dashboard.totalCost30d}
-              recentSessions={dashboard.recentSessions}
-              daySeries={dashboard.daySeries}
-              updatedAt={dashboard.updatedAt}
-              error={dashboard.error}
-              codexSessionCount={codexSessionCount}
-              claudeSessionCount={claudeSessionCount}
-              codexUsage={codexUsage}
-              claudeUsage={claudeUsage}
-              codexUsageLoading={codexUsageLoading}
-              claudeUsageLoading={claudeUsageLoading}
-              onRefreshCodexUsage={() => void refreshCodexUsage()}
-              onRefreshClaudeUsage={() => void refreshClaudeUsage()}
-              onRefresh={() => void refreshDashboard()}
-              onAddWorkspace={() => void addProjectDirectory()}
-              onOpenSettings={() => setSettingsOpen(true)}
-            />
+            <HomeDashboard {...homeDashboardProps} />
           )}
           {toasts.length > 0 ? (
             <div className="composer-toast-stack" style={composerToastStyle} role="status" aria-live="polite">
@@ -4319,15 +3916,8 @@ export default function App() {
         confirmLabel={textInputDialog?.confirmLabel}
         cancelLabel={textInputDialog?.cancelLabel}
         validate={textInputDialog?.validate}
-        onConfirm={(value) => {
-          const dialog = textInputDialog;
-          if (!dialog) {
-            return;
-          }
-          setTextInputDialog(null);
-          void Promise.resolve(dialog.onConfirm(value));
-        }}
-        onCancel={() => setTextInputDialog(null)}
+        onConfirm={submitTextInputDialog}
+        onCancel={closeTextInputDialog}
       />
 
       <GlobalModalsHost
@@ -4379,10 +3969,7 @@ export default function App() {
         commitBaseBranchOptions={commitBaseBranchOptions}
         commitBaseBranchLoading={branchLoading}
         commitFlowState={commitFlowState}
-        dismissCommitFlowState={() => {
-          clearCommitFlowDismissTimer();
-          setCommitFlowState(null);
-        }}
+        dismissCommitFlowState={dismissCommitFlowState}
         submitCommit={submitCommit}
         jobEditorOpen={jobEditorOpen}
         jobDraft={jobDraft}

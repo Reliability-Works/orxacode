@@ -2,18 +2,17 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { MessageFeed } from "./MessageFeed";
 import type { SessionMessageBundle } from "@shared/ipc";
+import { createSessionMessageBundle, createTextPart } from "../test/session-message-bundle-factory";
 
 describe("MessageFeed", () => {
   it("renders persistent timeline rows for completed tool actions", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-actions",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-assistant-actions",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
         parts: [
           {
             id: "tool-read-1",
@@ -31,8 +30,8 @@ describe("MessageFeed", () => {
               time: { start: now, end: now },
             },
           },
-        ] as SessionMessageBundle["parts"],
-      },
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
@@ -44,38 +43,23 @@ describe("MessageFeed", () => {
 
   it("shows assistant text and hides internal metadata/tool payloads", () => {
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-user-1",
-          role: "user",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-user-1",
+        role: "user",
+        sessionID: "session-1",
+        parts: [createTextPart({ id: "part-user-1", sessionID: "session-1", messageID: "msg-user-1", text: "hi" })],
+      }),
+      createSessionMessageBundle({
+        id: "msg-assistant-1",
+        role: "assistant",
+        sessionID: "session-1",
         parts: [
-          {
-            id: "part-user-1",
-            type: "text",
-            sessionID: "session-1",
-            messageID: "msg-user-1",
-            text: "hi",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-      {
-        info: ({
-          id: "msg-assistant-1",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
+          createTextPart({
             id: "part-start-1",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-assistant-1",
             text: '{"type":"step-start","id":"prt_1","sessionID":"session-1","messageID":"msg-assistant-1"}',
-          },
+          }),
           {
             id: "part-tool-1",
             type: "tool",
@@ -92,15 +76,14 @@ describe("MessageFeed", () => {
               time: { start: Date.now(), end: Date.now() },
             },
           },
-          {
+          createTextPart({
             id: "part-text-1",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-assistant-1",
             text: "Hey! How can I help today?",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} />);
@@ -112,40 +95,32 @@ describe("MessageFeed", () => {
 
   it("hides internal ORXA browser machine-result user prompts", () => {
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-user-machine-result",
-          role: "user",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-user-machine-result",
+        role: "user",
+        sessionID: "session-1",
         parts: [
-          {
+          createTextPart({
             id: "part-user-machine-result",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-user-machine-result",
             text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-      {
-        info: ({
-          id: "msg-assistant-visible",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
+          }),
+        ],
+      }),
+      createSessionMessageBundle({
+        id: "msg-assistant-visible",
+        role: "assistant",
+        sessionID: "session-1",
         parts: [
-          {
+          createTextPart({
             id: "part-assistant-visible",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-assistant-visible",
             text: "Captured first source. Continuing evidence collection.",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} />);
@@ -156,30 +131,25 @@ describe("MessageFeed", () => {
 
   it("keeps visible user text when a bundle also contains internal machine-result lines", () => {
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-user-mixed",
-          role: "user",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-user-mixed",
+        role: "user",
+        sessionID: "session-1",
         parts: [
-          {
+          createTextPart({
             id: "part-user-visible",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-user-mixed",
             text: "Research and summarize top DeFi news from 2026.",
-          },
-          {
+          }),
+          createTextPart({
             id: "part-user-internal",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-user-mixed",
             text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} />);

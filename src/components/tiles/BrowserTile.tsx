@@ -1,19 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Globe, Lock, RefreshCw } from "lucide-react";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import type { McpDevToolsServerState } from "@shared/ipc";
 import { CanvasTileComponent } from "../CanvasTile";
 import { McpStatusIndicator } from "../McpStatusIndicator";
+import type { CanvasTileComponentProps } from "./tile-shared";
 
-interface BrowserTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
+interface BrowserTileProps extends CanvasTileComponentProps {
   mcpDevToolsState?: McpDevToolsServerState;
 }
 

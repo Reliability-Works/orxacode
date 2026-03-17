@@ -1,0 +1,163 @@
+import type { BrowserHistoryItem, BrowserState } from "@shared/ipc";
+
+export const DEFAULT_BROWSER_LANDING_URL = "about:blank";
+
+const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
+const WEB_TASK_HINT_PATTERN =
+  /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
+const STATUS_TOAST_ERROR_PATTERN = /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i;
+const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i;
+const RECOVERABLE_SESSION_ERROR_PATTERN =
+  /\b(skill|skills?|working directory|workspace|cwd|enoent|not found|no such file|no longer accessible)\b/i;
+
+export const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
+  partition: "persist:orxa-browser",
+  bounds: { x: 0, y: 0, width: 0, height: 0 },
+  tabs: [],
+  activeTabID: undefined,
+};
+
+export type BrowserControlOwner = "agent" | "human";
+
+type BrowserSidebarTabState = {
+  id: string;
+  title: string;
+  url: string;
+  isActive: boolean;
+};
+
+type BrowserSidebarHistoryEntry = {
+  id: string;
+  label: string;
+  url: string;
+};
+
+export type BrowserSidebarStateView = {
+  modeEnabled: boolean;
+  controlOwner: BrowserControlOwner;
+  tabs: BrowserSidebarTabState[];
+  activeTabID: string | null;
+  activeUrl: string;
+  history: BrowserSidebarHistoryEntry[];
+  canGoBack: boolean;
+  canGoForward: boolean;
+  isLoading: boolean;
+  actionRunning: boolean;
+  canStop?: boolean;
+};
+
+type BrowserSidebarStateInput = {
+  runtimeState: BrowserState;
+  history: BrowserHistoryItem[];
+  modeEnabled: boolean;
+  controlOwner: BrowserControlOwner;
+  actionRunning: boolean;
+  canStop: boolean;
+};
+
+function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarStateView["history"] {
+  return items.map((entry) => ({
+    id: entry.id,
+    label: entry.title?.trim() ? entry.title : entry.url,
+    url: entry.url,
+  }));
+}
+
+export function toneForStatusLine(status: string): "error" | "warning" | null {
+  const value = status.trim();
+  if (!value) {
+    return null;
+  }
+  if (STATUS_TOAST_ERROR_PATTERN.test(value)) {
+    return "error";
+  }
+  if (STATUS_TOAST_WARNING_PATTERN.test(value)) {
+    return "warning";
+  }
+  return null;
+}
+
+export function isRecoverableSessionError(message: string, code?: string) {
+  if (RECOVERABLE_SESSION_ERROR_PATTERN.test(message)) {
+    return true;
+  }
+  if (typeof code === "string" && RECOVERABLE_SESSION_ERROR_PATTERN.test(code)) {
+    return true;
+  }
+  return false;
+}
+
+export function buildBrowserAutopilotHint(input: string): string | undefined {
+  const text = input.trim();
+  if (!text) {
+    return undefined;
+  }
+  const hasUrl = URL_REFERENCE_PATTERN.test(text);
+  const hasWebTask = WEB_TASK_HINT_PATTERN.test(text);
+  if (!hasUrl && !hasWebTask) {
+    return undefined;
+  }
+
+  const lines = [
+    "Auto Browser Skill Triggered: the latest user request appears to need web browsing.",
+    "Prefer integrated Orxa browser actions over any external/headless browser tool.",
+  ];
+  if (hasUrl) {
+    lines.push("Use URLs mentioned by the user as first navigation targets.");
+  }
+  if (hasWebTask) {
+    lines.push("For research tasks, follow a loop: navigate, wait_for_idle, extract_text, then summarize.");
+  }
+  return lines.join("\n");
+}
+
+export function toBrowserSidebarState(input: BrowserSidebarStateInput): BrowserSidebarStateView {
+  const tabs = input.runtimeState.tabs.map((tab) => ({
+    id: tab.id,
+    title: tab.title?.trim() ? tab.title : tab.url || "New Tab",
+    url: tab.url,
+    isActive: tab.id === input.runtimeState.activeTabID,
+  }));
+  const activeTab = input.runtimeState.tabs.find((tab) => tab.id === input.runtimeState.activeTabID) ?? null;
+
+  return {
+    modeEnabled: input.modeEnabled,
+    controlOwner: input.controlOwner,
+    tabs,
+    activeTabID: input.runtimeState.activeTabID ?? null,
+    activeUrl: activeTab?.url ?? "",
+    history: toBrowserSidebarHistory(input.history),
+    canGoBack: activeTab?.canGoBack ?? false,
+    canGoForward: activeTab?.canGoForward ?? false,
+    isLoading: activeTab?.loading ?? false,
+    actionRunning: input.actionRunning,
+    canStop: input.canStop,
+  };
+}
+
+export function shouldAutoRenameSessionTitle(title: string | undefined) {
+  if (!title) {
+    return true;
+  }
+  const normalized = title.trim().toLowerCase();
+  return normalized === "" || normalized === "new session" || normalized === "untitled session";
+}
+
+export function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
+  const cleaned = prompt
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s\-_:,.!?/]/gu, "")
+    .trim();
+  if (!cleaned) {
+    return "New session";
+  }
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
+}
+
+export function formatMemoryGraphError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("No handler registered for 'orxa:opencode:memory:getGraph'")) {
+    return "Memory IPC handlers are unavailable in the current desktop process. Restart the app to load memory routes.";
+  }
+  return message;
+}

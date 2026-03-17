@@ -7,7 +7,6 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type RefObject,
 } from "react";
 import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
@@ -22,6 +21,9 @@ import { PermissionDock } from "./chat/PermissionDock";
 import { FollowupDock } from "./chat/FollowupDock";
 import { QueuedMessagesDock } from "./chat/QueuedMessagesDock";
 import type { QueuedMessage } from "./chat/QueuedMessagesDock";
+import { useDismissibleLayer } from "./composer/useDismissibleLayer";
+import { useComposerResize } from "./composer/useComposerResize";
+import { useAttachmentPreview } from "./composer/useAttachmentPreview";
 
 type AgentOption = {
   name: string;
@@ -219,12 +221,14 @@ export function ComposerPanel(props: ComposerPanelProps) {
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
   const useDropdownModels = simpleModelPicker || modelSelectOptions.length <= 10;
   const agentMenuRef = useRef<HTMLDivElement | null>(null);
-  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
-  const [composerResizeActive, setComposerResizeActive] = useState(false);
-  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const { composerHeight, composerResizeActive, startComposerResize } = useComposerResize({
+    minHeight: COMPOSER_MIN_HEIGHT,
+    maxHeight: COMPOSER_MAX_HEIGHT,
+    defaultHeight: COMPOSER_DEFAULT_HEIGHT,
+  });
+  const { previewAttachment, setPreviewAttachment, clearPreviewAttachment } = useAttachmentPreview<Attachment>();
   const permissionMenuRef = useRef<HTMLDivElement | null>(null);
   const composerZoneRef = useRef<HTMLElement | null>(null);
-  const composerResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const clampedCompactionProgress = Math.max(0, Math.min(1, compactionProgress));
   const compactionProgressStyle = useMemo(
     () =>
@@ -235,125 +239,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
   );
   const permissionLabel = permissionMode === "yolo-write" ? "Yolo Mode" : "Default Permissions";
 
-  useEffect(() => {
-    if (!permissionMenuOpen) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-      if (permissionMenuRef.current?.contains(target)) {
-        return;
-      }
-      setPermissionMenuOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setPermissionMenuOpen(false);
-    };
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [permissionMenuOpen]);
-
-  useEffect(() => {
-    if (!agentMenuOpen) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-      if (agentMenuRef.current?.contains(target)) {
-        return;
-      }
-      setAgentMenuOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setAgentMenuOpen(false);
-    };
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [agentMenuOpen]);
-
-  useEffect(() => {
-    if (!modelDropdownOpen) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (modelDropdownRef.current?.contains(target)) return;
-      setModelDropdownOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setModelDropdownOpen(false);
-    };
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [modelDropdownOpen]);
-
-  useEffect(() => {
-    if (!composerResizeActive) {
-      return;
-    }
-    const onPointerMove = (event: MouseEvent) => {
-      const state = composerResizeRef.current;
-      if (!state) {
-        return;
-      }
-      const nextHeight = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, state.startHeight + (state.startY - event.clientY)));
-      setComposerHeight(nextHeight);
-    };
-    const onPointerUp = () => {
-      setComposerResizeActive(false);
-      composerResizeRef.current = null;
-    };
-    window.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ns-resize";
-    return () => {
-      window.removeEventListener("mousemove", onPointerMove);
-      window.removeEventListener("mouseup", onPointerUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
-  }, [composerResizeActive]);
-
-  const startComposerResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    composerResizeRef.current = {
-      startY: event.clientY,
-      startHeight: composerHeight,
-    };
-    setComposerResizeActive(true);
-  }, [composerHeight]);
+  useDismissibleLayer(permissionMenuOpen, permissionMenuRef, () => setPermissionMenuOpen(false));
+  useDismissibleLayer(agentMenuOpen, agentMenuRef, () => setAgentMenuOpen(false));
+  useDismissibleLayer(modelDropdownOpen, modelDropdownRef, () => setModelDropdownOpen(false));
 
   useLayoutEffect(() => {
     if (!onLayoutHeightChange) {
@@ -399,24 +287,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
       }
     };
   }, [onLayoutHeightChange]);
-
-  useEffect(() => {
-    if (!previewAttachment) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setPreviewAttachment(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [previewAttachment]);
 
   const handlePaste = useCallback(
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -880,12 +750,12 @@ export function ComposerPanel(props: ComposerPanelProps) {
         </div>
       </div>
       {previewAttachment ? (
-        <div className="composer-image-preview-overlay" onClick={() => setPreviewAttachment(null)}>
+        <div className="composer-image-preview-overlay" onClick={clearPreviewAttachment}>
           <section className="composer-image-preview-modal" role="dialog" aria-label="Attachment preview" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
               className="composer-image-preview-close"
-              onClick={() => setPreviewAttachment(null)}
+              onClick={clearPreviewAttachment}
               aria-label="Close attachment preview"
             >
               <X size={14} aria-hidden="true" />

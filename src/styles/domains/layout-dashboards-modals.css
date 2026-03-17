@@ -1,0 +1,323 @@
+/* Generated from src/styles/layout.css; domain: dashboards-modals. */
+
+.run-command-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #00000099;
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.run-command-modal {
+  width: min(92vw, 420px);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.run-command-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.run-command-modal-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-primary);
+  background: var(--bg-input);
+}
+
+.run-command-modal-close {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.run-command-modal-close:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.run-command-modal h3 {
+  margin: 0;
+  font-size: 24px;
+  font-family: var(--font-mono);
+  line-height: 1;
+}
+
+.run-command-modal p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.run-command-modal-field {
+  display: grid;
+  gap: 6px;
+}
+
+.run-command-modal-field > span {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.run-command-modal-field input,
+.run-command-modal-field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.run-command-modal-field input {
+  height: 34px;
+  padding: 0 10px;
+}
+
+.run-command-modal-field textarea {
+  resize: vertical;
+  min-height: 168px;
+  padding: 10px;
+  line-height: 1.45;
+}
+
+.run-command-modal-error {
+  margin: 0;
+  color: var(--accent-error);
+  font-size: 11px;
+}
+
+.run-command-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.run-command-modal-actions button {
+  min-height: 32px;
+}
+
+.run-command-modal-actions .ghost {
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+.file-preview-overlay {
+  z-index: 75;
+}
+
+.file-preview-modal {
+  width: min(1100px, calc(100% - 16px));
+  max-width: calc(100% - 16px);
+  max-height: 90vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+}
+
+.file-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.file-preview-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.file-preview-header > .file-preview-title-row {
+  width: 100%;
+}
+
+.file-preview-header strong {
+  display: inline-block;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.file-preview-header small {
+  color: var(--text-muted);
+}
+
+.file-preview-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}
+
+.file-preview-icon-action {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.file-preview-content {
+  margin: 0;
+  overflow: auto;
+  padding: 12px 0;
+  font-size: 12px;
+  line-height: 1.52;
+  font-family: var(--font-mono);
+  background: var(--bg-surface);
+  position: relative;
+  user-select: text;
+}
+
+.file-preview-line {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: stretch;
+  min-width: max-content;
+}
+
+.file-preview-line:hover {
+  background: var(--bg-hover);
+}
+
+.file-preview-line-number {
+  width: 52px;
+  display: inline-flex;
+  justify-content: flex-end;
+  padding: 0 10px 0 6px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+}
+
+.file-preview-line-code {
+  display: block;
+  padding: 0 12px;
+  white-space: pre;
+  min-width: max-content;
+  color: var(--text-primary);
+}
+
+.file-preview-selection-popover {
+  position: absolute;
+  display: grid;
+  align-items: stretch;
+  max-width: calc(100% - 16px);
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  padding: 6px 8px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+  z-index: 8;
+}
+
+.file-preview-selection-popover small {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.file-preview-selection-label {
+  display: block;
+}
+
+.file-preview-selection-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-preview-selection-popover button {
+}
+
+.file-preview-selection-popover button:hover {
+}
+
+.file-preview-selection-add {
+  min-width: 126px;
+  white-space: nowrap;
+  justify-content: center;
+  padding: 4px 10px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-preview-selection-close {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 4px;
+}
+
+.file-preview-footer {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: 11px;
+}
+
+.file-preview-content.language-typescript code,
+.file-preview-content.language-javascript code,
+.file-preview-content.language-json code,
+.file-preview-content.language-markdown code,
+.file-preview-content.language-css code,
+.file-preview-content.language-bash code,
+.file-preview-content.language-sql code {
+  background: transparent !important;
+}

@@ -2,31 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { getFileIcon } from "../../lib/file-icons";
 import type { ProjectFileEntry } from "@shared/ipc";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import { CanvasTileComponent } from "../CanvasTile";
+import { tilePathBasename, type CanvasTileComponentProps } from "./tile-shared";
 
-interface FileEditorTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
+type FileEditorTileProps = CanvasTileComponentProps;
 
 const PLACEHOLDER = "// Select a file from the tree to begin editing.";
 
 function FileEntryIcon({ name }: { name: string }) {
   const { icon, color } = getFileIcon(name);
   return <span style={{ color, display: "inline-flex", flexShrink: 0 }}>{icon}</span>;
-}
-
-function getFileName(filePath: string): string {
-  if (!filePath) return "untitled";
-  const parts = filePath.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || filePath;
 }
 
 function sortEntries(entries: ProjectFileEntry[]) {
@@ -206,7 +191,7 @@ export function FileEditorTile({
     }
   }, []);
 
-  const fileName = getFileName(filePath);
+  const fileName = tilePathBasename(filePath, "untitled");
   const metaLabel = filePath ? fileName : "untitled";
 
   const lineNumbers = Array.from({ length: lineCount }, (_, i) => i + 1);

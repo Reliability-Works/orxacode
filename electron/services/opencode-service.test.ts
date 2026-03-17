@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 import { OpencodeService } from "./opencode-service";
-import type { SessionMessageBundle } from "../../shared/ipc";
+import { createSessionMessageBundle, createTextPart } from "../../src/test/session-message-bundle-factory";
 
 vi.mock("electron", () => ({
   app: {
@@ -16,33 +16,28 @@ vi.mock("electron", () => ({
 describe("hasRecentMatchingUserPrompt", () => {
   it("detects a matching recent user prompt", () => {
     const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "assistant-1",
-          role: "assistant",
-          sessionID: "s-1",
-          time: { created: now - 1_000, updated: now - 1_000 },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [] as SessionMessageBundle["parts"],
-      },
-      {
-        info: ({
-          id: "user-1",
-          role: "user",
-          sessionID: "s-1",
-          time: { created: now + 400, updated: now + 400 },
-        } as unknown) as SessionMessageBundle["info"],
+    const messages = [
+      createSessionMessageBundle({
+        id: "assistant-1",
+        role: "assistant",
+        sessionID: "s-1",
+        createdAt: now - 1_000,
+        parts: [],
+      }),
+      createSessionMessageBundle({
+        id: "user-1",
+        role: "user",
+        sessionID: "s-1",
+        createdAt: now + 400,
         parts: [
-          {
+          createTextPart({
             id: "part-user-1",
-            type: "text",
             sessionID: "s-1",
             messageID: "user-1",
             text: "build me a website",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     expect(hasRecentMatchingUserPrompt(messages, "build me a website", now)).toBe(true);
@@ -50,41 +45,35 @@ describe("hasRecentMatchingUserPrompt", () => {
 
   it("ignores stale or non-matching user prompts", () => {
     const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "user-stale",
-          role: "user",
-          sessionID: "s-1",
-          time: { created: now - 15_000, updated: now - 15_000 },
-        } as unknown) as SessionMessageBundle["info"],
+    const messages = [
+      createSessionMessageBundle({
+        id: "user-stale",
+        role: "user",
+        sessionID: "s-1",
+        createdAt: now - 15_000,
         parts: [
-          {
+          createTextPart({
             id: "part-user-stale",
-            type: "text",
             sessionID: "s-1",
             messageID: "user-stale",
             text: "build me a website",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-      {
-        info: ({
-          id: "user-new",
-          role: "user",
-          sessionID: "s-1",
-          time: { created: now + 500, updated: now + 500 },
-        } as unknown) as SessionMessageBundle["info"],
+          }),
+        ],
+      }),
+      createSessionMessageBundle({
+        id: "user-new",
+        role: "user",
+        sessionID: "s-1",
+        createdAt: now + 500,
         parts: [
-          {
+          createTextPart({
             id: "part-user-new",
-            type: "text",
             sessionID: "s-1",
             messageID: "user-new",
             text: "different message",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     expect(hasRecentMatchingUserPrompt(messages, "build me a website", now)).toBe(false);

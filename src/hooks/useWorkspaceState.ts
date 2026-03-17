@@ -251,7 +251,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
+    [cleanupEmptySession, projectLastOpenedRef, projectLastUpdatedRef, setActiveTerminalId, setStatusLine, setTerminalTabs],
   );
 
   const openWorkspaceDashboard = useCallback(() => {
@@ -265,7 +265,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     setTerminalTabs([]);
     setActiveTerminalId(undefined);
     setStatusLine("Workspace dashboard");
-  }, [setActiveTerminalId, setStatusLine, setTerminalOpen, setTerminalTabs]);
+  }, [cleanupEmptySession, setActiveTerminalId, setStatusLine, setTerminalOpen, setTerminalTabs]);
 
   const refreshMessages = useCallback(async () => {
     if (!activeProjectDir || !activeSessionID) {
@@ -320,7 +320,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         })
         .catch(() => undefined);
     },
-    [activeProjectDir, messageCacheRef],
+    [activeProjectDir, cleanupEmptySession, messageCacheRef],
   );
 
   const stopResponsePolling = useCallback(() => {
