@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 
-const appName = "Opencode Orxa";
+const appName = "Orxa Code";
 const sourceIconPath = path.join(repoRoot, "build", "icon.icns");
 const electronAppPath = path.join(repoRoot, "node_modules", "electron", "dist", "Electron.app");
 const targetIconPath = path.join(electronAppPath, "Contents", "Resources", "electron.icns");
