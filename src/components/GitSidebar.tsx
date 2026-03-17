@@ -163,6 +163,13 @@ export function GitSidebar(props: GitSidebarProps) {
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
   const [browserUrlInput, setBrowserUrlInput] = useState("");
   const [browserHistoryValue, setBrowserHistoryValue] = useState("");
+
+  // Fall back to git tab if browser is disabled while active
+  useEffect(() => {
+    if (!browserEnabled && sidebarPanelTab === "browser") {
+      setSidebarPanelTab("git");
+    }
+  }, [browserEnabled, sidebarPanelTab, setSidebarPanelTab]);
   const browserViewportHostRef = useRef<HTMLDivElement | null>(null);
 
   const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {

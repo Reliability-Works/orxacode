@@ -944,12 +944,19 @@ export function useCodexSession(directory: string) {
     setPlanReady(false);
   }, []);
 
-  // Subagent thread navigation
+  // Subagent thread navigation — gather messages related to this agent
   const openSubagentThread = useCallback((threadId: string) => {
     setActiveSubagentThreadId(threadId);
-    // In a full implementation, we'd fetch thread items from the server.
-    // For now, we show what we have from collab items.
-    setSubagentMessages([]);
+    // Filter messages that reference this subagent via collab metadata
+    const related = messagesRef.current.filter((m) => {
+      if (m.kind !== "tool" || m.toolType !== "task") return false;
+      const receivers = m.collabReceivers;
+      const sender = m.collabSender;
+      if (receivers?.some((r) => r.threadId === threadId)) return true;
+      if (sender?.threadId === threadId) return true;
+      return false;
+    });
+    setSubagentMessages(related);
   }, []);
 
   const closeSubagentThread = useCallback(() => {

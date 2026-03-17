@@ -341,6 +341,8 @@ export function JobEditorModal({ open, draft, projects, onClose, onChange, onSav
                   type="button"
                   className={draft.agentMode === mode ? "active" : ""}
                   onClick={() => update({ agentMode: mode })}
+                  disabled={mode !== "opencode"}
+                  title={mode !== "opencode" ? `${mode.charAt(0).toUpperCase() + mode.slice(1)} job execution coming soon` : undefined}
                 >
                   {mode.charAt(0).toUpperCase() + mode.slice(1)}
                 </button>
