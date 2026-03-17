@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChatFileIcon, ChatFolderIcon, ChatGlobeIcon, ChatSearchIcon } from "./chat-icons";
 
 export interface ContextToolItem {
   toolName: string;
@@ -11,7 +12,7 @@ interface ContextToolGroupProps {
   items: ContextToolItem[];
 }
 
-function toolIcon(toolName: string): string {
+function toolIcon(toolName: string): IconProps["type"] {
   const name = toolName.toLowerCase();
   if (name === "read") return "file";
   if (name === "list" || name === "glob") return "folder";
@@ -46,92 +47,24 @@ function StatusDot({ status }: StatusDotProps) {
 }
 
 interface IconProps {
-  type: string;
+  type: "search" | "folder" | "globe" | "file";
 }
 
 function ToolIcon({ type }: IconProps) {
   if (type === "search") {
-    return (
-      <svg
-        className="context-tool-icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-      </svg>
-    );
+    return <ChatSearchIcon className="context-tool-icon" />;
   }
 
   if (type === "folder") {
-    return (
-      <svg
-        className="context-tool-icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-      </svg>
-    );
+    return <ChatFolderIcon className="context-tool-icon" />;
   }
 
   if (type === "globe") {
-    return (
-      <svg
-        className="context-tool-icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="2" y1="12" x2="22" y2="12" />
-        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-      </svg>
-    );
+    return <ChatGlobeIcon className="context-tool-icon" />;
   }
 
   // Default: file
-  return (
-    <svg
-      className="context-tool-icon"
-      xmlns="http://www.w3.org/2000/svg"
-      width="12"
-      height="12"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
+  return <ChatFileIcon className="context-tool-icon" />;
 }
 
 function ContextToolLine({ item }: { item: ContextToolItem }) {

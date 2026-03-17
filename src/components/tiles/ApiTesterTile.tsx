@@ -1,18 +1,9 @@
 import { useCallback, useState } from "react";
 import { Zap } from "lucide-react";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import { CanvasTileComponent } from "../CanvasTile";
+import type { CanvasTileComponentProps } from "./tile-shared";
 
-interface ApiTesterTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
+type ApiTesterTileProps = CanvasTileComponentProps;
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 

@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
+import { getPersistedCodexState, setPersistedCodexState } from "./codex-session-storage";
+import {
+  appendAssistantDeltaToLastMessage,
+  appendDeltaToMappedItem,
+  parseMarkdownPlan,
+  parseStructuredPlan,
+  removeMessageByID,
+} from "./codex-session-message-reducers";
+import { nextMessageID, resetStreamingBookkeeping } from "./codex-session-streaming";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,32 +76,11 @@ export interface CodexSessionState {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level persistence — survives component remounts
-// ---------------------------------------------------------------------------
-
-interface PersistedCodexState {
-  messages: CodexMessageItem[];
-  thread: CodexThread | null;
-  isStreaming: boolean;
-  messageIdCounter: number;
-}
-
-const persistedSessions = new Map<string, PersistedCodexState>();
-
-function getPersistedState(directory: string): PersistedCodexState {
-  const existing = persistedSessions.get(directory);
-  if (existing) return existing;
-  const fresh: PersistedCodexState = { messages: [], thread: null, isStreaming: false, messageIdCounter: 0 };
-  persistedSessions.set(directory, fresh);
-  return fresh;
-}
-
-// ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
 export function useCodexSession(directory: string) {
-  const persisted = getPersistedState(directory);
+  const persisted = getPersistedCodexState(directory);
   const [connectionStatus, setConnectionStatus] = useState<CodexState["status"]>("disconnected");
   const [serverInfo, setServerInfo] = useState<CodexState["serverInfo"]>();
   const [thread, setThread] = useState<CodexThread | null>(persisted.thread);
@@ -128,21 +116,23 @@ export function useCodexSession(directory: string) {
   isStreamingRef.current = isStreaming;
 
   useEffect(() => {
-    const state = getPersistedState(directory);
-    state.messages = messages;
-    state.thread = thread;
-    state.isStreaming = isStreaming;
-    state.messageIdCounter = messageIdCounter.current;
+    setPersistedCodexState(directory, {
+      messages,
+      thread,
+      isStreaming,
+      messageIdCounter: messageIdCounter.current,
+    });
   }, [directory, messages, thread, isStreaming]);
 
   // Ensure persistence on unmount (refs capture latest values)
   useEffect(() => {
     return () => {
-      const state = getPersistedState(directory);
-      state.messages = messagesRef.current;
-      state.thread = threadRef.current;
-      state.isStreaming = isStreamingRef.current;
-      state.messageIdCounter = messageIdCounter.current;
+      setPersistedCodexState(directory, {
+        messages: messagesRef.current,
+        thread: threadRef.current,
+        isStreaming: isStreamingRef.current,
+        messageIdCounter: messageIdCounter.current,
+      });
     };
   }, [directory]);
 
@@ -156,7 +146,7 @@ export function useCodexSession(directory: string) {
   useEffect(() => {
     isMounted.current = true;
     // On remount, re-sync from persisted state (events may have arrived while unmounted)
-    const p = getPersistedState(directory);
+    const p = getPersistedCodexState(directory);
     setMessages(p.messages);
     setThread(p.thread);
     setIsStreaming(p.isStreaming);
@@ -202,24 +192,7 @@ export function useCodexSession(directory: string) {
     (codexItemId: string, field: "content" | "output" | "diff" | "summary", delta: string) => {
       const msgId = codexItemToMsgId.current.get(codexItemId);
       if (!msgId) return;
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === msgId);
-        if (idx < 0) return prev;
-        const item = prev[idx];
-        const updated = { ...item };
-        if (field === "content" && "content" in updated) {
-          (updated as { content: string }).content += delta;
-        } else if (field === "output" && "output" in updated) {
-          (updated as { output?: string }).output = ((updated as { output?: string }).output ?? "") + delta;
-        } else if (field === "diff" && "diff" in updated) {
-          (updated as { diff?: string }).diff = ((updated as { diff?: string }).diff ?? "") + delta;
-        } else if (field === "summary" && "summary" in updated) {
-          (updated as { summary: string }).summary += delta;
-        }
-        const next = [...prev];
-        next[idx] = updated as CodexMessageItem;
-        return next;
-      });
+      setMessages((prev) => appendDeltaToMappedItem(prev, msgId, field, delta));
     },
     [],
   );
@@ -239,7 +212,7 @@ export function useCodexSession(directory: string) {
         const turn = params.turn as { id?: string } | undefined;
         activeTurnIdRef.current = turn?.id ?? null;
         // Insert a thinking indicator
-        const thinkingId = `codex-thinking-${messageIdCounter.current++}`;
+        const thinkingId = nextMessageID("codex-thinking", messageIdCounter);
         thinkingItemIdRef.current = thinkingId;
         setMessages((prev) => [
           ...prev,
@@ -256,7 +229,7 @@ export function useCodexSession(directory: string) {
         const tId = thinkingItemIdRef.current;
         thinkingItemIdRef.current = null;
         if (tId) {
-          setMessages((prev) => prev.filter((m) => m.id !== tId));
+          setMessages((prev) => removeMessageByID(prev, tId));
         }
         // If plan items were updated during this turn, the plan is ready for user review
         if (hadPlanUpdate.current) {
@@ -292,48 +265,8 @@ export function useCodexSession(directory: string) {
         const plan = params.plan as unknown;
         const explanation = params.explanation as unknown;
 
-        // Helper: extract text content from a plan step object
-        const extractStepContent = (s: Record<string, unknown>): string => {
-          // Try every plausible field name
-          for (const key of ["content", "title", "text", "description", "step", "name", "summary", "label", "task"]) {
-            const val = s[key];
-            if (typeof val === "string" && val.trim()) return val.trim();
-          }
-          // Last resort: stringify the first string value found
-          for (const val of Object.values(s)) {
-            if (typeof val === "string" && val.trim().length > 3) return val.trim();
-          }
-          return JSON.stringify(s);
-        };
-
-        // Helper: parse markdown text into bullet items
-        const parseMarkdownPlan = (text: string): TodoItem[] => {
-          const lines = text.split("\n")
-            .map((l: string) => l.trim())
-            .filter((l: string) => l.startsWith("- ") || l.startsWith("* ") || /^\d+[.)]\s/.test(l));
-          return lines.map((line: string, i: number) => ({
-            id: `plan-${i}`,
-            content: line.replace(/^\s*[-*]\s*/, "").replace(/^\d+[.)]\s*/, "").trim(),
-            status: "pending" as const,
-          }));
-        };
-
         if (Array.isArray(plan) && plan.length > 0) {
-          const items: TodoItem[] = plan.map((step: unknown, i: number) => {
-            if (typeof step === "string") {
-              return { id: `plan-${i}`, content: step, status: "pending" as const };
-            }
-            if (step && typeof step === "object") {
-              const s = step as Record<string, unknown>;
-              const status = String(s.status ?? "pending");
-              const mappedStatus: TodoItem["status"] =
-                status === "completed" ? "completed" :
-                status === "in_progress" || status === "inProgress" ? "in_progress" :
-                status === "cancelled" ? "cancelled" : "pending";
-              return { id: String(s.id ?? `plan-${i}`), content: extractStepContent(s), status: mappedStatus };
-            }
-            return { id: `plan-${i}`, content: String(step), status: "pending" as const };
-          });
+          const items = parseStructuredPlan(plan);
           setPlanItems(items);
         } else if (typeof plan === "string" && plan.trim()) {
           const items = parseMarkdownPlan(plan);
@@ -379,7 +312,7 @@ export function useCodexSession(directory: string) {
 
         if (item.type === "agentMessage") {
           streamingItemIdRef.current = item.id;
-          const msgId = `codex-assistant-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-assistant", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           // Remove thinking item when the real message starts arriving
           const tId = thinkingItemIdRef.current;
@@ -395,7 +328,7 @@ export function useCodexSession(directory: string) {
 
         // F4: Rich item types — started events
         if (item.type === "commandExecution") {
-          const msgId = `codex-cmd-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-cmd", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -412,7 +345,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "fileChange") {
-          const msgId = `codex-diff-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-diff", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -428,7 +361,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "reasoning") {
-          const msgId = `codex-reasoning-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-reasoning", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -443,7 +376,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "fileRead") {
-          const msgId = `codex-ctx-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-ctx", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -459,7 +392,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "webSearch") {
-          const msgId = `codex-ctx-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-ctx", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -475,7 +408,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "mcpToolCall") {
-          const msgId = `codex-ctx-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-ctx", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -491,7 +424,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "plan") {
-          const msgId = `codex-plan-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-plan", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -508,7 +441,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "contextCompaction") {
-          const msgId = `codex-compaction-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-compaction", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -517,7 +450,7 @@ export function useCodexSession(directory: string) {
         }
 
         if (item.type === "collabToolCall" || item.type === "collabAgentToolCall") {
-          const msgId = `codex-task-${messageIdCounter.current++}`;
+          const msgId = nextMessageID("codex-task", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           setMessages((prev) => [
             ...prev,
@@ -540,12 +473,7 @@ export function useCodexSession(directory: string) {
       case "item/agentMessage/delta": {
         const delta = params.delta as string;
         if (delta) {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const last = prev[prev.length - 1];
-            if (last.kind !== "message" || last.role !== "assistant") return prev;
-            return [...prev.slice(0, -1), { ...last, content: last.content + delta }];
-          });
+          setMessages((prev) => appendAssistantDeltaToLastMessage(prev, delta));
         }
         break;
       }
@@ -634,7 +562,7 @@ export function useCodexSession(directory: string) {
             });
           } else {
             // Fallback: no started event was seen — add a completed item directly
-            const msgId = `codex-cmd-${messageIdCounter.current++}`;
+            const msgId = nextMessageID("codex-cmd", messageIdCounter);
             setMessages((prev) => [
               ...prev,
               {
@@ -670,7 +598,7 @@ export function useCodexSession(directory: string) {
               return next;
             });
           } else {
-            const msgId = `codex-diff-${messageIdCounter.current++}`;
+            const msgId = nextMessageID("codex-diff", messageIdCounter);
             setMessages((prev) => [
               ...prev,
               {
@@ -790,9 +718,12 @@ export function useCodexSession(directory: string) {
         setThread(t);
         setMessages([]);
         setIsStreaming(false);
-        streamingItemIdRef.current = null;
-        thinkingItemIdRef.current = null;
-        codexItemToMsgId.current.clear();
+        resetStreamingBookkeeping({
+          streamingItemIdRef,
+          thinkingItemIdRef,
+          activeTurnIdRef,
+          codexItemToMsgId,
+        });
         setPlanItems([]);
         setThreadName(undefined);
       } catch (err) {

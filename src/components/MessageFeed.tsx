@@ -7,6 +7,32 @@ import { ThinkingShimmer } from "./chat/ThinkingShimmer";
 import { TextPart } from "./chat/TextPart";
 import { MessageHeader } from "./chat/MessageHeader";
 import { MessageTurn } from "./chat/MessageTurn";
+import {
+  extractMetaFileDiffSummary,
+  extractPatchSummary,
+  extractWriteFileSummary,
+} from "../lib/message-feed-patch-summary";
+import {
+  buildDelegationEventBlocks,
+  buildTimelineBlocks,
+  pluralize,
+  type InternalEvent,
+  type TimelineEvent,
+  type TimelineKind,
+} from "../lib/message-feed-timeline";
+import {
+  countOrxaMemoryLines,
+  extractVisibleText,
+  getVisibleParts,
+  isLikelyTelemetryJson,
+  isProgressUpdateText,
+  parseJsonObject,
+  parseOrxaBrowserResultText,
+  parseSupermemoryInternalText,
+  shouldHideAssistantText,
+  summarizeOrxaBrowserActionText,
+} from "../lib/message-feed-visibility";
+import { DelegationEventBlocks, MessageTimelineBlocks } from "./message-feed/TimelineBlocks";
 
 type Props = {
   messages: SessionMessageBundle[];
@@ -25,165 +51,10 @@ type SessionFeedNotice = {
   tone?: "info" | "error";
 };
 
-type InternalEvent = {
-  id: string;
-  summary: string;
-  details?: string;
-  actor?: string;
-  kind?: TimelineKind;
-  command?: string;
-  failure?: string;
-};
-
 type ActivityEvent = {
   id: string;
   label: string;
 };
-
-type TimelineEvent = {
-  id: string;
-  label: string;
-  kind: TimelineKind;
-  reason?: string;
-  command?: string;
-  failure?: string;
-};
-
-type TimelineKind = "read" | "search" | "list" | "todo" | "create" | "edit" | "delete" | "git" | "delegate" | "run";
-
-type TimelineBlock =
-  | {
-      id: string;
-      type: "exploration";
-      summary: string;
-      entries: TimelineEvent[];
-    }
-  | {
-      id: string;
-      type: "event";
-      entry: TimelineEvent;
-    };
-
-type DelegationEventBlock =
-  | {
-      id: string;
-      type: "exploration";
-      summary: string;
-      entries: InternalEvent[];
-    }
-  | {
-      id: string;
-      type: "event";
-      entry: InternalEvent;
-    };
-
-const ORXA_BROWSER_RESULT_PREFIX = "[ORXA_BROWSER_RESULT]";
-const SUPERMEMORY_INTERNAL_PREFIX = "[SUPERMEMORY]";
-const INTERNAL_USER_TEXT_PREFIXES = [
-  ORXA_BROWSER_RESULT_PREFIX,
-  SUPERMEMORY_INTERNAL_PREFIX,
-];
-const ORXA_BROWSER_ACTION_TAG_PATTERN = /<orxa_browser_action>\s*([\s\S]*?)\s*<\/orxa_browser_action>/gi;
-
-function pluralize(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
-function isExplorationKind(kind: TimelineKind) {
-  return kind === "read" || kind === "search" || kind === "list";
-}
-
-function summarizeExploration(entries: TimelineEvent[]) {
-  const reads = entries.filter((entry) => entry.kind === "read").length;
-  const searches = entries.filter((entry) => entry.kind === "search").length;
-  const lists = entries.filter((entry) => entry.kind === "list").length;
-  const parts: string[] = [];
-  if (reads > 0) {
-    parts.push(pluralize(reads, "file"));
-  }
-  if (searches > 0) {
-    parts.push(pluralize(searches, "search", "searches"));
-  }
-  if (lists > 0) {
-    parts.push(pluralize(lists, "list"));
-  }
-  if (parts.length === 0) {
-    parts.push(pluralize(entries.length, "step"));
-  }
-  return `Explored ${parts.join(", ")}`;
-}
-
-function buildTimelineBlocks(events: TimelineEvent[]): TimelineBlock[] {
-  const blocks: TimelineBlock[] = [];
-  let activeExploration: TimelineEvent[] = [];
-
-  const flushExploration = () => {
-    if (activeExploration.length === 0) {
-      return;
-    }
-    blocks.push({
-      id: `exploration:${activeExploration[0]?.id ?? blocks.length}`,
-      type: "exploration",
-      summary: summarizeExploration(activeExploration),
-      entries: activeExploration,
-    });
-    activeExploration = [];
-  };
-
-  for (const entry of events) {
-    if (isExplorationKind(entry.kind)) {
-      activeExploration.push(entry);
-      continue;
-    }
-    flushExploration();
-    blocks.push({ id: `event:${entry.id}`, type: "event", entry });
-  }
-  flushExploration();
-  return blocks;
-}
-
-function buildDelegationEventBlocks(events: InternalEvent[]): DelegationEventBlock[] {
-  const blocks: DelegationEventBlock[] = [];
-  let activeExploration: InternalEvent[] = [];
-
-  const flushExploration = () => {
-    if (activeExploration.length === 0) {
-      return;
-    }
-    const reads = activeExploration.filter((entry) => entry.kind === "read").length;
-    const searches = activeExploration.filter((entry) => entry.kind === "search").length;
-    const lists = activeExploration.filter((entry) => entry.kind === "list").length;
-    const parts: string[] = [];
-    if (reads > 0) {
-      parts.push(pluralize(reads, "file"));
-    }
-    if (searches > 0) {
-      parts.push(pluralize(searches, "search", "searches"));
-    }
-    if (lists > 0) {
-      parts.push(pluralize(lists, "list"));
-    }
-    const summary = `Explored ${parts.length > 0 ? parts.join(", ") : pluralize(activeExploration.length, "step")}`;
-    blocks.push({
-      id: `exploration:${activeExploration[0]?.id ?? blocks.length}`,
-      type: "exploration",
-      summary,
-      entries: activeExploration,
-    });
-    activeExploration = [];
-  };
-
-  for (const entry of events) {
-    if (entry.kind && isExplorationKind(entry.kind)) {
-      activeExploration.push(entry);
-      continue;
-    }
-    flushExploration();
-    blocks.push({ id: `event:${entry.id}`, type: "event", entry });
-  }
-  flushExploration();
-  return blocks;
-}
 
 type DelegationTrace = {
   id: string;
@@ -213,175 +84,6 @@ function getRoleLabel(role: string, assistantLabel: string) {
     return "User";
   }
   return role;
-}
-
-function getVisibleParts(role: string, parts: Part[]) {
-  if (role !== "user") {
-    return parts.filter((part) => part.type === "text" || part.type === "file");
-  }
-
-  const visibleUserTextParts = parts.filter((part) => {
-    if (part.type !== "text") {
-      return false;
-    }
-    const text = part.text.trim();
-    if (text.length === 0 || text.startsWith("[SUPERMEMORY]")) {
-      return false;
-    }
-    if (INTERNAL_USER_TEXT_PREFIXES.some((prefix) => text.startsWith(prefix))) {
-      return false;
-    }
-    if ("ignored" in part && part.ignored) {
-      return false;
-    }
-    if ("synthetic" in part && part.synthetic) {
-      return false;
-    }
-    return true;
-  });
-
-  if (visibleUserTextParts.length === 0) {
-    return [];
-  }
-
-  const fileParts = parts.filter((part) => part.type === "file");
-  const filtered = [...visibleUserTextParts, ...fileParts];
-
-  if (filtered.length > 0) {
-    return filtered;
-  }
-  return [];
-}
-
-function parseJsonObject(value: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function parseOrxaBrowserActionsFromText(text: string): Array<{ id?: string; action?: string }> {
-  const actions: Array<{ id?: string; action?: string }> = [];
-  let match: RegExpExecArray | null;
-  ORXA_BROWSER_ACTION_TAG_PATTERN.lastIndex = 0;
-  while ((match = ORXA_BROWSER_ACTION_TAG_PATTERN.exec(text)) !== null) {
-    const payload = parseJsonObject((match[1] ?? "").trim());
-    if (!payload) {
-      continue;
-    }
-    const action = typeof payload.action === "string" ? payload.action.trim() : undefined;
-    const id = typeof payload.id === "string" ? payload.id.trim() : undefined;
-    if (!action && !id) {
-      continue;
-    }
-    actions.push({
-      action: action && action.length > 0 ? action : undefined,
-      id: id && id.length > 0 ? id : undefined,
-    });
-  }
-  return actions;
-}
-
-function summarizeOrxaBrowserActionText(text: string) {
-  const actions = parseOrxaBrowserActionsFromText(text);
-  if (actions.length === 0) {
-    return null;
-  }
-  if (actions.length === 1) {
-    const first = actions[0]!;
-    const actionLabel = first.action ?? "action";
-    return `Queued browser action: ${actionLabel}`;
-  }
-  return `Queued ${actions.length} browser actions`;
-}
-
-function countOrxaMemoryLines(text: string) {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("[ORXA_MEMORY]")).length;
-}
-
-function parseOrxaBrowserResultText(text: string) {
-  if (!text.startsWith(ORXA_BROWSER_RESULT_PREFIX)) {
-    return null;
-  }
-  const payload = parseJsonObject(text.slice(ORXA_BROWSER_RESULT_PREFIX.length).trim());
-  if (!payload) {
-    return { action: "action", ok: true } as const;
-  }
-  const action = typeof payload.action === "string" ? payload.action.trim() : "action";
-  const ok = payload.ok !== false;
-  const error = typeof payload.error === "string" ? payload.error.trim() : undefined;
-  const blockedReason = typeof payload.blockedReason === "string" ? payload.blockedReason.trim() : undefined;
-  return {
-    action,
-    ok,
-    error,
-    blockedReason,
-  };
-}
-
-function parseSupermemoryInternalText(text: string) {
-  if (!text.startsWith(SUPERMEMORY_INTERNAL_PREFIX)) {
-    return null;
-  }
-  const payload = text.slice(SUPERMEMORY_INTERNAL_PREFIX.length).trim();
-  const firstLine = payload.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  if (!/^injected\s+\d+\s+items?\b/i.test(firstLine)) {
-    return null;
-  }
-  return firstLine;
-}
-
-function isLikelyTelemetryJson(value: string) {
-  const parsed = parseJsonObject(value);
-  if (!parsed) {
-    return false;
-  }
-  const type = typeof parsed.type === "string" ? parsed.type : undefined;
-  if (type === "step-start" || type === "step-finish") {
-    return true;
-  }
-  return typeof parsed.sessionID === "string" && typeof parsed.messageID === "string";
-}
-
-function shouldHideAssistantText(value: string) {
-  const text = value.trim();
-  if (text.length === 0) {
-    return true;
-  }
-  if (parseOrxaBrowserActionsFromText(text).length > 0) {
-    return true;
-  }
-  if (countOrxaMemoryLines(text) > 0) {
-    return true;
-  }
-  if (isLikelyTelemetryJson(text)) {
-    return true;
-  }
-  if (text.includes("Prioritizing mandatory TODO creation")) {
-    return true;
-  }
-  if (isProgressUpdateText(text)) {
-    return true;
-  }
-  return false;
-}
-
-function isProgressUpdateText(text: string) {
-  if (!text.endsWith(":")) {
-    return false;
-  }
-  if (text.length > 240 || text.includes("\n")) {
-    return false;
-  }
-  return /^(i(?:'ll| will| need to| am going to| can)|let me|now i|first|next|then|before)/i.test(text);
 }
 
 function compactText(value: string, maxLength = 58) {
@@ -628,212 +330,6 @@ function extractTaskSessionIDFromOutput(output: unknown) {
     return fromLine.trim();
   }
   return undefined;
-}
-
-function isLikelyPatchText(value: string) {
-  return /(?:\*\*\*\s+(?:Begin Patch|Update|Add|Delete)\s+File:|diff --git\s+a\/|@@)/.test(value);
-}
-
-function extractPatchText(input: unknown, output: unknown) {
-  const candidates: string[] = [];
-  if (typeof input === "string" && input.trim()) {
-    candidates.push(input);
-  }
-  const nestedPatchText = extractStringByKeys(input, ["patch", "content", "text", "diff"]);
-  if (nestedPatchText) {
-    candidates.push(nestedPatchText);
-  }
-  if (typeof output === "string" && output.trim()) {
-    candidates.push(output);
-  }
-  return candidates.find((candidate) => isLikelyPatchText(candidate)) ?? null;
-}
-
-type PatchFileStat = {
-  filePath: string;
-  additions: number;
-  deletions: number;
-};
-
-function parsePatchFileStats(patchText: string, workspaceDirectory?: string | null): PatchFileStat[] {
-  const lines = patchText.split(/\r?\n/);
-  const stats = new Map<string, PatchFileStat>();
-  let currentFilePath: string | null = null;
-
-  const normalizePath = (rawPath: string) => {
-    const cleaned = rawPath
-      .trim()
-      .replace(/^a\//, "")
-      .replace(/^b\//, "");
-    return formatTarget(cleaned, workspaceDirectory, 96);
-  };
-
-  const startFile = (rawPath: string) => {
-    const nextPath = normalizePath(rawPath);
-    if (!nextPath) {
-      return;
-    }
-    if (currentFilePath === nextPath) {
-      return;
-    }
-    currentFilePath = nextPath;
-    if (!stats.has(nextPath)) {
-      stats.set(nextPath, { filePath: nextPath, additions: 0, deletions: 0 });
-    }
-  };
-
-  for (const line of lines) {
-    const applyPatchMatch = line.match(/^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s+(.+)$/i);
-    if (applyPatchMatch?.[1]) {
-      startFile(applyPatchMatch[1]);
-      continue;
-    }
-    const gitDiffMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-    if (gitDiffMatch?.[2]) {
-      startFile(gitDiffMatch[2]);
-      continue;
-    }
-    const plusPlusPlusMatch = line.match(/^\+\+\+\s+(.+)$/);
-    if (plusPlusPlusMatch?.[1] && plusPlusPlusMatch[1] !== "/dev/null") {
-      startFile(plusPlusPlusMatch[1]);
-      continue;
-    }
-    if (!currentFilePath) {
-      continue;
-    }
-    const active = stats.get(currentFilePath);
-    if (!active) {
-      continue;
-    }
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      active.additions += 1;
-      continue;
-    }
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      active.deletions += 1;
-    }
-  }
-  return [...stats.values()];
-}
-
-function summarizePatchFileStats(stats: PatchFileStat[]) {
-  if (stats.length === 0) {
-    return null;
-  }
-  const [first] = stats;
-  const base = `${first.filePath} +${first.additions} | -${first.deletions}`;
-  if (stats.length === 1) {
-    return base;
-  }
-  return `${base} (+${stats.length - 1} more file${stats.length - 1 === 1 ? "" : "s"})`;
-}
-
-function countContentLines(value: string) {
-  const normalized = value.replace(/\r/g, "");
-  if (!normalized) {
-    return 0;
-  }
-  return normalized.split("\n").length;
-}
-
-function collectMetadataFileDiffStats(
-  value: unknown,
-  workspaceDirectory: string | null | undefined,
-  depth = 0,
-): PatchFileStat[] {
-  if (!value || depth > 4) {
-    return [];
-  }
-  const toStat = (record: Record<string, unknown>): PatchFileStat | null => {
-    const rawFile = ["file", "filepath", "filePath", "path"]
-      .map((key) => record[key])
-      .find((item): item is string => typeof item === "string" && item.trim().length > 0);
-    if (!rawFile) {
-      return null;
-    }
-    const additionsRaw = ["additions", "added", "insertions"]
-      .map((key) => record[key])
-      .find((item) => typeof item === "number");
-    const deletionsRaw = ["deletions", "removed", "removals"]
-      .map((key) => record[key])
-      .find((item) => typeof item === "number");
-    return {
-      filePath: formatTarget(rawFile, workspaceDirectory, 96),
-      additions: typeof additionsRaw === "number" ? Math.max(0, Math.round(additionsRaw)) : 0,
-      deletions: typeof deletionsRaw === "number" ? Math.max(0, Math.round(deletionsRaw)) : 0,
-    };
-  };
-
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => collectMetadataFileDiffStats(entry, workspaceDirectory, depth + 1));
-  }
-  if (typeof value !== "object") {
-    return [];
-  }
-  const record = value as Record<string, unknown>;
-  const found: PatchFileStat[] = [];
-  const direct = toStat(record);
-  if (direct) {
-    found.push(direct);
-  }
-  for (const nestedKey of ["filediff", "filediffs", "files", "changes", "diff", "result", "output", "metadata"]) {
-    if (nestedKey in record) {
-      found.push(...collectMetadataFileDiffStats(record[nestedKey], workspaceDirectory, depth + 1));
-    }
-  }
-  return found;
-}
-
-function extractMetaFileDiffSummary(metadata: unknown, workspaceDirectory?: string | null) {
-  const stats = collectMetadataFileDiffStats(metadata, workspaceDirectory);
-  if (stats.length === 0) {
-    return null;
-  }
-  const merged = new Map<string, PatchFileStat>();
-  for (const stat of stats) {
-    const existing = merged.get(stat.filePath);
-    if (!existing) {
-      merged.set(stat.filePath, { ...stat });
-      continue;
-    }
-    existing.additions += stat.additions;
-    existing.deletions += stat.deletions;
-  }
-  return summarizePatchFileStats([...merged.values()]);
-}
-
-function extractWriteFileSummary(input: unknown, metadata: unknown, workspaceDirectory?: string | null) {
-  const inputRecord = toObjectRecord(input);
-  const metadataRecord = toObjectRecord(metadata);
-  const filepath =
-    (metadataRecord && typeof metadataRecord.filepath === "string" ? metadataRecord.filepath : undefined) ??
-    (inputRecord && typeof inputRecord.filePath === "string" ? inputRecord.filePath : undefined) ??
-    (inputRecord && typeof inputRecord.path === "string" ? inputRecord.path : undefined);
-  if (!filepath) {
-    return null;
-  }
-  const exists = metadataRecord && typeof metadataRecord.exists === "boolean" ? metadataRecord.exists : undefined;
-  const target = formatTarget(filepath, workspaceDirectory, 96);
-  if (exists === false) {
-    const content = inputRecord && typeof inputRecord.content === "string" ? inputRecord.content : "";
-    const additions = countContentLines(content);
-    return {
-      verb: "Created" as const,
-      summary: `${target} +${additions} | -0`,
-    };
-  }
-  return {
-    verb: "Edited" as const,
-    summary: target,
-  };
-}
-
-function extractPatchSummary(input: unknown, output: unknown, workspaceDirectory?: string | null) {
-  const patchText = extractPatchText(input, output);
-  if (!patchText) {
-    return null;
-  }
-  return summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
 }
 
 function isBareCommandLabel(label: string) {
@@ -1732,42 +1228,6 @@ function renderPart(part: Part, role?: string, showCopy?: boolean) {
   return null;
 }
 
-function renderLabelWithDiff(label: string) {
-  const match = label.match(/^(.*?)(\+\d+)\s*\|\s*(-\d+)(.*)$/);
-  if (!match) {
-    return label;
-  }
-  const prefix = match[1] ?? "";
-  const additions = match[2] ?? "";
-  const deletions = match[3] ?? "";
-  const suffix = match[4] ?? "";
-  return (
-    <>
-      {prefix}
-      <span className="message-diff-add">{additions}</span>
-      {" | "}
-      <span className="message-diff-del">{deletions}</span>
-      {suffix}
-    </>
-  );
-}
-
-function extractVisibleText(parts: Part[]): string {
-  const segments: string[] = [];
-  for (const part of parts) {
-    if (part.type === "text") {
-      const text = part.text.trim();
-      if (text.length > 0) {
-        segments.push(text);
-      }
-    } else if (part.type === "file") {
-      const label = part.filename ?? part.url ?? "file";
-      segments.push(`[Attached file: ${label}]`);
-    }
-  }
-  return segments.join("\n\n");
-}
-
 function CopyMessageButton({ parts }: { parts: Part[] }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2135,27 +1595,7 @@ export function MessageFeed({
                 ) : null}
                 {timeline.length > 0 ? (
                   <section className="message-timeline">
-                    {timelineBlocks.map((block) =>
-                      block.type === "exploration" ? (
-                        <details key={block.id} className="message-exploration">
-                          <summary className="message-exploration-summary">{block.summary}</summary>
-                          <div className="message-exploration-entries">
-                            {block.entries.map((entry) => (
-                              <span key={entry.id} className="message-exploration-entry">
-                                {renderLabelWithDiff(entry.label)}
-                              </span>
-                            ))}
-                          </div>
-                        </details>
-                      ) : (
-                        <div key={block.id} className="message-timeline-row">
-                          <span className="message-timeline-row-label">{renderLabelWithDiff(block.entry.label)}</span>
-                          {block.entry.command ? <small className="message-timeline-row-command">Command: {block.entry.command}</small> : null}
-                          {block.entry.failure ? <small className="message-timeline-row-error">Error: {block.entry.failure}</small> : null}
-                          {block.entry.reason ? <small className="message-timeline-row-reason">{block.entry.reason}</small> : null}
-                        </div>
-                      ),
-                    )}
+                    <MessageTimelineBlocks blocks={timelineBlocks} />
                   </section>
                 ) : null}
               </div>
@@ -2241,29 +1681,7 @@ export function MessageFeed({
                   <p>No live output yet.</p>
                 ) : (
                   <div className="delegation-modal-events-list">
-                    {selectedDelegationEventBlocks.map((block, blockIndex) =>
-                      block.type === "exploration" ? (
-                        <details key={`${block.id}:${blockIndex}`} className="message-exploration delegation-event-exploration">
-                          <summary className="message-exploration-summary">{block.summary}</summary>
-                          <div className="message-exploration-entries">
-                            {block.entries.map((entry, entryIndex) => (
-                              <span key={`${entry.id}:${entryIndex}`} className="message-exploration-entry">
-                                {renderLabelWithDiff(entry.summary)}
-                              </span>
-                            ))}
-                          </div>
-                        </details>
-                      ) : (
-                        <div key={`${block.id}:${blockIndex}`} className="delegation-modal-event-row">
-                          <span className="delegation-modal-event-label">{renderLabelWithDiff(block.entry.summary)}</span>
-                          {block.entry.command ? <small className="delegation-modal-event-command">Command: {block.entry.command}</small> : null}
-                          {block.entry.failure ? <small className="delegation-modal-event-error">Error: {block.entry.failure}</small> : null}
-                          {block.entry.details && !block.entry.failure ? (
-                            <small className="delegation-event-details">{block.entry.details}</small>
-                          ) : null}
-                        </div>
-                      ),
-                    )}
+                    <DelegationEventBlocks blocks={selectedDelegationEventBlocks} />
                   </div>
                 )}
                 <p className={`delegation-modal-session-status${delegationSessionError ? " error" : ""}`}>

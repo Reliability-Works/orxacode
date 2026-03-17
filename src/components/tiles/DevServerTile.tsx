@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RefreshCw, Server } from "lucide-react";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import type { ListeningPort } from "@shared/ipc";
 import { CanvasTileComponent } from "../CanvasTile";
+import type { CanvasTileComponentProps } from "./tile-shared";
 
-interface DevServerTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
+type DevServerTileProps = CanvasTileComponentProps;
 
 const REFRESH_INTERVAL = 5000;
 

@@ -3,8 +3,8 @@ import { Terminal as TerminalIcon } from "lucide-react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import { CanvasTileComponent } from "../CanvasTile";
+import type { CanvasTileComponentProps } from "./tile-shared";
 
 const TERMINAL_THEME = {
   background: "#000000",
@@ -30,16 +30,7 @@ const TERMINAL_THEME = {
   brightWhite: "#FFFFFF",
 };
 
-interface TerminalTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
+type TerminalTileProps = CanvasTileComponentProps;
 
 export function TerminalTile({
   tile,

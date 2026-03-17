@@ -3,36 +3,18 @@ import { createInterface, type Interface } from "node:readline";
 import { EventEmitter } from "node:events";
 import { readdirSync, accessSync, constants } from "node:fs";
 import path from "node:path";
+import type {
+  CodexApprovalRequest,
+  CodexCollaborationMode,
+  CodexModelEntry,
+  CodexNotification,
+  CodexState,
+  CodexThread,
+} from "@shared/ipc";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export type CodexConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
-
-export interface CodexModelEntry {
-  id: string;
-  model: string;
-  name: string;
-  isDefault: boolean;
-  supportedReasoningEfforts: string[];
-  defaultReasoningEffort: string | null;
-}
-
-export interface CodexState {
-  status: CodexConnectionStatus;
-  serverInfo?: { name: string; version: string };
-  lastError?: string;
-}
-
-export interface CodexThread {
-  id: string;
-  preview: string;
-  modelProvider: string;
-  createdAt: number;
-  status?: { type: string };
-  ephemeral?: boolean;
-}
 
 export interface CodexTurnItem {
   type: string;
@@ -53,38 +35,6 @@ export interface CodexTurn {
   items: CodexTurnItem[];
   error?: string | null;
   tokenUsage?: { input: number; output: number };
-}
-
-export interface CodexApprovalRequest {
-  id: number;
-  method: string;
-  itemId: string;
-  threadId: string;
-  turnId: string;
-  reason: string;
-  command?: string[];
-  commandActions?: string[];
-  availableDecisions: string[];
-  changes?: Array<{
-    path: string;
-    type: string;
-    insertions?: number;
-    deletions?: number;
-  }>;
-}
-
-export interface CodexCollaborationMode {
-  id: string;
-  label: string;
-  mode: string;
-  model: string;
-  reasoningEffort: string;
-  developerInstructions: string;
-}
-
-export interface CodexNotification {
-  method: string;
-  params: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

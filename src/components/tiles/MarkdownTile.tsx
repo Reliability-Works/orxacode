@@ -1,24 +1,9 @@
 import { useCallback, useState } from "react";
 import { BookOpen, FolderOpen } from "lucide-react";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import { CanvasTileComponent } from "../CanvasTile";
+import { tilePathBasename, type CanvasTileComponentProps } from "./tile-shared";
 
-interface MarkdownTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
-
-function getFileName(filePath: string): string {
-  if (!filePath) return "untitled.md";
-  const parts = filePath.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || filePath;
-}
+type MarkdownTileProps = CanvasTileComponentProps;
 
 /**
  * Minimal markdown-to-HTML renderer. Handles headings, bold, italic,
@@ -180,7 +165,7 @@ export function MarkdownTile({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fileName = filePath ? getFileName(filePath) : undefined;
+  const fileName = filePath ? tilePathBasename(filePath, "untitled.md") : undefined;
   const html = renderMarkdown(content);
 
   const handleOpenFile = useCallback(async () => {

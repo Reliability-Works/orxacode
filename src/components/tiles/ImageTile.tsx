@@ -1,24 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { FolderOpen, Image as ImageIcon, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
 import { CanvasTileComponent } from "../CanvasTile";
+import { tilePathBasename, type CanvasTileComponentProps } from "./tile-shared";
 
-interface ImageTileProps {
-  tile: CanvasTile;
-  canvasTheme: CanvasTheme;
-  onUpdate: (id: string, patch: Partial<CanvasTile>) => void;
-  onRemove: (id: string) => void;
-  onBringToFront: (id: string) => void;
-  snapToGrid?: boolean;
-  gridSize?: number;
-  allTiles?: CanvasTile[];
-}
-
-function getFileName(filePath: string): string {
-  if (!filePath) return "";
-  const parts = filePath.replace(/\\/g, "/").split("/");
-  return parts[parts.length - 1] || filePath;
-}
+type ImageTileProps = CanvasTileComponentProps;
 
 const MIN_SCALE = 0.1;
 const MAX_SCALE = 8;
@@ -40,7 +25,7 @@ export function ImageTile({
   const [imgError, setImgError] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const fileName = filePath ? getFileName(filePath) : undefined;
+  const fileName = filePath ? tilePathBasename(filePath) : undefined;
 
   // Resolve src — electron file:// paths need the protocol prefix
   const src = filePath

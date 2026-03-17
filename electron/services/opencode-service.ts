@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
@@ -78,65 +78,52 @@ import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
 import { MemoryStore } from "./memory-store";
 import { ArtifactStore } from "./artifact-store";
 import { WorkspaceContextStore } from "./workspace-context-store";
-
-const DEFAULT_TIMEOUT_MS = 10_000;
-const DEPENDENCY_CHECK_TIMEOUT_MS = 6_000;
-const OPENCODE_SOURCE_URL = "https://github.com/anomalyco/opencode";
-const OPENCODE_INSTALL_COMMAND = "npm install -g opencode-ai";
-const PROJECT_FILE_SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
-const DEFAULT_COMMIT_GUIDANCE = [
-  "Write a high-quality conventional commit message.",
-  "Use this format:",
-  "1) First line: <type>(optional-scope): concise summary in imperative mood.",
-  "2) Blank line.",
-  "3) Body bullets grouped by area, clearly describing what changed and why.",
-  "4) Mention notable side effects, risk, and follow-up work if relevant.",
-  "5) Keep it specific to the included diff and avoid generic phrasing.",
-].join("\n");
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-function sanitizeError(error: unknown) {
-  const raw =
-    error instanceof Error
-      ? error.message
-      : String(error);
-
-  return raw
-    .replace(/https?:\/\/[^\s)]+/gi, "[server]")
-    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[server]");
-}
-
-function isMissingGhCliError(error: unknown) {
-  const normalized = sanitizeError(error).toLowerCase();
-  return (
-    /spawn\s+.*\bgh\b.*\benoent\b/.test(normalized) ||
-    normalized.includes("gh: command not found") ||
-    normalized.includes("'gh' is not recognized as an internal or external command")
-  );
-}
-
-function isGhAuthError(error: unknown) {
-  const normalized = sanitizeError(error).toLowerCase();
-  return (
-    normalized.includes("not logged into any github hosts") ||
-    normalized.includes("try authenticating with") ||
-    normalized.includes("authentication required")
-  );
-}
-
-function isTransientPromptError(error: unknown) {
-  const normalized = sanitizeError(error).toLowerCase();
-  return (
-    normalized.includes("und_err_headers_timeout") ||
-    normalized.includes("headers timeout") ||
-    normalized.includes("fetch failed") ||
-    normalized.includes("socket hang up") ||
-    normalized.includes("econnreset")
-  );
-}
+import { buildOpenTargetAttempts } from "./open-target-attempts";
+import { OpencodeCommandHelpers } from "./opencode-command-helpers";
+import {
+  fallbackCommitMessage,
+  gitBranchesWorkflow,
+  gitCheckoutBranchWorkflow,
+  gitCommitSummaryWorkflow,
+  gitCommitWorkflow,
+  gitDiffWorkflow,
+  gitGenerateCommitMessageWorkflow,
+  gitIssuesWorkflow,
+  gitLogWorkflow,
+  gitPrsWorkflow,
+  gitRestoreAllUnstagedWorkflow,
+  gitRestorePathWorkflow,
+  gitStageAllWorkflow,
+  gitStagePathWorkflow,
+  gitUnstagePathWorkflow,
+  normalizeGitHubRemote,
+  parseGitPatchStats,
+  toCommitMessageArgs,
+} from "./opencode-git-workflows";
+import {
+  countProjectFiles,
+  listProjectFiles,
+  readProjectFile,
+} from "./opencode-project-files";
+import {
+  deleteOpenCodeAgentFile as deleteOpenCodeAgentFileInternal,
+  listOpenCodeAgentFiles as listOpenCodeAgentFilesInternal,
+  readGlobalAgentsMd as readGlobalAgentsMdInternal,
+  readOpenCodeAgentFile as readOpenCodeAgentFileInternal,
+  readWorkspaceAgentsMd as readWorkspaceAgentsMdInternal,
+  writeGlobalAgentsMd as writeGlobalAgentsMdInternal,
+  writeOpenCodeAgentFile as writeOpenCodeAgentFileInternal,
+  writeWorkspaceAgentsMd as writeWorkspaceAgentsMdInternal,
+} from "./opencode-agent-files";
+import { buildPromptDedupeKey, buildPromptParts, composeSystemPrompt } from "./opencode-prompting";
+import {
+  DEFAULT_TIMEOUT_MS,
+  OPENCODE_INSTALL_COMMAND,
+  OPENCODE_SOURCE_URL,
+  delay,
+  isTransientPromptError,
+  sanitizeError,
+} from "./opencode-runtime-helpers";
 
 function toSessionPermissionRules(mode?: SessionPermissionMode) {
   if (!mode) {
@@ -155,53 +142,6 @@ function toSessionPermissionRules(mode?: SessionPermissionMode) {
       action,
     },
   ];
-}
-
-function parseSimpleYamlFrontmatter(content: string) {
-  const trimmed = content.trim();
-  if (!trimmed.startsWith("---")) {
-    return {
-      metadata: {} as Record<string, string>,
-      body: trimmed,
-      hasFrontmatter: false,
-    };
-  }
-
-  const lines = trimmed.split(/\r?\n/);
-  let end = -1;
-  for (let index = 1; index < lines.length; index += 1) {
-    if (lines[index]?.trim() === "---") {
-      end = index;
-      break;
-    }
-  }
-  if (end < 0) {
-    return {
-      metadata: {} as Record<string, string>,
-      body: trimmed,
-      hasFrontmatter: false,
-    };
-  }
-
-  const metadata: Record<string, string> = {};
-  for (const line of lines.slice(1, end)) {
-    const match = line.match(/^\s*([A-Za-z_][\w-]*)\s*:\s*(.*)\s*$/);
-    if (!match) {
-      continue;
-    }
-    const key = match[1]!;
-    let value = match[2] ?? "";
-    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    metadata[key] = value;
-  }
-
-  return {
-    metadata,
-    body: lines.slice(end + 1).join("\n").trim(),
-    hasFrontmatter: true,
-  };
 }
 
 function normalizeSessionTitleFromText(text: string, maxLength = 56) {
@@ -373,6 +313,7 @@ export class OpencodeService {
   private memoryStore = new MemoryStore();
   private artifactStore = new ArtifactStore();
   private workspaceContextStore = new WorkspaceContextStore();
+  private commandHelpers = new OpencodeCommandHelpers();
 
   private managedProcess: ChildProcess | undefined;
   private state: RuntimeState = {
@@ -1070,48 +1011,13 @@ export class OpencodeService {
   async sendPrompt(input: PromptRequest) {
     const normalizedDirectory = this.ensureWorkspaceDirectory(input.directory);
     const promptSentAt = Date.now();
-    const dedupeKey = [
-      normalizedDirectory,
-      input.sessionID,
-      input.text.trim(),
-      input.contextModeEnabled ? "context:on" : "context:off",
-      input.promptSource ?? "user",
-      input.system?.trim() ?? "",
-    ].join("::");
+    const dedupeKey = buildPromptDedupeKey(input, normalizedDirectory);
     const lastAttemptAt = this.promptFence.get(dedupeKey);
     if (lastAttemptAt && promptSentAt - lastAttemptAt < 8_000) {
       return true;
     }
     this.promptFence.set(dedupeKey, promptSentAt);
-    const parts: Array<
-      | {
-          type: "text";
-          text: string;
-        }
-      | {
-          type: "file";
-          mime: string;
-          url: string;
-          filename?: string;
-        }
-    > = [
-      {
-        type: "text",
-        text: input.text,
-      },
-    ];
-
-    for (const attachment of input.attachments ?? []) {
-      if (!attachment.url || !attachment.mime) {
-        continue;
-      }
-      parts.push({
-        type: "file",
-        mime: attachment.mime,
-        url: attachment.url,
-        filename: attachment.filename,
-      });
-    }
+    const parts = buildPromptParts(input);
 
     const promptSource = input.promptSource ?? "user";
     const memoryContext = promptSource === "machine"
@@ -1145,10 +1051,7 @@ export class OpencodeService {
       }
     }
 
-    const systemPrompt = [input.system, memoryContext, contextPrompt]
-      .map((item) => (typeof item === "string" ? item.trim() : ""))
-      .filter((item) => item.length > 0)
-      .join("\n\n");
+    const systemPrompt = composeSystemPrompt([input.system, memoryContext, contextPrompt]);
 
     const request = {
       directory: normalizedDirectory,
@@ -1156,7 +1059,7 @@ export class OpencodeService {
       agent: input.agent,
       model: input.model,
       variant: input.variant,
-      system: systemPrompt.length > 0 ? systemPrompt : undefined,
+      system: systemPrompt,
       tools: input.tools,
       parts,
     };
@@ -1202,90 +1105,32 @@ export class OpencodeService {
   }
 
   async gitDiff(directory: string) {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      return "Not a git repository.";
-    }
-    const unstaged = await this.runCommandWithOutput("git", ["-C", repoRoot, "--no-pager", "diff", "--", "."], cwd).catch(
-      (error) => `Failed to load unstaged diff: ${sanitizeError(error)}`,
-    );
-    const staged = await this.runCommandWithOutput("git", ["-C", repoRoot, "--no-pager", "diff", "--staged", "--", "."], cwd).catch(
-      (error) => `Failed to load staged diff: ${sanitizeError(error)}`,
-    );
-    const untracked = await this.runCommandWithOutput(
-      "git",
-      ["-C", repoRoot, "ls-files", "--others", "--exclude-standard"],
-      cwd,
-    ).catch((error) => `Failed to load untracked files: ${sanitizeError(error)}`);
-
-    const sections: string[] = [];
-    if (unstaged.trim().length > 0) {
-      sections.push("## Unstaged\n", unstaged.trimEnd());
-    }
-    if (staged.trim().length > 0) {
-      sections.push("## Staged\n", staged.trimEnd());
-    }
-    if (untracked.trim().length > 0) {
-      const files = untracked
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      if (files.length > 0) {
-        const rendered = await Promise.all(files.map((filePath) => this.renderUntrackedDiff(repoRoot, filePath)));
-        const output = rendered.filter((chunk) => chunk.trim().length > 0).join("\n\n");
-        if (output.trim().length > 0) {
-          sections.push("## Untracked\n", output);
-        }
-      }
-    }
-    if (sections.length === 0) {
-      return "No local changes.";
-    }
-    return sections.join("\n\n");
+    return gitDiffWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+      renderUntrackedDiff: (repoRoot, relativePath) => this.renderUntrackedDiff(repoRoot, relativePath),
+    });
   }
 
   async gitLog(directory: string) {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      return "Not a git repository.";
-    }
-    const output = await this.runCommandWithOutput("git", ["-C", repoRoot, "--no-pager", "log", "--oneline", "--decorate", "-n", "40"], cwd)
-      .catch((error) => `Unable to load git log: ${sanitizeError(error)}`);
-    return output.trim().length > 0 ? output.trimEnd() : "No commit history found.";
+    return gitLogWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+    });
   }
 
   async gitIssues(directory: string) {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      return "Not a git repository.";
-    }
-    const output = await this.runCommandWithOutput("gh", ["issue", "list", "--limit", "30"], repoRoot).catch((error) => {
-      const message = sanitizeError(error);
-      if (isMissingGhCliError(error)) {
-        return "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
-      }
-      return `Unable to load issues: ${message}`;
+    return gitIssuesWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
     });
-    return output.trim().length > 0 ? output.trimEnd() : "No open issues.";
   }
 
   async gitPrs(directory: string) {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      return "Not a git repository.";
-    }
-    const output = await this.runCommandWithOutput("gh", ["pr", "list", "--limit", "30"], repoRoot).catch((error) => {
-      const message = sanitizeError(error);
-      if (isMissingGhCliError(error)) {
-        return "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
-      }
-      return `Unable to load pull requests: ${message}`;
+    return gitPrsWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
     });
-    return output.trim().length > 0 ? output.trimEnd() : "No open pull requests.";
   }
 
   async openDirectoryIn(directory: string, target: OpenDirectoryTarget): Promise<OpenDirectoryResult> {
@@ -1296,56 +1141,12 @@ export class OpencodeService {
     }
 
     const platform = process.platform;
-    const attempts: Array<{ command: string; args: string[]; label: string }> = [];
-
-    if (platform === "darwin") {
-      if (target === "finder") {
-        attempts.push({ command: "open", args: [cwd], label: "Finder" });
-      }
-      if (target === "cursor") {
-        attempts.push({ command: "open", args: ["-a", "Cursor", cwd], label: "Cursor" });
-        attempts.push({ command: "cursor", args: [cwd], label: "Cursor CLI" });
-      }
-      if (target === "antigravity") {
-        attempts.push({ command: "open", args: ["-a", "Antigravity", cwd], label: "Antigravity" });
-      }
-      if (target === "terminal") {
-        attempts.push({ command: "open", args: ["-a", "Terminal", cwd], label: "Terminal" });
-      }
-      if (target === "ghostty") {
-        attempts.push({ command: "open", args: ["-a", "Ghostty", cwd], label: "Ghostty" });
-      }
-      if (target === "xcode") {
-        attempts.push({ command: "open", args: ["-a", "Xcode", cwd], label: "Xcode" });
-      }
-      if (target === "zed") {
-        attempts.push({ command: "open", args: ["-a", "Zed", cwd], label: "Zed" });
-        attempts.push({ command: "zed", args: [cwd], label: "Zed CLI" });
-      }
-    } else {
-      if (target === "finder") {
-        attempts.push({ command: "xdg-open", args: [cwd], label: "File manager" });
-      }
-      if (target === "cursor") {
-        attempts.push({ command: "cursor", args: [cwd], label: "Cursor" });
-      }
-      if (target === "antigravity") {
-        attempts.push({ command: "antigravity", args: [cwd], label: "Antigravity" });
-      }
-      if (target === "terminal") {
-        attempts.push({ command: "ghostty", args: ["--working-directory", cwd], label: "Ghostty" });
-        attempts.push({ command: "x-terminal-emulator", args: ["--working-directory", cwd], label: "Terminal" });
-      }
-      if (target === "ghostty") {
-        attempts.push({ command: "ghostty", args: ["--working-directory", cwd], label: "Ghostty" });
-      }
-      if (target === "xcode") {
-        attempts.push({ command: "xdg-open", args: [cwd], label: "Editor" });
-      }
-      if (target === "zed") {
-        attempts.push({ command: "zed", args: [cwd], label: "Zed" });
-      }
-    }
+    const attempts = buildOpenTargetAttempts({
+      platform,
+      target,
+      resolvedPath: cwd,
+      mode: "directory",
+    });
 
     if (attempts.length === 0) {
       throw new Error(`No open strategy found for target "${target}" on ${platform}`);
@@ -1360,61 +1161,19 @@ export class OpencodeService {
   }
 
   async listOpenCodeAgentFiles(): Promise<OpenCodeAgentFile[]> {
-    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
-    const dirInfo = await stat(agentsDir).catch(() => undefined);
-    if (!dirInfo?.isDirectory()) {
-      return [];
-    }
-
-    const entries = await readdir(agentsDir, { withFileTypes: true }).catch(() => []);
-    const output: OpenCodeAgentFile[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith(".md")) {
-        continue;
-      }
-      const filePath = path.join(agentsDir, entry.name);
-      const raw = await readFile(filePath, "utf8").catch(() => "");
-      if (!raw) {
-        continue;
-      }
-      output.push(this.parseOpenCodeAgentFile(entry.name, filePath, raw));
-    }
-
-    return output;
+    return listOpenCodeAgentFilesInternal();
   }
 
   async readOpenCodeAgentFile(filename: string): Promise<OpenCodeAgentFile> {
-    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
-    const filePath = path.join(agentsDir, filename);
-    const rel = path.relative(agentsDir, filePath);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error("Invalid filename");
-    }
-    const raw = await readFile(filePath, "utf8");
-    return this.parseOpenCodeAgentFile(filename, filePath, raw);
+    return readOpenCodeAgentFileInternal(filename);
   }
 
   async writeOpenCodeAgentFile(filename: string, content: string): Promise<OpenCodeAgentFile> {
-    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
-    await mkdir(agentsDir, { recursive: true });
-    const filePath = path.join(agentsDir, filename);
-    const rel = path.relative(agentsDir, filePath);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error("Invalid filename");
-    }
-    await writeFile(filePath, content, "utf8");
-    return this.parseOpenCodeAgentFile(filename, filePath, content);
+    return writeOpenCodeAgentFileInternal(filename, content);
   }
 
   async deleteOpenCodeAgentFile(filename: string): Promise<boolean> {
-    const agentsDir = path.join(homedir(), ".config", "opencode", "agents");
-    const filePath = path.join(agentsDir, filename);
-    const rel = path.relative(agentsDir, filePath);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error("Invalid filename");
-    }
-    await rm(filePath, { force: true });
-    return true;
+    return deleteOpenCodeAgentFileInternal(filename);
   }
 
   async openFileIn(filePath: string, target: OpenDirectoryTarget): Promise<OpenDirectoryResult> {
@@ -1425,56 +1184,12 @@ export class OpencodeService {
     }
 
     const platform = process.platform;
-    const attempts: Array<{ command: string; args: string[]; label: string }> = [];
-
-    if (platform === "darwin") {
-      if (target === "finder") {
-        attempts.push({ command: "open", args: ["-R", resolved], label: "Finder" });
-      }
-      if (target === "cursor") {
-        attempts.push({ command: "open", args: ["-a", "Cursor", resolved], label: "Cursor" });
-        attempts.push({ command: "cursor", args: [resolved], label: "Cursor CLI" });
-      }
-      if (target === "antigravity") {
-        attempts.push({ command: "open", args: ["-a", "Antigravity", resolved], label: "Antigravity" });
-      }
-      if (target === "terminal") {
-        attempts.push({ command: "open", args: ["-a", "Terminal", resolved], label: "Terminal" });
-      }
-      if (target === "ghostty") {
-        attempts.push({ command: "open", args: ["-a", "Ghostty", resolved], label: "Ghostty" });
-      }
-      if (target === "xcode") {
-        attempts.push({ command: "open", args: ["-a", "Xcode", resolved], label: "Xcode" });
-      }
-      if (target === "zed") {
-        attempts.push({ command: "open", args: ["-a", "Zed", resolved], label: "Zed" });
-        attempts.push({ command: "zed", args: [resolved], label: "Zed CLI" });
-      }
-    } else {
-      if (target === "finder") {
-        attempts.push({ command: "xdg-open", args: [resolved], label: "File manager" });
-      }
-      if (target === "cursor") {
-        attempts.push({ command: "cursor", args: [resolved], label: "Cursor" });
-      }
-      if (target === "antigravity") {
-        attempts.push({ command: "antigravity", args: [resolved], label: "Antigravity" });
-      }
-      if (target === "terminal") {
-        attempts.push({ command: "ghostty", args: [resolved], label: "Ghostty" });
-        attempts.push({ command: "x-terminal-emulator", args: [resolved], label: "Terminal" });
-      }
-      if (target === "ghostty") {
-        attempts.push({ command: "ghostty", args: [resolved], label: "Ghostty" });
-      }
-      if (target === "xcode") {
-        attempts.push({ command: "xdg-open", args: [resolved], label: "Editor" });
-      }
-      if (target === "zed") {
-        attempts.push({ command: "zed", args: [resolved], label: "Zed" });
-      }
-    }
+    const attempts = buildOpenTargetAttempts({
+      platform,
+      target,
+      resolvedPath: resolved,
+      mode: "file",
+    });
 
     if (attempts.length === 0) {
       throw new Error(`No open strategy found for target "${target}" on ${platform}`);
@@ -1489,20 +1204,11 @@ export class OpencodeService {
   }
 
   async gitCommitSummary(directory: string, includeUnstaged: boolean): Promise<GitCommitSummary> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    const branch = await this.currentBranch(repoRoot);
-    const stats = await this.collectGitStats(repoRoot, includeUnstaged);
-    return {
-      repoRoot,
-      branch,
-      filesChanged: stats.filesChanged,
-      insertions: stats.insertions,
-      deletions: stats.deletions,
-    };
+    return gitCommitSummaryWorkflow(directory, includeUnstaged, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      currentBranch: (repoRoot) => this.currentBranch(repoRoot),
+      collectGitStats: (repoRoot, includeAll) => this.collectGitStats(repoRoot, includeAll),
+    });
   }
 
   async gitGenerateCommitMessage(
@@ -1511,346 +1217,81 @@ export class OpencodeService {
     guidancePrompt: string,
     options: { requireGeneratedMessage?: boolean } = {},
   ): Promise<string> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    const branch = await this.currentBranch(repoRoot);
-    const stats = await this.collectGitStats(repoRoot, includeUnstaged);
-    const status = await this.runCommandWithOutput("git", ["-C", repoRoot, "status", "--short"], repoRoot).catch(() => "");
-    const diffArgs = includeUnstaged
-      ? ["-C", repoRoot, "--no-pager", "diff", "--compact-summary", "HEAD", "--", "."]
-      : ["-C", repoRoot, "--no-pager", "diff", "--compact-summary", "--cached", "--", "."];
-    const diff = await this.runCommandWithOutput("git", diffArgs, repoRoot).catch(() => "");
-    const payload = [
-      "Generate a commit message for this repository update.",
-      "",
-      "Guidance:",
-      guidancePrompt.trim().length > 0 ? guidancePrompt.trim() : DEFAULT_COMMIT_GUIDANCE,
-      "",
-      `Branch: ${branch}`,
-      `Files changed: ${stats.filesChanged}`,
-      `Insertions: ${stats.insertions}`,
-      `Deletions: ${stats.deletions}`,
-      "",
-      "git status --short:",
-      status.trim().length > 0 ? status.slice(0, 3000) : "(no output)",
-      "",
-      "git diff summary:",
-      diff.trim().length > 0 ? diff.slice(0, 14_000) : "(no output)",
-      "",
-      "Return only the commit message text, with no markdown fences.",
-    ].join("\n");
-
-    const generated = await this.generateCommitMessageWithAgent(directory, payload).catch(() => undefined);
-    if (generated && generated.trim().length > 0) {
-      return generated.trim();
-    }
-
-    if (options.requireGeneratedMessage) {
-      throw new Error("Unable to auto-generate commit message. Enter a commit message manually and try again.");
-    }
-
-    return this.fallbackCommitMessage(stats);
+    return gitGenerateCommitMessageWorkflow(directory, includeUnstaged, guidancePrompt, options, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      currentBranch: (repoRoot) => this.currentBranch(repoRoot),
+      collectGitStats: (repoRoot, includeAll) => this.collectGitStats(repoRoot, includeAll),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+      generateCommitMessageWithAgent: (targetDirectory, prompt) => this.generateCommitMessageWithAgent(targetDirectory, prompt),
+      fallbackCommitMessage: (stats) => this.fallbackCommitMessage(stats),
+    });
   }
 
   async gitCommit(directory: string, request: GitCommitRequest): Promise<GitCommitResult> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-
-    const branch = await this.currentBranch(repoRoot);
-    if (request.includeUnstaged) {
-      await this.runCommand("git", ["-C", repoRoot, "add", "-A"], repoRoot);
-    }
-
-    const staged = await this.runCommandWithOutput("git", ["-C", repoRoot, "diff", "--cached", "--name-only"], repoRoot).catch(() => "");
-    if (staged.trim().length === 0) {
-      throw new Error(request.includeUnstaged ? "No changes to commit." : "No staged changes to commit.");
-    }
-
-    const guidancePrompt =
-      request.guidancePrompt && request.guidancePrompt.trim().length > 0
-        ? request.guidancePrompt.trim()
-        : DEFAULT_COMMIT_GUIDANCE;
-    const shouldRequireGeneratedMessage = request.nextStep === "commit_and_create_pr" || Boolean(request.guidancePrompt?.trim());
-    const message =
-      request.message && request.message.trim().length > 0
-        ? request.message.trim()
-        : await this.gitGenerateCommitMessage(directory, request.includeUnstaged, guidancePrompt, {
-          requireGeneratedMessage: shouldRequireGeneratedMessage,
-        });
-
-    if (!message || message.trim().length === 0) {
-      throw new Error("Commit message cannot be empty.");
-    }
-
-    let ghCommandPath: string | undefined;
-    let ghUnavailableReason: string | undefined;
-    if (request.nextStep === "commit_and_create_pr") {
-      ghCommandPath = await this.resolveCommandPath("gh", repoRoot);
-      if (!ghCommandPath) {
-        ghUnavailableReason = "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
-      }
-      if (ghCommandPath) {
-        try {
-          await this.runCommandWithOutput(ghCommandPath, ["auth", "status"], repoRoot);
-        } catch (error) {
-          if (isMissingGhCliError(error)) {
-            ghUnavailableReason = "GitHub CLI is not available. Install `gh` and run `gh auth login`.";
-          } else if (isGhAuthError(error)) {
-            ghUnavailableReason = "GitHub CLI is not authenticated. Run `gh auth login` and retry.";
-          } else {
-            throw new Error(`Unable to verify GitHub CLI auth: ${sanitizeError(error)}`);
-          }
-        }
-      }
-    }
-
-    const commitArgs = ["-C", repoRoot, "commit", ...this.toCommitMessageArgs(message.trim())];
-    await this.runCommand("git", commitArgs, repoRoot);
-    const commitHash = (await this.runCommandWithOutput("git", ["-C", repoRoot, "rev-parse", "HEAD"], repoRoot)).trim();
-
-    let pushed = false;
-    let prUrl: string | undefined;
-
-    if (request.nextStep === "commit_and_push" || request.nextStep === "commit_and_create_pr") {
-      await this.pushBranch(repoRoot, branch);
-      pushed = true;
-    }
-
-    if (request.nextStep === "commit_and_create_pr") {
-      const baseBranch = request.baseBranch?.trim();
-      if (baseBranch && baseBranch === branch) {
-        throw new Error("Base branch must be different from the current branch.");
-      }
-      if (baseBranch) {
-        await this.runCommand("git", ["-C", repoRoot, "check-ref-format", "--branch", baseBranch], repoRoot).catch(() => {
-          throw new Error("Invalid PR base branch name.");
-        });
-      }
-
-      if (ghUnavailableReason) {
-        prUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
-      } else {
-        const prArgs = ["pr", "create", "--fill", "--head", branch];
-        if (baseBranch) {
-          prArgs.push("--base", baseBranch);
-        }
-        let output: string;
-        try {
-          output = await this.runCommandWithOutput(ghCommandPath ?? "gh", prArgs, repoRoot);
-        } catch (error) {
-          const detail = sanitizeError(error);
-          if (isMissingGhCliError(error) || isGhAuthError(error)) {
-            prUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
-            if (prUrl) {
-              output = prUrl;
-            } else {
-              throw new Error(`Unable to create PR: ${detail}`);
-            }
-          } else {
-            const normalized = detail.toLowerCase();
-            const canRetryWithoutFill =
-              normalized.includes("could not compute title or body defaults") ||
-              normalized.includes("unknown revision or path not in the working tree") ||
-              normalized.includes("ambiguous argument");
-            if (!canRetryWithoutFill) {
-              throw new Error(`Unable to create PR: ${detail}`);
-            }
-
-            const [titleLine, ...bodyLines] = message.trim().split(/\r?\n/);
-            const fallbackTitle = titleLine.trim().length > 0 ? titleLine.trim() : `chore: open PR from ${branch}`;
-            const fallbackBody = bodyLines.join("\n").trim() || `Automated PR created from ${branch}.`;
-            const fallbackArgs = ["pr", "create", "--title", fallbackTitle, "--body", fallbackBody, "--head", branch];
-            if (baseBranch) {
-              fallbackArgs.push("--base", baseBranch);
-            }
-            output = await this.runCommandWithOutput(ghCommandPath ?? "gh", fallbackArgs, repoRoot).catch(async (fallbackError) => {
-              const fallbackDetail = sanitizeError(fallbackError);
-              if (isMissingGhCliError(fallbackError) || isGhAuthError(fallbackError)) {
-                const fallbackUrl = await this.buildManualPrUrl(repoRoot, branch, baseBranch);
-                if (fallbackUrl) {
-                  return fallbackUrl;
-                }
-              }
-              throw new Error(`Unable to create PR: ${fallbackDetail}`);
-            });
-          }
-        }
-        const urlMatch = output.match(/https?:\/\/[^\s]+/i);
-        prUrl = urlMatch ? urlMatch[0] : prUrl;
-      }
-      if (!prUrl) {
-        if (ghUnavailableReason) {
-          throw new Error(ghUnavailableReason);
-        }
-        throw new Error("Unable to determine pull request URL.");
-      }
-    }
-
-    return {
-      repoRoot,
-      branch,
-      commitHash,
-      message: message.trim(),
-      pushed,
-      prUrl,
-    };
+    return gitCommitWorkflow(directory, request, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      currentBranch: (repoRoot) => this.currentBranch(repoRoot),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+      resolveCommandPath: (command, cwd) => this.resolveCommandPath(command, cwd),
+      gitGenerateCommitMessage: (targetDirectory, includeUnstaged, guidancePrompt, options) =>
+        this.gitGenerateCommitMessage(targetDirectory, includeUnstaged, guidancePrompt, options),
+      toCommitMessageArgs: (message) => this.toCommitMessageArgs(message),
+      pushBranch: (repoRoot, branch) => this.pushBranch(repoRoot, branch),
+      buildManualPrUrl: (repoRoot, branch, baseBranch) => this.buildManualPrUrl(repoRoot, branch, baseBranch),
+    });
   }
 
   async gitBranches(directory: string): Promise<GitBranchState> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-
-    const current = await this.currentBranch(repoRoot);
-    const localOutput = await this.runCommandWithOutput(
-      "git",
-      ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/heads"],
-      repoRoot,
-    ).catch(() => "");
-    const remoteOutput = await this.runCommandWithOutput(
-      "git",
-      ["-C", repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin"],
-      repoRoot,
-    ).catch(() => "");
-    const localBranches = localOutput
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .sort((left, right) => left.localeCompare(right));
-    const remoteBranches = remoteOutput
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-      .filter((line) => line !== "origin")
-      .filter((line) => !line.endsWith("/HEAD"))
-      .map((line) => line.replace(/^origin\//, ""));
-    const branches = [...new Set([...localBranches, ...remoteBranches])].sort((left, right) => left.localeCompare(right));
-    if (!branches.includes(current)) {
-      branches.unshift(current);
-    }
-
-    return {
-      repoRoot,
-      current,
-      branches,
-    };
+    return gitBranchesWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+      currentBranch: (repoRoot) => this.currentBranch(repoRoot),
+    });
   }
 
   async gitCheckoutBranch(directory: string, branch: string): Promise<GitBranchState> {
-    const nextBranch = branch.trim();
-    if (!nextBranch) {
-      throw new Error("Branch name is required.");
-    }
-
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-
-    await this.runCommand("git", ["-C", repoRoot, "check-ref-format", "--branch", nextBranch], repoRoot).catch(() => {
-      throw new Error("Invalid branch name.");
+    return gitCheckoutBranchWorkflow(directory, branch, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+      gitRefExists: (repoRoot, ref) => this.gitRefExists(repoRoot, ref),
+      gitBranches: (target) => this.gitBranches(target),
     });
-
-    const hasLocal = await this.gitRefExists(repoRoot, `refs/heads/${nextBranch}`);
-    if (hasLocal) {
-      await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
-    } else {
-      const hasRemote = await this.gitRefExists(repoRoot, `refs/remotes/origin/${nextBranch}`);
-      if (hasRemote) {
-        try {
-          await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch, "--track", `origin/${nextBranch}`], repoRoot);
-        } catch (error) {
-          const message = sanitizeError(error).toLowerCase();
-          if (!message.includes("already exists")) {
-            throw error;
-          }
-          await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
-        }
-      } else {
-        try {
-          await this.runCommand("git", ["-C", repoRoot, "checkout", "-b", nextBranch], repoRoot);
-        } catch (error) {
-          const message = sanitizeError(error).toLowerCase();
-          if (!message.includes("already exists")) {
-            throw error;
-          }
-          await this.runCommand("git", ["-C", repoRoot, "checkout", nextBranch], repoRoot);
-        }
-      }
-    }
-
-    return this.gitBranches(repoRoot);
   }
 
   async gitStageAll(directory: string): Promise<boolean> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    await this.runCommand("git", ["-C", repoRoot, "add", "-A", "--", "."], repoRoot);
-    return true;
+    return gitStageAllWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+    });
   }
 
   async gitRestoreAllUnstaged(directory: string): Promise<boolean> {
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    await this.runCommand("git", ["-C", repoRoot, "restore", "--worktree", "--", "."], repoRoot);
-    return true;
+    return gitRestoreAllUnstagedWorkflow(directory, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+    });
   }
 
   async gitStagePath(directory: string, filePath: string): Promise<boolean> {
-    const targetPath = filePath.trim();
-    if (!targetPath) {
-      throw new Error("File path is required.");
-    }
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    await this.runCommand("git", ["-C", repoRoot, "add", "--", targetPath], repoRoot);
-    return true;
+    return gitStagePathWorkflow(directory, filePath, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+    });
   }
 
   async gitRestorePath(directory: string, filePath: string): Promise<boolean> {
-    const targetPath = filePath.trim();
-    if (!targetPath) {
-      throw new Error("File path is required.");
-    }
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    await this.runCommand("git", ["-C", repoRoot, "restore", "--worktree", "--", targetPath], repoRoot);
-    return true;
+    return gitRestorePathWorkflow(directory, filePath, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+    });
   }
 
   async gitUnstagePath(directory: string, filePath: string): Promise<boolean> {
-    const targetPath = filePath.trim();
-    if (!targetPath) {
-      throw new Error("File path is required.");
-    }
-    const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      throw new Error("Not a git repository.");
-    }
-    await this.runCommand("git", ["-C", repoRoot, "restore", "--staged", "--", targetPath], repoRoot);
-    return true;
+    return gitUnstagePathWorkflow(directory, filePath, {
+      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+      runCommand: (command, args, cwd) => this.runCommand(command, args, cwd),
+    });
   }
 
   async listSkills(): Promise<SkillEntry[]> {
@@ -1888,156 +1329,31 @@ export class OpencodeService {
   }
 
   async readAgentsMd(directory: string): Promise<AgentsDocument> {
-    const root = path.resolve(directory);
-    const agentsPath = path.join(root, "AGENTS.md");
-    const info = await stat(agentsPath).catch(() => undefined);
-    if (!info?.isFile()) {
-      return {
-        path: agentsPath,
-        content: "",
-        exists: false,
-      };
-    }
-
-    const content = await readFile(agentsPath, "utf8").catch(() => "");
-    return {
-      path: agentsPath,
-      content,
-      exists: true,
-    };
+    return readWorkspaceAgentsMdInternal(directory);
   }
 
   async writeAgentsMd(directory: string, content: string): Promise<AgentsDocument> {
-    const root = path.resolve(directory);
-    const agentsPath = path.join(root, "AGENTS.md");
-    const normalized = content.endsWith("\n") ? content : `${content}\n`;
-    await mkdir(path.dirname(agentsPath), { recursive: true });
-    await writeFile(agentsPath, normalized, "utf8");
-    return {
-      path: agentsPath,
-      content: normalized,
-      exists: true,
-    };
+    return writeWorkspaceAgentsMdInternal(directory, content);
   }
 
   async readGlobalAgentsMd(): Promise<AgentsDocument> {
-    const agentsPath = path.join(homedir(), ".config", "opencode", "AGENTS.md");
-    const info = await stat(agentsPath).catch(() => undefined);
-    if (!info?.isFile()) {
-      return {
-        path: agentsPath,
-        content: "",
-        exists: false,
-      };
-    }
-
-    const content = await readFile(agentsPath, "utf8").catch(() => "");
-    return {
-      path: agentsPath,
-      content,
-      exists: true,
-    };
+    return readGlobalAgentsMdInternal();
   }
 
   async writeGlobalAgentsMd(content: string): Promise<AgentsDocument> {
-    const agentsPath = path.join(homedir(), ".config", "opencode", "AGENTS.md");
-    const normalized = content.endsWith("\n") ? content : `${content}\n`;
-    await mkdir(path.dirname(agentsPath), { recursive: true });
-    await writeFile(agentsPath, normalized, "utf8");
-    return {
-      path: agentsPath,
-      content: normalized,
-      exists: true,
-    };
+    return writeGlobalAgentsMdInternal(content);
   }
 
   async listFiles(directory: string, relativePath = ""): Promise<ProjectFileEntry[]> {
-    const root = path.resolve(directory);
-    const resolved = this.resolveWithinRoot(root, relativePath);
-    const info = await stat(resolved).catch(() => undefined);
-    if (!info?.isDirectory()) {
-      throw new Error("Directory not found");
-    }
-
-    const entries = await readdir(resolved, { withFileTypes: true }).catch(() => []);
-    return entries
-      .filter((entry) => !entry.name.startsWith(".DS_Store"))
-      .filter((entry) => !(entry.isDirectory() && PROJECT_FILE_SKIP_DIRS.has(entry.name)))
-      .sort((a, b) => {
-        if (a.isDirectory() && !b.isDirectory()) {
-          return -1;
-        }
-        if (!a.isDirectory() && b.isDirectory()) {
-          return 1;
-        }
-        return a.name.localeCompare(b.name);
-      })
-      .map((entry) => {
-        const absolutePath = path.join(resolved, entry.name);
-        const rel = path.relative(root, absolutePath);
-        return {
-          name: entry.name,
-          path: absolutePath,
-          relativePath: rel,
-          type: entry.isDirectory() ? "directory" : "file",
-          hasChildren: entry.isDirectory() ? true : undefined,
-        };
-      });
+    return listProjectFiles(directory, relativePath);
   }
 
   async countProjectFiles(directory: string): Promise<number> {
-    const root = path.resolve(directory);
-    const info = await stat(root).catch(() => undefined);
-    if (!info?.isDirectory()) {
-      throw new Error("Directory not found");
-    }
-
-    const countDirectory = async (directoryPath: string): Promise<number> => {
-      const entries = await readdir(directoryPath, { withFileTypes: true }).catch(() => []);
-      let total = 0;
-      for (const entry of entries) {
-        if (entry.name.startsWith(".DS_Store")) {
-          continue;
-        }
-        const absolutePath = path.join(directoryPath, entry.name);
-        if (entry.isDirectory()) {
-          if (PROJECT_FILE_SKIP_DIRS.has(entry.name)) {
-            continue;
-          }
-          total += await countDirectory(absolutePath);
-          continue;
-        }
-        total += 1;
-      }
-      return total;
-    };
-
-    return countDirectory(root);
+    return countProjectFiles(directory);
   }
 
   async readProjectFile(directory: string, relativePath: string): Promise<ProjectFileDocument> {
-    const root = path.resolve(directory);
-    const filePath = this.resolveWithinRoot(root, relativePath);
-    const info = await stat(filePath).catch(() => undefined);
-    if (!info?.isFile()) {
-      throw new Error("File not found");
-    }
-
-    const maxBytes = 220_000;
-    const raw = await readFile(filePath);
-    const binary = raw.includes(0);
-    const truncated = raw.byteLength > maxBytes;
-    const content = binary
-      ? "[Binary file preview unavailable]"
-      : raw.subarray(0, maxBytes).toString("utf8");
-
-    return {
-      path: filePath,
-      relativePath: path.relative(root, filePath),
-      content,
-      binary,
-      truncated,
-    };
+    return readProjectFile(directory, relativePath);
   }
 
   async getConfig(scope: "project" | "global", directory?: string) {
@@ -2921,69 +2237,11 @@ export class OpencodeService {
   }
 
   private async runCommand(command: string, args: string[], cwd: string) {
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn(command, args, {
-        cwd,
-        env: process.env,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      const stdout: string[] = [];
-      const stderr: string[] = [];
-
-      child.stdout?.on("data", (chunk) => {
-        stdout.push(String(chunk));
-      });
-      child.stderr?.on("data", (chunk) => {
-        stderr.push(String(chunk));
-      });
-
-      child.on("error", (error) => {
-        reject(error);
-      });
-
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        const tail = [...stdout, ...stderr].join("").trim().slice(-2000);
-        reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${tail ? `: ${tail}` : ""}`));
-      });
-    });
+    return this.commandHelpers.runCommand(command, args, cwd);
   }
 
   private async canRunCommand(command: string, args: string[], cwd: string) {
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const finish = (value: boolean) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      };
-
-      const child = spawn(command, args, {
-        cwd,
-        env: process.env,
-        stdio: "ignore",
-      });
-
-      const timer = setTimeout(() => {
-        child.kill();
-        finish(false);
-      }, DEPENDENCY_CHECK_TIMEOUT_MS);
-
-      child.on("error", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        finish(code === 0);
-      });
-    });
+    return this.commandHelpers.canRunCommand(command, args, cwd);
   }
 
   private async canRunCommandWithFallbacks(command: string, args: string[], cwd: string) {
@@ -3001,74 +2259,11 @@ export class OpencodeService {
   }
 
   private async commandPathCandidates(command: string) {
-    const base = [
-      path.join("/opt/homebrew/bin", command),
-      path.join("/usr/local/bin", command),
-      path.join(homedir(), ".volta", "bin", command),
-      path.join(homedir(), ".asdf", "shims", command),
-      path.join(homedir(), ".local", "share", "mise", "shims", command),
-      path.join(homedir(), ".fnm", "current", "bin", command),
-    ];
-
-    const nvmDir = path.join(homedir(), ".nvm", "versions", "node");
-    const nvmEntries = await readdir(nvmDir, { withFileTypes: true }).catch(() => []);
-    for (const entry of nvmEntries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      base.push(path.join(nvmDir, entry.name, "bin", command));
-    }
-
-    const unique: string[] = [];
-    const seen = new Set<string>();
-    for (const candidate of base) {
-      if (seen.has(candidate)) {
-        continue;
-      }
-      seen.add(candidate);
-      if (existsSync(candidate)) {
-        unique.push(candidate);
-      }
-    }
-    return unique;
+    return this.commandHelpers.commandPathCandidates(command);
   }
 
   private async canRunCommandViaLoginShell(command: string, args: string[], cwd: string) {
-    const shell = process.env.SHELL || "/bin/zsh";
-    const quotedCommand = this.shellQuote(command);
-    const quotedArgs = args.map((item) => this.shellQuote(item)).join(" ");
-    const probe = `cmd_path="$(command -v ${quotedCommand})" || exit 127; "$cmd_path" ${quotedArgs} >/dev/null 2>&1`;
-
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const finish = (value: boolean) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      };
-
-      const child = spawn(shell, ["-ilc", probe], {
-        cwd,
-        env: process.env,
-        stdio: "ignore",
-      });
-
-      const timer = setTimeout(() => {
-        child.kill();
-        finish(false);
-      }, DEPENDENCY_CHECK_TIMEOUT_MS);
-
-      child.on("error", () => {
-        clearTimeout(timer);
-        finish(false);
-      });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        finish(code === 0);
-      });
-    });
+    return this.commandHelpers.canRunCommandViaLoginShell(command, args, cwd);
   }
 
   private async resolveCommandPath(command: string, cwd: string) {
@@ -3087,90 +2282,11 @@ export class OpencodeService {
   }
 
   private async commandPathViaLoginShell(command: string, cwd: string) {
-    const shell = process.env.SHELL || "/bin/zsh";
-    const quotedCommand = this.shellQuote(command);
-    const probe = `command -v ${quotedCommand} || exit 127`;
-
-    return new Promise<string | undefined>((resolve) => {
-      let settled = false;
-      const finish = (value: string | undefined) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        resolve(value);
-      };
-
-      const child = spawn(shell, ["-ilc", probe], {
-        cwd,
-        env: process.env,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-
-      const stdout: string[] = [];
-      child.stdout?.on("data", (chunk) => {
-        stdout.push(String(chunk));
-      });
-
-      const timer = setTimeout(() => {
-        child.kill();
-        finish(undefined);
-      }, DEPENDENCY_CHECK_TIMEOUT_MS);
-
-      child.on("error", () => {
-        clearTimeout(timer);
-        finish(undefined);
-      });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (code !== 0) {
-          finish(undefined);
-          return;
-        }
-        const resolved = stdout.join("").trim();
-        finish(resolved.length > 0 ? resolved : undefined);
-      });
-    });
-  }
-
-  private shellQuote(value: string) {
-    return `'${value.replace(/'/g, "'\\''")}'`;
+    return this.commandHelpers.commandPathViaLoginShell(command, cwd);
   }
 
   private async runCommandWithOutput(command: string, args: string[], cwd: string) {
-    return new Promise<string>((resolve, reject) => {
-      const child = spawn(command, args, {
-        cwd,
-        env: {
-          ...process.env,
-          GIT_DISCOVERY_ACROSS_FILESYSTEM: "1",
-        },
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-
-      const stdout: string[] = [];
-      const stderr: string[] = [];
-
-      child.stdout?.on("data", (chunk) => {
-        stdout.push(String(chunk));
-      });
-      child.stderr?.on("data", (chunk) => {
-        stderr.push(String(chunk));
-      });
-
-      child.on("error", (error) => {
-        reject(error);
-      });
-
-      child.on("close", (code) => {
-        if (code === 0) {
-          resolve(stdout.join(""));
-          return;
-        }
-        const details = `${stdout.join("")}\n${stderr.join("")}`.trim().slice(-2000);
-        reject(new Error(`${command} ${args.join(" ")} exited with code ${code ?? "unknown"}${details ? `: ${details}` : ""}`));
-      });
-    });
+    return this.commandHelpers.runCommandWithOutput(command, args, cwd);
   }
 
   private async renderUntrackedDiff(repoRoot: string, relativePath: string) {
@@ -3205,16 +2321,9 @@ export class OpencodeService {
   }
 
   private async runCommandAttempts(attempts: Array<{ command: string; args: string[]; label: string }>, cwd: string) {
-    let lastError: unknown;
-    for (const attempt of attempts) {
-      try {
-        await this.runCommand(attempt.command, attempt.args, cwd);
-        return `Opened in ${attempt.label}`;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    throw new Error(sanitizeError(lastError ?? "Unable to open directory"));
+    return this.commandHelpers.runCommandAttempts(attempts, cwd, (command, args, attemptCwd) =>
+      this.runCommand(command, args, attemptCwd),
+    );
   }
 
   private async collectGitStats(repoRoot: string, includeUnstaged: boolean) {
@@ -3230,72 +2339,7 @@ export class OpencodeService {
   }
 
   private parseGitPatchStats(output: string) {
-    const trimmed = output.trim();
-    if (
-      !trimmed ||
-      trimmed === "No local changes." ||
-      trimmed === "Not a git repository." ||
-      trimmed.startsWith("Loading diff")
-    ) {
-      return { filesChanged: 0, insertions: 0, deletions: 0 };
-    }
-
-    let insertions = 0;
-    let deletions = 0;
-    const changedFiles = new Set<string>();
-    const lines = output.split(/\r?\n/);
-
-    for (const line of lines) {
-      const diffHeaderMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-      if (diffHeaderMatch) {
-        const filePath = diffHeaderMatch[2] ?? diffHeaderMatch[1];
-        if (filePath) {
-          changedFiles.add(filePath);
-        }
-        continue;
-      }
-
-      const untrackedMatch = line.match(/^\?\?\s+(.+)$/);
-      if (untrackedMatch) {
-        const filePath = untrackedMatch[1]?.trim();
-        if (filePath) {
-          changedFiles.add(filePath);
-          insertions += 1;
-        }
-        continue;
-      }
-
-      const inlineUntracked = [...line.matchAll(/\?\?\s+([^?]+?)(?=\s+\?\?|$)/g)];
-      if (inlineUntracked.length > 0) {
-        for (const match of inlineUntracked) {
-          const filePath = (match[1] ?? "").trim();
-          if (!filePath) {
-            continue;
-          }
-          changedFiles.add(filePath);
-          insertions += 1;
-        }
-        continue;
-      }
-
-      if (line.startsWith("+++") || line.startsWith("---")) {
-        continue;
-      }
-
-      if (line.startsWith("+")) {
-        insertions += 1;
-        continue;
-      }
-      if (line.startsWith("-")) {
-        deletions += 1;
-      }
-    }
-
-    return {
-      filesChanged: changedFiles.size,
-      insertions,
-      deletions,
-    };
+    return parseGitPatchStats(output);
   }
 
   private async currentBranch(repoRoot: string) {
@@ -3306,29 +2350,11 @@ export class OpencodeService {
   }
 
   private fallbackCommitMessage(stats: { filesChanged: number; insertions: number; deletions: number }) {
-    const files = Math.max(stats.filesChanged, 1);
-    return [
-      `chore: update ${files} file${files === 1 ? "" : "s"}`,
-      "",
-      `- apply local working tree updates across ${files} file${files === 1 ? "" : "s"}`,
-      `- add ${stats.insertions} line${stats.insertions === 1 ? "" : "s"} and remove ${stats.deletions} line${stats.deletions === 1 ? "" : "s"}`,
-    ].join("\n");
+    return fallbackCommitMessage(stats);
   }
 
   private toCommitMessageArgs(message: string) {
-    const normalized = message.replace(/\r\n/g, "\n").trim();
-    const blocks = normalized
-      .split(/\n{2,}/)
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0);
-    if (blocks.length === 0) {
-      return ["-m", normalized];
-    }
-    const args: string[] = [];
-    for (const block of blocks) {
-      args.push("-m", block);
-    }
-    return args;
+    return toCommitMessageArgs(message);
   }
 
   private async pushBranch(repoRoot: string, branch: string) {
@@ -3345,36 +2371,7 @@ export class OpencodeService {
   }
 
   private normalizeGitHubRemote(remoteUrl: string) {
-    const trimmed = remoteUrl.trim();
-    if (!trimmed) {
-      return undefined;
-    }
-
-    let slug: string | undefined;
-    const sshMatch = trimmed.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/i);
-    if (sshMatch) {
-      slug = sshMatch[1];
-    }
-
-    if (!slug) {
-      const sshProtocolMatch = trimmed.match(/^ssh:\/\/git@github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/i);
-      if (sshProtocolMatch) {
-        slug = sshProtocolMatch[1];
-      }
-    }
-
-    if (!slug) {
-      const httpsMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/i);
-      if (httpsMatch) {
-        slug = httpsMatch[1];
-      }
-    }
-
-    if (!slug) {
-      return undefined;
-    }
-
-    return `https://github.com/${slug.replace(/\.git$/i, "")}`;
+    return normalizeGitHubRemote(remoteUrl);
   }
 
   private async resolveOriginBaseBranch(repoRoot: string) {
@@ -3478,35 +2475,6 @@ export class OpencodeService {
     } catch {
       return false;
     }
-  }
-
-  private resolveWithinRoot(root: string, relativePath: string) {
-    const normalized = relativePath.trim();
-    if (!normalized) {
-      return root;
-    }
-    const candidate = path.resolve(root, normalized);
-    const rel = path.relative(root, candidate);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error("Invalid file path");
-    }
-    return candidate;
-  }
-
-  private parseOpenCodeAgentFile(filename: string, filePath: string, raw: string): OpenCodeAgentFile {
-    const parsed = parseSimpleYamlFrontmatter(raw);
-    const name = filename.replace(/\.md$/i, "");
-    const temperature = parsed.metadata.temperature ? Number.parseFloat(parsed.metadata.temperature) : undefined;
-    return {
-      name,
-      filename,
-      path: filePath,
-      description: parsed.metadata.description ?? "",
-      mode: parsed.metadata.mode ?? "",
-      model: parsed.metadata.model ?? "",
-      temperature: temperature !== undefined && !Number.isNaN(temperature) ? temperature : undefined,
-      content: raw,
-    };
   }
 
 }
