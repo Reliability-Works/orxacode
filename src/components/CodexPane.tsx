@@ -27,6 +27,9 @@ interface Props {
   notifyOnAwaitingInput?: boolean;
   subagentSystemNotificationsEnabled?: boolean;
   onAwaitingChange?: (awaiting: boolean) => void;
+  codexAccessMode?: string;
+  codexPath?: string;
+  codexArgs?: string;
   // Branch props (forwarded to ComposerPanel)
   branchMenuOpen: boolean;
   setBranchMenuOpen: (updater: (value: boolean) => boolean) => void;
@@ -222,6 +225,9 @@ export function CodexPane({
   notifyOnAwaitingInput,
   subagentSystemNotificationsEnabled,
   onAwaitingChange,
+  codexAccessMode,
+  codexPath,
+  codexArgs,
   branchMenuOpen,
   setBranchMenuOpen,
   branchControlWidthCh,
@@ -267,13 +273,13 @@ export function CodexPane({
     subagentMessages,
     openSubagentThread,
     closeSubagentThread,
-  } = useCodexSession(directory);
+  } = useCodexSession(directory, { codexPath, codexArgs });
 
   const [input, setInput] = useState("");
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [modelSelectOptions, setModelSelectOptions] = useState<ModelOption[]>([]);
   const [isPlanMode, setIsPlanMode] = useState(false);
-  const [browserModeEnabled, setBrowserModeEnabled] = useState(false);
+  // Browser mode not supported in Codex sessions
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("ask-write");
   const [todoOpen, setTodoOpen] = useState(false);
   const [codexQueue, setCodexQueue] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
@@ -303,9 +309,11 @@ export function CodexPane({
   // Auto-start thread when connected and no thread exists
   useEffect(() => {
     if (connectionStatus === "connected" && !thread) {
-      void startThread({ title: "Orxa Code Session" });
+      const sandbox = codexAccessMode === "full-access" ? "danger-full-access" : "read-only";
+      const approvalPolicy = codexAccessMode === "full-access" ? "never" : "on-request";
+      void startThread({ title: "Orxa Code Session", sandbox, approvalPolicy });
     }
-  }, [connectionStatus, thread, startThread]);
+  }, [connectionStatus, thread, startThread, codexAccessMode]);
 
   // Load models and collaboration modes when connected
   useEffect(() => {
@@ -568,8 +576,9 @@ export function CodexPane({
             isPlanMode={isPlanMode}
             hasPlanAgent={true}
             togglePlanMode={(enabled) => setIsPlanMode(enabled)}
-            browserModeEnabled={browserModeEnabled}
-            setBrowserModeEnabled={setBrowserModeEnabled}
+            browserModeEnabled={false}
+            setBrowserModeEnabled={() => undefined}
+            hideBrowserToggle
             agentOptions={[]}
             onAgentChange={() => undefined}
             permissionMode={permissionMode}

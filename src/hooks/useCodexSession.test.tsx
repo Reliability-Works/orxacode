@@ -65,7 +65,7 @@ describe("useCodexSession", () => {
     await act(async () => {
       await result.current.connect();
     });
-    expect(window.orxa!.codex.start).toHaveBeenCalledWith("/workspace");
+    expect(window.orxa!.codex.start).toHaveBeenCalledWith("/workspace", undefined);
   });
 
   it("disconnect calls codex.stop", async () => {

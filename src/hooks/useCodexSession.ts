@@ -108,7 +108,7 @@ export interface CodexSessionState {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useCodexSession(directory: string) {
+export function useCodexSession(directory: string, codexOptions?: { codexPath?: string; codexArgs?: string }) {
   const persisted = getPersistedCodexState(directory);
   const [connectionStatus, setConnectionStatus] = useState<CodexState["status"]>("disconnected");
   const [serverInfo, setServerInfo] = useState<CodexState["serverInfo"]>();
@@ -814,7 +814,7 @@ export function useCodexSession(directory: string) {
       return;
     }
     try {
-      const state = await window.orxa.codex.start(directory);
+      const state = await window.orxa.codex.start(directory, codexOptions);
       setConnectionStatus(state.status);
       setServerInfo(state.serverInfo);
       if (state.lastError) setLastError(state.lastError);
@@ -822,7 +822,7 @@ export function useCodexSession(directory: string) {
       setLastError(err instanceof Error ? err.message : String(err));
       setConnectionStatus("error");
     }
-  }, [directory]);
+  }, [directory, codexOptions]);
 
   const disconnect = useCallback(async () => {
     if (!window.orxa?.codex) return;
@@ -838,13 +838,15 @@ export function useCodexSession(directory: string) {
   }, []);
 
   const startThread = useCallback(
-    async (options?: { model?: string; title?: string }) => {
+    async (options?: { model?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => {
       if (!window.orxa?.codex) return;
       try {
         const t = await window.orxa.codex.startThread({
           cwd: directory,
           model: options?.model,
           title: options?.title,
+          approvalPolicy: options?.approvalPolicy,
+          sandbox: options?.sandbox,
         });
         setThread(t);
         setMessages([]);

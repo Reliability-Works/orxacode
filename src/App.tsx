@@ -2052,13 +2052,16 @@ export default function App() {
 
       if (sessionType !== "standalone" && createdSessionId) {
         setSessionTypes((prev) => ({ ...prev, [createdSessionId]: sessionType }));
+        // Non-standalone sessions (canvas, claude, codex) don't send an initial prompt
+        // but should not be treated as empty — prevent cleanup on navigation
+        markSessionUsed(createdSessionId);
         const titleMap: Record<string, string> = { claude: "Claude Code", canvas: "Canvas", codex: "Codex Session" };
         if (titleMap[sessionType]) {
           setSessionTitles((prev) => ({ ...prev, [createdSessionId]: titleMap[sessionType] }));
         }
       }
     },
-    [createWorkspaceSession, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
+    [createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -3477,6 +3480,9 @@ export default function App() {
                   onTitleChange={(title) => activeSessionID && setSessionTitles((prev) => ({ ...prev, [activeSessionID]: title }))}
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
+                  codexAccessMode={appPreferences.codexAccessMode}
+                  codexPath={appPreferences.codexPath}
+                  codexArgs={appPreferences.codexArgs}
                   onAwaitingChange={(awaiting) => setCodexAwaiting(awaiting)}
                   branchMenuOpen={branchMenuOpen}
                   setBranchMenuOpen={setBranchMenuOpen}
