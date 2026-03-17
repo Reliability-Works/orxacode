@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
 import { getPersistedCodexState, setPersistedCodexState } from "./codex-session-storage";
@@ -39,6 +39,15 @@ export interface SubagentInfo {
 const AGENT_COLORS = ["#22C55E", "#F97316", "#3B82F6", "#A855F7", "#06B6D4", "#EC4899"] as const;
 export function agentColor(index: number): string {
   return AGENT_COLORS[index % AGENT_COLORS.length];
+}
+
+/** Stable color derived from a threadId string (consistent across UI surfaces) */
+export function agentColorForId(threadId: string): string {
+  let hash = 0;
+  for (let i = 0; i < threadId.length; i++) {
+    hash = ((hash << 5) - hash + threadId.charCodeAt(i)) | 0;
+  }
+  return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
 }
 
 export type CodexMessageItem =
@@ -118,7 +127,6 @@ export function useCodexSession(directory: string) {
   const subagentThreadIds = useRef(new Set<string>());
   const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
   const [activeSubagentThreadId, setActiveSubagentThreadId] = useState<string | null>(null);
-  const [subagentMessages, setSubagentMessages] = useState<CodexMessageItem[]>([]);
 
   // Track the current assistant message being streamed
   const streamingItemIdRef = useRef<string | null>(null);
@@ -784,6 +792,19 @@ export function useCodexSession(directory: string) {
   }, [appendToItemField, messages]);
   handleNotificationRef.current = handleNotification;
 
+  // Derive subagent messages reactively from current messages
+  const subagentMessages = useMemo(() => {
+    if (!activeSubagentThreadId) return [];
+    return messages.filter((m) => {
+      if (m.kind !== "tool" || m.toolType !== "task") return false;
+      const receivers = m.collabReceivers;
+      const sender = m.collabSender;
+      if (receivers?.some((r) => r.threadId === activeSubagentThreadId)) return true;
+      if (sender?.threadId === activeSubagentThreadId) return true;
+      return false;
+    });
+  }, [messages, activeSubagentThreadId]);
+
   // ------------------------------------------------------------------
   // Actions
   // ------------------------------------------------------------------
@@ -944,24 +965,13 @@ export function useCodexSession(directory: string) {
     setPlanReady(false);
   }, []);
 
-  // Subagent thread navigation — gather messages related to this agent
+  // Subagent thread navigation
   const openSubagentThread = useCallback((threadId: string) => {
     setActiveSubagentThreadId(threadId);
-    // Filter messages that reference this subagent via collab metadata
-    const related = messagesRef.current.filter((m) => {
-      if (m.kind !== "tool" || m.toolType !== "task") return false;
-      const receivers = m.collabReceivers;
-      const sender = m.collabSender;
-      if (receivers?.some((r) => r.threadId === threadId)) return true;
-      if (sender?.threadId === threadId) return true;
-      return false;
-    });
-    setSubagentMessages(related);
   }, []);
 
   const closeSubagentThread = useCallback(() => {
     setActiveSubagentThreadId(null);
-    setSubagentMessages([]);
   }, []);
 
   return {

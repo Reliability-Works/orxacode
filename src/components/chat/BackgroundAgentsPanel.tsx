@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import type { SubagentInfo } from "../../hooks/useCodexSession";
-import { agentColor } from "../../hooks/useCodexSession";
+import { agentColorForId } from "../../hooks/useCodexSession";
 
 interface BackgroundAgentsPanelProps {
   agents: SubagentInfo[];
@@ -30,9 +30,9 @@ export function BackgroundAgentsPanel({ agents, onOpenAgent }: BackgroundAgentsP
 
       {expanded ? (
         <div className="bg-agents-list">
-          {agents.map((agent, index) => (
+          {agents.map((agent) => (
             <div key={agent.threadId} className="bg-agent-row">
-              <span className="bg-agent-name" style={{ color: agentColor(index) }}>
+              <span className="bg-agent-name" style={{ color: agentColorForId(agent.threadId) }}>
                 {agent.nickname}
               </span>
               <span className="bg-agent-role">({agent.role})</span>

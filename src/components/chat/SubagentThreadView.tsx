@@ -1,19 +1,18 @@
 import { ArrowLeft } from "lucide-react";
 import type { SubagentInfo } from "../../hooks/useCodexSession";
-import { agentColor } from "../../hooks/useCodexSession";
+import { agentColorForId } from "../../hooks/useCodexSession";
 import type { CodexMessageItem } from "../../hooks/useCodexSession";
 
 interface SubagentThreadViewProps {
   agent: SubagentInfo;
-  agentIndex: number;
   messages: CodexMessageItem[];
   onBack: () => void;
   /** Render function for individual message items (reuses CodexMessageRenderer) */
   renderItem: (item: CodexMessageItem) => React.ReactNode;
 }
 
-export function SubagentThreadView({ agent, agentIndex, messages, onBack, renderItem }: SubagentThreadViewProps) {
-  const color = agentColor(agentIndex);
+export function SubagentThreadView({ agent, messages, onBack, renderItem }: SubagentThreadViewProps) {
+  const color = agentColorForId(agent.threadId);
 
   return (
     <div className="subagent-thread-view">

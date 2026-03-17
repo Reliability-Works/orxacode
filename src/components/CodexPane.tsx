@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Zap } from "lucide-react";
 import { useCodexSession } from "../hooks/useCodexSession";
-import { agentColor } from "../hooks/useCodexSession";
+import { agentColorForId } from "../hooks/useCodexSession";
 import { ComposerPanel } from "./ComposerPanel";
 import { ToolCallCard } from "./chat/ToolCallCard";
 import { CommandOutput } from "./chat/CommandOutput";
@@ -121,9 +121,9 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
           >
             {item.collabStatuses && item.collabStatuses.length > 0 ? (
               <div className="collab-statuses">
-                {item.collabStatuses.map((cs, i) => (
+                {item.collabStatuses.map((cs) => (
                   <div key={cs.threadId} className="collab-status-row">
-                    <span className="collab-status-name" style={{ color: agentColor(i) }}>
+                    <span className="collab-status-name" style={{ color: agentColorForId(cs.threadId) }}>
                       {cs.nickname ?? cs.threadId.slice(0, 8)}
                     </span>
                     {cs.role ? <span className="collab-status-role">({cs.role})</span> : null}
@@ -481,9 +481,6 @@ export function CodexPane({
   const activeSubagent = activeSubagentThreadId
     ? subagents.find((a) => a.threadId === activeSubagentThreadId)
     : null;
-  const activeSubagentIndex = activeSubagent
-    ? subagents.indexOf(activeSubagent)
-    : 0;
 
   return (
     <div className="codex-pane">
@@ -491,7 +488,6 @@ export function CodexPane({
       {activeSubagent ? (
         <SubagentThreadView
           agent={activeSubagent}
-          agentIndex={activeSubagentIndex}
           messages={subagentMessages}
           onBack={closeSubagentThread}
           renderItem={(item) => <CodexMessageRenderer item={item} isStreaming={false} />}

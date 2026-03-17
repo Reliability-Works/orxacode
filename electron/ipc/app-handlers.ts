@@ -171,7 +171,18 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
 
   ipcMain.handle(IPC.appListSkillsFromDir, async (_event, directory: unknown) => {
     const raw = assertString(directory, "directory");
-    const root = raw.startsWith("~/") ? path.join(homedir(), raw.slice(2)) : raw;
+    const home = homedir();
+    const root = raw.startsWith("~/") ? path.join(home, raw.slice(2)) : raw;
+    // Restrict to known skill directories under home
+    const allowedPrefixes = [
+      path.join(home, ".config", "opencode", "skill"),
+      path.join(home, ".codex", "skills"),
+      path.join(home, ".claude", "skills"),
+    ];
+    const resolved = path.resolve(root);
+    if (!allowedPrefixes.some((p) => resolved === p || resolved.startsWith(p + path.sep))) {
+      throw new Error("Reading skills outside allowed directories is not permitted");
+    }
     const rootInfo = await stat(root).catch(() => undefined);
     if (!rootInfo?.isDirectory()) {
       return [] as SkillEntry[];
