@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -212,5 +213,33 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
       skills.push({ id: entry.name, name: title, description, path: skillPath });
     }
     return skills.sort((left, right) => left.name.localeCompare(right.name));
+  });
+
+  ipcMain.handle(IPC.appRunAgentCli, async (_event, options: unknown) => {
+    if (!options || typeof options !== "object") throw new Error("options is required");
+    const { agent, prompt, cwd } = options as { agent?: string; prompt?: string; cwd?: string };
+    if (!agent || !prompt || !cwd) throw new Error("agent, prompt, and cwd are required");
+
+    const AGENT_COMMANDS: Record<string, { bin: string; args: (p: string) => string[] }> = {
+      opencode: { bin: "opencode", args: (p) => ["run", p] },
+      codex: { bin: "codex", args: (p) => ["exec", p] },
+      claude: { bin: "claude", args: (p) => ["-p", p] },
+    };
+
+    const config = AGENT_COMMANDS[agent];
+    if (!config) throw new Error(`Unknown agent: ${agent}`);
+
+    return new Promise<{ ok: boolean; output: string; exitCode: number }>((resolve) => {
+      const child = execFile(config.bin, config.args(prompt), {
+        cwd,
+        timeout: 180_000,
+        maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env },
+      }, (error, stdout, stderr) => {
+        const output = (stdout || "") + (stderr ? `\n${stderr}` : "");
+        const exitCode = error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? 1 : (child.exitCode ?? (error ? 1 : 0));
+        resolve({ ok: exitCode === 0, output, exitCode });
+      });
+    });
   });
 }

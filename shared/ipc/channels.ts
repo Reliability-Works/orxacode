@@ -118,6 +118,7 @@ export const IPC = {
   appScanPorts: "orxa:app:scanPorts",
   appHttpRequest: "orxa:app:httpRequest",
   appListSkillsFromDir: "orxa:app:listSkillsFromDir",
+  appRunAgentCli: "orxa:app:runAgentCli",
   codexDoctor: "orxa:codex:doctor",
   codexUpdate: "orxa:codex:update",
   codexListModels: "orxa:codex:listModels",

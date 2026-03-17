@@ -308,75 +308,111 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
       runningJobIDsRef.current.add(job.id);
       const runID = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       try {
-        const created = await window.orxa.opencode.createSession(job.projectDir, `Job: ${job.name}`);
-        setJobRuns((current) => [
-          {
-            id: runID,
-            jobID: job.id,
-            jobName: job.name,
-            projectDir: job.projectDir,
-            sessionID: created.id,
-            createdAt: Date.now(),
-            status: "running",
-            unread: false,
-          },
-          ...current,
-        ]);
+        const agentMode = job.agentMode ?? "opencode";
 
-        await window.orxa.opencode.sendPrompt({
-          directory: job.projectDir,
-          sessionID: created.id,
-          text: job.prompt,
-          promptSource: "job",
-          tools: mergeModeToolPolicies(
-            job.browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
-          ),
-          ...(job.browserModeEnabled ? { system: JOB_BROWSER_MODE_SYSTEM_ADDENDUM } : {}),
-        });
+        if (agentMode === "codex" || agentMode === "claude") {
+          // Run via CLI exec mode
+          setJobRuns((current) => [
+            {
+              id: runID,
+              jobID: job.id,
+              jobName: job.name,
+              projectDir: job.projectDir,
+              sessionID: runID,
+              createdAt: Date.now(),
+              status: "running",
+              unread: false,
+            },
+            ...current,
+          ]);
 
-        setJobs((current) =>
-          current.map((item) =>
-            item.id === job.id
-              ? {
-                  ...item,
-                  lastRunAt: Date.now(),
-                  updatedAt: Date.now(),
-                }
-              : item,
-          ),
-        );
-
-        const startedAt = Date.now();
-        let runCompleted = false;
-        while (Date.now() - startedAt < 180_000) {
-          const snapshot = await window.orxa.opencode.refreshProject(job.projectDir);
-          const status = snapshot.sessionStatus[created.id]?.type ?? "idle";
-          if (status === "idle") {
-            runCompleted = true;
-            break;
-          }
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 1200);
+          const result = await window.orxa.app.runAgentCli({
+            agent: agentMode,
+            prompt: job.prompt,
+            cwd: job.projectDir,
           });
-        }
 
-        if (!runCompleted) {
-          throw new Error("Timed out waiting for job output");
-        }
+          setJobs((current) =>
+            current.map((item) =>
+              item.id === job.id ? { ...item, lastRunAt: Date.now(), updatedAt: Date.now() } : item,
+            ),
+          );
 
-        setJobRuns((current) =>
-          current.map((run) =>
-            run.id === runID
-              ? {
-                  ...run,
-                  status: "completed",
-                  completedAt: Date.now(),
-                  unread: true,
-                }
-              : run,
-          ),
-        );
-        onStatus?.(`Job completed: ${job.name}`);
+          setJobRuns((current) =>
+            current.map((run) =>
+              run.id === runID
+                ? {
+                    ...run,
+                    status: result.ok ? "completed" : "failed",
+                    completedAt: Date.now(),
+                    unread: true,
+                    error: result.ok ? undefined : result.output.slice(0, 500),
+                  }
+                : run,
+            ),
+          );
+          onStatus?.(result.ok ? `Job completed: ${job.name}` : `Job failed: ${job.name}`);
+        } else {
+          // OpenCode path: create session + send prompt
+          const created = await window.orxa.opencode.createSession(job.projectDir, `Job: ${job.name}`);
+          setJobRuns((current) => [
+            {
+              id: runID,
+              jobID: job.id,
+              jobName: job.name,
+              projectDir: job.projectDir,
+              sessionID: created.id,
+              createdAt: Date.now(),
+              status: "running",
+              unread: false,
+            },
+            ...current,
+          ]);
+
+          await window.orxa.opencode.sendPrompt({
+            directory: job.projectDir,
+            sessionID: created.id,
+            text: job.prompt,
+            promptSource: "job",
+            tools: mergeModeToolPolicies(
+              job.browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+            ),
+            ...(job.browserModeEnabled ? { system: JOB_BROWSER_MODE_SYSTEM_ADDENDUM } : {}),
+          });
+
+          setJobs((current) =>
+            current.map((item) =>
+              item.id === job.id ? { ...item, lastRunAt: Date.now(), updatedAt: Date.now() } : item,
+            ),
+          );
+
+          const startedAt = Date.now();
+          let runCompleted = false;
+          while (Date.now() - startedAt < 180_000) {
+            const snapshot = await window.orxa.opencode.refreshProject(job.projectDir);
+            const status = snapshot.sessionStatus[created.id]?.type ?? "idle";
+            if (status === "idle") {
+              runCompleted = true;
+              break;
+            }
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 1200);
+            });
+          }
+
+          if (!runCompleted) {
+            throw new Error("Timed out waiting for job output");
+          }
+
+          setJobRuns((current) =>
+            current.map((run) =>
+              run.id === runID
+                ? { ...run, status: "completed", completedAt: Date.now(), unread: true }
+                : run,
+            ),
+          );
+          onStatus?.(`Job completed: ${job.name}`);
+        }
       } catch (error) {
         setJobRuns((current) =>
           current.map((run) =>

@@ -14,6 +14,7 @@ const bridge: OrxaBridge = {
     scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
     httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
     listSkillsFromDir: (directory) => ipcRenderer.invoke(IPC.appListSkillsFromDir, directory),
+    runAgentCli: (options) => ipcRenderer.invoke(IPC.appRunAgentCli, options),
   },
   updates: {
     getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),

@@ -69,6 +69,7 @@ export interface OrxaBridge {
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
     listSkillsFromDir: (directory: string) => Promise<SkillEntry[]>;
+    runAgentCli: (options: { agent: "opencode" | "codex" | "claude"; prompt: string; cwd: string }) => Promise<{ ok: boolean; output: string; exitCode: number }>;
   };
   updates: {
     getPreferences: () => Promise<UpdatePreferences>;
