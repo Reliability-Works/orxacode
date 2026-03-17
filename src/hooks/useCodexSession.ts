@@ -197,7 +197,7 @@ export function useCodexSession(directory: string) {
 
       if (event.type === "codex.notification") {
         const notification = event.payload as CodexNotification;
-        handleNotification(notification);
+        handleNotificationRef.current(notification);
       }
     });
 
@@ -223,6 +223,7 @@ export function useCodexSession(directory: string) {
   // ------------------------------------------------------------------
   // Notification handler
   // ------------------------------------------------------------------
+  const handleNotificationRef = useRef<(notification: CodexNotification) => void>(() => {});
   const handleNotification = useCallback((notification: CodexNotification) => {
     const { method, params } = notification;
 
@@ -781,6 +782,7 @@ export function useCodexSession(directory: string) {
         break;
     }
   }, [appendToItemField, messages]);
+  handleNotificationRef.current = handleNotification;
 
   // ------------------------------------------------------------------
   // Actions
