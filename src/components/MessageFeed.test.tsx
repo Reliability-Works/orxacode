@@ -222,7 +222,7 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Line two.")).toBeInTheDocument();
   });
 
-  it("moves ORXA browser action tags into live events instead of chat text", () => {
+  it("hides ORXA browser action tags from chat text", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
@@ -246,7 +246,6 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.queryByText(/<orxa_browser_action>/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Queued browser action: navigate")).toBeInTheDocument();
   });
 
   it("keeps ORXA screenshot machine-result attachments out of user chat messages", () => {
@@ -281,10 +280,10 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.queryByText(/Attached file:/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Captured browser screenshot")).toBeInTheDocument();
+    expect(screen.queryByText(/ORXA_BROWSER_RESULT/i)).not.toBeInTheDocument();
   });
 
-  it("routes internal SUPERMEMORY user context lines to live events", () => {
+  it("hides internal SUPERMEMORY user context lines from chat", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
@@ -308,7 +307,6 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.queryByText(/\[SUPERMEMORY\]/)).not.toBeInTheDocument();
-    expect(screen.getByText("Applied in-app memory context")).toBeInTheDocument();
   });
 
   it("ignores non-status SUPERMEMORY payload text", () => {
@@ -338,7 +336,7 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/Recent Context:/)).not.toBeInTheDocument();
   });
 
-  it("routes assistant ORXA memory lines to live events instead of chat", () => {
+  it("hides assistant ORXA memory lines from chat", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
@@ -364,10 +362,9 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.queryByText(/\[ORXA_MEMORY\]/)).not.toBeInTheDocument();
-    expect(screen.getByText("Captured 2 memory items")).toBeInTheDocument();
   });
 
-  it("shows a single thinking bubble with collapsible live events when busy", () => {
+  it("shows thinking shimmer when busy with no visible parts", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
@@ -398,8 +395,7 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    expect(screen.getByText("Thinking...")).toBeInTheDocument();
-    expect(screen.getByText(/Live events \(1\)/i)).toBeInTheDocument();
+    expect(document.querySelector(".message-thinking")).toBeInTheDocument();
   });
 
   it("cleans up thinking timer when placeholder is turned off", () => {
@@ -436,116 +432,7 @@ describe("MessageFeed", () => {
     }
   });
 
-  it("keeps full live event history instead of truncating to 5 entries", () => {
-    const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-events",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
-            id: "finish-1",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-1",
-            cost: 0,
-            tokens: {
-              input: 1,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 1, write: 0 },
-            },
-          },
-          {
-            id: "finish-2",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-2",
-            cost: 0,
-            tokens: {
-              input: 2,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 2, write: 0 },
-            },
-          },
-          {
-            id: "finish-3",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-3",
-            cost: 0,
-            tokens: {
-              input: 3,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 3, write: 0 },
-            },
-          },
-          {
-            id: "finish-4",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-4",
-            cost: 0,
-            tokens: {
-              input: 4,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 4, write: 0 },
-            },
-          },
-          {
-            id: "finish-5",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-5",
-            cost: 0,
-            tokens: {
-              input: 5,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 5, write: 0 },
-            },
-          },
-          {
-            id: "finish-6",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-6",
-            cost: 0,
-            tokens: {
-              input: 6,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 6, write: 0 },
-            },
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-    ];
-
-    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-
-    expect(screen.getByText(/Live events \(6\)/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Step finished/i).length).toBeGreaterThanOrEqual(6);
-  });
+  // Live events display removed — internal events are now represented by tool cards and shimmer
 
   it("shows delegation bubble when task tool is running", () => {
     const now = Date.now();

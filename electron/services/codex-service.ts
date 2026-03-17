@@ -10,6 +10,15 @@ import path from "node:path";
 
 export type CodexConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
 
+export interface CodexModelEntry {
+  id: string;
+  model: string;
+  name: string;
+  isDefault: boolean;
+  supportedReasoningEfforts: string[];
+  defaultReasoningEffort: string | null;
+}
+
 export interface CodexState {
   status: CodexConnectionStatus;
   serverInfo?: { name: string; version: string };
@@ -64,9 +73,102 @@ export interface CodexApprovalRequest {
   }>;
 }
 
+export interface CodexCollaborationMode {
+  id: string;
+  label: string;
+  mode: string;
+  model: string;
+  reasoningEffort: string;
+  developerInstructions: string;
+}
+
 export interface CodexNotification {
   method: string;
   params: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Model list parser (handles both `data` and `models` response shapes)
+// ---------------------------------------------------------------------------
+
+function parseModelListResponse(response: unknown): CodexModelEntry[] {
+  if (!response || typeof response !== "object") return [];
+  const record = response as Record<string, unknown>;
+
+  // The codex app-server returns { data: [...] }
+  const items = (() => {
+    if (Array.isArray(record.data)) return record.data;
+    if (Array.isArray(record.models)) return record.models;
+    // Some versions nest under result.data
+    const result = record.result as Record<string, unknown> | undefined;
+    if (result && Array.isArray(result.data)) return result.data;
+    return [];
+  })();
+
+  return items
+    .map((item: unknown) => {
+      if (!item || typeof item !== "object") return null;
+      const m = item as Record<string, unknown>;
+      const id = String(m.id ?? m.model ?? "");
+      const model = String(m.model ?? m.id ?? "");
+      const rawName = String(m.displayName ?? m.display_name ?? "");
+      const name = rawName.trim() || model;
+      const isDefault = Boolean(m.isDefault ?? m.is_default ?? false);
+
+      // Parse reasoning efforts
+      const effortsRaw = (m.supportedReasoningEfforts ?? m.supported_reasoning_efforts) as unknown;
+      const efforts: string[] = Array.isArray(effortsRaw)
+        ? effortsRaw
+            .map((e: unknown) => {
+              if (typeof e === "string") return e;
+              if (e && typeof e === "object") {
+                const entry = e as Record<string, unknown>;
+                return String(entry.reasoningEffort ?? entry.reasoning_effort ?? "");
+              }
+              return "";
+            })
+            .filter((e: string) => e.length > 0)
+        : [];
+
+      const defaultEffortRaw = m.defaultReasoningEffort ?? m.default_reasoning_effort;
+      const defaultEffort = typeof defaultEffortRaw === "string" && defaultEffortRaw.trim() ? defaultEffortRaw.trim() : null;
+
+      return { id, model, name, isDefault, supportedReasoningEfforts: efforts, defaultReasoningEffort: defaultEffort };
+    })
+    .filter((m): m is CodexModelEntry => m !== null && m.id.length > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Collaboration mode list parser
+// ---------------------------------------------------------------------------
+
+function parseModeListResponse(response: unknown): CodexCollaborationMode[] {
+  if (!response || typeof response !== "object") return [];
+  const record = response as Record<string, unknown>;
+
+  const items = (() => {
+    if (Array.isArray(record.data)) return record.data;
+    if (Array.isArray(record.modes)) return record.modes;
+    const result = record.result as Record<string, unknown> | undefined;
+    if (result && Array.isArray(result.data)) return result.data;
+    if (result && Array.isArray(result.modes)) return result.modes;
+    return [];
+  })();
+
+  return items
+    .map((item: unknown) => {
+      if (!item || typeof item !== "object") return null;
+      const m = item as Record<string, unknown>;
+      return {
+        id: String(m.id ?? ""),
+        label: String(m.label ?? m.name ?? m.id ?? ""),
+        mode: String(m.mode ?? ""),
+        model: String(m.model ?? ""),
+        reasoningEffort: String(m.reasoningEffort ?? m.reasoning_effort ?? ""),
+        developerInstructions: String(m.developerInstructions ?? m.developer_instructions ?? ""),
+      };
+    })
+    .filter((m): m is CodexCollaborationMode => m !== null && m.id.length > 0);
 }
 
 type PendingRequest = {
@@ -130,9 +232,19 @@ export class CodexService extends EventEmitter {
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
   private _state: CodexState = { status: "disconnected" };
+  private _models: CodexModelEntry[] = [];
+  private _collaborationModes: CodexCollaborationMode[] = [];
 
   get state(): CodexState {
     return { ...this._state };
+  }
+
+  get models(): CodexModelEntry[] {
+    return [...this._models];
+  }
+
+  get collaborationModes(): CodexCollaborationMode[] {
+    return [...this._collaborationModes];
   }
 
   // -----------------------------------------------------------------------
@@ -158,11 +270,11 @@ export class CodexService extends EventEmitter {
         return this.state;
       }
 
-      console.info(`[CodexService] Spawning: ${codexBin} app-server --listen stdio://`);
-      const child = spawn(codexBin, ["app-server", "--listen", "stdio://"], {
+      console.info(`[CodexService] Spawning: ${codexBin} app-server`);
+      const child = spawn(codexBin, ["app-server"], {
         cwd: cwd ?? process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
-        env: { ...process.env, LOG_FORMAT: "json" },
+        env: { ...process.env },
       });
 
       this.process = child;
@@ -196,7 +308,7 @@ export class CodexService extends EventEmitter {
       // Initialize handshake
       const result = (await this.request("initialize", {
         clientInfo: { name: "orxa_code", title: "Orxa Code", version: "1.0.0" },
-        capabilities: { experimentalApi: false, optOutNotificationMethods: [] },
+        capabilities: { experimentalApi: true },
       })) as {
         server_info?: { name: string; version: string };
         serverInfo?: { name: string; version: string };
@@ -205,6 +317,22 @@ export class CodexService extends EventEmitter {
 
       // Send initialized notification (no id — fire-and-forget)
       this.sendNotification("initialized", {});
+
+      // Fetch available models (non-blocking — don't fail start if this errors)
+      try {
+        const modelResult = await this.request("model/list", {});
+        this._models = parseModelListResponse(modelResult);
+      } catch (err) {
+        console.warn("[CodexService] model/list failed (non-fatal):", err);
+      }
+
+      // Fetch collaboration modes (non-blocking)
+      try {
+        const modeResult = await this.request("collaborationMode/list", {});
+        this._collaborationModes = parseModeListResponse(modeResult);
+      } catch {
+        // Non-fatal — server may not support collaboration modes
+      }
 
       const serverInfo = result.serverInfo ?? result.server_info ?? result.userAgent;
       this._state = { status: "connected", serverInfo: serverInfo ?? undefined };
@@ -238,7 +366,15 @@ export class CodexService extends EventEmitter {
     sandbox?: string;
     title?: string;
   }): Promise<CodexThread> {
-    const result = (await this.request("thread/start", params)) as { thread: CodexThread };
+    const threadParams: Record<string, unknown> = {
+      sandbox: params.sandbox ?? "danger-full-access",
+      approvalPolicy: params.approvalPolicy ?? "never",
+      experimentalRawEvents: false,
+    };
+    if (params.model) threadParams.model = params.model;
+    if (params.cwd) threadParams.cwd = params.cwd;
+
+    const result = (await this.request("thread/start", threadParams)) as { thread: CodexThread };
     return result.thread;
   }
 
@@ -258,25 +394,54 @@ export class CodexService extends EventEmitter {
     threadId: string;
     prompt: string;
     cwd?: string;
-    approvalPolicy?: string;
     model?: string;
+    effort?: string;
+    collaborationMode?: string;
   }): Promise<void> {
-    const input = [{ type: "text", text: params.prompt }];
-    await this.request("turn/start", {
+    const input = [{ type: "text", text: params.prompt, text_elements: [] }];
+    const turnParams: Record<string, unknown> = {
       threadId: params.threadId,
       input,
-      cwd: params.cwd,
-      approvalPolicy: params.approvalPolicy ?? "unlessTrusted",
-      model: params.model,
-    });
+    };
+    if (params.model) turnParams.model = params.model;
+    if (params.effort) turnParams.effort = params.effort;
+    if (params.collaborationMode) turnParams.collaborationMode = params.collaborationMode;
+
+    await this.request("turn/start", turnParams);
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
     await this.request("turn/interrupt", { threadId, turnId });
   }
 
+  async listModels(): Promise<CodexModelEntry[]> {
+    if (!this.process) return this._models;
+    try {
+      const result = await this.request("model/list", {});
+      this._models = parseModelListResponse(result);
+    } catch {
+      // Return cached models
+    }
+    return this._models;
+  }
+
+  async listCollaborationModes(): Promise<CodexCollaborationMode[]> {
+    if (!this.process) return this._collaborationModes;
+    try {
+      const result = await this.request("collaborationMode/list", {});
+      this._collaborationModes = parseModeListResponse(result);
+    } catch {
+      // Return cached modes
+    }
+    return this._collaborationModes;
+  }
+
   async respondToApproval(requestId: number, decision: string): Promise<void> {
     this.sendResponse(requestId, { decision });
+  }
+
+  async respondToUserInput(requestId: number, response: string): Promise<void> {
+    this.sendResponse(requestId, { response });
   }
 
   // -----------------------------------------------------------------------
@@ -361,7 +526,8 @@ export class CodexService extends EventEmitter {
   private handleServerRequest(id: number, method: string, params: Record<string, unknown>): void {
     if (
       method === "item/commandExecution/requestApproval" ||
-      method === "item/fileChange/requestApproval"
+      method === "item/fileChange/requestApproval" ||
+      method === "item/fileRead/requestApproval"
     ) {
       const approval: CodexApprovalRequest = {
         id,
@@ -376,6 +542,15 @@ export class CodexService extends EventEmitter {
         changes: params.changes as CodexApprovalRequest["changes"],
       };
       this.emit("approval", approval);
+    } else if (method === "item/tool/requestUserInput") {
+      this.emit("userInput", {
+        id,
+        method,
+        threadId: (params.threadId as string) ?? "",
+        turnId: (params.turnId as string) ?? "",
+        itemId: (params.itemId as string) ?? "",
+        message: (params.message as string) ?? "",
+      });
     } else {
       // Unknown server request — auto-acknowledge
       this.sendResponse(id, {});

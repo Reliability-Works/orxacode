@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Part } from "@opencode-ai/sdk/v2/client";
 import type { SessionMessageBundle } from "@shared/ipc";
+import { ToolCallCard, type ToolCallStatus } from "./chat/ToolCallCard";
+import { ToolGroup } from "./chat/ToolGroup";
+import { ThinkingShimmer } from "./chat/ThinkingShimmer";
+import { TextPart } from "./chat/TextPart";
+import { MessageHeader } from "./chat/MessageHeader";
+import { MessageTurn } from "./chat/MessageTurn";
 
 type Props = {
   messages: SessionMessageBundle[];
@@ -1664,39 +1670,58 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
   return { visible, internal, delegations, timeline, activity };
 }
 
-function renderMarkdownText(text: string): string {
-  const html = text
-    // Escape HTML entities
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    // Fenced code blocks
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="md-code-block"><code>$2</code></pre>')
-    // Inline code
-    .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // Italic
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Headings
-    .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="md-link">$1</a>')
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr class="md-hr" />')
-    // Line breaks (preserve newlines)
-    .replace(/\n/g, "<br />");
-  return html;
+function mapToolStateStatus(status: string): ToolCallStatus {
+  if (status === "completed") return "completed";
+  if (status === "error") return "error";
+  if (status === "running") return "running";
+  return "pending";
 }
 
-function renderPart(part: Part) {
+function buildToolCallCardProps(part: Part & { type: "tool" }, workspaceDirectory?: string | null) {
+  const stateRecord = part.state as unknown as Record<string, unknown>;
+  const stateTitle = "title" in part.state && typeof part.state.title === "string" ? part.state.title.trim() : "";
+  const status = mapToolStateStatus(part.state.status);
+  const toolName = part.tool.trim().toLowerCase();
+  const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+  const stateOutput = typeof stateRecord.output === "string" ? stateRecord.output : undefined;
+  const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
+  const explicitCommand = extractCommand(part.state.input);
+  const title = stateTitle || toToolActivityLabel(part.tool, part.state.status, part.state.input, workspaceDirectory, stateRecord.metadata, stateRecord.output);
+  const command = (isCommandTool && explicitCommand && isLikelyShellCommand(explicitCommand)) ? explicitCommand : undefined;
+  const output = stateOutput || undefined;
+  const error = status === "error" ? (stateError ?? "Tool execution failed") : undefined;
+  return { title, status, command, output, error };
+}
+
+function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
+  // Only render cards for active (non-completed) tool parts that are not task/delegation tools.
+  // Completed tools are already shown in the existing timeline exploration/row system.
+  const toolParts = parts.filter((part): part is Part & { type: "tool" } => {
+    if (part.type !== "tool") return false;
+    const toolName = part.tool.trim().toLowerCase();
+    if (isTaskToolName(toolName)) return false;
+    return isToolStatusActive(part.state.status);
+  });
+  if (toolParts.length === 0) {
+    return null;
+  }
+  const cards = toolParts.map((part) => {
+    const props = buildToolCallCardProps(part, workspaceDirectory);
+    return <ToolCallCard key={part.id} {...props} />;
+  });
+  if (toolParts.length >= 3) {
+    return <ToolGroup items={cards} count={toolParts.length} defaultCollapsed />;
+  }
+  return <>{cards}</>;
+}
+
+function renderPart(part: Part, role?: string, showCopy?: boolean) {
   if (part.type === "text") {
     return (
-      <div
-        className="part-text part-text-md"
-        dangerouslySetInnerHTML={{ __html: renderMarkdownText(part.text) }}
+      <TextPart
+        content={part.text}
+        role={role === "user" || role === "assistant" ? role : undefined}
+        showCopy={showCopy && role === "assistant"}
       />
     );
   }
@@ -1807,7 +1832,6 @@ export function MessageFeed({
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
   const isAtBottomRef = useRef(true);
   const [selectedDelegationId, setSelectedDelegationId] = useState<string | null>(null);
-  const [thinkingDots, setThinkingDots] = useState(3);
   const [delegationSessionEvents, setDelegationSessionEvents] = useState<InternalEvent[]>([]);
   const [delegationSessionLoading, setDelegationSessionLoading] = useState(false);
   const [delegationSessionError, setDelegationSessionError] = useState<string | null>(null);
@@ -1824,10 +1848,10 @@ export function MessageFeed({
       }) as CSSProperties,
     [bottomClearance],
   );
-  const { renderedMessages, liveInternalEvents, liveDelegations, latestActivity } = useMemo(() => {
+  const { renderedMessages, liveDelegations, latestActivity } = useMemo(() => {
     if (messages.length === 0) {
       return {
-        renderedMessages: [] as Array<{ key: string; role: string; timeCreated: number; visibleParts: Part[]; timeline: TimelineEvent[] }>,
+        renderedMessages: [] as Array<{ key: string; role: string; timeCreated: number; visibleParts: Part[]; toolParts: Part[]; timeline: TimelineEvent[] }>,
         liveInternalEvents: [] as InternalEvent[],
         liveDelegations: [] as DelegationTrace[],
         latestActivity: null as ActivityEvent | null,
@@ -1841,6 +1865,7 @@ export function MessageFeed({
       const role = message.role;
       const assistantClassification = role === "assistant" ? classifyAssistantParts(bundle.parts, workspaceDirectory) : undefined;
       const visibleParts = assistantClassification?.visible ?? getVisibleParts(role, bundle.parts);
+      const toolParts = role === "assistant" ? bundle.parts.filter((part) => part.type === "tool") : [];
       if (role === "user") {
         const userEvents = bundle.parts
           .map((part) => summarizeInternalUserPart(part))
@@ -1860,6 +1885,7 @@ export function MessageFeed({
         role,
         timeCreated: message.time.created,
         visibleParts,
+        toolParts,
         timeline: assistantClassification?.timeline ?? [],
       };
     });
@@ -2049,18 +2075,6 @@ export function MessageFeed({
     };
   }, [bottomClearance, selectedDelegation]);
 
-  useEffect(() => {
-    if (!showAssistantPlaceholder) {
-      setThinkingDots(3);
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setThinkingDots((current) => (current <= 1 ? 3 : current - 1));
-    }, 420);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [showAssistantPlaceholder]);
 
   // Track whether the user is scrolled to (or near) the bottom of the feed.
   useEffect(() => {
@@ -2094,52 +2108,60 @@ export function MessageFeed({
     <div ref={messageFeedRef} className="messages-scroll" style={messageFeedStyle}>
       {renderedMessages.length === 0 ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div> : null}
       {renderedMessages.map((message) => {
-        const { key, role, timeCreated, visibleParts, timeline } = message;
+        const { key, role, timeCreated, visibleParts, toolParts, timeline } = message;
         const timelineBlocks = buildTimelineBlocks(timeline);
-        if (visibleParts.length === 0 && timeline.length === 0) {
+        if (visibleParts.length === 0 && timeline.length === 0 && toolParts.length === 0) {
           return null;
         }
+        const lastTextPartIndex = visibleParts.reduce<number>((acc, part, i) => (part.type === "text" ? i : acc), -1);
         return (
-          <article key={key} className={`message-card message-${role}`}>
-            <header className="message-header">
-              {role === "assistant" ? <span className="message-agent-icon" aria-hidden="true">{">"}</span> : null}
-              <span className="message-role">{getRoleLabel(role, assistantLabel)}</span>
-              <span className="message-time">{new Date(timeCreated).toLocaleTimeString()}</span>
-            </header>
-            <div className="message-parts">
-              {visibleParts.map((part, partIndex) => (
-                <section key={`${part.id}:${partIndex}`} className="message-part">
-                  {renderPart(part)}
-                </section>
-              ))}
-              {timeline.length > 0 ? (
-                <section className="message-timeline">
-                  {timelineBlocks.map((block) =>
-                    block.type === "exploration" ? (
-                      <details key={block.id} className="message-exploration">
-                        <summary className="message-exploration-summary">{block.summary}</summary>
-                        <div className="message-exploration-entries">
-                          {block.entries.map((entry) => (
-                            <span key={entry.id} className="message-exploration-entry">
-                              {renderLabelWithDiff(entry.label)}
-                            </span>
-                          ))}
+          <MessageTurn key={key}>
+            <article className={`message-card message-${role}`}>
+              <MessageHeader
+                role={role === "user" || role === "assistant" ? role : "assistant"}
+                label={getRoleLabel(role, assistantLabel)}
+                timestamp={timeCreated}
+              />
+              <div className="message-parts">
+                {visibleParts.map((part, partIndex) => (
+                  <section key={`${part.id}:${partIndex}`} className="message-part">
+                    {renderPart(part, role, partIndex === lastTextPartIndex)}
+                  </section>
+                ))}
+                {toolParts.length > 0 ? (
+                  <section className="message-tool-cards">
+                    {renderToolParts(toolParts, workspaceDirectory)}
+                  </section>
+                ) : null}
+                {timeline.length > 0 ? (
+                  <section className="message-timeline">
+                    {timelineBlocks.map((block) =>
+                      block.type === "exploration" ? (
+                        <details key={block.id} className="message-exploration">
+                          <summary className="message-exploration-summary">{block.summary}</summary>
+                          <div className="message-exploration-entries">
+                            {block.entries.map((entry) => (
+                              <span key={entry.id} className="message-exploration-entry">
+                                {renderLabelWithDiff(entry.label)}
+                              </span>
+                            ))}
+                          </div>
+                        </details>
+                      ) : (
+                        <div key={block.id} className="message-timeline-row">
+                          <span className="message-timeline-row-label">{renderLabelWithDiff(block.entry.label)}</span>
+                          {block.entry.command ? <small className="message-timeline-row-command">Command: {block.entry.command}</small> : null}
+                          {block.entry.failure ? <small className="message-timeline-row-error">Error: {block.entry.failure}</small> : null}
+                          {block.entry.reason ? <small className="message-timeline-row-reason">{block.entry.reason}</small> : null}
                         </div>
-                      </details>
-                    ) : (
-                      <div key={block.id} className="message-timeline-row">
-                        <span className="message-timeline-row-label">{renderLabelWithDiff(block.entry.label)}</span>
-                        {block.entry.command ? <small className="message-timeline-row-command">Command: {block.entry.command}</small> : null}
-                        {block.entry.failure ? <small className="message-timeline-row-error">Error: {block.entry.failure}</small> : null}
-                        {block.entry.reason ? <small className="message-timeline-row-reason">{block.entry.reason}</small> : null}
-                      </div>
-                    ),
-                  )}
-                </section>
-              ) : null}
-            </div>
-            {visibleParts.length > 0 ? <CopyMessageButton parts={visibleParts} /> : null}
-          </article>
+                      ),
+                    )}
+                  </section>
+                ) : null}
+              </div>
+              {visibleParts.length > 0 ? <CopyMessageButton parts={visibleParts} /> : null}
+            </article>
+          </MessageTurn>
         );
       })}
       {sessionNotices.map((notice) => (
@@ -2163,18 +2185,12 @@ export function MessageFeed({
       ))}
       {showAssistantPlaceholder && renderedMessages.length > 0 ? (
         <article className="message-card message-assistant">
-          <header className="message-header">
-            <span className="message-role">{assistantLabel}</span>
-            <span className="message-time">{new Date().toLocaleTimeString()}</span>
-          </header>
+          <MessageHeader role="assistant" label={assistantLabel} timestamp={Date.now()} />
           <div className="message-parts">
             <section className="message-part thinking-panel">
-              <pre className="part-text message-thinking">
-                Thinking{".".repeat(thinkingDots)}
-              </pre>
-              {latestActivity ? (
-                <p className="thinking-activity">{latestActivity.label}</p>
-              ) : null}
+              <div className="message-thinking">
+                <ThinkingShimmer label={latestActivity?.label ?? "Thinking"} />
+              </div>
               {liveDelegations.length > 0 ? (
                 <div className="delegation-bubbles">
                   {liveDelegations.map((delegation) => (
@@ -2191,21 +2207,7 @@ export function MessageFeed({
                   ))}
                 </div>
               ) : null}
-              {liveInternalEvents.length > 0 ? (
-                <details className="thinking-events">
-                  <summary>Live events ({liveInternalEvents.length})</summary>
-                  <ul className="thinking-events-list">
-                    {liveInternalEvents.map((event, eventIndex) => (
-                      <li key={event.id}>
-                        {event.actor ? <strong>{event.actor}</strong> : null}
-                        <span>{event.summary}</span>
-                        {event.details ? <small>{event.details}</small> : null}
-                        {eventIndex < liveInternalEvents.length - 1 ? <span className="thinking-event-divider" aria-hidden="true" /> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
+              {/* Live internal events are now represented by ToolCallCard and ThinkingShimmer */}
             </section>
           </div>
         </article>

@@ -443,6 +443,38 @@ export function SettingsDrawer({
                 onChange={(event) => applyUpdatePreferences({ autoCheckEnabled: event.target.checked })}
               />
             </label>
+            <label className="settings-inline-toggle">
+              notify when agent is waiting for input
+              <input
+                type="checkbox"
+                checked={appPreferences.notifyOnAwaitingInput}
+                onChange={(e) => onAppPreferencesChange({ ...appPreferences, notifyOnAwaitingInput: e.target.checked })}
+              />
+            </label>
+            <label className="settings-inline-toggle">
+              notify when agent finishes a task
+              <input
+                type="checkbox"
+                checked={appPreferences.notifyOnTaskComplete}
+                onChange={(e) => onAppPreferencesChange({ ...appPreferences, notifyOnTaskComplete: e.target.checked })}
+              />
+            </label>
+            <label className="settings-inline-toggle">
+              enable collaboration modes (codex)
+              <input
+                type="checkbox"
+                checked={appPreferences.collaborationModesEnabled}
+                onChange={(e) => onAppPreferencesChange({ ...appPreferences, collaborationModesEnabled: e.target.checked })}
+              />
+            </label>
+            <label className="settings-inline-toggle">
+              notify on subagent system events
+              <input
+                type="checkbox"
+                checked={appPreferences.subagentSystemNotificationsEnabled}
+                onChange={(e) => onAppPreferencesChange({ ...appPreferences, subagentSystemNotificationsEnabled: e.target.checked })}
+              />
+            </label>
           </div>
 
           <div className="settings-divider" />
@@ -614,6 +646,7 @@ export function SettingsDrawer({
               );
             })}
           </div>
+
         </section>
       );
     }
@@ -1403,14 +1436,14 @@ export function SettingsDrawer({
           <select
             className="settings-codex-input"
             value={appPreferences.codexReasoningEffort}
-            disabled={!selectedModelEntry?.supportsReasoningEffort}
+            disabled={!selectedModelEntry || selectedModelEntry.supportedReasoningEfforts.length === 0}
             onChange={(e) => onAppPreferencesChange({ ...appPreferences, codexReasoningEffort: e.target.value })}
           >
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
           </select>
-          {!selectedModelEntry?.supportsReasoningEffort ? (
+          {!selectedModelEntry || selectedModelEntry.supportedReasoningEfforts.length === 0 ? (
             <p className="settings-codex-help">Reasoning effort is not supported by the selected model.</p>
           ) : null}
         </section>

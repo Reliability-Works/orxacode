@@ -17,11 +17,7 @@ import {
 } from "lucide-react";
 import type {
   AgentsDocument,
-  ArtifactRetentionPolicy,
-  ArtifactRecord,
-  ArtifactSessionSummary,
   ChangeProvenanceRecord,
-  ContextSelectionTrace,
   MemoryBackfillStatus,
   MemoryGraphSnapshot,
   ProjectListItem,
@@ -34,23 +30,22 @@ import type {
   BrowserHistoryItem,
   BrowserState,
   OrxaEvent,
-  WorkspaceArtifactSummary,
-  WorkspaceContextFile,
   McpDevToolsServerState,
+  ProviderUsageStats,
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
 import { ClaudeTerminalPane } from "./components/ClaudeTerminalPane";
 import { CodexPane } from "./components/CodexPane";
 import { ComposerPanel } from "./components/ComposerPanel";
+import type { TodoItem } from "./components/chat/TodoDock";
+import type { AgentQuestion } from "./components/chat/QuestionDock";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
 import { GitSidebar, type BrowserControlOwner, type BrowserSidebarState } from "./components/GitSidebar";
-import { ProjectDashboard } from "./components/ProjectDashboard";
-import { ArtifactsDrawer, type ArtifactScopeTab } from "./components/ArtifactsDrawer";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { JobsBoard } from "./components/JobsBoard";
@@ -58,7 +53,6 @@ import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { MemoryBoard } from "./components/MemoryBoard";
 import { ConfirmDialog, type ConfirmDialogProps } from "./components/ConfirmDialog";
 import { TextInputDialog, type TextInputDialogProps } from "./components/TextInputDialog";
-import { WorkspaceContextManager } from "./components/WorkspaceContextManager";
 import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
 import { useCanvasState } from "./hooks/useCanvasState";
@@ -127,6 +121,10 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   codexReasoningEffort: "medium",
   codexAccessMode: "on-request",
   gitAgent: "opencode",
+  notifyOnAwaitingInput: true,
+  notifyOnTaskComplete: true,
+  collaborationModesEnabled: true,
+  subagentSystemNotificationsEnabled: true,
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
@@ -247,8 +245,6 @@ const STARTUP_STEP_TIMEOUT_MS = 12_000;
 const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
 const WEB_TASK_HINT_PATTERN =
   /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
-const APP_PRIVATE_ARTIFACT_QUERY_LIMIT = 1_000;
-const APP_PRIVATE_ARTIFACT_VIEW_LIMIT = 300;
 const STATUS_TOAST_ERROR_PATTERN = /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i;
 const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i;
 const RECOVERABLE_SESSION_ERROR_PATTERN =
@@ -260,18 +256,6 @@ const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
   tabs: [],
   activeTabID: undefined,
 };
-
-function isAbsoluteWorkspacePath(value: string) {
-  return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
-}
-
-function isAppPrivateArtifact(record: ArtifactRecord) {
-  return !isAbsoluteWorkspacePath(record.workspace);
-}
-
-function toAppPrivateArtifacts(records: ArtifactRecord[]) {
-  return records.filter(isAppPrivateArtifact).slice(0, APP_PRIVATE_ARTIFACT_VIEW_LIMIT);
-}
 
 function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarState["history"] {
   return items.map((entry) => ({
@@ -759,6 +743,8 @@ export default function App() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [followupQueue, setFollowupQueue] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
+  const [sendingQueuedId, setSendingQueuedId] = useState<string | undefined>();
 
   useEffect(() => {
     const option = CODE_FONT_OPTIONS.find((o) => o.value === appPreferences.codeFont);
@@ -886,6 +872,7 @@ export default function App() {
     togglePinSession,
     openProjectContextMenu,
     openSessionContextMenu,
+    markSessionUsed,
   } = useWorkspaceState({
     setStatusLine,
     terminalTabIds: terminalTabs.map((t) => t.id),
@@ -920,6 +907,7 @@ export default function App() {
   const [sessionTitles, setSessionTitles] = usePersistedState<Record<string, string>>(SESSION_TITLES_KEY, {});
   const canvasState = useCanvasState(activeSessionID ?? "__none__");
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
+  const [codexAwaiting, setCodexAwaiting] = useState(false);
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
     deserialize: (raw) => {
       const parsed = Number(raw);
@@ -983,19 +971,6 @@ export default function App() {
   const [browserHistoryItems, setBrowserHistoryItems] = useState<BrowserHistoryItem[]>([]);
   const [browserActionRunning, setBrowserActionRunning] = useState(false);
   const [mcpDevToolsState, setMcpDevToolsState] = useState<McpDevToolsServerState>("stopped");
-  const [artifactsDrawerOpen, setArtifactsDrawerOpen] = useState(false);
-  const [artifactsDrawerTab, setArtifactsDrawerTab] = useState<ArtifactScopeTab>("session");
-  const [sessionArtifacts, setSessionArtifacts] = useState<ArtifactRecord[]>([]);
-  const [workspaceArtifacts, setWorkspaceArtifacts] = useState<ArtifactRecord[]>([]);
-  const [appArtifacts, setAppArtifacts] = useState<ArtifactRecord[]>([]);
-  const [artifactSessionSummaries, setArtifactSessionSummaries] = useState<ArtifactSessionSummary[]>([]);
-  const [workspaceArtifactSummary, setWorkspaceArtifactSummary] = useState<WorkspaceArtifactSummary | null>(null);
-  const [artifactRetentionPolicy, setArtifactRetentionPolicy] = useState<ArtifactRetentionPolicy | null>(null);
-  const [artifactRetentionBusy, setArtifactRetentionBusy] = useState(false);
-  const [artifactExportBusy, setArtifactExportBusy] = useState(false);
-  const [workspaceContextFiles, setWorkspaceContextFiles] = useState<WorkspaceContextFile[]>([]);
-  const [workspaceContextManagerOpen, setWorkspaceContextManagerOpen] = useState(false);
-  const [latestContextTrace, setLatestContextTrace] = useState<ContextSelectionTrace | null>(null);
   const [startupState, setStartupState] = useState<StartupState>({
     phase: "running",
     message: "Initializing Orxa Code…",
@@ -1037,20 +1012,55 @@ export default function App() {
   const [updateInstallPending, setUpdateInstallPending] = useState(false);
   const [updateProgressState, setUpdateProgressState] = useState<UpdateProgressState | null>(null);
   const [todosOpen, setTodosOpen] = useState(false);
+  const [dockTodosOpen, setDockTodosOpen] = useState(false);
+  const [sdkTodoItems, setSdkTodoItems] = useState<TodoItem[]>([]);
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<"once" | "always" | "reject" | null>(null);
   const [permissionDecisionPendingRequestID, setPermissionDecisionPendingRequestID] = useState<string | null>(null);
   const [dependencyReport, setDependencyReport] = useState<RuntimeDependencyReport | null>(null);
   const [dependencyModalOpen, setDependencyModalOpen] = useState(false);
   const [textInputDialog, setTextInputDialog] = useState<TextInputDialogState | null>(null);
-  const { dashboard, projectDashboard, refreshDashboard, refreshProjectDashboard } = useDashboards(
+  const { dashboard, refreshDashboard } = useDashboards(
     projects,
     activeProjectDir ?? null,
     projectData,
   );
-  const [agentsDocument, setAgentsDocument] = useState<AgentsDocument | null>(null);
-  const [agentsDraft, setAgentsDraft] = useState("");
-  const [agentsLoading, setAgentsLoading] = useState(false);
-  const [agentsSaving, setAgentsSaving] = useState(false);
+  const codexSessionCount = useMemo(
+    () => Object.values(sessionTypes).filter((t) => t === "codex").length,
+    [sessionTypes],
+  );
+  const claudeSessionCount = useMemo(
+    () => Object.values(sessionTypes).filter((t) => t === "claude").length,
+    [sessionTypes],
+  );
+  const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null);
+  const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null);
+  const [codexUsageLoading, setCodexUsageLoading] = useState(false);
+  const [claudeUsageLoading, setClaudeUsageLoading] = useState(false);
+  const refreshCodexUsage = useCallback(async () => {
+    setCodexUsageLoading(true);
+    try {
+      const stats = await window.orxa.usage.getCodexStats();
+      setCodexUsage(stats);
+    } catch {
+      // Non-fatal
+    } finally {
+      setCodexUsageLoading(false);
+    }
+  }, []);
+  const refreshClaudeUsage = useCallback(async () => {
+    setClaudeUsageLoading(true);
+    try {
+      const stats = await window.orxa.usage.getClaudeStats();
+      setClaudeUsage(stats);
+    } catch {
+      // Non-fatal
+    } finally {
+      setClaudeUsageLoading(false);
+    }
+  }, []);
+  const [, setAgentsDocument] = useState<AgentsDocument | null>(null);
+  const [, setAgentsDraft] = useState("");
+  const [, setAgentsLoading] = useState(false);
   const activeSessionKey = useMemo(() => {
     if (!activeProjectDir || !activeSessionID) {
       return null;
@@ -1333,58 +1343,6 @@ export default function App() {
     setBrowserRuntimeState(nextState);
     setBrowserHistoryItems(nextHistory);
   }, []);
-
-  const refreshWorkspaceContextFiles = useCallback(async (workspace?: string | null) => {
-    const targetWorkspace = workspace ?? activeProjectDir;
-    if (!targetWorkspace) {
-      setWorkspaceContextFiles([]);
-      return;
-    }
-    try {
-      const entries = await window.orxa.opencode.listWorkspaceContext(targetWorkspace);
-      setWorkspaceContextFiles(entries);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir]);
-
-  const refreshArtifacts = useCallback(async (workspace?: string | null, sessionID?: string | null) => {
-    const targetWorkspace = workspace ?? activeProjectDir;
-    const targetSessionID = sessionID ?? activeSessionID;
-    try {
-      const appRecordsPromise = window.orxa.opencode.listArtifacts({ limit: APP_PRIVATE_ARTIFACT_QUERY_LIMIT });
-      const retentionPolicyPromise = window.orxa.opencode.getArtifactRetentionPolicy();
-      if (!targetWorkspace) {
-        const [appRecords, retentionPolicy] = await Promise.all([appRecordsPromise, retentionPolicyPromise]);
-        setWorkspaceArtifacts([]);
-        setSessionArtifacts([]);
-        setArtifactSessionSummaries([]);
-        setWorkspaceArtifactSummary(null);
-        setAppArtifacts(toAppPrivateArtifacts(appRecords));
-        setArtifactRetentionPolicy(retentionPolicy);
-        return;
-      }
-
-      const [workspaceRecords, sessionRecords, summaries, workspaceSummary, retentionPolicy, appRecords] = await Promise.all([
-        window.orxa.opencode.listArtifacts({ workspace: targetWorkspace, limit: 300 }),
-        targetSessionID
-          ? window.orxa.opencode.listArtifacts({ workspace: targetWorkspace, sessionID: targetSessionID, limit: 150 })
-          : Promise.resolve([]),
-        window.orxa.opencode.listArtifactSessions(targetWorkspace),
-        window.orxa.opencode.listWorkspaceArtifactSummary(targetWorkspace),
-        retentionPolicyPromise,
-        appRecordsPromise,
-      ]);
-      setWorkspaceArtifacts(workspaceRecords);
-      setSessionArtifacts(sessionRecords);
-      setArtifactSessionSummaries(summaries);
-      setWorkspaceArtifactSummary(workspaceSummary);
-      setAppArtifacts(toAppPrivateArtifacts(appRecords));
-      setArtifactRetentionPolicy(retentionPolicy);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeProjectDir, activeSessionID]);
 
   const ensureBrowserTab = useCallback(async () => {
     const current = await window.orxa.browser.getState();
@@ -1705,14 +1663,41 @@ export default function App() {
       if (activeProjectDir && activeSessionID) {
         clearBrowserAutomationHalt(activeProjectDir, activeSessionID);
       }
+      // Mark session as used so it won't be cleaned up on navigation
+      if (activeSessionID) {
+        markSessionUsed(activeSessionID);
+      }
       return sendPrompt({
         systemAddendum: effectiveSystemAddendum,
         promptSource: "user",
         tools: activePromptToolsPolicy,
       });
     },
-    [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, effectiveSystemAddendum, sendPrompt],
+    [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, effectiveSystemAddendum, markSessionUsed, sendPrompt],
   );
+
+  const queueFollowupMessage = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const id = `fq:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+    setFollowupQueue((current) => [...current, { id, text: trimmed, timestamp: Date.now() }]);
+    setComposer("");
+    pushToast("Message queued — will send when agent finishes", "info", 3_500);
+  }, [setComposer, pushToast]);
+
+  const removeQueuedMessage = useCallback((id: string) => {
+    setFollowupQueue((current) => current.filter((item) => item.id !== id));
+  }, []);
+
+  const editQueuedMessage = useCallback((id: string) => {
+    setFollowupQueue((current) => {
+      const item = current.find((m) => m.id === id);
+      if (item) {
+        setComposer(item.text);
+      }
+      return current.filter((m) => m.id !== id);
+    });
+  }, [setComposer]);
 
   const allModelOptions = settingsModelOptions;
 
@@ -1847,37 +1832,6 @@ export default function App() {
     setMessages([]);
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
-
-  useEffect(() => {
-    if (!activeProjectDir) {
-      setWorkspaceArtifacts([]);
-      setSessionArtifacts([]);
-      setArtifactSessionSummaries([]);
-      setWorkspaceArtifactSummary(null);
-      setWorkspaceContextFiles([]);
-      return;
-    }
-    void refreshArtifacts(activeProjectDir, activeSessionID);
-    void refreshWorkspaceContextFiles(activeProjectDir);
-  }, [activeProjectDir, activeSessionID, refreshArtifacts, refreshWorkspaceContextFiles]);
-
-  useEffect(() => {
-    if (!artifactsDrawerOpen) {
-      return;
-    }
-    void refreshArtifacts(activeProjectDir, activeSessionID);
-  }, [activeProjectDir, activeSessionID, artifactsDrawerOpen, refreshArtifacts]);
-
-  useEffect(() => {
-    if (!workspaceContextManagerOpen || !activeProjectDir) {
-      return;
-    }
-    void refreshWorkspaceContextFiles(activeProjectDir);
-  }, [activeProjectDir, refreshWorkspaceContextFiles, workspaceContextManagerOpen]);
-
-  useEffect(() => {
-    setLatestContextTrace(null);
-  }, [activeProjectDir, activeSessionID]);
 
   useEffect(() => {
     if (!activeProjectDir || !activeSessionID) {
@@ -2092,28 +2046,6 @@ export default function App() {
         setBrowserActionRunning(false);
       }
 
-      if (event.type === "artifact.created") {
-        const artifact = event.payload;
-        if (isAppPrivateArtifact(artifact)) {
-          setAppArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, APP_PRIVATE_ARTIFACT_VIEW_LIMIT));
-        }
-        if (activeProjectDir && artifact.workspace === activeProjectDir) {
-          setWorkspaceArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, 300));
-          if (activeSessionID && artifact.sessionID === activeSessionID) {
-            setSessionArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, 150));
-          }
-          void refreshArtifacts(activeProjectDir, activeSessionID).catch(() => undefined);
-        } else if (isAppPrivateArtifact(artifact)) {
-          void refreshArtifacts(activeProjectDir, activeSessionID).catch(() => undefined);
-        }
-      }
-
-      if (event.type === "context.selection") {
-        if (activeProjectDir && activeSessionID && event.payload.workspace === activeProjectDir && event.payload.sessionID === activeSessionID) {
-          setLatestContextTrace(event.payload);
-        }
-      }
-
       if (event.type === "opencode.global") {
         if (event.payload.event.type === "project.updated" || event.payload.event.type === "global.disposed") {
           void bootstrap();
@@ -2165,13 +2097,32 @@ export default function App() {
           kind === "question.replied" ||
           kind === "question.rejected" ||
           kind === "pty.created" ||
-          kind === "pty.deleted"
+          kind === "pty.deleted" ||
+          kind === "todo.updated"
         ) {
           const refreshDelay =
             kind === "message.part.delta" || kind === "message.part.updated" || kind === "message.part.added"
               ? 600
               : 180;
           queueRefresh(`Updated from event: ${kind}`, refreshDelay);
+        }
+
+        if (kind === "todo.updated" && eventProperties) {
+          const todos = eventProperties.todos;
+          if (Array.isArray(todos)) {
+            const mapped: TodoItem[] = todos.map((t: Record<string, unknown>, i: number) => ({
+              id: typeof t.id === "string" ? t.id : `todo-${i}`,
+              content: typeof t.content === "string" ? t.content : "",
+              status: (() => {
+                const s = typeof t.status === "string" ? t.status.toLowerCase().trim() : "pending";
+                if (s === "in_progress" || s === "in-progress" || s === "active" || s === "running") return "in_progress" as const;
+                if (s === "completed" || s === "complete" || s === "done" || s === "finished" || s === "success" || s === "succeeded") return "completed" as const;
+                if (s === "cancelled" || s === "canceled" || s === "skipped") return "cancelled" as const;
+                return "pending" as const;
+              })(),
+            }));
+            setSdkTodoItems(mapped);
+          }
         }
 
         if (
@@ -2269,7 +2220,6 @@ export default function App() {
     loadMemoryGraph,
     pushToast,
     queueRefresh,
-    refreshArtifacts,
     scheduleGitRefresh,
     sidebarMode,
     stopResponsePolling,
@@ -2369,12 +2319,19 @@ export default function App() {
       if (!directory || !projectData || projectData.directory !== directory) {
         return "idle";
       }
+      // Codex sessions: check the codex-specific awaiting state
+      if (sessionTypes[sessionID] === "codex" && codexAwaiting && sessionID === activeSessionID) {
+        return "awaiting";
+      }
       if (projectData.permissions.some((request) => request.sessionID === sessionID)) {
-        return "permission";
+        return "awaiting";
+      }
+      if ((projectData.questions ?? []).some((request) => request.sessionID === sessionID)) {
+        return "awaiting";
       }
       return projectData.sessionStatus[sessionID]?.type ?? "idle";
     },
-    [projectData],
+    [activeSessionID, codexAwaiting, projectData, sessionTypes],
   );
 
   const refreshAgentsDocument = useCallback(
@@ -2399,56 +2356,6 @@ export default function App() {
     [activeProjectDir],
   );
 
-  const createAgentsDocument = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    const projectLabel = activeProject?.name || activeProjectDir.split("/").at(-1) || "Workspace";
-    const template = [
-      `# ${projectLabel} - Agent Instructions`,
-      "",
-      "## Scope",
-      "- Work only inside this repository unless explicitly told otherwise.",
-      "- Prefer minimal, safe changes that are easy to review.",
-      "",
-      "## Quality",
-      "- Run relevant tests after changes.",
-      "- Explain what changed, why, and how it was verified.",
-      "",
-      "## Notes",
-      "- Add workspace-specific conventions and workflows here.",
-      "",
-    ].join("\n");
-    try {
-      setAgentsSaving(true);
-      const doc = await window.orxa.opencode.writeAgentsMd(activeProjectDir, template);
-      setAgentsDocument(doc);
-      setAgentsDraft(doc.content);
-      setStatusLine("AGENTS.md created");
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setAgentsSaving(false);
-    }
-  }, [activeProject?.name, activeProjectDir]);
-
-  const saveAgentsDocument = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    try {
-      setAgentsSaving(true);
-      const doc = await window.orxa.opencode.writeAgentsMd(activeProjectDir, agentsDraft);
-      setAgentsDocument(doc);
-      setAgentsDraft(doc.content);
-      setStatusLine("AGENTS.md saved");
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setAgentsSaving(false);
-    }
-  }, [activeProjectDir, agentsDraft]);
-
   useEffect(() => {
     if (activeProjectDir) {
       return;
@@ -2460,9 +2367,8 @@ export default function App() {
     if (!activeProjectDir || activeSessionID) {
       return;
     }
-    void refreshProjectDashboard();
     void refreshAgentsDocument(activeProjectDir);
-  }, [activeProjectDir, activeSessionID, refreshAgentsDocument, refreshProjectDashboard]);
+  }, [activeProjectDir, activeSessionID, refreshAgentsDocument]);
 
   useEffect(() => {
     if (activeProjectDir && !activeSessionID) {
@@ -3021,10 +2927,7 @@ export default function App() {
   const currentSessionStatus = activeSessionID ? projectData?.sessionStatus[activeSessionID] : undefined;
   const isSessionBusy = currentSessionStatus?.type === "busy" || currentSessionStatus?.type === "retry";
   const isSessionInProgress = isSessionBusy || isSendingPrompt;
-  const showingProjectDashboard = Boolean(activeProjectDir && !activeSessionID);
-  const contentPaneTitle = showingProjectDashboard
-    ? activeProject?.name || activeProjectDir?.split("/").at(-1) || "No workspace selected"
-    : activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
+  const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
   const activeSessionNoticeKey = activeProjectDir && activeSessionID ? `${activeProjectDir}::${activeSessionID}` : null;
   const activeSessionNotices = useMemo(
     () => (activeSessionNoticeKey ? (sessionFeedNotices[activeSessionNoticeKey] ?? []) : []),
@@ -3216,6 +3119,8 @@ export default function App() {
 
   useEffect(() => {
     setTodosOpen(false);
+    setDockTodosOpen(false);
+    setSdkTodoItems([]);
   }, [activeSessionID]);
 
   const createTerminalTab = useCallback(async (): Promise<string> => {
@@ -3446,6 +3351,98 @@ export default function App() {
     }
   }, [activeProjectDir, appPreferences.confirmDangerousActions, pendingQuestion, refreshProject, requestConfirmation]);
 
+  // --- Dock props for ComposerPanel ---
+
+  const dockPendingPermission = useMemo(() => {
+    if (!pendingPermission || isPermissionDecisionInFlight) return null;
+    return {
+      description: pendingPermission.permission ?? "Permission requested",
+      filePattern: pendingPermission.patterns?.[0],
+      command: undefined as string[] | undefined,
+      onDecide: (decision: "allow_once" | "allow_always" | "reject") => {
+        const replyMap: Record<string, "once" | "always" | "reject"> = {
+          allow_once: "once",
+          allow_always: "always",
+          reject: "reject",
+        };
+        void replyPendingPermission(replyMap[decision]);
+      },
+    };
+  }, [pendingPermission, isPermissionDecisionInFlight, replyPendingPermission]);
+
+  const dockPendingQuestion = useMemo(() => {
+    if (!pendingQuestion) return null;
+    const mapped: AgentQuestion[] = (pendingQuestion.questions ?? []).map(
+      (qi: { question: string; header?: string; options?: Array<{ label: string; description?: string }>; multiple?: boolean }, idx: number) => ({
+        id: `${pendingQuestion.id}-q${idx}`,
+        header: qi.header,
+        text: qi.question,
+        options: qi.options?.map((opt) => ({ label: opt.label, value: opt.label })),
+        multiSelect: qi.multiple,
+      }),
+    );
+    return {
+      questions: mapped,
+      onSubmit: (answers: Record<string, string | string[]>) => {
+        const ordered: QuestionAnswer[] = mapped.map((q) => {
+          const ans = answers[q.id];
+          if (!ans) return [] as string[];
+          if (Array.isArray(ans)) return ans;
+          return [ans];
+        });
+        void replyPendingQuestion(ordered);
+      },
+      onReject: () => {
+        void rejectPendingQuestion();
+      },
+    };
+  }, [pendingQuestion, replyPendingQuestion, rejectPendingQuestion]);
+
+  // ── Desktop notifications ──────────────────────────────────────────
+  const prevSessionBusy = useRef(false);
+
+  useEffect(() => {
+    if (!appPreferences.notifyOnAwaitingInput || document.hasFocus()) return;
+    if (dockPendingPermission || dockPendingQuestion) {
+      new Notification("Orxa Code", {
+        body: dockPendingQuestion ? "Agent is asking a question" : "Agent needs permission to continue",
+        silent: false,
+      }).onclick = () => window.focus();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dockPendingPermission, dockPendingQuestion]);
+
+  useEffect(() => {
+    const isBusy = isSessionInProgress;
+    const wasBusy = prevSessionBusy.current;
+    prevSessionBusy.current = isBusy;
+    if (!appPreferences.notifyOnTaskComplete || document.hasFocus()) return;
+    if (wasBusy && !isBusy && activeSessionID) {
+      new Notification("Orxa Code", {
+        body: "Agent has finished its task",
+        silent: false,
+      }).onclick = () => window.focus();
+    }
+  }, [isSessionInProgress, activeSessionID, appPreferences.notifyOnTaskComplete]);
+
+  // Auto-send first queued followup when session becomes idle
+  const prevSessionBusyForQueue = useRef(false);
+  useEffect(() => {
+    const isBusy = isSessionInProgress;
+    const wasBusy = prevSessionBusyForQueue.current;
+    prevSessionBusyForQueue.current = isBusy;
+    if (wasBusy && !isBusy && followupQueue.length > 0) {
+      // Session just went idle — show the dock so user can choose to send
+      // (The dock is already visible; no auto-send to keep user in control)
+    }
+  }, [isSessionInProgress, followupQueue.length]);
+
+  // Clear queue when active session changes
+  useEffect(() => {
+    setFollowupQueue([]);
+    setSendingQueuedId(undefined);
+  }, [activeSessionID]);
+
   useEffect(() => {
     if (!terminalOpen || !activeProjectDir) {
       terminalAutoCreateTried.current = false;
@@ -3626,106 +3623,6 @@ export default function App() {
     setComposer((current) => (current.trim().length > 0 ? `${current}\n${filePath}` : filePath));
   }, [setComposer]);
 
-  const openArtifactsDrawer = useCallback((tab: ArtifactScopeTab) => {
-    setArtifactsDrawerTab(tab);
-    setArtifactsDrawerOpen(true);
-  }, []);
-
-  const closeArtifactsDrawer = useCallback(() => {
-    setArtifactsDrawerOpen(false);
-  }, []);
-
-  const applyArtifactRetentionCap = useCallback(async (maxBytes: number) => {
-    setArtifactRetentionBusy(true);
-    try {
-      const policy = await window.orxa.opencode.setArtifactRetentionPolicy({ maxBytes });
-      setArtifactRetentionPolicy(policy);
-      await refreshArtifacts(activeProjectDir, activeSessionID);
-      setStatusLine(`Artifact cap set to ${Math.round(policy.maxBytes / (1024 * 1024))} MB`);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setArtifactRetentionBusy(false);
-    }
-  }, [activeProjectDir, activeSessionID, refreshArtifacts]);
-
-  const pruneArtifactsNow = useCallback(async () => {
-    setArtifactRetentionBusy(true);
-    try {
-      const result = await window.orxa.opencode.pruneArtifactsNow(activeProjectDir ?? undefined);
-      await refreshArtifacts(activeProjectDir, activeSessionID);
-      setStatusLine(`Pruned ${result.removed} artifacts (${Math.round(result.removedBytes / 1024)} KB freed)`);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setArtifactRetentionBusy(false);
-    }
-  }, [activeProjectDir, activeSessionID, refreshArtifacts]);
-
-  const exportArtifactsBundle = useCallback(async () => {
-    if (!activeProjectDir || artifactsDrawerTab === "app") {
-      return;
-    }
-    setArtifactExportBusy(true);
-    try {
-      const result = await window.orxa.opencode.exportArtifactBundle({
-        workspace: activeProjectDir,
-        sessionID: artifactsDrawerTab === "session" ? activeSessionID ?? undefined : undefined,
-        limit: 1_000,
-      });
-      setStatusLine(`Exported ${result.exportedArtifacts} artifacts to ${result.bundlePath}`);
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error));
-    } finally {
-      setArtifactExportBusy(false);
-    }
-  }, [activeProjectDir, activeSessionID, artifactsDrawerTab]);
-
-  const openWorkspaceContextManager = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setWorkspaceContextManagerOpen(true);
-    await refreshWorkspaceContextFiles(activeProjectDir);
-  }, [activeProjectDir, refreshWorkspaceContextFiles]);
-
-  const createWorkspaceContext = useCallback(async () => {
-    if (!activeProjectDir) {
-      return;
-    }
-    setTextInputDialog({
-      title: "New context file",
-      defaultValue: "vision.md",
-      placeholder: "vision.md",
-      confirmLabel: "Create",
-      validate: (value) => {
-        if (!value.trim()) {
-          return "Filename is required";
-        }
-        return null;
-      },
-      onConfirm: async (value) => {
-        const filename = value.trim();
-        if (!filename) {
-          return;
-        }
-        try {
-          await window.orxa.opencode.writeWorkspaceContext({
-            workspace: activeProjectDir,
-            filename,
-            title: filename.replace(/\.md$/i, ""),
-            content: `# ${filename.replace(/\.md$/i, "")}\n\n`,
-          });
-          await refreshWorkspaceContextFiles(activeProjectDir);
-          setWorkspaceContextManagerOpen(true);
-          setStatusLine("Workspace context created");
-        } catch (error) {
-          setStatusLine(error instanceof Error ? error.message : String(error));
-        }
-      },
-    });
-  }, [activeProjectDir, refreshWorkspaceContextFiles]);
-
   useEffect(() => {
     if (!activeProjectDir) {
       setRightSidebarTab("git");
@@ -3789,19 +3686,10 @@ export default function App() {
           }
           gitDiffStats={gitDiffStats}
           contentPaneTitle={contentPaneTitle}
-          showingProjectDashboard={showingProjectDashboard}
           activeProjectDir={activeProjectDir ?? null}
           projectData={projectData}
           terminalOpen={terminalOpen}
           toggleTerminal={toggleTerminal}
-          artifactsOpen={artifactsDrawerOpen}
-          onToggleArtifacts={() => {
-            if (artifactsDrawerOpen) {
-              closeArtifactsDrawer();
-            } else {
-              openArtifactsDrawer(activeProjectDir ? "session" : "app");
-            }
-          }}
           titleMenuOpen={titleMenuOpen}
           openMenuOpen={openMenuOpen}
           setOpenMenuOpen={setOpenMenuOpen}
@@ -3954,13 +3842,37 @@ export default function App() {
             />
           ) : activeProjectDir ? (
             <>
-              {!showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
+              {activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
-              ) : !showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
-                <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} />
-              ) : !showingProjectDashboard && activeSessionID && sessionTypes[activeSessionID] === "codex" ? (
-                <CodexPane directory={activeProjectDir} onExit={openWorkspaceDashboard} />
-              ) : !showingProjectDashboard ? (
+              ) : activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
+                <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} onFirstInteraction={() => activeSessionID && markSessionUsed(activeSessionID)} />
+              ) : activeSessionID && sessionTypes[activeSessionID] === "codex" ? (
+                <CodexPane
+                  directory={activeProjectDir}
+                  onExit={openWorkspaceDashboard}
+                  onFirstMessage={() => activeSessionID && markSessionUsed(activeSessionID)}
+                  onTitleChange={(title) => activeSessionID && setSessionTitles((prev) => ({ ...prev, [activeSessionID]: title }))}
+                  notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
+                  subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
+                  onAwaitingChange={(awaiting) => setCodexAwaiting(awaiting)}
+                  branchMenuOpen={branchMenuOpen}
+                  setBranchMenuOpen={setBranchMenuOpen}
+                  branchControlWidthCh={branchControlWidthCh}
+                  branchLoading={branchLoading}
+                  branchSwitching={branchSwitching}
+                  hasActiveProject={Boolean(activeProjectDir)}
+                  branchCurrent={branchState?.current}
+                  branchDisplayValue={branchDisplayValue}
+                  branchSearchInputRef={branchSearchInputRef}
+                  branchQuery={branchQuery}
+                  setBranchQuery={setBranchQuery}
+                  branchActionError={branchActionError}
+                  clearBranchActionError={() => setBranchActionError(null)}
+                  checkoutBranch={checkoutBranch}
+                  filteredBranches={filteredBranches}
+                  openBranchCreateModal={openBranchCreateModal}
+                />
+              ) : (
                 <>
                   <MessageFeed
                     messages={messages}
@@ -4078,45 +3990,28 @@ export default function App() {
                     variantOptions={variantOptions}
                     placeholder={composerPlaceholder}
                     onLayoutHeightChange={handleComposerLayoutHeightChange}
+                    todoItems={sdkTodoItems}
+                    todoOpen={dockTodosOpen}
+                    onTodoToggle={() => setDockTodosOpen((v) => !v)}
+                    pendingPermission={dockPendingPermission}
+                    pendingQuestion={dockPendingQuestion}
+                    queuedMessages={followupQueue}
+                    sendingQueuedId={sendingQueuedId}
+                    onQueueMessage={queueFollowupMessage}
+                    onSendQueuedNow={(id) => {
+                      const item = followupQueue.find((m) => m.id === id);
+                      if (!item || sendingQueuedId) return;
+                      setSendingQueuedId(id);
+                      removeQueuedMessage(id);
+                      setComposer(item.text);
+                    }}
+                    onEditQueued={editQueuedMessage}
+                    onRemoveQueued={removeQueuedMessage}
                   />
 
                 </>
-              ) : (
-                <ProjectDashboard
-                  loading={projectDashboard.loading}
-                  sessionCount={projectDashboard.sessionCount}
-                  sessions7d={projectDashboard.sessions7d}
-                  sessions30d={projectDashboard.sessions30d}
-                  tokenInput30d={projectDashboard.tokenInput30d}
-                  tokenOutput30d={projectDashboard.tokenOutput30d}
-                  tokenCacheRead30d={projectDashboard.tokenCacheRead30d}
-                  totalCost30d={projectDashboard.totalCost30d}
-                  topModels={projectDashboard.topModels}
-                  updatedAt={projectDashboard.updatedAt}
-                  error={projectDashboard.error}
-                  agentsDocument={agentsDocument}
-                  agentsDraft={agentsDraft}
-                  agentsLoading={agentsLoading}
-                  agentsSaving={agentsSaving}
-                  onAgentsDraftChange={setAgentsDraft}
-                  onCreateAgents={() => void createAgentsDocument()}
-                  onSaveAgents={() => void saveAgentsDocument()}
-                  onRefreshAgents={() => void refreshAgentsDocument()}
-                  onRefresh={() => void refreshProjectDashboard()}
-                  workspaceContextFiles={workspaceContextFiles}
-                  workspaceContextLoading={false}
-                  onViewAllWorkspaceContext={() => {
-                    void openWorkspaceContextManager();
-                  }}
-                  onAddWorkspaceContext={() => {
-                    void createWorkspaceContext();
-                  }}
-                  workspaceArtifactsSummary={workspaceArtifactSummary}
-                  workspaceArtifactsLoading={false}
-                  onViewAllWorkspaceArtifacts={() => openArtifactsDrawer("workspace")}
-                />
               )}
-              {!(activeSessionID && sessionTypes[activeSessionID] === "canvas") && (
+              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "codex" || sessionTypes[activeSessionID] === "claude")) && (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}
@@ -4144,6 +4039,14 @@ export default function App() {
               daySeries={dashboard.daySeries}
               updatedAt={dashboard.updatedAt}
               error={dashboard.error}
+              codexSessionCount={codexSessionCount}
+              claudeSessionCount={claudeSessionCount}
+              codexUsage={codexUsage}
+              claudeUsage={claudeUsage}
+              codexUsageLoading={codexUsageLoading}
+              claudeUsageLoading={claudeUsageLoading}
+              onRefreshCodexUsage={() => void refreshCodexUsage()}
+              onRefreshClaudeUsage={() => void refreshClaudeUsage()}
               onRefresh={() => void refreshDashboard()}
               onAddWorkspace={() => void addProjectDirectory()}
               onOpenSettings={() => setSettingsOpen(true)}
@@ -4520,60 +4423,6 @@ export default function App() {
           await window.orxa.runtime.stopLocal();
           await refreshProfiles();
           setStatusLine("Local server stopped");
-        }}
-      />
-
-      <ArtifactsDrawer
-        open={artifactsDrawerOpen}
-        tab={artifactsDrawerTab}
-        onTabChange={setArtifactsDrawerTab}
-        onClose={closeArtifactsDrawer}
-        sessionArtifacts={sessionArtifacts}
-        workspaceArtifacts={workspaceArtifacts}
-        appArtifacts={appArtifacts}
-        sessionSummaries={artifactSessionSummaries}
-        workspaceSummary={workspaceArtifactSummary}
-        retentionPolicy={artifactRetentionPolicy}
-        retentionBusy={artifactRetentionBusy}
-        exportBusy={artifactExportBusy}
-        contextTrace={latestContextTrace}
-        activeSessionID={activeSessionID ?? null}
-        onRefresh={() => void refreshArtifacts(activeProjectDir, activeSessionID)}
-        onApplyRetentionCap={(maxBytes) => void applyArtifactRetentionCap(maxBytes)}
-        onPruneNow={() => void pruneArtifactsNow()}
-        onExportBundle={activeProjectDir && artifactsDrawerTab !== "app" ? () => void exportArtifactsBundle() : undefined}
-        onDeleteArtifact={async (artifactID) => {
-          try {
-            await window.orxa.opencode.deleteArtifact(artifactID);
-            await refreshArtifacts(activeProjectDir, activeSessionID);
-          } catch (error) {
-            setStatusLine(error instanceof Error ? error.message : String(error));
-          }
-        }}
-      />
-
-      <WorkspaceContextManager
-        open={workspaceContextManagerOpen}
-        files={workspaceContextFiles}
-        onClose={() => setWorkspaceContextManagerOpen(false)}
-        onRefresh={() => void refreshWorkspaceContextFiles(activeProjectDir)}
-        onCreate={() => void createWorkspaceContext()}
-        onSave={async (input) => {
-          if (!activeProjectDir) {
-            return;
-          }
-          await window.orxa.opencode.writeWorkspaceContext({
-            ...input,
-            workspace: activeProjectDir,
-          });
-          await refreshWorkspaceContextFiles(activeProjectDir);
-        }}
-        onDelete={async (id) => {
-          if (!activeProjectDir) {
-            return;
-          }
-          await window.orxa.opencode.deleteWorkspaceContext(activeProjectDir, id);
-          await refreshWorkspaceContextFiles(activeProjectDir);
         }}
       />
 

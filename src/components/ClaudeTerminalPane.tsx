@@ -92,6 +92,7 @@ function createTab(): ClaudeTab {
 interface Props {
   directory: string;
   onExit: () => void;
+  onFirstInteraction?: () => void;
 }
 
 // ── Panel instance ──
@@ -407,7 +408,7 @@ function ClaudeTerminalInstance({
   return <div className="claude-terminal-body" ref={containerRef} />;
 }
 
-export function ClaudeTerminalPane({ directory, onExit }: Props) {
+export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Props) {
   const [unavailable, setUnavailable] = useState(false);
   const [rememberChoice, setRememberChoice] = useState(false);
 
@@ -425,6 +426,11 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
     if (permissionMode !== "pending" && !window.orxa?.terminal) {
       setUnavailable(true);
     }
+    // If a stored mode was loaded (skipping permission modal), mark session as used
+    if (permissionMode !== "pending") {
+      onFirstInteraction?.();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissionMode]);
 
   function handlePermissionChoice(mode: "standard" | "full") {
@@ -432,6 +438,7 @@ export function ClaudeTerminalPane({ directory, onExit }: Props) {
       storePermissionMode(directory, mode);
     }
     setPermissionMode(mode);
+    onFirstInteraction?.();
   }
 
   function handleExit() {

@@ -14,6 +14,14 @@ import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
+import { TodoDock } from "./chat/TodoDock";
+import type { TodoItem } from "./chat/TodoDock";
+import { QuestionDock } from "./chat/QuestionDock";
+import type { AgentQuestion } from "./chat/QuestionDock";
+import { PermissionDock } from "./chat/PermissionDock";
+import { FollowupDock } from "./chat/FollowupDock";
+import { QueuedMessagesDock } from "./chat/QueuedMessagesDock";
+import type { QueuedMessage } from "./chat/QueuedMessagesDock";
 
 type AgentOption = {
   name: string;
@@ -81,6 +89,32 @@ type ComposerPanelProps = {
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
   onLayoutHeightChange?: (height: number) => void;
+  /** When true, always use the compact dropdown model selector instead of the full modal picker.
+   *  When omitted/false, auto-decides: ≤10 models → dropdown, >10 → modal. */
+  simpleModelPicker?: boolean;
+  todoItems?: TodoItem[];
+  todoOpen?: boolean;
+  onTodoToggle?: () => void;
+  pendingQuestion?: {
+    questions: AgentQuestion[];
+    onSubmit: (answers: Record<string, string | string[]>) => void;
+    onReject: () => void;
+  } | null;
+  pendingPermission?: {
+    description: string;
+    filePattern?: string;
+    command?: string[];
+    onDecide: (decision: "allow_once" | "allow_always" | "reject") => void;
+  } | null;
+  followupSuggestions?: string[];
+  onFollowupSelect?: (text: string) => void;
+  onFollowupDismiss?: () => void;
+  queuedMessages?: QueuedMessage[];
+  sendingQueuedId?: string;
+  onQueueMessage?: (text: string) => void;
+  onSendQueuedNow?: (id: string) => void;
+  onEditQueued?: (id: string) => void;
+  onRemoveQueued?: (id: string) => void;
 };
 
 const COMPOSER_MIN_HEIGHT = 96;
@@ -163,9 +197,27 @@ export function ComposerPanel(props: ComposerPanelProps) {
     setSelectedVariant,
     variantOptions,
     onLayoutHeightChange,
+    simpleModelPicker,
+    todoItems,
+    todoOpen,
+    onTodoToggle,
+    pendingQuestion,
+    pendingPermission,
+    followupSuggestions,
+    onFollowupSelect,
+    onFollowupDismiss,
+    queuedMessages,
+    sendingQueuedId,
+    onQueueMessage,
+    onSendQueuedNow,
+    onEditQueued,
+    onRemoveQueued,
   } = props;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const useDropdownModels = simpleModelPicker || modelSelectOptions.length <= 10;
   const agentMenuRef = useRef<HTMLDivElement | null>(null);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
   const [composerResizeActive, setComposerResizeActive] = useState(false);
@@ -242,6 +294,28 @@ export function ComposerPanel(props: ComposerPanelProps) {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [agentMenuOpen]);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (modelDropdownRef.current?.contains(target)) return;
+      setModelDropdownOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setModelDropdownOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [modelDropdownOpen]);
 
   useEffect(() => {
     if (!composerResizeActive) {
@@ -377,6 +451,49 @@ export function ComposerPanel(props: ComposerPanelProps) {
 
   return (
     <section ref={composerZoneRef} className="composer-zone">
+      {queuedMessages && queuedMessages.length > 0 && onSendQueuedNow && onEditQueued && onRemoveQueued ? (
+        <QueuedMessagesDock
+          messages={queuedMessages}
+          sendingId={sendingQueuedId}
+          onSendNow={onSendQueuedNow}
+          onEdit={onEditQueued}
+          onRemove={onRemoveQueued}
+        />
+      ) : null}
+
+      {todoItems && todoItems.length > 0 && onTodoToggle ? (
+        <TodoDock
+          items={todoItems}
+          open={todoOpen ?? false}
+          onToggle={onTodoToggle}
+        />
+      ) : null}
+
+      {pendingQuestion ? (
+        <QuestionDock
+          questions={pendingQuestion.questions}
+          onSubmit={pendingQuestion.onSubmit}
+          onReject={pendingQuestion.onReject}
+        />
+      ) : null}
+
+      {pendingPermission ? (
+        <PermissionDock
+          description={pendingPermission.description}
+          filePattern={pendingPermission.filePattern}
+          command={pendingPermission.command}
+          onDecide={pendingPermission.onDecide}
+        />
+      ) : null}
+
+      {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
+        <FollowupDock
+          suggestions={followupSuggestions}
+          onSelect={onFollowupSelect}
+          onDismiss={onFollowupDismiss}
+        />
+      ) : null}
+
       <div className="composer-input-wrap">
         <button
           type="button"
@@ -405,7 +522,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 return;
               }
               if (isSessionBusy) {
-                void abortActiveSession();
+                const trimmed = composer.trim();
+                if (trimmed && onQueueMessage) {
+                  onQueueMessage(trimmed);
+                }
               } else if (isSendingPrompt) {
                 return;
               } else {
@@ -423,13 +543,33 @@ export function ComposerPanel(props: ComposerPanelProps) {
             <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
             <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
           </div>
-          <IconButton
-            icon={isSessionBusy ? "stop" : "send"}
-            className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}
-            label={isSessionBusy ? "Stop" : "Send prompt"}
-            onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
-            disabled={isSessionBusy ? false : !hasActiveSession}
-          />
+          {isSessionBusy && onQueueMessage && composer.trim() ? (
+            <>
+              <IconButton
+                icon="send"
+                className="composer-send-button composer-queue-button"
+                label="Queue message"
+                onClick={() => {
+                  const trimmed = composer.trim();
+                  if (trimmed) onQueueMessage(trimmed);
+                }}
+              />
+              <IconButton
+                icon="stop"
+                className="composer-send-button composer-stop-button"
+                label="Stop"
+                onClick={() => void abortActiveSession()}
+              />
+            </>
+          ) : (
+            <IconButton
+              icon={isSessionBusy ? "stop" : "send"}
+              className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}
+              label={isSessionBusy ? "Stop" : "Send prompt"}
+              onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
+              disabled={isSessionBusy ? false : !hasActiveSession}
+            />
+          )}
         </div>
       </div>
 
@@ -667,19 +807,68 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 onClick={() => void openBranchCreateModal()}
               >
                 <Plus size={14} aria-hidden="true" />
-                Create and checkout new branch...
+                Create new branch
               </button>
             </div>
           ) : null}
         </div>
-        <ModelPicker
-          modelSelectOptions={modelSelectOptions}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-          selectedVariant={selectedVariant}
-          setSelectedVariant={setSelectedVariant}
-          variantOptions={variantOptions}
-        />
+        {useDropdownModels ? (
+          <div ref={modelDropdownRef} className={`composer-model-dropdown-wrap ${modelDropdownOpen ? "open" : ""}`.trim()}>
+            <button
+              type="button"
+              className="composer-select composer-model-btn"
+              onClick={() => setModelDropdownOpen((v) => !v)}
+              aria-expanded={modelDropdownOpen}
+              aria-haspopup="listbox"
+              title={selectedModel ?? "Select model"}
+            >
+              <span className="composer-model-btn-label">
+                {(() => {
+                  const sel = modelSelectOptions.find((o) => o.key === selectedModel);
+                  return sel ? sel.modelName : modelSelectOptions.length === 0 ? "loading..." : "model";
+                })()}
+              </span>
+              <ChevronDown size={10} aria-hidden="true" />
+            </button>
+            {modelDropdownOpen ? (
+              <div className="composer-model-dropdown-menu" role="listbox" aria-label="Select model">
+                <small>Models</small>
+                <div className="composer-model-dropdown-list">
+                  {modelSelectOptions.length === 0 ? (
+                    <p>No models available</p>
+                  ) : (
+                    modelSelectOptions.map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        role="option"
+                        aria-selected={opt.key === selectedModel}
+                        onClick={() => {
+                          setSelectedModel(opt.key);
+                          setModelDropdownOpen(false);
+                        }}
+                      >
+                        <span className="composer-model-dropdown-item-main">
+                          <span>{opt.modelName}</span>
+                        </span>
+                        {opt.key === selectedModel ? <Check size={13} aria-hidden="true" /> : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <ModelPicker
+            modelSelectOptions={modelSelectOptions}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            selectedVariant={selectedVariant}
+            setSelectedVariant={setSelectedVariant}
+            variantOptions={variantOptions}
+          />
+        )}
         <div style={{ flex: 1 }} aria-hidden="true" />
         <div
           className={`composer-compaction-indicator composer-compaction-indicator-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
@@ -857,3 +1046,5 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
 }
 
 export type { AgentOption, Command, ComposerPanelProps };
+export type { TodoItem } from "./chat/TodoDock";
+export type { AgentQuestion, QuestionOption } from "./chat/QuestionDock";

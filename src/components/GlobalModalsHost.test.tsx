@@ -94,34 +94,7 @@ function buildProps(overrides?: Partial<GlobalModalsHostProps>): GlobalModalsHos
 }
 
 describe("GlobalModalsHost", () => {
-  it("allows approving or rejecting permission requests when not pending", () => {
-    const replyPermission = vi.fn();
-    render(
-      <GlobalModalsHost
-        {...buildProps({
-          permissionRequest: {
-            id: "perm-1",
-            sessionID: "session-1",
-            permission: "bash",
-            patterns: ["echo test"],
-            metadata: {},
-            always: [],
-          },
-          replyPermission,
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
-    fireEvent.click(screen.getByRole("button", { name: "Allow session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
-
-    expect(replyPermission).toHaveBeenCalledTimes(3);
-    expect(replyPermission).toHaveBeenNthCalledWith(1, "once");
-    expect(replyPermission).toHaveBeenNthCalledWith(2, "always");
-    expect(replyPermission).toHaveBeenNthCalledWith(3, "reject");
-    expect(screen.getByText("OpenCode is requesting access to run: echo test")).toBeInTheDocument();
-  });
+  // Permission modal removed — now handled by PermissionDock in ComposerPanel (tested in DockComponents.test.tsx)
 
   it("hides permission modal when permission mode is yolo-write", () => {
     render(
@@ -186,68 +159,7 @@ describe("GlobalModalsHost", () => {
     expect(applySkillToProject).toHaveBeenCalledWith(skill, "/tmp/project", "current");
   });
 
-  it("submits single-choice structured questions immediately when an option is selected", () => {
-    const replyQuestion = vi.fn();
-    render(
-      <GlobalModalsHost
-        {...buildProps({
-          questionRequest: {
-            id: "q-1",
-            sessionID: "session-1",
-            questions: [
-              {
-                header: "Proceed",
-                question: "Start implementation?",
-                options: [
-                  { label: "Start now", description: "Begin implementing the approved plan." },
-                  { label: "Revise first", description: "Update the plan before implementation." },
-                ],
-                multiple: false,
-                custom: true,
-              },
-            ],
-          },
-          replyQuestion,
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Start now/i }));
-    expect(replyQuestion).toHaveBeenCalledWith([["Start now"]]);
-  });
-
-  it("supports multi-select structured questions with custom answers", () => {
-    const replyQuestion = vi.fn();
-    render(
-      <GlobalModalsHost
-        {...buildProps({
-          questionRequest: {
-            id: "q-2",
-            sessionID: "session-1",
-            questions: [
-              {
-                header: "Focus areas",
-                question: "What should be included?",
-                options: [
-                  { label: "Bug fixes", description: "Prioritize fixes." },
-                  { label: "Refactors", description: "Include refactors where safe." },
-                ],
-                multiple: true,
-                custom: true,
-              },
-            ],
-          },
-          replyQuestion,
-        })}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /Bug fixes/i }));
-    fireEvent.change(screen.getByLabelText("Custom answer"), { target: { value: "Regression tests" } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-
-    expect(replyQuestion).toHaveBeenCalledWith([["Bug fixes", "Regression tests"]]);
-  });
+  // Question modals removed — now handled by QuestionDock in ComposerPanel (tested in DockComponents.test.tsx)
 
   it("renders commit stats and base branch selector for PR commits", () => {
     render(

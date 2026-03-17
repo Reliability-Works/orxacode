@@ -14,6 +14,10 @@ export type AppPreferences = {
   codexReasoningEffort: string;
   codexAccessMode: string;
   gitAgent: "opencode" | "claude" | "codex";
+  notifyOnAwaitingInput: boolean;
+  notifyOnTaskComplete: boolean;
+  collaborationModesEnabled: boolean;
+  subagentSystemNotificationsEnabled: boolean;
 };
 
 export type CodeFontOption = {

@@ -150,6 +150,23 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const activeProjectDirRef = useRef<string | undefined>(undefined);
   const activeSessionIDRef = useRef<string | undefined>(undefined);
   const projectDataCacheRef = useRef<Record<string, ProjectBootstrap>>({});
+  // Track sessions that were created but never had a message sent — cleaned up on navigation
+  const emptySessionIds = useRef<Map<string, string>>(new Map()); // sessionID → directory
+
+  // Delete any empty (no messages sent) session that is being navigated away from.
+  // Fire-and-forget — the sidebar refresh after navigation will pick up the deletion.
+  const cleanupEmptySession = useCallback((sessionID: string | undefined) => {
+    if (!sessionID) return;
+    const directory = emptySessionIds.current.get(sessionID);
+    if (!directory) return;
+    emptySessionIds.current.delete(sessionID);
+    void window.orxa.opencode.deleteSession(directory, sessionID).catch(() => undefined);
+  }, []);
+
+  // Call when a message is sent in a session — removes it from the empty set
+  const markSessionUsed = useCallback((sessionID: string) => {
+    emptySessionIds.current.delete(sessionID);
+  }, []);
 
   const refreshProject = useCallback(
     async (directory: string, skipMessageLoad = false) => {
@@ -205,6 +222,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const selectProject = useCallback(
     async (directory: string) => {
       try {
+        cleanupEmptySession(activeSessionIDRef.current);
         setStatusLine(`Loading workspace ${directory}`);
         const cached = projectDataCacheRef.current[directory];
         setProjectData(cached ?? null);
@@ -237,6 +255,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   );
 
   const openWorkspaceDashboard = useCallback(() => {
+    cleanupEmptySession(activeSessionIDRef.current);
     setSidebarMode("projects");
     setActiveProjectDir(undefined);
     setProjectData(null);
@@ -279,6 +298,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     (sessionID: string) => {
       if (!activeProjectDir) {
         return;
+      }
+      // Clean up the session we're leaving if it was empty
+      if (activeSessionIDRef.current && activeSessionIDRef.current !== sessionID) {
+        cleanupEmptySession(activeSessionIDRef.current);
       }
       setActiveSessionID(sessionID);
       activeSessionIDRef.current = sessionID;
@@ -372,6 +395,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       const firstPrompt = initialPrompt?.trim() ?? "";
       const title = firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : "New session";
 
+      // Clean up previous empty session before creating a new one
+      cleanupEmptySession(activeSessionIDRef.current);
+
       setMessages([]);
       activeSessionIDRef.current = undefined;
       stopResponsePolling();
@@ -410,6 +436,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         } else {
           if (resolvedSessionID) {
             setPendingSessionId(resolvedSessionID);
+            // No initial prompt — mark session as empty so it gets cleaned up if user navigates away
+            emptySessionIds.current.set(resolvedSessionID, targetDirectory);
           }
           setStatusLine("Session created");
         }
@@ -419,7 +447,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         return undefined;
       }
     },
-    [activeProjectDir, refreshProject, selectProject, setStatusLine, startResponsePolling, stopResponsePolling],
+    [activeProjectDir, cleanupEmptySession, refreshProject, selectProject, setStatusLine, startResponsePolling, stopResponsePolling],
   );
 
   const queueRefresh = useCallback(
@@ -557,5 +585,6 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     togglePinSession,
     openProjectContextMenu,
     openSessionContextMenu,
+    markSessionUsed,
   };
 }

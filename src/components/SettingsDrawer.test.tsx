@@ -42,6 +42,10 @@ describe("SettingsDrawer", () => {
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
           gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -152,6 +156,10 @@ describe("SettingsDrawer", () => {
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
           gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -243,6 +251,10 @@ describe("SettingsDrawer", () => {
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
           gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -346,6 +358,10 @@ describe("SettingsDrawer", () => {
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
           gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -443,6 +459,10 @@ describe("SettingsDrawer", () => {
           codexReasoningEffort: "medium",
           codexAccessMode: "on-request",
           gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}

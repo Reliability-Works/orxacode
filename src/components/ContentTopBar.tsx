@@ -31,13 +31,10 @@ type ContentTopBarProps = {
   setGitPaneVisible: (visible: boolean) => void;
   gitDiffStats: GitDiffStats;
   contentPaneTitle: string;
-  showingProjectDashboard: boolean;
   activeProjectDir: string | null;
   projectData: ProjectData | null;
   terminalOpen: boolean;
   toggleTerminal: () => Promise<void>;
-  artifactsOpen: boolean;
-  onToggleArtifacts: () => void;
   titleMenuOpen: boolean;
   openMenuOpen: boolean;
   setOpenMenuOpen: (open: boolean) => void;
@@ -80,8 +77,6 @@ export function ContentTopBar({
   projectData,
   terminalOpen,
   toggleTerminal,
-  artifactsOpen,
-  onToggleArtifacts,
   openMenuOpen,
   setOpenMenuOpen,
   commitMenuOpen,
@@ -474,12 +469,6 @@ export function ContentTopBar({
           ) : null}
         </div>
 
-        <IconButton
-          icon="image"
-          label="Toggle artifacts"
-          className={`titlebar-toggle titlebar-toggle-artifacts ${artifactsOpen ? "active" : ""}`.trim()}
-          onClick={onToggleArtifacts}
-        />
         <IconButton
           icon="terminal"
           label="Toggle terminal"

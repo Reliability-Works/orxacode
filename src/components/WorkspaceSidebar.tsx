@@ -289,10 +289,6 @@ export function WorkspaceSidebar({
                       type="button"
                       className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
                       onClick={() => {
-                        if (isActiveProject && activeSessionID) {
-                          openWorkspaceDashboard();
-                          return;
-                        }
                         if (isActiveProject) {
                           setCollapsedProjects((current) => ({
                             ...current,
@@ -348,7 +344,7 @@ export function WorkspaceSidebar({
                       {displayedSessions.map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
                         const busy = status === "busy" || status === "retry";
-                        const awaitingPermission = status === "permission";
+                        const awaiting = status === "awaiting" || status === "permission" || status === "question";
                         return (
                           <button
                             type="button"
@@ -360,7 +356,9 @@ export function WorkspaceSidebar({
                             }
                             title={sessionTitles[session.id] ?? session.title ?? session.slug}
                           >
-                            {sessionTypes[session.id] === "canvas" ? (
+                            {awaiting ? (
+                              <span className="session-status-indicator awaiting" aria-hidden="true" />
+                            ) : sessionTypes[session.id] === "canvas" ? (
                               <span className="session-type-icon session-type-icon--canvas" aria-hidden="true">
                                 <LayoutGrid size={10} />
                               </span>
@@ -374,11 +372,9 @@ export function WorkspaceSidebar({
                               </span>
                             ) : (
                               <span
-                                className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
+                                className={`session-status-indicator ${busy ? "busy" : "idle"}`}
                                 aria-hidden="true"
-                              >
-                                {awaitingPermission ? "!" : null}
-                              </span>
+                              />
                             )}
                             <span>{sessionTitles[session.id] ?? session.title ?? session.slug}</span>
                           </button>
@@ -403,7 +399,6 @@ export function WorkspaceSidebar({
           <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
           <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
           <span className="sidebar-footer-spacer" />
-          <span className="sidebar-footer-avatar" aria-hidden="true">CS</span>
         </div>
 
       </div>

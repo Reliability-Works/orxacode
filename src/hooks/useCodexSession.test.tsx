@@ -12,6 +12,7 @@ function buildOrxaCodex() {
     startTurn: vi.fn(async () => undefined),
     approve: vi.fn(async () => undefined),
     deny: vi.fn(async () => undefined),
+    respondToUserInput: vi.fn(async () => undefined),
   };
 }
 
@@ -103,9 +104,11 @@ describe("useCodexSession", () => {
     });
 
     expect(result.current.messages.length).toBe(1);
-    expect(result.current.messages[0].role).toBe("user");
-    expect(result.current.messages[0].content).toBe("hello world");
-    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace");
+    const item = result.current.messages[0];
+    if (item?.kind !== "message") throw new Error("Expected a message item");
+    expect(item.role).toBe("user");
+    expect(item.content).toBe("hello world");
+    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined);
   });
 
   it("sets lastError when codex bridge is missing", async () => {

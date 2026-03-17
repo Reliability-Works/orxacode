@@ -141,6 +141,7 @@ export const IPC = {
   codexDoctor: "orxa:codex:doctor",
   codexUpdate: "orxa:codex:update",
   codexListModels: "orxa:codex:listModels",
+  codexListCollaborationModes: "orxa:codex:listCollaborationModes",
   codexStart: "orxa:codex:start",
   codexStop: "orxa:codex:stop",
   codexGetState: "orxa:codex:getState",
@@ -149,6 +150,10 @@ export const IPC = {
   codexStartTurn: "orxa:codex:startTurn",
   codexApprove: "orxa:codex:approve",
   codexDeny: "orxa:codex:deny",
+  codexRespondToUserInput: "orxa:codex:respondToUserInput",
+  codexInterruptTurn: "orxa:codex:interruptTurn",
+  getClaudeUsageStats: "orxa:usage:claudeStats",
+  getCodexUsageStats: "orxa:usage:codexStats",
   claudeTerminalCreate: "orxa:claude-terminal:create",
   claudeTerminalWrite: "orxa:claude-terminal:write",
   claudeTerminalResize: "orxa:claude-terminal:resize",
@@ -983,6 +988,10 @@ export type OrxaEvent =
   | {
       type: "codex.approval";
       payload: CodexApprovalRequest;
+    }
+  | {
+      type: "codex.userInput";
+      payload: CodexUserInputRequest;
     };
 
 export type CodexDoctorResult = {
@@ -1000,8 +1009,20 @@ export type CodexUpdateResult = {
 
 export type CodexModelEntry = {
   id: string;
+  model: string;
   name: string;
-  supportsReasoningEffort: boolean;
+  isDefault: boolean;
+  supportedReasoningEfforts: string[];
+  defaultReasoningEffort: string | null;
+};
+
+export type CodexCollaborationMode = {
+  id: string;
+  label: string;
+  mode: string;
+  model: string;
+  reasoningEffort: string;
+  developerInstructions: string;
 };
 
 export type CodexConnectionStatus = "disconnected" | "connecting" | "connected" | "error";
@@ -1044,6 +1065,15 @@ export type CodexApprovalRequest = {
   }>;
 };
 
+export type CodexUserInputRequest = {
+  id: number;
+  method: string;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  message: string;
+};
+
 export type OpenFileOptions = {
   title?: string;
   filters?: Array<{ name: string; extensions: string[] }>;
@@ -1053,6 +1083,16 @@ export type OpenFileResult = {
   path: string;
   filename: string;
   url: string;
+};
+
+export type ProviderUsageStats = {
+  totalSessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  totalCost: number;
+  topModels: Array<{ model: string; count: number }>;
+  updatedAt: number;
 };
 
 export type ListeningPort = {
@@ -1220,18 +1260,25 @@ export interface OrxaBridge {
     getStatus: (directory: string) => Promise<McpDevToolsServerStatus>;
     listTools: () => Promise<unknown[]>;
   };
+  usage: {
+    getClaudeStats: () => Promise<ProviderUsageStats>;
+    getCodexStats: () => Promise<ProviderUsageStats>;
+  };
   codex: {
     doctor: () => Promise<CodexDoctorResult>;
     update: () => Promise<CodexUpdateResult>;
     listModels: () => Promise<CodexModelEntry[]>;
+    listCollaborationModes: () => Promise<CodexCollaborationMode[]>;
     start: (cwd?: string) => Promise<CodexState>;
     stop: () => Promise<CodexState>;
     getState: () => Promise<CodexState>;
     startThread: (options?: { model?: string; cwd?: string; title?: string }) => Promise<CodexThread>;
     listThreads: (options?: { cursor?: string | null; limit?: number; archived?: boolean }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>;
-    startTurn: (threadId: string, prompt: string, cwd?: string) => Promise<void>;
+    startTurn: (threadId: string, prompt: string, cwd?: string, model?: string, effort?: string, collaborationMode?: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;
     deny: (requestId: number) => Promise<void>;
+    respondToUserInput: (requestId: number, response: string) => Promise<void>;
+    interruptTurn: (threadId: string, turnId: string) => Promise<void>;
   };
   events: {
     subscribe: (listener: (event: OrxaEvent) => void) => () => void;

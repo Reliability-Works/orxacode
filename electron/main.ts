@@ -25,6 +25,7 @@ import {
 } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { CodexService } from "./services/codex-service";
+import { readClaudeUsageStats, readCodexUsageStats, trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
@@ -1742,10 +1743,32 @@ function registerIpcHandlers() {
 
   codexService.on("notification", (payload: unknown) => {
     publishEvent({ type: "codex.notification", payload } as OrxaEvent);
+    // Track token usage from codex notifications
+    const notification = payload as { method?: string; params?: Record<string, unknown> } | undefined;
+    if (notification?.method === "thread/tokenUsage/updated" && notification.params) {
+      trackCodexTokenUsage(notification.params);
+    }
+    if (notification?.method === "thread/started") {
+      trackCodexThread();
+    }
   });
 
   codexService.on("approval", (payload: unknown) => {
     publishEvent({ type: "codex.approval", payload } as OrxaEvent);
+  });
+
+  codexService.on("userInput", (payload: unknown) => {
+    publishEvent({ type: "codex.userInput", payload } as OrxaEvent);
+  });
+
+  // ── Usage Stats ──────────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.getClaudeUsageStats, async () => {
+    return readClaudeUsageStats();
+  });
+
+  ipcMain.handle(IPC.getCodexUsageStats, async () => {
+    return readCodexUsageStats();
   });
 
   ipcMain.handle(IPC.codexDoctor, async () => {
@@ -1793,23 +1816,21 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC.codexListModels, async () => {
-    const homeDir = app.getPath("home");
-    const cachePath = path.join(homeDir, ".codex", "models_cache.json");
-    const { readFile } = await import("node:fs/promises");
-    try {
-      const raw = await readFile(cachePath, "utf-8");
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) {
-        return parsed.map((entry: Record<string, unknown>) => ({
-          id: typeof entry.id === "string" ? entry.id : String(entry.id ?? entry.model ?? ""),
-          name: typeof entry.name === "string" ? entry.name : typeof entry.id === "string" ? entry.id : String(entry.id ?? ""),
-          supportsReasoningEffort: typeof entry.supportsReasoningEffort === "boolean" ? entry.supportsReasoningEffort : typeof entry.supports_reasoning_effort === "boolean" ? entry.supports_reasoning_effort : false,
-        }));
-      }
-      return [];
-    } catch {
-      return [];
+    // Prefer live models from the running app-server
+    if (codexService.state.status === "connected") {
+      const live = await codexService.listModels();
+      if (live.length > 0) return live;
     }
+    // Fall back — return cached models from the service (populated during init)
+    return codexService.models;
+  });
+
+  ipcMain.handle(IPC.codexListCollaborationModes, async () => {
+    if (codexService.state.status === "connected") {
+      const live = await codexService.listCollaborationModes();
+      if (live.length > 0) return live;
+    }
+    return codexService.collaborationModes;
   });
 
   ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown) => {
@@ -1834,11 +1855,14 @@ function registerIpcHandlers() {
     return codexService.listThreads(opts);
   });
 
-  ipcMain.handle(IPC.codexStartTurn, async (_event, threadId: unknown, prompt: unknown, cwd?: unknown) => {
+  ipcMain.handle(IPC.codexStartTurn, async (_event, threadId: unknown, prompt: unknown, cwd?: unknown, model?: unknown, effort?: unknown, collaborationMode?: unknown) => {
     return codexService.startTurn({
       threadId: assertString(threadId, "threadId"),
       prompt: assertString(prompt, "prompt"),
       cwd: typeof cwd === "string" ? cwd : undefined,
+      model: typeof model === "string" ? model : undefined,
+      effort: typeof effort === "string" ? effort : undefined,
+      collaborationMode: typeof collaborationMode === "string" ? collaborationMode : undefined,
     });
   });
 
@@ -1850,6 +1874,15 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.codexDeny, async (_event, requestId: unknown) => {
     if (typeof requestId !== "number") throw new Error("requestId must be a number");
     return codexService.respondToApproval(requestId, "decline");
+  });
+
+  ipcMain.handle(IPC.codexRespondToUserInput, async (_event, requestId: unknown, response: unknown) => {
+    if (typeof requestId !== "number") throw new Error("requestId must be a number");
+    return codexService.respondToUserInput(requestId, assertString(response, "response"));
+  });
+
+  ipcMain.handle(IPC.codexInterruptTurn, async (_event, threadId: unknown, turnId: unknown) => {
+    return codexService.interruptTurn(assertString(threadId, "threadId"), assertString(turnId, "turnId"));
   });
 }
 
@@ -1920,6 +1953,7 @@ async function boot() {
     onEvent: (event) => publishEvent(event),
   });
   registerIpcHandlers();
+  void initCodexUsageTracking();
 
   service.onEvent = (event) => publishEvent(event);
 
