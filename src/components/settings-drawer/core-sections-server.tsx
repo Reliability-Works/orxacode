@@ -39,14 +39,16 @@ export function ServerSection({
   const isHealthy = String(healthValue) === "ok";
 
   const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>(profiles[0]?.id);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const selected = useMemo(
-    () => profiles.find((p) => p.id === selectedProfileId) ?? profiles[0],
-    [profiles, selectedProfileId],
+    () => (isCreatingNew ? undefined : profiles.find((p) => p.id === selectedProfileId) ?? profiles[0]),
+    [profiles, selectedProfileId, isCreatingNew],
   );
   const [password, setPassword] = useState("");
   const [draft, setDraft] = useState<RuntimeProfileInput | null>(null);
 
   useEffect(() => {
+    if (isCreatingNew) return; // Don't overwrite new-profile draft
     if (!selected) {
       setDraft(null);
       return;
@@ -66,9 +68,10 @@ export function ServerSection({
       password: "",
     });
     setPassword("");
-  }, [selected]);
+  }, [selected, isCreatingNew]);
 
   const createNewProfile = () => {
+    setIsCreatingNew(true);
     setSelectedProfileId(undefined);
     setDraft({
       name: "New Profile",
@@ -91,6 +94,7 @@ export function ServerSection({
     try {
       await onSaveProfile({ ...draft, password, corsOrigins: draft.corsOrigins });
       await onRefreshProfiles();
+      setIsCreatingNew(false);
       setFeedback("Profile saved");
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : String(err));
@@ -215,7 +219,7 @@ export function ServerSection({
               key={profile.id}
               type="button"
               className={`settings-profile-item${profile.id === selected?.id ? " active" : ""}`}
-              onClick={() => setSelectedProfileId(profile.id)}
+              onClick={() => { setIsCreatingNew(false); setSelectedProfileId(profile.id); }}
             >
               <span className="settings-profile-item-name">{profile.name}</span>
               <span className="settings-profile-item-addr">{profile.host}:{profile.port}</span>

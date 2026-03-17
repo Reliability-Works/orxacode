@@ -857,6 +857,9 @@ export function useCodexSession(directory: string) {
         });
         setPlanItems([]);
         setThreadName(undefined);
+        setSubagents([]);
+        setActiveSubagentThreadId(null);
+        subagentThreadIds.current.clear();
       } catch (err) {
         setLastError(err instanceof Error ? err.message : String(err));
       }
