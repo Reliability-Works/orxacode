@@ -9,9 +9,11 @@ export const BROWSER_MODE_TOOLS_POLICY: Record<string, boolean> = {
   selenium: false,
 };
 
-// When MCP DevTools is connected, we don't apply browser tool restrictions
-// because the chrome-devtools-mcp tools ARE the browser tools.
-export const BROWSER_MODE_TOOLS_POLICY_WITH_MCP: Record<string, boolean> = {};
+// When MCP DevTools is connected, keep base restrictions but allow the
+// chrome-devtools-mcp tools (they ARE the browser tools in this mode).
+export const BROWSER_MODE_TOOLS_POLICY_WITH_MCP: Record<string, boolean> = {
+  ...BROWSER_MODE_TOOLS_POLICY,
+};
 
 export const PLAN_MODE_TOOLS_POLICY: Record<string, boolean> = {
   edit: false,

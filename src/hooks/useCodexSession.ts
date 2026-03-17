@@ -196,11 +196,18 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       }
 
       if (event.type === "codex.approval") {
-        setPendingApproval(event.payload as CodexApprovalRequest);
+        const approval = event.payload as CodexApprovalRequest;
+        // Only accept approvals for the active thread
+        if (!approval.threadId || !threadRef.current || approval.threadId === threadRef.current.id) {
+          setPendingApproval(approval);
+        }
       }
 
       if (event.type === "codex.userInput") {
-        setPendingUserInput(event.payload as CodexUserInputRequest);
+        const input = event.payload as CodexUserInputRequest;
+        if (!input.threadId || !threadRef.current || input.threadId === threadRef.current.id) {
+          setPendingUserInput(input);
+        }
       }
 
       if (event.type === "codex.notification") {

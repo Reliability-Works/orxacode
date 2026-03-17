@@ -132,6 +132,8 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
           seen.add(e.port);
           return true;
         });
+        // Note: TCP port scanning is system-wide; there's no reliable way to scope
+        // listening ports to a specific workspace directory at the OS level.
         void dir;
         resolve(unique);
       });
