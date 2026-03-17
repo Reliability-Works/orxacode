@@ -93,7 +93,7 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
   });
 
   ipcMain.handle(IPC.codexStartThread, async (_event, options?: unknown) => {
-    const opts = (options ?? {}) as { model?: string; cwd?: string; title?: string };
+    const opts = (options ?? {}) as { model?: string; cwd?: string; title?: string; approvalPolicy?: string; sandbox?: string };
     return codexService.startThread(opts);
   });
 
