@@ -68,6 +68,7 @@ export interface OrxaBridge {
     revealInFinder: (dirPath: string) => Promise<boolean>;
     scanPorts: (directory?: string) => Promise<ListeningPort[]>;
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
+    listSkillsFromDir: (directory: string) => Promise<SkillEntry[]>;
   };
   updates: {
     getPreferences: () => Promise<UpdatePreferences>;

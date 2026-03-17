@@ -113,7 +113,6 @@ export function assertPromptRequestInput(value: unknown): PromptRequest {
     model?: unknown;
     variant?: unknown;
     system?: unknown;
-    contextModeEnabled?: unknown;
     promptSource?: unknown;
     tools?: unknown;
   };
@@ -187,10 +186,6 @@ export function assertPromptRequestInput(value: unknown): PromptRequest {
       throw new Error("system must be a string with max length 32000");
     }
     result.system = payload.system;
-  }
-
-  if (payload.contextModeEnabled !== undefined) {
-    result.contextModeEnabled = assertBoolean(payload.contextModeEnabled, "contextModeEnabled");
   }
 
   if (payload.promptSource !== undefined) {

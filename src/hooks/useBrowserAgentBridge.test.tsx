@@ -120,12 +120,11 @@ describe("useBrowserAgentBridge", () => {
     });
 
     const sentText = sendPrompt.mock.calls[0]?.[0]?.text as string;
-    const sentRequest = sendPrompt.mock.calls[0]?.[0] as { promptSource?: string; contextModeEnabled?: boolean } | undefined;
+    const sentRequest = sendPrompt.mock.calls[0]?.[0] as { promptSource?: string } | undefined;
     expect(sentText.startsWith(ORXA_BROWSER_RESULT_PREFIX)).toBe(true);
     expect(sentText).toContain('"id":"action-1"');
     expect(sentText).toContain('"ok":true');
     expect(sentRequest?.promptSource).toBe("machine");
-    expect(sentRequest?.contextModeEnabled).toBe(false);
   });
 
   it("blocks actions when control owner is human without injecting machine prompts", async () => {
@@ -275,7 +274,7 @@ describe("useBrowserAgentBridge", () => {
     });
 
     const sentRequest = sendPrompt.mock.calls[0]?.[0] as
-      | { attachments?: Array<{ url: string; mime: string }>; promptSource?: string; contextModeEnabled?: boolean; text?: string }
+      | { attachments?: Array<{ url: string; mime: string }>; promptSource?: string; text?: string }
       | undefined;
     expect(sentRequest?.attachments).toEqual([
       {
@@ -284,7 +283,6 @@ describe("useBrowserAgentBridge", () => {
       },
     ]);
     expect(sentRequest?.promptSource).toBe("machine");
-    expect(sentRequest?.contextModeEnabled).toBe(false);
     expect(sentRequest?.text).toContain('"id":"action-3"');
   });
 

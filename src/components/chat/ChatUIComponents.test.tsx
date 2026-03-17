@@ -216,7 +216,7 @@ describe("MessagePartRenderer", () => {
         role="assistant"
       />,
     );
-    // F2: placeholder replaced by ToolPart; unknown tools fall back to ToolCallCard
+    // Unknown tools fall back to ToolCallCard
     expect(document.querySelector(".tool-call-card")).toBeInTheDocument();
     expect(screen.getByText("read_file")).toBeInTheDocument();
   });

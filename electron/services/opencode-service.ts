@@ -27,7 +27,6 @@ import type {
   ArtifactSessionSummary,
   AgentsDocument,
   ChangeProvenanceRecord,
-  ContextSelectionTrace,
   ExecutionEventActor,
   ExecutionEventKind,
   ExecutionEventRecord,
@@ -1023,35 +1022,7 @@ export class OpencodeService {
     const memoryContext = promptSource === "machine"
       ? ""
       : await this.memoryStore.buildPromptContext(normalizedDirectory, input.text).catch(() => "");
-    let contextPrompt = "";
-    let contextTrace: ContextSelectionTrace | undefined;
-    if (input.contextModeEnabled === true && promptSource !== "machine") {
-      const contextResult = await this.workspaceContextStore
-        .buildPromptContext(normalizedDirectory, input.sessionID, input.text)
-        .catch(() => undefined);
-      contextPrompt = contextResult?.prompt ?? "";
-      contextTrace = contextResult?.trace;
-      if (contextTrace) {
-        this.emit({
-          type: "context.selection",
-          payload: contextTrace,
-        });
-        if (contextTrace.selected.length > 0) {
-          void this.artifactStore.writeContextSelectionArtifact({
-            workspace: normalizedDirectory,
-            sessionID: input.sessionID,
-            trace: contextTrace,
-          }).then((artifact) => {
-            this.emit({
-              type: "artifact.created",
-              payload: artifact,
-            });
-          }).catch(() => undefined);
-        }
-      }
-    }
-
-    const systemPrompt = composeSystemPrompt([input.system, memoryContext, contextPrompt]);
+    const systemPrompt = composeSystemPrompt([input.system, memoryContext]);
 
     const request = {
       directory: normalizedDirectory,

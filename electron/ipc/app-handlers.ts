@@ -1,7 +1,10 @@
+import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, dialog, ipcMain, shell, type BrowserWindow } from "electron";
 import { IPC } from "../../shared/ipc";
+import type { SkillEntry } from "../../shared/ipc";
 import { assertExternalUrl, assertString } from "./validators";
 
 type AppHandlersDeps = {
@@ -164,5 +167,29 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
       const elapsed = Date.now() - start;
       return { status: 0, headers: {}, body: err instanceof Error ? err.message : String(err), elapsed };
     }
+  });
+
+  ipcMain.handle(IPC.appListSkillsFromDir, async (_event, directory: unknown) => {
+    const raw = assertString(directory, "directory");
+    const root = raw.startsWith("~/") ? path.join(homedir(), raw.slice(2)) : raw;
+    const rootInfo = await stat(root).catch(() => undefined);
+    if (!rootInfo?.isDirectory()) {
+      return [] as SkillEntry[];
+    }
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    const skills: SkillEntry[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillPath = path.join(root, entry.name);
+      const filePath = path.join(skillPath, "SKILL.md");
+      const file = await readFile(filePath, "utf8").catch(() => "");
+      if (!file) continue;
+      const lines = file.split(/\r?\n/).map((line) => line.trim());
+      const title = lines.find((line) => line.startsWith("# "))?.replace(/^#\s+/, "").trim() || entry.name;
+      const description =
+        lines.find((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("```")) || "No description available.";
+      skills.push({ id: entry.name, name: title, description, path: skillPath });
+    }
+    return skills.sort((left, right) => left.name.localeCompare(right.name));
   });
 }

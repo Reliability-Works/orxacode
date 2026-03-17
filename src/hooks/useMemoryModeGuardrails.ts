@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
-import { isForbiddenToolNameInMemoryMode } from "../lib/browser-tool-guardrails";
 
 const FORBIDDEN_EXTERNAL_MEMORY_PATTERN =
   /\b(supermemory|mem0|pinecone|qdrant|weaviate|chroma(?:db)?|milvus|vector\s*db)\b/i;
+const FORBIDDEN_MEMORY_TOOL_NAME_PATTERN =
+  /(supermemory|mem0|pinecone|qdrant|weaviate|chroma(?:db)?|milvus|vector\s*db)/i;
 const ORXA_MEMORY_LINE_PATTERN = /^\[ORXA_MEMORY\]/im;
 const SUPERMEMORY_STATUS_LINE_PATTERN = /^\[SUPERMEMORY\]/im;
 
@@ -59,7 +60,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
         if (FORBIDDEN_EXTERNAL_MEMORY_PATTERN.test(text)) {
           seen.add(key);
           onGuardrailViolationRef.current?.(
-            "Blocked external memory tooling in Context Mode. Use only Orxa Code in-app memory/context.",
+            "Blocked external memory tooling. Use only Orxa Code in-app memory.",
           );
           return;
         }
@@ -70,7 +71,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
           continue;
         }
         const toolName = part.tool.trim();
-        if (!toolName || !isForbiddenToolNameInMemoryMode(toolName)) {
+        if (!toolName || !FORBIDDEN_MEMORY_TOOL_NAME_PATTERN.test(toolName)) {
           continue;
         }
         const key = `${String(bundle.info.id ?? "unknown")}:${part.id}:tool:${toolName.toLowerCase()}`;
@@ -79,7 +80,7 @@ export function useMemoryModeGuardrails(options: UseMemoryModeGuardrailsOptions)
         }
         seen.add(key);
         onGuardrailViolationRef.current?.(
-          `Blocked forbidden memory tool in Context Mode ("${toolName}"). Use only Orxa Code in-app memory/context.`,
+          `Blocked forbidden memory tool ("${toolName}"). Use only Orxa Code in-app memory.`,
         );
         return;
       }

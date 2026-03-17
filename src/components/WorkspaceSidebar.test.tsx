@@ -40,7 +40,6 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     openProjectContextMenu: vi.fn(),
     openSessionContextMenu: vi.fn(),
     addProjectDirectory: vi.fn(),
-    setProfileModalOpen: vi.fn(),
     onOpenDebugLogs: vi.fn(),
     setSettingsOpen: vi.fn(),
     ...overrides,

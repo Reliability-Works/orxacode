@@ -10,6 +10,9 @@ import type {
   MemoryTemplate,
   OpenCodeAgentFile,
   RawConfigDocument,
+  RuntimeProfile,
+  RuntimeProfileInput,
+  RuntimeState,
   ServerDiagnostics,
   UpdatePreferences,
 } from "@shared/ipc";
@@ -17,6 +20,7 @@ import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
 import {
   AppSettingsSection,
+  BrowserSection,
   ConfigSection,
   GitSettingsSection,
   MemorySection,
@@ -64,6 +68,14 @@ type Props = {
   onBackfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
   onClearWorkspaceMemory: (directory: string) => Promise<boolean>;
   allModelOptions: ModelOption[];
+  profiles: RuntimeProfile[];
+  runtime: RuntimeState;
+  onSaveProfile: (profile: RuntimeProfileInput) => Promise<void>;
+  onDeleteProfile: (profileID: string) => Promise<void>;
+  onAttachProfile: (profileID: string) => Promise<void>;
+  onStartLocalProfile: (profileID: string) => Promise<void>;
+  onStopLocalProfile: () => Promise<void>;
+  onRefreshProfiles: () => Promise<void>;
 };
 
 type SettingsSection =
@@ -75,6 +87,7 @@ type SettingsSection =
   | "git"
   | "app"
   | "preferences"
+  | "browser"
   | "server"
   | "claude-config"
   | "claude-permissions"
@@ -134,6 +147,14 @@ export function SettingsDrawer({
   onBackfillMemory,
   onClearWorkspaceMemory,
   allModelOptions,
+  profiles,
+  runtime,
+  onSaveProfile,
+  onDeleteProfile,
+  onAttachProfile,
+  onStartLocalProfile,
+  onStopLocalProfile,
+  onRefreshProfiles,
 }: Props) {
   const appVersion = __APP_VERSION__?.trim().length ? __APP_VERSION__ : "dev";
   const [section, setSection] = useState<SettingsSection>("app");
@@ -203,6 +224,7 @@ export function SettingsDrawer({
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorText, setEditorText] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [ocFilenameDialog, setOcFilenameDialog] = useState<OcAgentFilenameDialog | null>(null);
   const [ocFilenameValue, setOcFilenameValue] = useState("");
@@ -461,6 +483,10 @@ export function SettingsDrawer({
       return <PreferencesSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
     }
 
+    if (section === "browser") {
+      return <BrowserSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
+    }
+
     if (section === "memory") {
       return (
         <MemorySection
@@ -489,6 +515,14 @@ export function SettingsDrawer({
           onRepairRuntime={onRepairRuntime}
           setServerDiagnostics={setServerDiagnostics}
           setFeedback={setFeedback}
+          profiles={profiles}
+          runtime={runtime}
+          onSaveProfile={onSaveProfile}
+          onDeleteProfile={onDeleteProfile}
+          onAttachProfile={onAttachProfile}
+          onStartLocalProfile={onStartLocalProfile}
+          onStopLocalProfile={onStopLocalProfile}
+          onRefreshProfiles={onRefreshProfiles}
         />
       );
     }
@@ -653,97 +687,129 @@ export function SettingsDrawer({
                 </button>
               </div>
               <div className="settings-nav-list">
-                <span className="settings-nav-group-label">ORXA CODE</span>
-                <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
-                  {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  App
-                </button>
-                <button
-                  type="button"
-                  className={section === "preferences" ? "active" : ""}
-                  onClick={() => setSection("preferences")}
+                <span
+                  className={`settings-nav-group-label${collapsedGroups.orxa ? " collapsed" : ""}`}
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, orxa: !prev.orxa }))}
                 >
-                  {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Preferences
-                </button>
-                <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
-                  {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Git
-                </button>
-                <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
-                  {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Memory
-                </button>
+                  ORXA CODE
+                </span>
+                {!collapsedGroups.orxa ? (
+                  <>
+                    <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
+                      {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      App
+                    </button>
+                    <button type="button" className={section === "preferences" ? "active" : ""} onClick={() => setSection("preferences")}>
+                      {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Preferences
+                    </button>
+                    <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
+                      {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Git
+                    </button>
+                    <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
+                      {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Memory
+                    </button>
+                    <button type="button" className={section === "browser" ? "active" : ""} onClick={() => setSection("browser")}>
+                      {section === "browser" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Browser
+                    </button>
+                  </>
+                ) : null}
 
-                <span className="settings-nav-group-label">OPENCODE</span>
-                <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
-                  {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Config Files
-                </button>
-                <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
-                  {section === "provider-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Provider Models
-                </button>
-                <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
-                  {section === "opencode-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Agents
-                </button>
-                <button
-                  type="button"
-                  className={section === "personalization" ? "active" : ""}
-                  onClick={() => setSection("personalization")}
+                <span
+                  className={`settings-nav-group-label${collapsedGroups.opencode ? " collapsed" : ""}`}
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, opencode: !prev.opencode }))}
                 >
-                  {section === "personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Personalization
-                </button>
-                <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
-                  {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Server
-                </button>
+                  OPENCODE
+                </span>
+                {!collapsedGroups.opencode ? (
+                  <>
+                    <button type="button" className={section === "config" ? "active" : ""} onClick={() => setSection("config")}>
+                      {section === "config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Config Files
+                    </button>
+                    <button type="button" className={section === "provider-models" ? "active" : ""} onClick={() => setSection("provider-models")}>
+                      {section === "provider-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Provider Models
+                    </button>
+                    <button type="button" className={section === "opencode-agents" ? "active" : ""} onClick={() => setSection("opencode-agents")}>
+                      {section === "opencode-agents" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Agents
+                    </button>
+                    <button type="button" className={section === "personalization" ? "active" : ""} onClick={() => setSection("personalization")}>
+                      {section === "personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Personalization
+                    </button>
+                    <button type="button" className={section === "server" ? "active" : ""} onClick={() => setSection("server")}>
+                      {section === "server" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Server
+                    </button>
+                  </>
+                ) : null}
 
-                <span className="settings-nav-group-label">CLAUDE</span>
-                <button type="button" className={section === "claude-config" ? "active" : ""} onClick={() => setSection("claude-config")}>
-                  {section === "claude-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Config
-                </button>
-                <button type="button" className={section === "claude-personalization" ? "active" : ""} onClick={() => setSection("claude-personalization")}>
-                  {section === "claude-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Personalization
-                </button>
-                <button type="button" className={section === "claude-permissions" ? "active" : ""} onClick={() => setSection("claude-permissions")}>
-                  {section === "claude-permissions" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Permissions
-                </button>
-                <button type="button" className={section === "claude-dirs" ? "active" : ""} onClick={() => setSection("claude-dirs")}>
-                  {section === "claude-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Directories
-                </button>
+                <span
+                  className={`settings-nav-group-label${collapsedGroups.claude ? " collapsed" : ""}`}
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, claude: !prev.claude }))}
+                >
+                  CLAUDE
+                </span>
+                {!collapsedGroups.claude ? (
+                  <>
+                    <button type="button" className={section === "claude-config" ? "active" : ""} onClick={() => setSection("claude-config")}>
+                      {section === "claude-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Config
+                    </button>
+                    <button type="button" className={section === "claude-personalization" ? "active" : ""} onClick={() => setSection("claude-personalization")}>
+                      {section === "claude-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Personalization
+                    </button>
+                    <button type="button" className={section === "claude-permissions" ? "active" : ""} onClick={() => setSection("claude-permissions")}>
+                      {section === "claude-permissions" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Permissions
+                    </button>
+                    <button type="button" className={section === "claude-dirs" ? "active" : ""} onClick={() => setSection("claude-dirs")}>
+                      {section === "claude-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Directories
+                    </button>
+                  </>
+                ) : null}
 
-                <span className="settings-nav-group-label">CODEX</span>
-                <button type="button" className={section === "codex-general" ? "active" : ""} onClick={() => setSection("codex-general")}>
-                  {section === "codex-general" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  General
-                </button>
-                <button type="button" className={section === "codex-models" ? "active" : ""} onClick={() => setSection("codex-models")}>
-                  {section === "codex-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Models
-                </button>
-                <button type="button" className={section === "codex-access" ? "active" : ""} onClick={() => setSection("codex-access")}>
-                  {section === "codex-access" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Access
-                </button>
-                <button type="button" className={section === "codex-config" ? "active" : ""} onClick={() => setSection("codex-config")}>
-                  {section === "codex-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Config
-                </button>
-                <button type="button" className={section === "codex-personalization" ? "active" : ""} onClick={() => setSection("codex-personalization")}>
-                  {section === "codex-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Personalization
-                </button>
-                <button type="button" className={section === "codex-dirs" ? "active" : ""} onClick={() => setSection("codex-dirs")}>
-                  {section === "codex-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                  Directories
-                </button>
+                <span
+                  className={`settings-nav-group-label${collapsedGroups.codex ? " collapsed" : ""}`}
+                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, codex: !prev.codex }))}
+                >
+                  CODEX
+                </span>
+                {!collapsedGroups.codex ? (
+                  <>
+                    <button type="button" className={section === "codex-general" ? "active" : ""} onClick={() => setSection("codex-general")}>
+                      {section === "codex-general" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      General
+                    </button>
+                    <button type="button" className={section === "codex-models" ? "active" : ""} onClick={() => setSection("codex-models")}>
+                      {section === "codex-models" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Models
+                    </button>
+                    <button type="button" className={section === "codex-access" ? "active" : ""} onClick={() => setSection("codex-access")}>
+                      {section === "codex-access" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Access
+                    </button>
+                    <button type="button" className={section === "codex-config" ? "active" : ""} onClick={() => setSection("codex-config")}>
+                      {section === "codex-config" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Config
+                    </button>
+                    <button type="button" className={section === "codex-personalization" ? "active" : ""} onClick={() => setSection("codex-personalization")}>
+                      {section === "codex-personalization" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Personalization
+                    </button>
+                    <button type="button" className={section === "codex-dirs" ? "active" : ""} onClick={() => setSection("codex-dirs")}>
+                      {section === "codex-dirs" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Directories
+                    </button>
+                  </>
+                ) : null}
               </div>
             </aside>
 

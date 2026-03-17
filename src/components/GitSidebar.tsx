@@ -109,6 +109,7 @@ export type GitSidebarProps = {
   onBrowserHandBack: () => Promise<void> | void;
   onBrowserStop: () => Promise<void> | void;
   mcpDevToolsState?: McpDevToolsServerState;
+  browserEnabled?: boolean;
 };
 
 export function GitSidebar(props: GitSidebarProps) {
@@ -148,6 +149,7 @@ export function GitSidebar(props: GitSidebarProps) {
     onBrowserHandBack,
     onBrowserStop,
     mcpDevToolsState,
+    browserEnabled = true,
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
@@ -842,7 +844,7 @@ export function GitSidebar(props: GitSidebarProps) {
           </span>
           <span className="ops-panel-tab-label">Files</span>
         </button>
-        <button
+        {browserEnabled ? <button
           type="button"
           className={`ops-panel-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("browser")}
@@ -857,7 +859,7 @@ export function GitSidebar(props: GitSidebarProps) {
             </svg>
           </span>
           <span className="ops-panel-tab-label">Browser</span>
-        </button>
+        </button> : null}
         {onCollapse ? (
           <button
             type="button"

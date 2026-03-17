@@ -280,7 +280,6 @@ export function useBrowserAgentBridge(options: UseBrowserAgentBridgeOptions) {
         text,
         attachments,
         promptSource: "machine",
-        contextModeEnabled: false,
         tools: browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
       });
     };

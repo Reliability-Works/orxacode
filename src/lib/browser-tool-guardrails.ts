@@ -13,19 +13,6 @@ export const BROWSER_MODE_TOOLS_POLICY: Record<string, boolean> = {
 // because the chrome-devtools-mcp tools ARE the browser tools.
 export const BROWSER_MODE_TOOLS_POLICY_WITH_MCP: Record<string, boolean> = {};
 
-export const MEMORY_MODE_TOOLS_POLICY: Record<string, boolean> = {
-  supermemory: false,
-  "supermemory.search": false,
-  "supermemory.retrieve": false,
-  mem0: false,
-  pinecone: false,
-  qdrant: false,
-  weaviate: false,
-  chroma: false,
-  chromadb: false,
-  milvus: false,
-};
-
 export const PLAN_MODE_TOOLS_POLICY: Record<string, boolean> = {
   edit: false,
   write: false,
@@ -38,7 +25,6 @@ export const PLAN_MODE_TOOLS_POLICY: Record<string, boolean> = {
 };
 
 const FORBIDDEN_TOOL_NAME_PATTERN = /(web_search|browse_web|playwright|puppeteer|selenium)/i;
-const FORBIDDEN_MEMORY_TOOL_NAME_PATTERN = /(supermemory|mem0|pinecone|qdrant|weaviate|chroma|chromadb|milvus|vector\s*db)/i;
 const FORBIDDEN_PLAN_TOOL_NAME_PATTERN = /(edit|write|apply[_-]?patch|bash|exec|shell|run|delete|remove|rm|mv)/i;
 
 export function isForbiddenToolNameInBrowserMode(toolName: string) {
@@ -50,17 +36,6 @@ export function isForbiddenToolNameInBrowserMode(toolName: string) {
     return true;
   }
   return FORBIDDEN_TOOL_NAME_PATTERN.test(normalized);
-}
-
-export function isForbiddenToolNameInMemoryMode(toolName: string) {
-  const normalized = toolName.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  if (MEMORY_MODE_TOOLS_POLICY[normalized] === false) {
-    return true;
-  }
-  return FORBIDDEN_MEMORY_TOOL_NAME_PATTERN.test(normalized);
 }
 
 export function mergeModeToolPolicies(...policies: Array<Record<string, boolean> | undefined>) {
