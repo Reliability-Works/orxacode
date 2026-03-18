@@ -152,6 +152,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   const codexItemToMsgId = useRef(new Map<string, string>());
   // Map codex item IDs to the explore group message ID they belong to
   const codexItemToExploreGroupId = useRef(new Map<string, string>());
+  // Track the active explore group so we can append to it even when non-explore items are inserted between
+  const activeExploreGroupIdRef = useRef<string | null>(null);
+  // Track the single reasoning message for the current turn (only one visible at a time)
+  const currentReasoningIdRef = useRef<string | null>(null);
   // Track active turn for interrupt
   const activeTurnIdRef = useRef<string | null>(null);
 
@@ -263,14 +267,21 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       case "turn/started": {
         setIsStreaming(true);
         streamingItemIdRef.current = null;
+        activeExploreGroupIdRef.current = null;
         // Track turn ID for interrupt
         const turn = params.turn as { id?: string } | undefined;
         activeTurnIdRef.current = turn?.id ?? null;
-        // Insert a reasoning placeholder as the live "Thinking..." indicator.
-        // This will be updated when a reasoning item/started arrives, or removed
-        // when the turn/completed fires (if no reasoning ever arrived).
+        // Remove any previous reasoning row from the last turn (thinking shouldn't persist)
+        const prevReasoningId = currentReasoningIdRef.current;
+        currentReasoningIdRef.current = null;
+        thinkingItemIdRef.current = null;
+        if (prevReasoningId) {
+          setMessages((prev) => prev.filter((m) => m.id !== prevReasoningId));
+        }
+        // Insert a single reasoning placeholder for this turn
         const thinkingId = nextMessageID("codex-reasoning", messageIdCounter);
         thinkingItemIdRef.current = thinkingId;
+        currentReasoningIdRef.current = thinkingId;
         setMessages((prev) => [
           ...prev,
           { id: thinkingId, kind: "reasoning", content: "", summary: "", timestamp: Date.now() },
@@ -282,17 +293,25 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         setIsStreaming(false);
         streamingItemIdRef.current = null;
         activeTurnIdRef.current = null;
-        // Remove the reasoning placeholder if it has no summary (never received reasoning deltas)
-        const tId = thinkingItemIdRef.current;
+        // Always remove the reasoning row — thinking shouldn't persist after the turn
+        const tId = currentReasoningIdRef.current;
+        currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
         if (tId) {
+          setMessages((prev) => removeMessageByID(prev, tId));
+        }
+        // Mark any active explore groups as explored
+        if (activeExploreGroupIdRef.current) {
+          const groupId = activeExploreGroupIdRef.current;
+          activeExploreGroupIdRef.current = null;
           setMessages((prev) => {
-            const item = prev.find((m) => m.id === tId);
-            // Keep the item only if it has accumulated a summary (meaningful reasoning)
-            if (item && item.kind === "reasoning" && !item.summary && !item.content) {
-              return removeMessageByID(prev, tId);
-            }
-            return prev;
+            const gIdx = prev.findIndex((m) => m.id === groupId);
+            if (gIdx < 0) return prev;
+            const group = prev[gIdx];
+            if (group.kind !== "explore" || group.status !== "exploring") return prev;
+            const next = [...prev];
+            next[gIdx] = { ...group, status: "explored" };
+            return next;
           });
         }
         break;
@@ -372,11 +391,26 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           streamingItemIdRef.current = item.id;
           const msgId = nextMessageID("codex-assistant", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
-          // Remove thinking item when the real message starts arriving
-          const tId = thinkingItemIdRef.current;
+          // Close any active explore group when an assistant message arrives
+          if (activeExploreGroupIdRef.current) {
+            const groupId = activeExploreGroupIdRef.current;
+            activeExploreGroupIdRef.current = null;
+            setMessages((prev) => {
+              const gIdx = prev.findIndex((m) => m.id === groupId);
+              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
+                const next = [...prev];
+                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), status: "explored" as const };
+                return next;
+              }
+              return prev;
+            });
+          }
+          // Remove thinking row when the real message starts arriving
+          const rId = currentReasoningIdRef.current;
+          currentReasoningIdRef.current = null;
           thinkingItemIdRef.current = null;
           setMessages((prev) => {
-            const filtered = tId ? prev.filter((m) => m.id !== tId) : prev;
+            const filtered = rId ? prev.filter((m) => m.id !== rId) : prev;
             return [
               ...filtered,
               { id: msgId, kind: "message", role: "assistant", content: "", timestamp: Date.now() },
@@ -385,33 +419,22 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         }
 
         if (item.type === "commandExecution") {
-          // We don't know the command text at item/started — defer read-only check to item/completed.
-          // Insert a placeholder explore entry optimistically. At item/completed, if the command
-          // turns out to be non-read-only, we'll remove it from the explore group and add a ToolCallCard.
           const placeholder: ExploreEntry = { id: item.id, kind: "run", label: "Running command...", status: "running" };
           setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.kind === "explore" && last.status === "exploring") {
-              codexItemToExploreGroupId.current.set(item.id, last.id);
-              const next = [...prev];
-              next[next.length - 1] = {
-                ...last,
-                entries: [...last.entries, placeholder],
-              };
-              return next;
+            const activeGroupId = activeExploreGroupIdRef.current;
+            if (activeGroupId) {
+              const gIdx = prev.findIndex((m) => m.id === activeGroupId);
+              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
+                codexItemToExploreGroupId.current.set(item.id, activeGroupId);
+                const next = [...prev];
+                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), entries: [...(prev[gIdx] as typeof prev[number] & { kind: "explore" }).entries, placeholder] };
+                return next;
+              }
             }
             const groupId = nextMessageID("codex-explore", messageIdCounter);
+            activeExploreGroupIdRef.current = groupId;
             codexItemToExploreGroupId.current.set(item.id, groupId);
-            return [
-              ...prev,
-              {
-                id: groupId,
-                kind: "explore" as const,
-                status: "exploring" as const,
-                entries: [placeholder],
-                timestamp: Date.now(),
-              },
-            ];
+            return [...prev, { id: groupId, kind: "explore" as const, status: "exploring" as const, entries: [placeholder], timestamp: Date.now() }];
           });
         }
 
@@ -432,26 +455,17 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         }
 
         if (item.type === "reasoning") {
-          // Reuse the reasoning placeholder inserted in turn/started (thinkingItemIdRef)
-          // so we don't create a duplicate. If no placeholder exists, create a new one.
-          const existingPlaceholderId = thinkingItemIdRef.current;
-          if (existingPlaceholderId) {
-            // Map this codex item id -> existing placeholder message id
-            codexItemToMsgId.current.set(item.id, existingPlaceholderId);
-            // Clear thinkingItemIdRef so turn/completed won't try to remove it
-            thinkingItemIdRef.current = null;
+          // Always reuse the single reasoning row for this turn — never create duplicates.
+          // If the reasoning row was removed by agentMessage, re-create it.
+          if (currentReasoningIdRef.current) {
+            codexItemToMsgId.current.set(item.id, currentReasoningIdRef.current);
           } else {
             const msgId = nextMessageID("codex-reasoning", messageIdCounter);
             codexItemToMsgId.current.set(item.id, msgId);
+            currentReasoningIdRef.current = msgId;
             setMessages((prev) => [
               ...prev,
-              {
-                id: msgId,
-                kind: "reasoning",
-                content: "",
-                summary: "",
-                timestamp: Date.now(),
-              },
+              { id: msgId, kind: "reasoning", content: "", summary: "", timestamp: Date.now() },
             ]);
           }
         }
@@ -459,54 +473,40 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         if (item.type === "fileRead") {
           const entry = fileReadToExploreEntry(item.id, item.path ?? "file", "running");
           setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.kind === "explore" && last.status === "exploring") {
-              codexItemToExploreGroupId.current.set(item.id, last.id);
-              const next = [...prev];
-              next[next.length - 1] = {
-                ...last,
-                entries: [...last.entries, entry],
-              };
-              return next;
+            const activeGroupId = activeExploreGroupIdRef.current;
+            if (activeGroupId) {
+              const gIdx = prev.findIndex((m) => m.id === activeGroupId);
+              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
+                codexItemToExploreGroupId.current.set(item.id, activeGroupId);
+                const next = [...prev];
+                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), entries: [...(prev[gIdx] as typeof prev[number] & { kind: "explore" }).entries, entry] };
+                return next;
+              }
             }
             const groupId = nextMessageID("codex-explore", messageIdCounter);
+            activeExploreGroupIdRef.current = groupId;
             codexItemToExploreGroupId.current.set(item.id, groupId);
-            return [
-              ...prev,
-              {
-                id: groupId,
-                kind: "explore" as const,
-                status: "exploring" as const,
-                entries: [entry],
-                timestamp: Date.now(),
-              },
-            ];
+            return [...prev, { id: groupId, kind: "explore" as const, status: "exploring" as const, entries: [entry], timestamp: Date.now() }];
           });
         }
 
         if (item.type === "webSearch") {
           const entry = webSearchToExploreEntry(item.id, (item.query as string) ?? "search", "running");
           setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.kind === "explore" && last.status === "exploring") {
-              codexItemToExploreGroupId.current.set(item.id, last.id);
-              const next = [...prev];
-              next[next.length - 1] = {
-                ...last,
-                entries: [...last.entries, entry],
-              };
-              return next;
+            const activeGroupId = activeExploreGroupIdRef.current;
+            if (activeGroupId) {
+              const gIdx = prev.findIndex((m) => m.id === activeGroupId);
+              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
+                codexItemToExploreGroupId.current.set(item.id, activeGroupId);
+                const next = [...prev];
+                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), entries: [...(prev[gIdx] as typeof prev[number] & { kind: "explore" }).entries, entry] };
+                return next;
+              }
             }
             const groupId = nextMessageID("codex-explore", messageIdCounter);
+            activeExploreGroupIdRef.current = groupId;
             codexItemToExploreGroupId.current.set(item.id, groupId);
-            return [
-              ...prev,
-              {
-                id: groupId,
-                kind: "explore" as const,
-                status: "exploring" as const,
-                entries: [entry],
-                timestamp: Date.now(),
+            return [...prev, { id: groupId, kind: "explore" as const, status: "exploring" as const, entries: [entry], timestamp: Date.now(),
               },
             ];
           });
@@ -515,28 +515,20 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         if (item.type === "mcpToolCall") {
           const entry = mcpToolCallToExploreEntry(item.id, item.toolName ?? item.name ?? "mcp tool", "running");
           setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.kind === "explore" && last.status === "exploring") {
-              codexItemToExploreGroupId.current.set(item.id, last.id);
-              const next = [...prev];
-              next[next.length - 1] = {
-                ...last,
-                entries: [...last.entries, entry],
-              };
-              return next;
+            const activeGroupId = activeExploreGroupIdRef.current;
+            if (activeGroupId) {
+              const gIdx = prev.findIndex((m) => m.id === activeGroupId);
+              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
+                codexItemToExploreGroupId.current.set(item.id, activeGroupId);
+                const next = [...prev];
+                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), entries: [...(prev[gIdx] as typeof prev[number] & { kind: "explore" }).entries, entry] };
+                return next;
+              }
             }
             const groupId = nextMessageID("codex-explore", messageIdCounter);
+            activeExploreGroupIdRef.current = groupId;
             codexItemToExploreGroupId.current.set(item.id, groupId);
-            return [
-              ...prev,
-              {
-                id: groupId,
-                kind: "explore" as const,
-                status: "exploring" as const,
-                entries: [entry],
-                timestamp: Date.now(),
-              },
-            ];
+            return [...prev, { id: groupId, kind: "explore" as const, status: "exploring" as const, entries: [entry], timestamp: Date.now() }];
           });
         }
 
@@ -1031,6 +1023,8 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           codexItemToMsgId,
         });
         codexItemToExploreGroupId.current.clear();
+        activeExploreGroupIdRef.current = null;
+        currentReasoningIdRef.current = null;
         setPlanItems([]);
         setThreadName(undefined);
         setSubagents([]);
