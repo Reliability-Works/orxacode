@@ -3588,6 +3588,7 @@ export default function App() {
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
                     hideBrowserToggle={!(appPreferences.orxaBrowserEnabled ?? true)}
+                    hidePlanToggle
                     agentOptions={composerAgentOptions}
                     selectedAgent={selectedAgent}
                     onAgentChange={setSelectedAgent}

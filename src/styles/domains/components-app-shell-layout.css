@@ -2427,6 +2427,12 @@ button.primary {
   flex-shrink: 0;
 }
 
+.codex-question-overlay {
+  padding: 12px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-secondary);
+}
+
 .plan-confirm-overlay {
   padding: 16px 20px;
   background: var(--bg-surface);

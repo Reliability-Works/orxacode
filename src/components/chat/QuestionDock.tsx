@@ -267,7 +267,6 @@ export function QuestionDock({ questions, onSubmit, onReject }: QuestionDockProp
                   aria-checked={selected}
                   className={`question-option${selected ? " question-option--selected" : ""}`}
                   onClick={() => selectOption(opt.value)}
-                  onMouseEnter={() => !isMulti && selectOption(opt.value)}
                 >
                   <span className="question-option-number">{idx + 1}.</span>
                   <span className="question-option-label">{opt.label}</span>

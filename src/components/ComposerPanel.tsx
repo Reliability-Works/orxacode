@@ -61,6 +61,7 @@ type ComposerPanelProps = {
   browserModeEnabled: boolean;
   setBrowserModeEnabled: (enabled: boolean) => void;
   hideBrowserToggle?: boolean;
+  hidePlanToggle?: boolean;
   agentOptions: AgentOption[];
   selectedAgent?: string;
   onAgentChange: (name: string) => void;
@@ -170,6 +171,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     browserModeEnabled,
     setBrowserModeEnabled,
     hideBrowserToggle,
+    hidePlanToggle,
     agentOptions,
     selectedAgent,
     onAgentChange,
@@ -536,18 +538,20 @@ export function ComposerPanel(props: ComposerPanelProps) {
             ) : null}
           </div>
         ) : null}
-        <button
-          type="button"
-          className={`plan-toggle-inline${isPlanMode ? " is-active" : ""}`}
-          disabled={!hasPlanAgent}
-          onClick={() => togglePlanMode(!isPlanMode)}
-          aria-pressed={isPlanMode}
-          title={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
-          aria-label={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
-        >
-          <span className="plan-toggle-square" aria-hidden="true" />
-          plan mode
-        </button>
+        {!hidePlanToggle ? (
+          <button
+            type="button"
+            className={`plan-toggle-inline${isPlanMode ? " is-active" : ""}`}
+            disabled={!hasPlanAgent}
+            onClick={() => togglePlanMode(!isPlanMode)}
+            aria-pressed={isPlanMode}
+            title={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+            aria-label={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+          >
+            <span className="plan-toggle-square" aria-hidden="true" />
+            plan mode
+          </button>
+        ) : null}
         {!hideBrowserToggle ? (
           <button
             type="button"

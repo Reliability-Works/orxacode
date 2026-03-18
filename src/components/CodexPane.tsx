@@ -13,6 +13,7 @@ import { ExploreRow } from "./chat/ExploreRow";
 import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
 import { SubagentThreadView } from "./chat/SubagentThreadView";
 import { PlanConfirmationOverlay } from "./chat/PlanConfirmationOverlay";
+import { QuestionDock } from "./chat/QuestionDock";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
 import type { CodexCollaborationMode } from "@shared/ipc";
@@ -96,7 +97,7 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
         />
         <section className="message-part">
           {item.content ? (
-            <TextPart content={item.content} role={role} />
+            <TextPart content={item.content} role={role} showCopy={role === "assistant"} />
           ) : isLastStreaming ? (
             <div
               className="part-text"
@@ -415,22 +416,31 @@ export function CodexPane({
     onAwaitingChange?.(isAwaiting);
   }, [isAwaiting, onAwaitingChange]);
 
-  // Notifications for codex awaiting states (filtered for subagent threads + 60s delay)
+  // Notifications for codex awaiting states — deduplicated (one notification per state transition)
+  const lastNotifiedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!notifyOnAwaitingInput || document.hasFocus()) return;
-    if (pendingApproval || pendingUserInput || planReady) {
-      // Skip notifications if subagent notifications are disabled and this is a subagent event
-      if (!subagentSystemNotificationsEnabled) {
-        const eventThreadId = pendingApproval?.threadId ?? pendingUserInput?.threadId;
-        if (eventThreadId && isSubagentThread(eventThreadId)) return;
-      }
-      // Only notify if agent has been working > 60s
-      const MIN_WORKING_DURATION_MS = 60_000;
-      if (turnStartedAt.current > 0 && Date.now() - turnStartedAt.current < MIN_WORKING_DURATION_MS) return;
-
-      const body = planReady ? "Plan is ready for review" : pendingUserInput ? "Agent is asking a question" : "Agent needs permission to continue";
-      new Notification("Orxa Code", { body, silent: false }).onclick = () => window.focus();
+    // Derive a key for the current awaiting state
+    const key = pendingApproval?.id
+      ? `approval:${pendingApproval.id}`
+      : pendingUserInput?.id
+        ? `input:${pendingUserInput.id}`
+        : planReady
+          ? "plan"
+          : null;
+    if (!key || key === lastNotifiedRef.current) return;
+    lastNotifiedRef.current = key;
+    // Skip subagent notifications if disabled
+    if (!subagentSystemNotificationsEnabled) {
+      const eventThreadId = pendingApproval?.threadId ?? pendingUserInput?.threadId;
+      if (eventThreadId && isSubagentThread(eventThreadId)) return;
     }
+    // Only notify if agent has been working > 60s
+    const MIN_WORKING_DURATION_MS = 60_000;
+    if (turnStartedAt.current > 0 && Date.now() - turnStartedAt.current < MIN_WORKING_DURATION_MS) return;
+
+    const body = planReady ? "Plan is ready for review" : pendingUserInput ? "Agent is asking a question" : "Agent needs permission to continue";
+    new Notification("Orxa Code", { body, silent: false }).onclick = () => window.focus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingApproval, pendingUserInput, planReady]);
 
@@ -617,7 +627,7 @@ export function CodexPane({
         </div>
       ) : null}
 
-      {/* Composer area — with plan confirmation overlay */}
+      {/* Composer area — overlays for plan/questions replace the composer */}
       <div className="codex-composer-area">
         {planReady ? (
           <PlanConfirmationOverlay
@@ -625,6 +635,14 @@ export function CodexPane({
             onSubmitChanges={(changes) => void submitPlanChanges(changes, activePlanItem?.id)}
             onDismiss={() => dismissPlan(activePlanItem?.id)}
           />
+        ) : questionDockProps ? (
+          <div className="codex-question-overlay">
+            <QuestionDock
+              questions={questionDockProps.questions}
+              onSubmit={questionDockProps.onSubmit}
+              onReject={questionDockProps.onReject}
+            />
+          </div>
         ) : (
           <ComposerPanel
             composer={input}
@@ -681,7 +699,7 @@ export function CodexPane({
             placeholder={composerPlaceholder}
             simpleModelPicker
             pendingPermission={permissionDockProps}
-            pendingQuestion={questionDockProps}
+            pendingQuestion={null}
             todoItems={planItems.length > 0 ? planItems : undefined}
             todoOpen={todoOpen}
             onTodoToggle={() => setTodoOpen((v) => !v)}
