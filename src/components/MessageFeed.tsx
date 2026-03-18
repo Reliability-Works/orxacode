@@ -1142,6 +1142,12 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       }
     }
 
+    // Surface reasoning parts as visible content (expandable thinking rows)
+    if (part.type === "reasoning") {
+      visible.push(part);
+      continue;
+    }
+
     const telemetryEvent = summarizeAssistantTelemetryPart(part, currentActor);
     if (telemetryEvent) {
       internal.push(telemetryEvent);
@@ -1211,6 +1217,37 @@ function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
   return <>{cards}</>;
 }
 
+function ReasoningRow({ part }: { part: Part }) {
+  const [expanded, setExpanded] = useState(false);
+  const record = part as unknown as Record<string, unknown>;
+  const content = typeof record.text === "string" ? record.text : typeof record.content === "string" ? record.content : "";
+  const summary = typeof record.summary === "string" ? record.summary : "";
+  const summaryText = summary || (content ? content.slice(0, 80) + (content.length > 80 ? "..." : "") : "...");
+  const hasContent = content.trim().length > 0;
+
+  return (
+    <div className="thinking-row">
+      <button
+        type="button"
+        className="thinking-row-header"
+        onClick={() => hasContent && setExpanded((v) => !v)}
+        disabled={!hasContent}
+      >
+        <span className="thinking-row-chevron" aria-hidden="true">
+          {hasContent ? (expanded ? "▾" : "›") : ""}
+        </span>
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-summary">{summaryText}</span>
+      </button>
+      {expanded && hasContent ? (
+        <div className="thinking-row-content">
+          <pre className="thinking-row-text">{content}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function renderPart(part: Part, role?: string, showCopy?: boolean) {
   if (part.type === "text") {
     return (
@@ -1220,6 +1257,10 @@ function renderPart(part: Part, role?: string, showCopy?: boolean) {
         showCopy={showCopy && role === "assistant"}
       />
     );
+  }
+
+  if (part.type === "reasoning") {
+    return <ReasoningRow part={part} />;
   }
 
   if (part.type === "file") {
