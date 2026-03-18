@@ -114,7 +114,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         return open;
       });
     }
-  }, []);
+  }, [setComposer]);
 
   const insertSlashCommand = useCallback((commandName: string) => {
     setComposer((prev) => {
@@ -124,7 +124,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     });
     setSlashMenuOpen(false);
     setSlashQuery("");
-  }, []);
+  }, [setComposer]);
 
   const filteredSlashCommandsRef = useRef(filteredSlashCommands);
   useEffect(() => {
@@ -296,6 +296,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     composer,
     composerAttachments,
     options,
+    setComposer,
     selectedVariant,
     selectedModelPayload,
   ]);

@@ -190,6 +190,33 @@
   color: var(--text-muted);
 }
 
+.canvas-toolbar-zoom-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.canvas-toolbar-zoom-label {
+  min-width: 54px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.canvas-toolbar-zoom-label:hover {
+  color: var(--text-primary);
+  background: var(--surface-hover, rgba(255, 255, 255, 0.05));
+}
+
 .canvas-toolbar-btn {
   display: inline-flex;
   align-items: center;
@@ -234,12 +261,38 @@
   position: relative;
 }
 
-.canvas-area {
+.canvas-area-viewport {
   flex: 1;
   position: relative;
-  overflow: hidden;
-  padding: 12px;
+  overflow: auto;
   min-height: 0;
+  min-width: 0;
+  cursor: grab;
+  overscroll-behavior: contain;
+}
+
+.canvas-area-viewport:active {
+  cursor: grabbing;
+}
+
+.canvas-area-world {
+  position: relative;
+}
+
+.canvas-area-surface {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: top left;
+}
+
+.canvas-overlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.canvas-overlay-layer .canvas-tile {
+  pointer-events: auto;
 }
 
 .browser-tile-body {

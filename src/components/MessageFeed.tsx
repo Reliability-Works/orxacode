@@ -1612,15 +1612,17 @@ export function MessageFeed({
   return (
     <div ref={messageFeedRef} className="messages-scroll" style={messageFeedStyle}>
       {renderedMessages.length === 0 ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div> : null}
-      {renderedMessages.map((message, messageIndex) => {
+      {(() => {
+        let lastRenderedRole: string | undefined;
+        return renderedMessages.map((message) => {
         const { key, role, timeCreated, visibleParts, toolParts, timeline } = message;
         const timelineBlocks = buildTimelineBlocks(timeline);
         if (visibleParts.length === 0 && timeline.length === 0 && toolParts.length === 0) {
           return null;
         }
-        // Only show header when role changes from previous message (skip consecutive assistant headers)
-        const prevRole = messageIndex > 0 ? renderedMessages[messageIndex - 1]?.role : undefined;
-        const showHeader = role !== prevRole;
+        // Only show header when role changes from last RENDERED message (skip consecutive assistant headers)
+        const showHeader = role !== lastRenderedRole;
+        lastRenderedRole = role;
         const lastTextPartIndex = visibleParts.reduce<number>((acc, part, i) => (part.type === "text" ? i : acc), -1);
         return (
           <MessageTurn key={key}>
@@ -1653,7 +1655,8 @@ export function MessageFeed({
             </article>
           </MessageTurn>
         );
-      })}
+      });
+      })()}
       {sessionNotices.map((notice) => (
         <article
           key={notice.id}

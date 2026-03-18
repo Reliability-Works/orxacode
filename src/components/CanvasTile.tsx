@@ -21,6 +21,9 @@ interface CanvasTileProps {
   snapToGrid?: boolean;
   gridSize?: number;
   allTiles?: CanvasTile[];
+  canvasOffsetX?: number;
+  canvasOffsetY?: number;
+  viewportScale?: number;
 }
 
 type ResizeDirection =
@@ -146,6 +149,9 @@ export function CanvasTileComponent({
   snapToGrid = false,
   gridSize = 12,
   allTiles = [],
+  canvasOffsetX = 0,
+  canvasOffsetY = 0,
+  viewportScale = 1,
 }: CanvasTileProps) {
   const [snapGuides, setSnapGuides] = useState<SnapGuide[]>([]);
   // Store previous position/size for restore from maximize
@@ -212,17 +218,20 @@ export function CanvasTileComponent({
   const snapToGridRef = useRef(snapToGrid);
   const gridSizeRef = useRef(gridSize);
   const allTilesRef = useRef(allTiles);
+  const viewportScaleRef = useRef(viewportScale);
   useEffect(() => { snapToGridRef.current = snapToGrid; }, [snapToGrid]);
   useEffect(() => { gridSizeRef.current = gridSize; }, [gridSize]);
   useEffect(() => { allTilesRef.current = allTiles; }, [allTiles]);
+  useEffect(() => { viewportScaleRef.current = viewportScale; }, [viewportScale]);
 
   useEffect(() => {
     function onMouseMove(e: MouseEvent) {
       if (!isDraggingRef.current || !dragStartRef.current) return;
-      const dx = e.clientX - dragStartRef.current.mouseX;
-      const dy = e.clientY - dragStartRef.current.mouseY;
-      let newX = Math.max(0, dragStartRef.current.tileX + dx);
-      let newY = Math.max(0, dragStartRef.current.tileY + dy);
+      const scale = viewportScaleRef.current || 1;
+      const dx = (e.clientX - dragStartRef.current.mouseX) / scale;
+      const dy = (e.clientY - dragStartRef.current.mouseY) / scale;
+      let newX = dragStartRef.current.tileX + dx;
+      let newY = dragStartRef.current.tileY + dy;
 
       if (snapToGridRef.current) {
         const gs = gridSizeRef.current;
@@ -292,8 +301,9 @@ export function CanvasTileComponent({
     function onMouseMove(e: MouseEvent) {
       if (!isResizingRef.current || !resizeStartRef.current) return;
       const { mouseX, mouseY, tileX, tileY, tileW, tileH, direction } = resizeStartRef.current;
-      const dx = e.clientX - mouseX;
-      const dy = e.clientY - mouseY;
+      const scale = viewportScaleRef.current || 1;
+      const dx = (e.clientX - mouseX) / scale;
+      const dy = (e.clientY - mouseY) / scale;
 
       let newX = tileX;
       let newY = tileY;
@@ -409,8 +419,8 @@ export function CanvasTileComponent({
         zIndex: tile.zIndex,
       }
     : {
-        left: tile.x,
-        top: tile.y,
+        left: tile.x + canvasOffsetX,
+        top: tile.y + canvasOffsetY,
         width: tile.width,
         height: tile.minimized ? 32 : tile.height,
         zIndex: tile.zIndex,

@@ -41,6 +41,9 @@ export function TerminalTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: TerminalTileProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -156,6 +159,9 @@ export function TerminalTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="terminal-tile-body" ref={containerRef} />
     </CanvasTileComponent>

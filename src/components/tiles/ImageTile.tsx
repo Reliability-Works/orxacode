@@ -18,6 +18,9 @@ export function ImageTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: ImageTileProps) {
   const filePath = typeof tile.meta.filePath === "string" ? tile.meta.filePath : "";
 
@@ -92,6 +95,9 @@ export function ImageTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="image-tile-body">
         <div

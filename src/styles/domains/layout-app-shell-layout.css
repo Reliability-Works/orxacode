@@ -178,7 +178,7 @@
 }
 
 .project-select.active .project-status-dot {
-  display: block;
+  display: none;
 }
 
 .project-select:hover {

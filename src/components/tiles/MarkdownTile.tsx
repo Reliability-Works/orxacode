@@ -159,6 +159,9 @@ export function MarkdownTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: MarkdownTileProps) {
   const filePath = typeof tile.meta.filePath === "string" ? tile.meta.filePath : "";
   const content = typeof tile.meta.content === "string" ? tile.meta.content : PLACEHOLDER_MARKDOWN;
@@ -230,6 +233,9 @@ export function MarkdownTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="markdown-tile-body">
         <div className="markdown-tile-toolbar">

@@ -9,6 +9,9 @@ export interface CanvasTileComponentProps {
   snapToGrid?: boolean;
   gridSize?: number;
   allTiles?: CanvasTile[];
+  canvasOffsetX?: number;
+  canvasOffsetY?: number;
+  viewportScale?: number;
 }
 
 export function tilePathBasename(filePath: string, fallback = ""): string {

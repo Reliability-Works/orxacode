@@ -21,6 +21,7 @@ import type {
   MemoryBackfillStatus,
   MemoryGraphSnapshot,
   ProjectListItem,
+  ProjectBootstrap,
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeDependencyReport,
@@ -99,6 +100,12 @@ import {
   buildAppShellHomeDashboardProps,
   deriveAppShellWorkspaceLayout,
 } from "./lib/app-shell-view-models";
+import {
+  buildWorkspaceSessionMetadataKey,
+  migrateLegacySessionMetadata,
+  readWorkspaceSessionMetadata,
+  type WorkspaceSessionReference,
+} from "./lib/workspace-session-metadata";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import type { SessionType } from "~/types/canvas";
@@ -155,8 +162,10 @@ const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
-const SESSION_TYPES_KEY = "orxa:sessionTypes:v1";
-const SESSION_TITLES_KEY = "orxa:sessionTitles:v1";
+const LEGACY_SESSION_TYPES_KEY = "orxa:sessionTypes:v1";
+const LEGACY_SESSION_TITLES_KEY = "orxa:sessionTitles:v1";
+const SESSION_TYPES_KEY = "orxa:sessionTypes:v2";
+const SESSION_TITLES_KEY = "orxa:sessionTitles:v2";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 
@@ -352,6 +361,23 @@ function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
     });
   }
   return result.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function readLocalStorageRecord<T>(key: string): Record<string, T> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, T>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function splitCommandLines(commands: string) {
@@ -663,6 +689,7 @@ export default function App() {
     openProjectContextMenu,
     openSessionContextMenu,
     markSessionUsed,
+    projectDataCache,
   } = useWorkspaceState({
     setStatusLine,
     terminalTabIds: terminalTabs.map((t) => t.id),
@@ -695,7 +722,8 @@ export default function App() {
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
   const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {});
   const [sessionTitles, setSessionTitles] = usePersistedState<Record<string, string>>(SESSION_TITLES_KEY, {});
-  const canvasState = useCanvasState(activeSessionID ?? "__none__");
+  const canvasState = useCanvasState(activeSessionID ?? "__none__", activeProjectDir ?? undefined);
+  const sessionMetadataMigrationDoneRef = useRef(false);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const [codexAwaiting, setCodexAwaiting] = useState(false);
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
@@ -830,6 +858,19 @@ export default function App() {
   const claudeSessionCount = useMemo(
     () => Object.values(sessionTypes).filter((t) => t === "claude").length,
     [sessionTypes],
+  );
+  const getSessionType = useCallback(
+    (sessionID: string, directory?: string) => readWorkspaceSessionMetadata(sessionTypes, directory, sessionID),
+    [sessionTypes],
+  );
+  const getSessionTitle = useCallback(
+    (sessionID: string, directory?: string, fallbackTitle?: string) =>
+      readWorkspaceSessionMetadata(sessionTitles, directory, sessionID) ?? fallbackTitle,
+    [sessionTitles],
+  );
+  const activeSessionType = useMemo(
+    () => getSessionType(activeSessionID ?? "", activeProjectDir),
+    [activeProjectDir, activeSessionID, getSessionType],
   );
   const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null);
@@ -987,6 +1028,21 @@ export default function App() {
         return b.time.updated - a.time.updated;
       });
   }, [pinnedSessions, projectData]);
+
+  // Build per-project session lists from cache for sidebar display
+  const cachedSessionsByProject = useMemo(() => {
+    const cache = projectDataCache.current;
+    const result: Record<string, Array<{ id: string; title?: string; slug: string; time: { updated: number } }>> = {};
+    for (const [dir, data] of Object.entries(cache)) {
+      if (dir === activeProjectDir) continue; // Active project uses live `sessions`
+      result[dir] = [...data.sessions]
+        .filter((s) => !s.time.archived)
+        .sort((a, b) => b.time.updated - a.time.updated);
+    }
+    return result;
+    // Re-derive when projects change (cache is a ref, so we trigger on projectData changes)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectData, activeProjectDir]);
 
   const availableSlashCommands = useMemo(() => {
     return projectData?.commands ?? [];
@@ -1347,10 +1403,18 @@ export default function App() {
         setActiveSessionID(undefined);
         setMessages([]);
       }
+      // Pre-load session data for all projects in background (for sidebar display)
+      for (const project of result.projects) {
+        if (project.worktree === activeProjectDir) continue; // Active project already loaded
+        if (projectDataCache.current[project.worktree]) continue; // Already cached
+        window.orxa.opencode.selectProject(project.worktree)
+          .then((data) => { projectDataCache.current[project.worktree] = data; })
+          .catch(() => { /* non-fatal */ });
+      }
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [activeProjectDir, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData]);
+  }, [activeProjectDir, projectDataCache, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData]);
 
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
     const now = Date.now();
@@ -1972,22 +2036,25 @@ export default function App() {
   }, [projectSearchQuery, projectSortMode, projects]);
   const getSessionStatusType = useCallback(
     (sessionID: string, directory?: string) => {
-      if (!directory || !projectData || projectData.directory !== directory) {
-        return "idle";
-      }
+      if (!directory) return "idle";
+      // Use active project data or fall back to cached data for other projects
+      const data = (projectData && projectData.directory === directory)
+        ? projectData
+        : projectDataCache.current[directory] ?? null;
+      if (!data) return "idle";
       // Codex sessions: check the codex-specific awaiting state
-      if (sessionTypes[sessionID] === "codex" && codexAwaiting && sessionID === activeSessionID) {
+      if (getSessionType(sessionID, directory) === "codex" && codexAwaiting && sessionID === activeSessionID) {
         return "awaiting";
       }
-      if (projectData.permissions.some((request) => request.sessionID === sessionID)) {
+      if (data.permissions.some((request: { sessionID: string }) => request.sessionID === sessionID)) {
         return "awaiting";
       }
-      if ((projectData.questions ?? []).some((request) => request.sessionID === sessionID)) {
+      if ((data.questions ?? []).some((request: { sessionID: string }) => request.sessionID === sessionID)) {
         return "awaiting";
       }
-      return projectData.sessionStatus[sessionID]?.type ?? "idle";
+      return data.sessionStatus[sessionID]?.type ?? "idle";
     },
-    [activeSessionID, codexAwaiting, projectData, sessionTypes],
+    [activeSessionID, codexAwaiting, getSessionType, projectData, projectDataCache],
   );
 
   const refreshAgentsDocument = useCallback(
@@ -2052,17 +2119,22 @@ export default function App() {
       });
 
       if (sessionType !== "standalone" && createdSessionId) {
-        setSessionTypes((prev) => ({ ...prev, [createdSessionId]: sessionType }));
+        const targetDirectory = directory ?? activeProjectDir;
+        if (!targetDirectory) {
+          return;
+        }
+        const scopedSessionKey = buildWorkspaceSessionMetadataKey(targetDirectory, createdSessionId);
+        setSessionTypes((prev) => ({ ...prev, [scopedSessionKey]: sessionType }));
         // Non-standalone sessions (canvas, claude, codex) don't send an initial prompt
         // but should not be treated as empty — prevent cleanup on navigation
         markSessionUsed(createdSessionId);
         const titleMap: Record<string, string> = { claude: "Claude Code", canvas: "Canvas", codex: "Codex Session" };
         if (titleMap[sessionType]) {
-          setSessionTitles((prev) => ({ ...prev, [createdSessionId]: titleMap[sessionType] }));
+          setSessionTitles((prev) => ({ ...prev, [scopedSessionKey]: titleMap[sessionType] }));
         }
       }
     },
-    [createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
+    [activeProjectDir, createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setSessionTypes, setSessionTitles],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -2273,6 +2345,73 @@ export default function App() {
     setAllSessionsModalOpen(false);
   }, [activeProjectDir]);
 
+  useEffect(() => {
+    if (sessionMetadataMigrationDoneRef.current || projects.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const legacyTypes = readLocalStorageRecord<SessionType>(LEGACY_SESSION_TYPES_KEY);
+      const legacyTitles = readLocalStorageRecord<string>(LEGACY_SESSION_TITLES_KEY);
+      if (Object.keys(legacyTypes).length === 0 && Object.keys(legacyTitles).length === 0) {
+        sessionMetadataMigrationDoneRef.current = true;
+        return;
+      }
+
+      const discoveredSessions: WorkspaceSessionReference[] = [];
+      let fullyLoaded = true;
+
+      for (const project of projects) {
+        let data: ProjectBootstrap | undefined =
+          projectData?.directory === project.worktree
+            ? projectData
+            : projectDataCache.current[project.worktree];
+
+        if (!data) {
+          data = await opencodeClient.refreshProject(project.worktree).catch(() => undefined);
+          if (data) {
+            projectDataCache.current[project.worktree] = data;
+          } else {
+            fullyLoaded = false;
+            continue;
+          }
+        }
+
+        for (const session of data.sessions) {
+          if (session.time.archived) {
+            continue;
+          }
+          discoveredSessions.push({
+            directory: project.worktree,
+            sessionID: session.id,
+          });
+        }
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      if (Object.keys(legacyTypes).length > 0) {
+        setSessionTypes((current) => migrateLegacySessionMetadata(legacyTypes, current, discoveredSessions));
+      }
+      if (Object.keys(legacyTitles).length > 0) {
+        setSessionTitles((current) => migrateLegacySessionMetadata(legacyTitles, current, discoveredSessions));
+      }
+
+      if (fullyLoaded) {
+        window.localStorage.removeItem(LEGACY_SESSION_TYPES_KEY);
+        window.localStorage.removeItem(LEGACY_SESSION_TITLES_KEY);
+        sessionMetadataMigrationDoneRef.current = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectData, projectDataCache, projects, setSessionTitles, setSessionTypes]);
+
   const removeProjectDirectory = useCallback(
     async (directory: string, label: string) => {
       try {
@@ -2325,6 +2464,10 @@ export default function App() {
           }
           try {
             await window.orxa.opencode.renameSession(directory, sessionID, nextTitle);
+            setSessionTitles((prev) => ({
+              ...prev,
+              [buildWorkspaceSessionMetadataKey(directory, sessionID)]: nextTitle,
+            }));
             await refreshProject(directory);
             setStatusLine("Session renamed");
           } catch (error) {
@@ -2333,13 +2476,31 @@ export default function App() {
         },
       });
     },
-    [refreshProject, setTextInputDialog],
+    [refreshProject, setSessionTitles, setTextInputDialog],
   );
 
   const archiveSession = useCallback(
     async (directory: string, sessionID: string) => {
       try {
         await window.orxa.opencode.archiveSession(directory, sessionID);
+        // Clear canvas state for archived sessions so new canvas sessions start fresh
+        try {
+          const dirSuffix = directory ? `:${directory.replace(/\//g, "_")}` : "";
+          window.localStorage.removeItem(`orxa:canvasState:${sessionID}${dirSuffix}:v2`);
+          // Also clear legacy v1 key
+          window.localStorage.removeItem(`orxa:canvasState:${sessionID}:v1`);
+        } catch { /* non-fatal */ }
+        // Clear session type tracking
+        setSessionTypes((prev) => {
+          const next = { ...prev };
+          delete next[buildWorkspaceSessionMetadataKey(directory, sessionID)];
+          return next;
+        });
+        setSessionTitles((prev) => {
+          const next = { ...prev };
+          delete next[buildWorkspaceSessionMetadataKey(directory, sessionID)];
+          return next;
+        });
         const next = await refreshProject(directory);
         if (sessionID === activeSessionID) {
           const sorted = [...next.sessions].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
@@ -2350,7 +2511,7 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeSessionID, refreshProject, setActiveSessionID],
+    [activeSessionID, refreshProject, setActiveSessionID, setSessionTitles, setSessionTypes],
   );
 
   const copySessionID = useCallback(async (sessionID: string) => {
@@ -3336,8 +3497,8 @@ export default function App() {
           setCommitMenuOpen={setCommitMenuOpen}
           setTitleMenuOpen={setTitleMenuOpen}
           hasActiveSession={Boolean(activeSessionID)}
-          isActiveSessionCanvasSession={Boolean(activeSessionID && sessionTypes[activeSessionID] === "canvas")}
-          activeSessionType={activeSessionID ? sessionTypes[activeSessionID] : undefined}
+          isActiveSessionCanvasSession={activeSessionType === "canvas"}
+          activeSessionType={activeSessionType}
           isActiveSessionPinned={isActiveSessionPinned}
           onTogglePinSession={() => {
             if (!activeProjectDir || !activeSessionID) {
@@ -3419,11 +3580,12 @@ export default function App() {
             collapsedProjects={collapsedProjects}
             setCollapsedProjects={setCollapsedProjects}
             sessions={sessions}
+            cachedSessionsByProject={cachedSessionsByProject}
             activeSessionID={activeSessionID ?? undefined}
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionStatusType={getSessionStatusType}
-            sessionTypes={sessionTypes}
-            sessionTitles={sessionTitles}
+            getSessionType={getSessionType}
+            getSessionTitle={getSessionTitle}
             selectProject={selectProject}
             createSession={createSession}
             openSession={openSession}
@@ -3485,16 +3647,19 @@ export default function App() {
                   workspaceName={activeProjectDir.split("/").pop() ?? activeProjectDir}
                   onPickSession={(type) => void createSession(activeProjectDir, type)}
                 />
-              ) : activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
+              ) : activeSessionType === "canvas" ? (
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
-              ) : activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
+              ) : activeSessionType === "claude" ? (
                 <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} onFirstInteraction={() => activeSessionID && markSessionUsed(activeSessionID)} />
-              ) : activeSessionID && sessionTypes[activeSessionID] === "codex" ? (
+              ) : activeSessionType === "codex" ? (
                 <CodexPane
                   directory={activeProjectDir}
                   onExit={openWorkspaceDashboard}
                   onFirstMessage={() => activeSessionID && markSessionUsed(activeSessionID)}
-                  onTitleChange={(title) => activeSessionID && setSessionTitles((prev) => ({ ...prev, [activeSessionID]: title }))}
+                  onTitleChange={(title) => activeSessionID && activeProjectDir && setSessionTitles((prev) => ({
+                    ...prev,
+                    [buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)]: title,
+                  }))}
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
                   codexAccessMode={appPreferences.codexAccessMode}
@@ -3659,7 +3824,7 @@ export default function App() {
 
                 </>
               )}
-              {!(activeSessionID && (sessionTypes[activeSessionID] === "canvas" || sessionTypes[activeSessionID] === "codex" || sessionTypes[activeSessionID] === "claude")) && (
+              {!(activeSessionID && (activeSessionType === "canvas" || activeSessionType === "codex" || activeSessionType === "claude")) && (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}

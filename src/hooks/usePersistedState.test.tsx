@@ -45,6 +45,43 @@ describe("usePersistedState", () => {
     expect(window.localStorage.getItem("persist:custom")).toBe("7");
   });
 
+  it("rehydrates when the storage key changes", () => {
+    window.localStorage.setItem("persist:key:a", JSON.stringify({ count: 3 }));
+    window.localStorage.setItem("persist:key:b", JSON.stringify({ count: 9 }));
+
+    const { result, rerender } = renderHook(
+      ({ storageKey }) => usePersistedState(storageKey, { count: 0 }),
+      { initialProps: { storageKey: "persist:key:a" } },
+    );
+
+    expect(result.current[0]).toEqual({ count: 3 });
+
+    rerender({ storageKey: "persist:key:b" });
+
+    expect(result.current[0]).toEqual({ count: 9 });
+    expect(window.localStorage.getItem("persist:key:b")).toBe(JSON.stringify({ count: 9 }));
+  });
+
+  it("does not copy the previous key state into a new key", () => {
+    window.localStorage.setItem("persist:key:source", JSON.stringify({ count: 4 }));
+
+    const { result, rerender } = renderHook(
+      ({ storageKey }) => usePersistedState(storageKey, { count: 0 }),
+      { initialProps: { storageKey: "persist:key:source" } },
+    );
+
+    act(() => {
+      result.current[1]({ count: 6 });
+    });
+
+    expect(window.localStorage.getItem("persist:key:source")).toBe(JSON.stringify({ count: 6 }));
+
+    rerender({ storageKey: "persist:key:target" });
+
+    expect(result.current[0]).toEqual({ count: 0 });
+    expect(window.localStorage.getItem("persist:key:target")).toBe(JSON.stringify({ count: 0 }));
+  });
+
   it("persists hidden model preferences across remount", () => {
     const key = "orxa:appPreferences:v1";
     const initial = {

@@ -40,11 +40,12 @@ export type WorkspaceSidebarProps = {
   collapsedProjects: Record<string, boolean>;
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
+  cachedSessionsByProject?: Record<string, SessionListItem[]>;
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionStatusType: (sessionID: string, directory?: string) => string;
-  sessionTypes: Record<string, SessionType>;
-  sessionTitles: Record<string, string>;
+  getSessionType: (sessionID: string, directory?: string) => SessionType | undefined;
+  getSessionTitle: (sessionID: string, directory?: string, fallbackTitle?: string) => string | undefined;
   selectProject: (directory: string) => Promise<void> | void;
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void;
   openSession: (sessionID: string) => void;
@@ -77,11 +78,12 @@ export function WorkspaceSidebar({
   collapsedProjects,
   setCollapsedProjects,
   sessions,
+  cachedSessionsByProject,
   activeSessionID,
   setAllSessionsModalOpen,
   getSessionStatusType,
-  sessionTypes,
-  sessionTitles,
+  getSessionType,
+  getSessionTitle,
   selectProject,
   createSession,
   openSession,
@@ -264,8 +266,12 @@ export function WorkspaceSidebar({
             {filteredProjects.map((project) => {
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
-              const isExpanded = isActiveProject && !collapsedProjects[project.worktree];
-              const visibleSessions = isExpanded ? sessions : [];
+              const isExpanded = !collapsedProjects[project.worktree];
+              // Use active sessions for active project, cached sessions for others
+              const projectSessions = isActiveProject
+                ? sessions
+                : (cachedSessionsByProject?.[project.worktree] ?? []);
+              const visibleSessions = isExpanded ? projectSessions : [];
               const displayedSessions = (() => {
                 const first = visibleSessions.slice(0, 4);
                 if (!activeSessionID || first.some((session) => session.id === activeSessionID)) {
@@ -288,14 +294,15 @@ export function WorkspaceSidebar({
                       type="button"
                       className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
                       onClick={() => {
-                        if (isActiveProject) {
-                          setCollapsedProjects((current) => ({
-                            ...current,
-                            [project.worktree]: !current[project.worktree],
-                          }));
-                          return;
+                        // Toggle expand/collapse
+                        setCollapsedProjects((current) => ({
+                          ...current,
+                          [project.worktree]: !current[project.worktree],
+                        }));
+                        // Select this project (shows landing screen if no session selected)
+                        if (!isActiveProject) {
+                          void selectProject(project.worktree);
                         }
-                        void selectProject(project.worktree);
                       }}
                       title={projectLabel}
                     >
@@ -342,6 +349,12 @@ export function WorkspaceSidebar({
                       {visibleSessions.length === 0 ? <p>No sessions yet</p> : null}
                       {displayedSessions.map((session) => {
                         const status = getSessionStatusType(session.id, project.worktree);
+                        const sessionType = getSessionType(session.id, project.worktree);
+                        const sessionTitle = getSessionTitle(
+                          session.id,
+                          project.worktree,
+                          session.title ?? session.slug,
+                        ) ?? session.title ?? session.slug;
                         const busy = status === "busy" || status === "retry";
                         const awaiting = status === "awaiting" || status === "permission" || status === "question";
                         return (
@@ -349,23 +362,32 @@ export function WorkspaceSidebar({
                             type="button"
                             key={session.id}
                             className={session.id === activeSessionID ? "active" : ""}
-                            onClick={() => openSession(session.id)}
+                            onClick={() => {
+                              if (!isActiveProject) {
+                                void (async () => {
+                                  await selectProject(project.worktree);
+                                  openSession(session.id);
+                                })();
+                              } else {
+                                openSession(session.id);
+                              }
+                            }}
                             onContextMenu={(event) =>
-                              openSessionContextMenu(event, project.worktree, session.id, sessionTitles[session.id] ?? session.title ?? session.slug)
+                              openSessionContextMenu(event, project.worktree, session.id, sessionTitle)
                             }
-                            title={sessionTitles[session.id] ?? session.title ?? session.slug}
+                            title={sessionTitle}
                           >
                             {awaiting ? (
                               <span className="session-status-indicator awaiting" aria-hidden="true" />
-                            ) : sessionTypes[session.id] === "canvas" ? (
+                            ) : sessionType === "canvas" ? (
                               <span className="session-type-icon session-type-icon--canvas" aria-hidden="true">
                                 <CanvasLogo size={10} />
                               </span>
-                            ) : sessionTypes[session.id] === "claude" ? (
+                            ) : sessionType === "claude" ? (
                               <span className="session-type-icon session-type-icon--claude" aria-hidden="true">
                                 <AnthropicLogo size={10} />
                               </span>
-                            ) : sessionTypes[session.id] === "codex" ? (
+                            ) : sessionType === "codex" ? (
                               <span className="session-type-icon session-type-icon--codex" aria-hidden="true">
                                 <OpenAILogo size={10} />
                               </span>
@@ -375,7 +397,7 @@ export function WorkspaceSidebar({
                                 aria-hidden="true"
                               />
                             )}
-                            <span>{sessionTitles[session.id] ?? session.title ?? session.slug}</span>
+                            <span>{sessionTitle}</span>
                           </button>
                         );
                       })}

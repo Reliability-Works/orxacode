@@ -604,6 +604,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     stopResponsePolling,
     togglePinSession,
     openProjectContextMenu,
+    projectDataCache: projectDataCacheRef,
     openSessionContextMenu,
     markSessionUsed,
   };

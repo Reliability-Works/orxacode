@@ -34,6 +34,9 @@ export function ApiTesterTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: ApiTesterTileProps) {
   const [method, setMethod] = useState<HttpMethod>(
     (tile.meta.method as HttpMethod) ?? "GET"
@@ -175,6 +178,9 @@ export function ApiTesterTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="api-tester-tile-body">
         {/* ---- Request builder ---- */}

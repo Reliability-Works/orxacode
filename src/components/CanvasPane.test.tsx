@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CanvasPane, type CanvasPaneCanvasState } from "./CanvasPane";
 import type { CanvasTile, CanvasTheme } from "../types/canvas";
+import { DEFAULT_CANVAS_SCROLL_LEFT, DEFAULT_CANVAS_SCROLL_TOP, DEFAULT_CANVAS_ZOOM } from "../types/canvas";
 
 const DEFAULT_THEME: CanvasTheme = {
   preset: "midnight",
@@ -16,12 +17,19 @@ function buildCanvasState(overrides: Partial<CanvasPaneCanvasState> = {}): Canva
     theme: DEFAULT_THEME,
     snapToGrid: false,
     gridSize: 12,
+    viewport: {
+      zoom: DEFAULT_CANVAS_ZOOM,
+      scrollLeft: DEFAULT_CANVAS_SCROLL_LEFT,
+      scrollTop: DEFAULT_CANVAS_SCROLL_TOP,
+    },
     addTile: vi.fn(),
     removeTile: vi.fn(),
     updateTile: vi.fn(),
     bringToFront: vi.fn(),
     toggleSnap: vi.fn(),
     setTheme: vi.fn(),
+    setViewport: vi.fn(),
+    resetViewport: vi.fn(),
     ...overrides,
   };
 }
@@ -53,6 +61,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ tiles: [makeTile(), makeTile({ id: "tile-2" })] });
     render(<CanvasPane canvasState={state} />);
     expect(screen.getByText("2 tiles")).toBeInTheDocument();
+    expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
   it("renders tiles from canvasState", () => {
@@ -164,5 +173,32 @@ describe("CanvasPane", () => {
     const updatedState = buildCanvasState({ tiles: [makeTile(), makeTile({ id: "tile-2" }), makeTile({ id: "tile-3" })] });
     rerender(<CanvasPane canvasState={updatedState} />);
     expect(screen.getByText("3 tiles")).toBeInTheDocument();
+  });
+
+  it("updates viewport state when canvas is scrolled", async () => {
+    const setViewport = vi.fn();
+    const state = buildCanvasState({ setViewport });
+    const { container } = render(<CanvasPane canvasState={state} />);
+    const viewport = container.querySelector(".canvas-area-viewport") as HTMLDivElement;
+
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+    Object.defineProperty(viewport, "scrollLeft", { configurable: true, writable: true, value: 420 });
+    Object.defineProperty(viewport, "scrollTop", { configurable: true, writable: true, value: 360 });
+    fireEvent.scroll(viewport);
+
+    expect(setViewport).toHaveBeenCalledWith({ scrollLeft: 420, scrollTop: 360 });
+  });
+
+  it("zooms in and out from toolbar controls", () => {
+    const setViewport = vi.fn();
+    const state = buildCanvasState({ setViewport });
+    render(<CanvasPane canvasState={state} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+
+    expect(setViewport).toHaveBeenCalled();
   });
 });

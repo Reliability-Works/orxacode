@@ -17,6 +17,9 @@ export function DevServerTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: DevServerTileProps) {
   const [ports, setPorts] = useState<ListeningPort[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -74,6 +77,9 @@ export function DevServerTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="dev-server-tile-body">
         <div className="dev-server-tile-toolbar">

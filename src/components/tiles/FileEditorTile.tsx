@@ -33,6 +33,9 @@ export function FileEditorTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
 }: FileEditorTileProps) {
   const directory =
     typeof tile.meta.directory === "string" ? tile.meta.directory : "";
@@ -262,6 +265,9 @@ export function FileEditorTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="file-editor-tile-body">
         {showTree && (

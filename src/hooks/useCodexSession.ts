@@ -205,8 +205,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
     if (!window.orxa?.events) return;
 
-    const unsubscribe = window.orxa.events.subscribe((event) => {
-      if (!isMounted.current) return;
+    // Keep processing events even when component is unmounted so sessions
+    // continue running in the background. React setState calls on unmounted
+    // components are no-ops in React 18+ and don't cause memory leaks.
+    window.orxa.events.subscribe((event) => {
 
       if (event.type === "codex.state") {
         const state = event.payload as CodexState;
@@ -237,8 +239,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     });
 
     return () => {
+      // Don't unsubscribe — keep processing events in background so sessions
+      // continue running when user navigates away. The subscription will be
+      // cleaned up when a new one is created on remount.
       isMounted.current = false;
-      unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

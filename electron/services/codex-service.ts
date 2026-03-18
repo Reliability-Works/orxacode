@@ -363,10 +363,16 @@ export class CodexService extends EventEmitter {
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
-    // If turnId is empty, send only the threadId to request a thread-level interrupt
+    // Send as both notification (fire-and-forget) and request (for servers that respond)
     const params: Record<string, string> = { threadId };
     if (turnId) params.turnId = turnId;
-    await this.request("turn/interrupt", params);
+    // Try as a request first; if it times out, the notification should have already worked
+    this.sendNotification("turn/interrupt", params);
+    try {
+      await this.request("turn/interrupt", params);
+    } catch {
+      // Timeout is expected if the server handles interrupt as notification-only
+    }
   }
 
   async listModels(): Promise<CodexModelEntry[]> {

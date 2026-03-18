@@ -38,6 +38,9 @@ export function BrowserTile({
   snapToGrid,
   gridSize,
   allTiles,
+  canvasOffsetX,
+  canvasOffsetY,
+  viewportScale,
   mcpDevToolsState,
 }: BrowserTileProps) {
   const currentUrl =
@@ -151,6 +154,9 @@ export function BrowserTile({
       snapToGrid={snapToGrid}
       gridSize={gridSize}
       allTiles={allTiles}
+      canvasOffsetX={canvasOffsetX}
+      canvasOffsetY={canvasOffsetY}
+      viewportScale={viewportScale}
     >
       <div className="browser-tile-body">
         <div className="browser-tile-url-bar">
