@@ -2655,10 +2655,11 @@ button.primary {
   background: var(--bg-input);
 }
 
-.landing-card--opencode .landing-card-icon { color: var(--accent-green); border-color: rgba(34, 197, 94, 0.3); }
-.landing-card--codex .landing-card-icon { color: #F97316; border-color: rgba(249, 115, 22, 0.3); }
-.landing-card--claude .landing-card-icon { color: #D97706; border-color: rgba(217, 119, 6, 0.3); }
-.landing-card--canvas .landing-card-icon { color: #3B82F6; border-color: rgba(59, 130, 246, 0.3); }
+/* Brand colors: OpenCode beige/cream, OpenAI white, Anthropic coral/tan, Canvas blue */
+.landing-card--opencode .landing-card-icon { color: #E8DDD3; border-color: rgba(232, 221, 211, 0.3); }
+.landing-card--codex .landing-card-icon { color: #FFFFFF; border-color: rgba(255, 255, 255, 0.25); }
+.landing-card--claude .landing-card-icon { color: #D4A27F; border-color: rgba(212, 162, 127, 0.3); }
+.landing-card--canvas .landing-card-icon { color: #60A5FA; border-color: rgba(96, 165, 250, 0.3); }
 
 .landing-card-title {
   font-size: 14px;
