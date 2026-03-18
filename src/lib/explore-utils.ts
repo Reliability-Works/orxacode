@@ -16,63 +16,22 @@ export interface ExploreEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Read-only command patterns (commands that only observe; never mutate state)
+// Write commands — commands that mutate state and should NOT be in explore groups
+// Everything else is treated as exploration by default
 // ---------------------------------------------------------------------------
-const READ_ONLY_COMMANDS = [
-  "cat",
-  "head",
-  "tail",
-  "less",
-  "more",
-  "bat",
-  "grep",
-  "rg",
-  "ag",
-  "ack",
-  "ls",
-  "ll",
-  "la",
-  "l",
-  "dir",
-  "find",
-  "fd",
-  "locate",
-  "tree",
-  "echo",
-  "printf",
-  "wc",
-  "file",
-  "stat",
-  "du",
-  "df",
-  "pwd",
-  "which",
-  "type",
-  "readlink",
-  "realpath",
-  "basename",
-  "dirname",
-  "sort",
-  "uniq",
-  "diff",
-  "diff3",
-  "cmp",
-  "comm",
-  "cut",
-  "awk",
-  "sed",
-  "tr",
-  "xargs",
-  "jq",
-  "yq",
-  "python3",
-  "python",
-  "node",
-  "ruby",
-  "perl",
-  "env",
-  "printenv",
-];
+const WRITE_COMMANDS = new Set([
+  "mkdir", "mkdirp", "rmdir",
+  "rm", "mv", "cp", "ln", "install",
+  "touch", "chmod", "chown", "chgrp",
+  "git", "npm", "npx", "yarn", "pnpm", "bun",
+  "pip", "pip3", "cargo", "go", "make", "cmake",
+  "docker", "kubectl", "terraform",
+  "curl", "wget", "ssh", "scp", "rsync",
+  "kill", "pkill", "killall",
+  "systemctl", "service",
+  "apt", "apt-get", "brew", "dnf", "yum", "pacman",
+  "tee",
+]);
 
 /**
  * Strip the outer shell wrapper that Codex wraps commands in.
@@ -112,11 +71,25 @@ function commandBinary(cmd: string): string {
 
 /**
  * Return true if the command is a read-only exploration command.
+ * Uses a deny-list approach: everything is exploration UNLESS
+ * the binary is a known write/mutation command.
  */
 export function isReadOnlyCommand(rawCommand: string): boolean {
   const cleaned = cleanCommandText(rawCommand);
-  const binary = commandBinary(cleaned);
-  return READ_ONLY_COMMANDS.includes(binary.toLowerCase());
+  const binary = commandBinary(cleaned).toLowerCase();
+  if (!binary) return true;
+  // git subcommands: only git log/diff/status/show/blame are read-only
+  if (binary === "git") {
+    const subCmd = cleaned.split(/\s+/)[1]?.toLowerCase() ?? "";
+    const readOnlyGit = new Set(["log", "diff", "status", "show", "blame", "branch", "tag", "remote", "ls-files", "ls-tree", "rev-parse", "describe"]);
+    return readOnlyGit.has(subCmd);
+  }
+  // npm/npx: only list/info/view are read-only
+  if (binary === "npm" || binary === "npx") {
+    const subCmd = cleaned.split(/\s+/)[1]?.toLowerCase() ?? "";
+    return subCmd === "list" || subCmd === "ls" || subCmd === "info" || subCmd === "view" || subCmd === "outdated";
+  }
+  return !WRITE_COMMANDS.has(binary);
 }
 
 /**
@@ -188,12 +161,23 @@ export function buildExploreLabel(
   const runCount = entries.filter((e) => e.kind === "run").length;
   const mcpCount = entries.filter((e) => e.kind === "mcp").length;
 
+  const total = entries.length;
   const parts: string[] = [];
-  if (readCount > 0) parts.push(`${readCount} file${readCount !== 1 ? "s" : ""}`);
+  if (readCount > 0) parts.push(`${readCount} read${readCount !== 1 ? "s" : ""}`);
   if (searchCount > 0) parts.push(`${searchCount} search${searchCount !== 1 ? "es" : ""}`);
-  if (runCount > 0) parts.push(`${runCount} command${runCount !== 1 ? "s" : ""}`);
-  if (mcpCount > 0) parts.push(`${mcpCount} tool${mcpCount !== 1 ? "s" : ""}`);
 
-  const summary = parts.length > 0 ? parts.join(", ") : `${entries.length} item${entries.length !== 1 ? "s" : ""}`;
+  // Use a combined label: "N files" for reads + commands, plus searches separately
+  const fileCount = readCount + runCount + mcpCount;
+  if (parts.length === 0) {
+    // All entries are commands/tools/reads — just show total
+    const summary = `${total} file${total !== 1 ? "s" : ""}`;
+    return status === "exploring" ? `Exploring ${summary}` : `Explored ${summary}`;
+  }
+
+  // Mix of types: show "N reads, M searches"
+  const mixedParts: string[] = [];
+  if (fileCount > 0) mixedParts.push(`${fileCount} file${fileCount !== 1 ? "s" : ""}`);
+  if (searchCount > 0) mixedParts.push(`${searchCount} search${searchCount !== 1 ? "es" : ""}`);
+  const summary = mixedParts.join(", ");
   return status === "exploring" ? `Exploring ${summary}` : `Explored ${summary}`;
 }

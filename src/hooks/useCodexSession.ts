@@ -7,7 +7,6 @@ import {
   appendDeltaToMappedItem,
   parseMarkdownPlan,
   parseStructuredPlan,
-  removeMessageByID,
 } from "./codex-session-message-reducers";
 import { nextMessageID, resetStreamingBookkeeping } from "./codex-session-streaming";
 import type { ExploreEntry } from "../lib/explore-utils";
@@ -293,27 +292,24 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         setIsStreaming(false);
         streamingItemIdRef.current = null;
         activeTurnIdRef.current = null;
-        // Always remove the reasoning row — thinking shouldn't persist after the turn
+        // Single setState: remove reasoning + close all exploring groups
         const tId = currentReasoningIdRef.current;
         currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
-        if (tId) {
-          setMessages((prev) => removeMessageByID(prev, tId));
-        }
-        // Mark any active explore groups as explored
-        if (activeExploreGroupIdRef.current) {
-          const groupId = activeExploreGroupIdRef.current;
-          activeExploreGroupIdRef.current = null;
-          setMessages((prev) => {
-            const gIdx = prev.findIndex((m) => m.id === groupId);
-            if (gIdx < 0) return prev;
-            const group = prev[gIdx];
-            if (group.kind !== "explore" || group.status !== "exploring") return prev;
-            const next = [...prev];
-            next[gIdx] = { ...group, status: "explored" };
-            return next;
-          });
-        }
+        activeExploreGroupIdRef.current = null;
+        setMessages((prev) => {
+          let result = tId ? prev.filter((m) => m.id !== tId) : prev;
+          // Close ALL exploring groups
+          const hasExploring = result.some((m) => m.kind === "explore" && m.status === "exploring");
+          if (hasExploring) {
+            result = (result === prev ? [...prev] : result).map((m) =>
+              m.kind === "explore" && m.status === "exploring"
+                ? { ...m, status: "explored" as const }
+                : m,
+            );
+          }
+          return result;
+        });
         break;
       }
 
@@ -391,30 +387,21 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           streamingItemIdRef.current = item.id;
           const msgId = nextMessageID("codex-assistant", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
-          // Close any active explore group when an assistant message arrives
-          if (activeExploreGroupIdRef.current) {
-            const groupId = activeExploreGroupIdRef.current;
-            activeExploreGroupIdRef.current = null;
-            setMessages((prev) => {
-              const gIdx = prev.findIndex((m) => m.id === groupId);
-              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
-                const next = [...prev];
-                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), status: "explored" as const };
-                return next;
-              }
-              return prev;
-            });
-          }
-          // Remove thinking row when the real message starts arriving
+          activeExploreGroupIdRef.current = null;
           const rId = currentReasoningIdRef.current;
           currentReasoningIdRef.current = null;
           thinkingItemIdRef.current = null;
+          // Single setState: close all exploring groups + remove thinking + add message
           setMessages((prev) => {
-            const filtered = rId ? prev.filter((m) => m.id !== rId) : prev;
-            return [
-              ...filtered,
-              { id: msgId, kind: "message", role: "assistant", content: "", timestamp: Date.now() },
-            ];
+            let result = rId ? prev.filter((m) => m.id !== rId) : [...prev];
+            // Close ALL exploring groups (not just the active one)
+            result = result.map((m) =>
+              m.kind === "explore" && m.status === "exploring"
+                ? { ...m, status: "explored" as const }
+                : m,
+            );
+            result.push({ id: msgId, kind: "message", role: "assistant", content: "", timestamp: Date.now() });
+            return result;
           });
         }
 
