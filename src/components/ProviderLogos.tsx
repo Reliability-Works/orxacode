@@ -40,24 +40,22 @@ export function AnthropicLogo({ size = 24, className, style }: LogoProps) {
   );
 }
 
-/** OpenCode logo — terminal prompt style */
+/** OpenCode logo — official blocky "O" mark from sst/opencode */
 export function OpenCodeLogo({ size = 24, className, style }: LogoProps) {
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox="0 0 300 300"
       width={size}
       height={size}
       fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       className={className}
       style={style}
       aria-hidden="true"
     >
-      <polyline points="4 17 10 11 4 5" />
-      <line x1="12" y1="19" x2="20" y2="19" />
+      <g transform="translate(30, 0)">
+        <path d="M180 240H60V120H180V240Z" fill="currentColor" opacity="0.35" />
+        <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" fill="currentColor" />
+      </g>
     </svg>
   );
 }
