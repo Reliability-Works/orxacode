@@ -1142,9 +1142,15 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       }
     }
 
-    // Surface reasoning parts as visible content (expandable thinking rows)
+    // Use reasoning summary to enhance the thinking shimmer label, not as visible content.
+    // Reasoning is only shown transiently via the animated placeholder during streaming.
     if (part.type === "reasoning") {
-      visible.push(part);
+      const record = part as unknown as Record<string, unknown>;
+      const summary = typeof record.summary === "string" ? record.summary : typeof record.text === "string" ? record.text : "";
+      if (summary) {
+        const trimmed = summary.length > 80 ? `${summary.slice(0, 77)}...` : summary;
+        activity = { id: `${part.id}:activity`, label: `Thinking  ${trimmed}` };
+      }
       continue;
     }
 
@@ -1196,14 +1202,12 @@ function buildToolCallCardProps(part: Part & { type: "tool" }, workspaceDirector
 }
 
 function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
-  // Only render cards for active (non-completed) tool parts that are not task/delegation tools.
-  // Completed tools are already shown in the existing timeline exploration/row system.
-  const toolParts = parts.filter((part): part is Part & { type: "tool" } => {
-    if (part.type !== "tool") return false;
-    const toolName = part.tool.trim().toLowerCase();
-    if (isTaskToolName(toolName)) return false;
-    return isToolStatusActive(part.state.status);
-  });
+  // Don't render individual ToolCallCards at all.
+  // Active tools are represented by the ThinkingShimmer placeholder.
+  // Completed/error tools are shown in the timeline system.
+  void parts;
+  void workspaceDirectory;
+  const toolParts: Array<Part & { type: "tool" }> = [];
   if (toolParts.length === 0) {
     return null;
   }

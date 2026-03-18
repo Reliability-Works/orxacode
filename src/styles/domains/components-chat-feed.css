@@ -248,13 +248,14 @@
 }
 
 .message-timeline-row {
-  border: 1px solid var(--border);
+  /* No background/border — keep timeline rows clean and inline */
+  background: transparent;
+  border: none;
   border-radius: 4px;
   padding: 7px 10px;
   font-size: 12px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  background: rgba(23, 23, 23, 0.64);
   display: grid;
   gap: 3px;
 }
