@@ -73,15 +73,37 @@ function deriveCollabLabel(title: string, status: string): string {
   return title;
 }
 
+function ThinkingRow({ summary, content }: { summary: string; content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const summaryText = summary || "...";
+  const hasContent = content.trim().length > 0;
+
+  return (
+    <div className="thinking-row">
+      <button
+        type="button"
+        className="thinking-row-header"
+        onClick={() => hasContent && setExpanded((v) => !v)}
+        disabled={!hasContent}
+      >
+        <span className="thinking-row-chevron" aria-hidden="true">
+          {hasContent ? (expanded ? "▾" : "›") : ""}
+        </span>
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-summary">{summaryText}</span>
+      </button>
+      {expanded && hasContent ? (
+        <div className="thinking-row-content">
+          <pre className="thinking-row-text">{content}</pre>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; isStreaming: boolean }) {
   if (item.kind === "thinking") {
-    // Legacy thinking kind — render as inline thinking row with no summary
-    return (
-      <div className="thinking-inline">
-        <span className="thinking-label">Thinking</span>
-        <span className="thinking-summary">...</span>
-      </div>
-    );
+    return <ThinkingRow summary="" content="" />;
   }
 
   if (item.kind === "message") {
@@ -180,13 +202,7 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
   }
 
   if (item.kind === "reasoning") {
-    const summaryText = item.summary || item.content || "...";
-    return (
-      <div className="thinking-inline">
-        <span className="thinking-label">Thinking</span>
-        <span className="thinking-summary">{summaryText}</span>
-      </div>
-    );
+    return <ThinkingRow summary={item.summary} content={item.content} />;
   }
 
   if (item.kind === "context") {

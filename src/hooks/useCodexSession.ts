@@ -270,13 +270,9 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         // Track turn ID for interrupt
         const turn = params.turn as { id?: string } | undefined;
         activeTurnIdRef.current = turn?.id ?? null;
-        // Remove any previous reasoning row from the last turn (thinking shouldn't persist)
-        const prevReasoningId = currentReasoningIdRef.current;
+        // Reset reasoning ref for new turn (previous reasoning stays in chat as expandable)
         currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
-        if (prevReasoningId) {
-          setMessages((prev) => prev.filter((m) => m.id !== prevReasoningId));
-        }
         // Insert a single reasoning placeholder for this turn
         const thinkingId = nextMessageID("codex-reasoning", messageIdCounter);
         thinkingItemIdRef.current = thinkingId;
@@ -292,13 +288,20 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         setIsStreaming(false);
         streamingItemIdRef.current = null;
         activeTurnIdRef.current = null;
-        // Single setState: remove reasoning + close all exploring groups
+        // Keep reasoning if it has content (expandable); remove if empty placeholder
         const tId = currentReasoningIdRef.current;
         currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
         activeExploreGroupIdRef.current = null;
         setMessages((prev) => {
-          let result = tId ? prev.filter((m) => m.id !== tId) : prev;
+          let result = prev;
+          // Remove reasoning only if it has no content (empty placeholder)
+          if (tId) {
+            const item = prev.find((m) => m.id === tId);
+            if (item && item.kind === "reasoning" && !item.content && !item.summary) {
+              result = prev.filter((m) => m.id !== tId);
+            }
+          }
           // Close ALL exploring groups
           const hasExploring = result.some((m) => m.kind === "explore" && m.status === "exploring");
           if (hasExploring) {
@@ -391,9 +394,20 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           const rId = currentReasoningIdRef.current;
           currentReasoningIdRef.current = null;
           thinkingItemIdRef.current = null;
-          // Single setState: close all exploring groups + remove thinking + add message
+          // Single setState: close all exploring groups + handle reasoning + add message
           setMessages((prev) => {
-            let result = rId ? prev.filter((m) => m.id !== rId) : [...prev];
+            // Keep reasoning if it has content; remove only empty placeholders
+            let result: typeof prev;
+            if (rId) {
+              const rItem = prev.find((m) => m.id === rId);
+              if (rItem && rItem.kind === "reasoning" && !rItem.content && !rItem.summary) {
+                result = prev.filter((m) => m.id !== rId);
+              } else {
+                result = [...prev];
+              }
+            } else {
+              result = [...prev];
+            }
             // Close ALL exploring groups (not just the active one)
             result = result.map((m) =>
               m.kind === "explore" && m.status === "exploring"
