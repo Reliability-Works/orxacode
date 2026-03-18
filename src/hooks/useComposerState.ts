@@ -44,8 +44,37 @@ type UseComposerStateOptions = {
   onSessionAbortRequested?: (directory: string, sessionID: string) => void;
 };
 
+// Per-workspace composer text cache (survives workspace switches)
+const composerByWorkspace = new Map<string, string>();
+
 export function useComposerState(activeProjectDir: string | null, activeSessionID: string | null, options: UseComposerStateOptions) {
-  const [composer, setComposer] = useState("");
+  const [composer, setComposerRaw] = useState(() => (activeProjectDir ? composerByWorkspace.get(activeProjectDir) ?? "" : ""));
+  const prevProjectDirRef = useRef(activeProjectDir);
+
+  // Sync composer text when switching workspaces
+  useEffect(() => {
+    const prev = prevProjectDirRef.current;
+    if (prev === activeProjectDir) return;
+    // Save current text for the previous workspace
+    if (prev && composer) {
+      composerByWorkspace.set(prev, composer);
+    }
+    // Restore text for the new workspace
+    prevProjectDirRef.current = activeProjectDir;
+    setComposerRaw(activeProjectDir ? composerByWorkspace.get(activeProjectDir) ?? "" : "");
+  }, [activeProjectDir, composer]);
+
+  // Wrapper that also updates the cache
+  const setComposer = useCallback((value: string | ((prev: string) => string)) => {
+    setComposerRaw((prev) => {
+      const next = typeof value === "function" ? value(prev) : value;
+      if (activeProjectDir) {
+        composerByWorkspace.set(activeProjectDir, next);
+      }
+      return next;
+    });
+  }, [activeProjectDir]);
+
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
   const [isSendingPrompt, setIsSendingPrompt] = useState(false);
   const sendingPromptRef = useRef(false);

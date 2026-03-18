@@ -2701,7 +2701,12 @@ export default function App() {
     refreshProject,
     setStatusLine,
   ]);
-  const pendingQuestion = useMemo(() => (projectData?.questions ?? [])[0] ?? null, [projectData?.questions]);
+  const pendingQuestion = useMemo(() => {
+    const q = (projectData?.questions ?? [])[0] ?? null;
+    // Only show questions for the active session
+    if (q && activeSessionID && q.sessionID && q.sessionID !== activeSessionID) return null;
+    return q;
+  }, [projectData?.questions, activeSessionID]);
 
   // Hide BrowserView when permission/question modals are open
   useEffect(() => {
@@ -3029,17 +3034,23 @@ export default function App() {
     };
   }, [pendingQuestion, replyPendingQuestion, rejectPendingQuestion]);
 
-  // ── Desktop notifications ──────────────────────────────────────────
+  // ── Desktop notifications (deduplicated) ──────────────────────────
   const prevSessionBusy = useRef(false);
+  const lastOpenCodeNotifyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!appPreferences.notifyOnAwaitingInput || document.hasFocus()) return;
-    if (dockPendingPermission || dockPendingQuestion) {
-      new Notification("Orxa Code", {
-        body: dockPendingQuestion ? "Agent is asking a question" : "Agent needs permission to continue",
-        silent: false,
-      }).onclick = () => window.focus();
-    }
+    const key = dockPendingQuestion
+      ? `question:${typeof dockPendingQuestion === "object" && "questions" in dockPendingQuestion ? dockPendingQuestion.questions?.[0]?.id : "q"}`
+      : dockPendingPermission
+        ? `permission:${typeof dockPendingPermission === "object" && "description" in dockPendingPermission ? dockPendingPermission.description?.slice(0, 40) : "p"}`
+        : null;
+    if (!key || key === lastOpenCodeNotifyRef.current) return;
+    lastOpenCodeNotifyRef.current = key;
+    new Notification("Orxa Code", {
+      body: dockPendingQuestion ? "Agent is asking a question" : "Agent needs permission to continue",
+      silent: false,
+    }).onclick = () => window.focus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dockPendingPermission, dockPendingQuestion]);
 
