@@ -363,7 +363,10 @@ export class CodexService extends EventEmitter {
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {
-    await this.request("turn/interrupt", { threadId, turnId });
+    // If turnId is empty, send only the threadId to request a thread-level interrupt
+    const params: Record<string, string> = { threadId };
+    if (turnId) params.turnId = turnId;
+    await this.request("turn/interrupt", params);
   }
 
   async listModels(): Promise<CodexModelEntry[]> {

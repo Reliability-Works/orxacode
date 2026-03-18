@@ -10,6 +10,14 @@ import {
   removeMessageByID,
 } from "./codex-session-message-reducers";
 import { nextMessageID, resetStreamingBookkeeping } from "./codex-session-streaming";
+import type { ExploreEntry } from "../lib/explore-utils";
+import {
+  cleanCommandText,
+  commandToExploreEntry,
+  fileReadToExploreEntry,
+  webSearchToExploreEntry,
+  mcpToolCallToExploreEntry,
+} from "../lib/explore-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,7 +97,14 @@ export type CodexMessageItem =
       status: "running" | "completed" | "error";
       timestamp: number;
     }
-  | { id: string; kind: "compaction"; timestamp: number };
+  | { id: string; kind: "compaction"; timestamp: number }
+  | {
+      id: string;
+      kind: "explore";
+      status: "exploring" | "explored";
+      entries: ExploreEntry[];
+      timestamp: number;
+    };
 
 export interface CodexSessionState {
   connectionStatus: CodexState["status"];
@@ -120,8 +135,8 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   const [lastError, setLastError] = useState<string>();
   const [threadName, setThreadName] = useState<string>();
   const [planItems, setPlanItems] = useState<TodoItem[]>([]);
-  const [planReady, setPlanReady] = useState(false);
-  const hadPlanUpdate = useRef(false);
+  // Track dismissed plan item IDs so accepted/dismissed plans don't re-appear
+  const [dismissedPlanIds, setDismissedPlanIds] = useState<Set<string>>(new Set());
 
   // Subagent thread detection & tracking
   const subagentThreadIds = useRef(new Set<string>());
@@ -135,6 +150,8 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   const messageIdCounter = useRef(persisted.messageIdCounter);
   // Map codex item IDs to our message IDs for delta matching
   const codexItemToMsgId = useRef(new Map<string, string>());
+  // Map codex item IDs to the explore group message ID they belong to
+  const codexItemToExploreGroupId = useRef(new Map<string, string>());
   // Track active turn for interrupt
   const activeTurnIdRef = useRef<string | null>(null);
 
@@ -245,17 +262,18 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     switch (method) {
       case "turn/started": {
         setIsStreaming(true);
-        setPlanReady(false);
         streamingItemIdRef.current = null;
         // Track turn ID for interrupt
         const turn = params.turn as { id?: string } | undefined;
         activeTurnIdRef.current = turn?.id ?? null;
-        // Insert a thinking indicator
-        const thinkingId = nextMessageID("codex-thinking", messageIdCounter);
+        // Insert a reasoning placeholder as the live "Thinking..." indicator.
+        // This will be updated when a reasoning item/started arrives, or removed
+        // when the turn/completed fires (if no reasoning ever arrived).
+        const thinkingId = nextMessageID("codex-reasoning", messageIdCounter);
         thinkingItemIdRef.current = thinkingId;
         setMessages((prev) => [
           ...prev,
-          { id: thinkingId, kind: "thinking", timestamp: Date.now() },
+          { id: thinkingId, kind: "reasoning", content: "", summary: "", timestamp: Date.now() },
         ]);
         break;
       }
@@ -264,43 +282,24 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         setIsStreaming(false);
         streamingItemIdRef.current = null;
         activeTurnIdRef.current = null;
-        // Remove the thinking indicator
+        // Remove the reasoning placeholder if it has no summary (never received reasoning deltas)
         const tId = thinkingItemIdRef.current;
         thinkingItemIdRef.current = null;
         if (tId) {
-          setMessages((prev) => removeMessageByID(prev, tId));
-        }
-        // If plan items were updated during this turn, the plan is ready for user review
-        if (hadPlanUpdate.current) {
-          hadPlanUpdate.current = false;
-          // If planItems are still empty, try extracting from the last assistant message
-          setPlanItems((currentItems) => {
-            if (currentItems.length > 0 && currentItems.some((i) => i.content.trim().length > 0)) {
-              return currentItems;
+          setMessages((prev) => {
+            const item = prev.find((m) => m.id === tId);
+            // Keep the item only if it has accumulated a summary (meaningful reasoning)
+            if (item && item.kind === "reasoning" && !item.summary && !item.content) {
+              return removeMessageByID(prev, tId);
             }
-            // Find last assistant message with content
-            const lastMsg = [...messages].reverse().find(
-              (m) => m.kind === "message" && m.role === "assistant" && m.content.trim().length > 0,
-            );
-            if (!lastMsg || lastMsg.kind !== "message") return currentItems;
-            const lines = lastMsg.content.split("\n")
-              .map((l: string) => l.trim())
-              .filter((l: string) => l.startsWith("- ") || l.startsWith("* ") || /^\d+[.)]\s/.test(l));
-            if (lines.length === 0) return currentItems;
-            return lines.map((line: string, i: number) => ({
-              id: `plan-msg-${i}`,
-              content: line.replace(/^\s*[-*]\s*/, "").replace(/^\d+[.)]\s*/, "").trim(),
-              status: "pending" as const,
-            }));
+            return prev;
           });
-          setPlanReady(true);
         }
         break;
       }
 
       // ── Plan mode ──────────────────────────────────────────────────
       case "turn/plan/updated": {
-        hadPlanUpdate.current = true;
         const plan = params.plan as unknown;
         const explanation = params.explanation as unknown;
 
@@ -386,20 +385,34 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         }
 
         if (item.type === "commandExecution") {
-          const msgId = nextMessageID("codex-cmd", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "tool",
-              toolType: "commandExecution",
-              title: "Command",
-              output: "",
-              status: "running",
-              timestamp: Date.now(),
-            },
-          ]);
+          // We don't know the command text at item/started — defer read-only check to item/completed.
+          // Insert a placeholder explore entry optimistically. At item/completed, if the command
+          // turns out to be non-read-only, we'll remove it from the explore group and add a ToolCallCard.
+          const placeholder: ExploreEntry = { id: item.id, kind: "run", label: "Running command...", status: "running" };
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.kind === "explore" && last.status === "exploring") {
+              codexItemToExploreGroupId.current.set(item.id, last.id);
+              const next = [...prev];
+              next[next.length - 1] = {
+                ...last,
+                entries: [...last.entries, placeholder],
+              };
+              return next;
+            }
+            const groupId = nextMessageID("codex-explore", messageIdCounter);
+            codexItemToExploreGroupId.current.set(item.id, groupId);
+            return [
+              ...prev,
+              {
+                id: groupId,
+                kind: "explore" as const,
+                status: "exploring" as const,
+                entries: [placeholder],
+                timestamp: Date.now(),
+              },
+            ];
+          });
         }
 
         if (item.type === "fileChange") {
@@ -419,66 +432,112 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         }
 
         if (item.type === "reasoning") {
-          const msgId = nextMessageID("codex-reasoning", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "reasoning",
-              content: "",
-              summary: "",
-              timestamp: Date.now(),
-            },
-          ]);
+          // Reuse the reasoning placeholder inserted in turn/started (thinkingItemIdRef)
+          // so we don't create a duplicate. If no placeholder exists, create a new one.
+          const existingPlaceholderId = thinkingItemIdRef.current;
+          if (existingPlaceholderId) {
+            // Map this codex item id -> existing placeholder message id
+            codexItemToMsgId.current.set(item.id, existingPlaceholderId);
+            // Clear thinkingItemIdRef so turn/completed won't try to remove it
+            thinkingItemIdRef.current = null;
+          } else {
+            const msgId = nextMessageID("codex-reasoning", messageIdCounter);
+            codexItemToMsgId.current.set(item.id, msgId);
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: msgId,
+                kind: "reasoning",
+                content: "",
+                summary: "",
+                timestamp: Date.now(),
+              },
+            ]);
+          }
         }
 
         if (item.type === "fileRead") {
-          const msgId = nextMessageID("codex-ctx", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "context",
-              toolType: "read",
-              title: item.path ?? "file",
-              status: "running",
-              timestamp: Date.now(),
-            },
-          ]);
+          const entry = fileReadToExploreEntry(item.id, item.path ?? "file", "running");
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.kind === "explore" && last.status === "exploring") {
+              codexItemToExploreGroupId.current.set(item.id, last.id);
+              const next = [...prev];
+              next[next.length - 1] = {
+                ...last,
+                entries: [...last.entries, entry],
+              };
+              return next;
+            }
+            const groupId = nextMessageID("codex-explore", messageIdCounter);
+            codexItemToExploreGroupId.current.set(item.id, groupId);
+            return [
+              ...prev,
+              {
+                id: groupId,
+                kind: "explore" as const,
+                status: "exploring" as const,
+                entries: [entry],
+                timestamp: Date.now(),
+              },
+            ];
+          });
         }
 
         if (item.type === "webSearch") {
-          const msgId = nextMessageID("codex-ctx", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "context",
-              toolType: "search",
-              title: (item.query as string) ?? "search",
-              status: "running",
-              timestamp: Date.now(),
-            },
-          ]);
+          const entry = webSearchToExploreEntry(item.id, (item.query as string) ?? "search", "running");
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.kind === "explore" && last.status === "exploring") {
+              codexItemToExploreGroupId.current.set(item.id, last.id);
+              const next = [...prev];
+              next[next.length - 1] = {
+                ...last,
+                entries: [...last.entries, entry],
+              };
+              return next;
+            }
+            const groupId = nextMessageID("codex-explore", messageIdCounter);
+            codexItemToExploreGroupId.current.set(item.id, groupId);
+            return [
+              ...prev,
+              {
+                id: groupId,
+                kind: "explore" as const,
+                status: "exploring" as const,
+                entries: [entry],
+                timestamp: Date.now(),
+              },
+            ];
+          });
         }
 
         if (item.type === "mcpToolCall") {
-          const msgId = nextMessageID("codex-ctx", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "context",
-              toolType: "mcp",
-              title: item.toolName ?? item.name ?? "mcp tool",
-              status: "running",
-              timestamp: Date.now(),
-            },
-          ]);
+          const entry = mcpToolCallToExploreEntry(item.id, item.toolName ?? item.name ?? "mcp tool", "running");
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.kind === "explore" && last.status === "exploring") {
+              codexItemToExploreGroupId.current.set(item.id, last.id);
+              const next = [...prev];
+              next[next.length - 1] = {
+                ...last,
+                entries: [...last.entries, entry],
+              };
+              return next;
+            }
+            const groupId = nextMessageID("codex-explore", messageIdCounter);
+            codexItemToExploreGroupId.current.set(item.id, groupId);
+            return [
+              ...prev,
+              {
+                id: groupId,
+                kind: "explore" as const,
+                status: "exploring" as const,
+                entries: [entry],
+                timestamp: Date.now(),
+              },
+            ];
+          });
         }
 
         if (item.type === "plan") {
@@ -596,8 +655,15 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       // ── Streaming deltas ───────────────────────────────────────────
       case "item/agentMessage/delta": {
         const delta = params.delta as string;
+        const codexItemId = params.itemId as string;
         if (delta) {
-          setMessages((prev) => appendAssistantDeltaToLastMessage(prev, delta));
+          if (codexItemId) {
+            // Use ID-based append so interleaved tool items don't cause truncation
+            appendToItemField(codexItemId, "content", delta);
+          } else {
+            // Fallback to position-based append when no item ID is available
+            setMessages((prev) => appendAssistantDeltaToLastMessage(prev, delta));
+          }
         }
         break;
       }
@@ -665,8 +731,68 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const existingMsgId = codexItemToMsgId.current.get(item.id);
 
         if (item.type === "commandExecution") {
-          if (existingMsgId) {
-            // Update the existing running item with final data
+          const exploreGroupId = codexItemToExploreGroupId.current.get(item.id);
+          const rawCommand = item.command ?? "";
+          const readOnly = rawCommand.length > 0 ? (commandToExploreEntry("_check", rawCommand, "completed") !== null) : false;
+
+          if (exploreGroupId) {
+            codexItemToExploreGroupId.current.delete(item.id);
+            if (readOnly) {
+              // Keep in explore group; update label + status
+              const finalStatus: ExploreEntry["status"] = (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error";
+              const cleaned = rawCommand.length > 0 ? cleanCommandText(rawCommand) : "Command";
+              const cleanedLabel = cleaned.length > 80 ? `${cleaned.slice(0, 77)}...` : cleaned;
+              setMessages((prev) => {
+                const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
+                if (gIdx < 0) return prev;
+                const group = prev[gIdx];
+                if (group.kind !== "explore") return prev;
+                const updatedEntries = group.entries.map((e) =>
+                  e.id === item.id ? { ...e, label: cleanedLabel, status: finalStatus } : e,
+                );
+                const allDone = updatedEntries.every((e) => e.status === "completed" || e.status === "error");
+                const next = [...prev];
+                next[gIdx] = { ...group, entries: updatedEntries, status: allDone ? "explored" : "exploring" };
+                return next;
+              });
+            } else {
+              // Non-read-only: remove from explore group and add a ToolCallCard instead
+              setMessages((prev) => {
+                const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
+                let base = prev;
+                if (gIdx >= 0) {
+                  const group = prev[gIdx];
+                  if (group.kind === "explore") {
+                    const filteredEntries = group.entries.filter((e) => e.id !== item.id);
+                    if (filteredEntries.length === 0) {
+                      // Remove the whole group if now empty
+                      base = prev.filter((m) => m.id !== exploreGroupId);
+                    } else {
+                      base = [...prev];
+                      base[gIdx] = { ...group, entries: filteredEntries };
+                    }
+                  }
+                }
+                const msgId = nextMessageID("codex-cmd", messageIdCounter);
+                return [
+                  ...base,
+                  {
+                    id: msgId,
+                    kind: "tool" as const,
+                    toolType: "commandExecution",
+                    title: rawCommand ? `$ ${rawCommand.slice(0, 60)}` : "Command",
+                    command: item.command,
+                    output: item.aggregatedOutput,
+                    status: (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error",
+                    exitCode: item.exitCode,
+                    durationMs: item.durationMs,
+                    timestamp: Date.now(),
+                  },
+                ];
+              });
+            }
+          } else if (existingMsgId) {
+            // Update existing tool card (placed at item/started without explore group)
             setMessages((prev) => {
               const idx = prev.findIndex((m) => m.id === existingMsgId);
               if (idx < 0) return prev;
@@ -685,22 +811,41 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               return next;
             });
           } else {
-            // Fallback: no started event was seen — add a completed item directly
-            const msgId = nextMessageID("codex-cmd", messageIdCounter);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: msgId,
-                kind: "tool",
-                toolType: "commandExecution",
-                title: item.command ? `$ ${item.command.slice(0, 60)}` : "Command",
-                command: item.command,
-                output: item.aggregatedOutput,
-                status: item.exitCode === 0 || item.exitCode === undefined ? "completed" : "error",
-                exitCode: item.exitCode,
-                timestamp: Date.now(),
-              },
-            ]);
+            // Fallback: no started event — add as explore or tool based on command
+            const fallbackEntry = item.command
+              ? commandToExploreEntry(`fallback-${Date.now()}`, item.command, (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error")
+              : null;
+            if (fallbackEntry) {
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.kind === "explore") {
+                  const next = [...prev];
+                  next[next.length - 1] = { ...last, entries: [...last.entries, fallbackEntry] };
+                  return next;
+                }
+                const groupId = nextMessageID("codex-explore", messageIdCounter);
+                return [
+                  ...prev,
+                  { id: groupId, kind: "explore" as const, status: "explored" as const, entries: [fallbackEntry], timestamp: Date.now() },
+                ];
+              });
+            } else {
+              const msgId = nextMessageID("codex-cmd", messageIdCounter);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: msgId,
+                  kind: "tool",
+                  toolType: "commandExecution",
+                  title: item.command ? `$ ${item.command.slice(0, 60)}` : "Command",
+                  command: item.command,
+                  output: item.aggregatedOutput,
+                  status: item.exitCode === 0 || item.exitCode === undefined ? "completed" : "error",
+                  exitCode: item.exitCode,
+                  timestamp: Date.now(),
+                },
+              ]);
+            }
           }
         }
 
@@ -738,13 +883,34 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           }
         }
 
-        // Update status on completed context/tool items
+        // Update status on completed context/tool items (now inside explore groups)
         if (
           item.type === "fileRead" ||
           item.type === "webSearch" ||
           item.type === "mcpToolCall"
         ) {
-          if (existingMsgId) {
+          const exploreGroupId = codexItemToExploreGroupId.current.get(item.id);
+          if (exploreGroupId) {
+            setMessages((prev) => {
+              const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
+              if (gIdx < 0) return prev;
+              const group = prev[gIdx];
+              if (group.kind !== "explore") return prev;
+              const updatedEntries = group.entries.map((e) =>
+                e.id === item.id ? { ...e, status: "completed" as const } : e,
+              );
+              const allDone = updatedEntries.every((e) => e.status === "completed" || e.status === "error");
+              const next = [...prev];
+              next[gIdx] = {
+                ...group,
+                entries: updatedEntries,
+                status: allDone ? "explored" : "exploring",
+              };
+              return next;
+            });
+            codexItemToExploreGroupId.current.delete(item.id);
+          } else if (existingMsgId) {
+            // Legacy fallback: update old-style context item if somehow present
             setMessages((prev) => {
               const idx = prev.findIndex((m) => m.id === existingMsgId);
               if (idx < 0) return prev;
@@ -796,7 +962,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         // Unhandled notification — no-op
         break;
     }
-  }, [appendToItemField, messages]);
+  }, [appendToItemField]);
   handleNotificationRef.current = handleNotification;
 
   // Derive subagent messages reactively from current messages
@@ -864,6 +1030,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           activeTurnIdRef,
           codexItemToMsgId,
         });
+        codexItemToExploreGroupId.current.clear();
         setPlanItems([]);
         setThreadName(undefined);
         setSubagents([]);
@@ -945,19 +1112,32 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
   // Interrupt the current turn
   const interruptTurn = useCallback(async () => {
-    if (!window.orxa?.codex || !thread || !activeTurnIdRef.current) return;
+    if (!window.orxa?.codex || !thread) return;
+    // Capture turn ID before clearing it
+    const turnId = activeTurnIdRef.current;
+    // Optimistically update UI immediately so stop feels responsive
+    setIsStreaming(false);
+    activeTurnIdRef.current = null;
+    // Remove thinking indicator if present
+    const tId = thinkingItemIdRef.current;
+    thinkingItemIdRef.current = null;
+    if (tId) {
+      setMessages((prev) => prev.filter((m) => m.id !== tId));
+    }
     try {
-      await window.orxa.codex.interruptTurn(thread.id, activeTurnIdRef.current);
-      setIsStreaming(false);
-      activeTurnIdRef.current = null;
+      // Pass turn ID if available; pass empty string if not (backend accepts it as thread-level interrupt)
+      await window.orxa.codex.interruptTurn(thread.id, turnId ?? "");
     } catch (err) {
       setLastError(err instanceof Error ? err.message : String(err));
     }
   }, [thread]);
 
   // Plan acceptance: switch to default mode and send implementation prompt
-  const acceptPlan = useCallback(async () => {
-    setPlanReady(false);
+  // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
+  const acceptPlan = useCallback(async (planItemId?: string) => {
+    if (planItemId) {
+      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+    }
     await sendMessage("Implement this plan.", { model: undefined });
   }, [sendMessage]);
 
@@ -967,14 +1147,19 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   }, []);
 
   // Plan modification: stay in plan mode, send changes
-  const submitPlanChanges = useCallback(async (changes: string) => {
-    setPlanReady(false);
+  // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
+  const submitPlanChanges = useCallback(async (changes: string, planItemId?: string) => {
+    if (planItemId) {
+      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+    }
     await sendMessage(`Update the plan with these changes:\n\n${changes}`, { model: undefined });
   }, [sendMessage]);
 
   // Dismiss plan without accepting or modifying
-  const dismissPlan = useCallback(() => {
-    setPlanReady(false);
+  const dismissPlan = useCallback((planItemId?: string) => {
+    if (planItemId) {
+      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+    }
   }, []);
 
   // Subagent thread navigation
@@ -997,7 +1182,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     lastError,
     threadName,
     planItems,
-    planReady,
+    dismissedPlanIds,
     subagents,
     activeSubagentThreadId,
     subagentMessages,

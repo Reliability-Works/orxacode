@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Zap } from "lucide-react";
 import { useCodexSession } from "../hooks/useCodexSession";
 import { agentColorForId } from "../hooks/useCodexSession";
@@ -6,11 +6,10 @@ import { ComposerPanel } from "./ComposerPanel";
 import { ToolCallCard } from "./chat/ToolCallCard";
 import { CommandOutput } from "./chat/CommandOutput";
 import { DiffBlock } from "./chat/DiffBlock";
-import { ThinkingShimmer } from "./chat/ThinkingShimmer";
 import { MessageHeader } from "./chat/MessageHeader";
 import { TextPart } from "./chat/TextPart";
-import { ReasoningPart } from "./chat/ReasoningPart";
 import { ContextToolGroup } from "./chat/ContextToolGroup";
+import { ExploreRow } from "./chat/ExploreRow";
 import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
 import { SubagentThreadView } from "./chat/SubagentThreadView";
 import { PlanConfirmationOverlay } from "./chat/PlanConfirmationOverlay";
@@ -75,10 +74,12 @@ function deriveCollabLabel(title: string, status: string): string {
 
 function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; isStreaming: boolean }) {
   if (item.kind === "thinking") {
+    // Legacy thinking kind — render as inline thinking row with no summary
     return (
-      <article className="message-card message-assistant">
-        <div className="message-thinking"><ThinkingShimmer /></div>
-      </article>
+      <div className="thinking-inline">
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-summary">...</span>
+      </div>
     );
   }
 
@@ -178,13 +179,12 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
   }
 
   if (item.kind === "reasoning") {
+    const summaryText = item.summary || item.content || "...";
     return (
-      <article className="message-card message-assistant">
-        <ReasoningPart
-          content={item.content}
-          summary={item.summary || undefined}
-        />
-      </article>
+      <div className="thinking-inline">
+        <span className="thinking-label">Thinking</span>
+        <span className="thinking-summary">{summaryText}</span>
+      </div>
     );
   }
 
@@ -203,6 +203,10 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
         />
       </article>
     );
+  }
+
+  if (item.kind === "explore") {
+    return <ExploreRow item={item} />;
   }
 
   if (item.kind === "compaction") {
@@ -255,6 +259,7 @@ export function CodexPane({
     lastError,
     threadName,
     planItems,
+    dismissedPlanIds,
     connect,
     startThread,
     sendMessage,
@@ -262,7 +267,6 @@ export function CodexPane({
     denyAction,
     respondToUserInput,
     rejectUserInput,
-    planReady,
     interruptTurn,
     acceptPlan,
     submitPlanChanges,
@@ -274,6 +278,43 @@ export function CodexPane({
     openSubagentThread,
     closeSubagentThread,
   } = useCodexSession(directory, { codexPath, codexArgs });
+
+  // Derive plan readiness from message list instead of from event timing.
+  // A plan is ready when:
+  //   - the last tool item with toolType 'plan' exists and has non-empty output
+  //   - its status is not 'error'
+  //   - streaming is done (isStreaming is false)
+  //   - no user message follows the plan item in the list
+  //   - the plan item ID has not been dismissed
+  const activePlanItem = useMemo(() => {
+    if (isStreaming) return null;
+    // Find the last plan tool item
+    let lastPlanIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.kind === "tool" && m.toolType === "plan") {
+        lastPlanIdx = i;
+        break;
+      }
+    }
+    if (lastPlanIdx < 0) return null;
+    const planItem = messages[lastPlanIdx];
+    if (planItem.kind !== "tool") return null;
+    // Must have non-empty output
+    if (!planItem.output || planItem.output.trim().length === 0) return null;
+    // Must not have failed
+    if (planItem.status === "error") return null;
+    // Must not be dismissed
+    if (dismissedPlanIds.has(planItem.id)) return null;
+    // Must not have a user message after it
+    const hasUserMessageAfter = messages.slice(lastPlanIdx + 1).some(
+      (m) => m.kind === "message" && m.role === "user",
+    );
+    if (hasUserMessageAfter) return null;
+    return planItem;
+  }, [messages, isStreaming, dismissedPlanIds]);
+
+  const planReady = activePlanItem !== null;
 
   const [input, setInput] = useState("");
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
@@ -287,6 +328,9 @@ export function CodexPane({
   const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationMode[]>([]);
   const [selectedCollabMode, setSelectedCollabMode] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isUserNearBottomRef = useRef(true);
+  const SCROLL_THRESHOLD_PX = 120;
   // Track when the current turn started for notification delay
   const turnStartedAt = useRef<number>(0);
 
@@ -338,10 +382,25 @@ export function CodexPane({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionStatus]);
 
-  // Auto-scroll on new messages
+  // Track whether the user is near the bottom for smart auto-scroll
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserNearBottomRef.current = distanceFromBottom < SCROLL_THRESHOLD_PX;
+  }, []);
+
+  // Auto-scroll on new messages — only when user is near the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
+    if (isUserNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
+    }
   }, [messages]);
+
+  // Reset auto-scroll to active when thread changes
+  useEffect(() => {
+    isUserNearBottomRef.current = true;
+  }, [thread]);
 
   // Thread name -> sidebar title
   useEffect(() => {
@@ -426,6 +485,17 @@ export function CodexPane({
     await interruptTurn();
   }, [interruptTurn]);
 
+  // ESC key handler — interrupt active turn when streaming
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isStreaming) {
+        void abortActiveSession();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isStreaming, abortActiveSession]);
+
   // Map pendingApproval -> PermissionDock props
   const permissionDockProps = pendingApproval
     ? {
@@ -503,7 +573,7 @@ export function CodexPane({
       ) : (
         <>
           {/* Messages */}
-          <div className="messages-scroll codex-messages" role="log" aria-label="codex conversation">
+          <div ref={scrollContainerRef} className="messages-scroll codex-messages" role="log" aria-label="codex conversation" onScroll={handleScroll}>
             {messages.length === 0 && connectionStatus === "connected" && thread ? (
               <div className="codex-empty">
                 <Zap size={24} color="var(--text-muted)" />
@@ -549,11 +619,11 @@ export function CodexPane({
 
       {/* Composer area — with plan confirmation overlay */}
       <div className="codex-composer-area">
-        {planReady && !isStreaming ? (
+        {planReady ? (
           <PlanConfirmationOverlay
-            onAccept={() => void acceptPlan()}
-            onSubmitChanges={(changes) => void submitPlanChanges(changes)}
-            onDismiss={dismissPlan}
+            onAccept={() => void acceptPlan(activePlanItem?.id)}
+            onSubmitChanges={(changes) => void submitPlanChanges(changes, activePlanItem?.id)}
+            onDismiss={() => dismissPlan(activePlanItem?.id)}
           />
         ) : (
           <ComposerPanel

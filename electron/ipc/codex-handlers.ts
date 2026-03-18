@@ -132,6 +132,8 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
   });
 
   ipcMain.handle(IPC.codexInterruptTurn, async (_event, threadId: unknown, turnId: unknown) => {
-    return codexService.interruptTurn(assertString(threadId, "threadId"), assertString(turnId, "turnId"));
+    // turnId is optional — the backend accepts an empty string for a thread-level interrupt
+    const resolvedTurnId = typeof turnId === "string" ? turnId : "";
+    return codexService.interruptTurn(assertString(threadId, "threadId"), resolvedTurnId);
   });
 }

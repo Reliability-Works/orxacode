@@ -210,23 +210,26 @@ describe("QuestionDock", () => {
     expect(eslintBtn).toHaveAttribute("aria-checked", "true");
   });
 
-  it("calls onReject when reject button is clicked", () => {
+  it("calls onReject when dismiss button is clicked", () => {
     const onReject = vi.fn();
     render(<QuestionDock questions={makeQuestions()} onSubmit={() => {}} onReject={onReject} />);
-    fireEvent.click(screen.getByText("Reject"));
+    fireEvent.click(screen.getByRole("button", { name: /Dismiss/i }));
     expect(onReject).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onSubmit with answers when submit button clicked on last question", () => {
+  it("calls onSubmit with answers when continue button clicked on last question", () => {
     const onSubmit = vi.fn();
     render(<QuestionDock questions={makeQuestions()} onSubmit={onSubmit} onReject={() => {}} />);
-    fireEvent.click(screen.getByText("React"));
-    fireEvent.click(screen.getByText("Submit"));
+    // Select React option (role=radio, text includes "React")
+    const reactBtn = screen.getByRole("radio", { name: /React/i });
+    fireEvent.click(reactBtn);
+    // Click Continue button
+    fireEvent.click(screen.getByRole("button", { name: /Continue/i }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith({ q1: "react" });
   });
 
-  it("shows progress dots when multiple questions", () => {
+  it("shows progress dots container when multiple questions", () => {
     const twoQuestions: AgentQuestion[] = [
       { id: "q1", text: "First question?", options: [{ label: "Yes", value: "yes" }] },
       { id: "q2", text: "Second question?", options: [{ label: "No", value: "no" }] },
@@ -247,25 +250,29 @@ describe("QuestionDock", () => {
     expect(screen.getByPlaceholderText("Type your answer...")).toBeInTheDocument();
   });
 
-  it("navigates to next question when Next button clicked", () => {
+  it("navigates to next question when Next question nav button clicked", () => {
     const twoQuestions: AgentQuestion[] = [
       { id: "q1", text: "First question?", options: [{ label: "Yes", value: "yes" }] },
       { id: "q2", text: "Second question?", options: [{ label: "No", value: "no" }] },
     ];
     render(<QuestionDock questions={twoQuestions} onSubmit={() => {}} onReject={() => {}} />);
     expect(screen.getByText("First question?")).toBeInTheDocument();
-    fireEvent.click(screen.getByText(/Next/i));
+    fireEvent.click(screen.getByRole("button", { name: "Next question" }));
     expect(screen.getByText("Second question?")).toBeInTheDocument();
   });
 
-  it("shows Back button on second question", () => {
+  it("shows Previous question nav button enabled on second question", () => {
     const twoQuestions: AgentQuestion[] = [
       { id: "q1", text: "First question?", options: [{ label: "Yes", value: "yes" }] },
       { id: "q2", text: "Second question?", options: [{ label: "No", value: "no" }] },
     ];
     render(<QuestionDock questions={twoQuestions} onSubmit={() => {}} onReject={() => {}} />);
-    fireEvent.click(screen.getByText(/Next/i));
-    expect(screen.getByText(/Back/i)).toBeInTheDocument();
+    // Navigate to second question using the forward nav arrow
+    const nextNav = screen.getByRole("button", { name: "Next question" });
+    fireEvent.click(nextNav);
+    // Previous nav button should now be enabled
+    const prevNav = screen.getByRole("button", { name: "Previous question" });
+    expect(prevNav).not.toBeDisabled();
   });
 });
 
