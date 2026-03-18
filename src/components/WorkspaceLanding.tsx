@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { SessionType } from "../types/canvas";
+import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from "./ProviderLogos";
 
 type WorkspaceLandingProps = {
   workspaceName: string;
@@ -10,35 +11,35 @@ const SESSION_OPTIONS: Array<{
   type: SessionType;
   title: string;
   subtitle: string;
-  icon: string;
+  logo: ReactNode;
   accentClass: string;
 }> = [
   {
     type: "standalone",
     title: "OpenCode",
     subtitle: "AI coding agent powered by any model provider",
-    icon: ">_",
+    logo: <OpenCodeLogo size={26} />,
     accentClass: "landing-card--opencode",
   },
   {
     type: "codex",
     title: "Codex",
     subtitle: "OpenAI's autonomous coding agent",
-    icon: "C",
+    logo: <OpenAILogo size={26} />,
     accentClass: "landing-card--codex",
   },
   {
     type: "claude",
     title: "Claude Code",
     subtitle: "Anthropic's AI coding assistant",
-    icon: "A",
+    logo: <AnthropicLogo size={26} />,
     accentClass: "landing-card--claude",
   },
   {
     type: "canvas",
     title: "Canvas",
     subtitle: "Free-form tiled workspace with multiple views",
-    icon: "[]",
+    logo: <CanvasLogo size={26} />,
     accentClass: "landing-card--canvas",
   },
 ];
@@ -66,7 +67,7 @@ export function WorkspaceLanding({ workspaceName, onPickSession }: WorkspaceLand
               onMouseEnter={() => setHoveredType(opt.type)}
               onMouseLeave={() => setHoveredType(null)}
             >
-              <span className="landing-card-icon">{opt.icon}</span>
+              <span className="landing-card-icon">{opt.logo}</span>
               <span className="landing-card-title">{opt.title}</span>
               <span className="landing-card-subtitle">{opt.subtitle}</span>
             </button>

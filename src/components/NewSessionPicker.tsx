@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { Bot, LayoutGrid, Zap } from "lucide-react";
 import type { SessionType } from "../types/canvas";
+import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from "./ProviderLogos";
 
 type NewSessionPickerProps = {
   isOpen: boolean;
@@ -50,7 +50,7 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
         onClick={() => onPick("canvas")}
       >
         <span className="new-session-picker-icon new-session-picker-icon--canvas" aria-hidden="true">
-          <LayoutGrid size={14} />
+          <CanvasLogo size={14} />
         </span>
         <span className="new-session-picker-text">
           <span className="new-session-picker-title">canvas session</span>
@@ -64,7 +64,7 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
         onClick={() => onPick("claude")}
       >
         <span className="new-session-picker-icon new-session-picker-icon--claude" aria-hidden="true">
-          <Bot size={14} />
+          <AnthropicLogo size={14} />
         </span>
         <span className="new-session-picker-text">
           <span className="new-session-picker-title">claude session</span>
@@ -78,7 +78,7 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
         onClick={() => onPick("codex")}
       >
         <span className="new-session-picker-icon new-session-picker-icon--codex" aria-hidden="true">
-          <Zap size={14} />
+          <OpenAILogo size={14} />
         </span>
         <span className="new-session-picker-text">
           <span className="new-session-picker-title">codex session</span>
@@ -91,7 +91,9 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
         role="menuitem"
         onClick={() => onPick("standalone")}
       >
-        <span className="new-session-picker-icon" aria-hidden="true">&gt;_</span>
+        <span className="new-session-picker-icon" aria-hidden="true">
+          <OpenCodeLogo size={14} />
+        </span>
         <span className="new-session-picker-text">
           <span className="new-session-picker-title">opencode session</span>
           <span className="new-session-picker-subtitle">// opencode ai chat session</span>
