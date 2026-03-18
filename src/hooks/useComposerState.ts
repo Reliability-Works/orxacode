@@ -55,8 +55,8 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
   useEffect(() => {
     const prev = prevProjectDirRef.current;
     if (prev === activeProjectDir) return;
-    // Save current text for the previous workspace
-    if (prev && composer) {
+    // Save current text for the previous workspace (including empty string)
+    if (prev) {
       composerByWorkspace.set(prev, composer);
     }
     // Restore text for the new workspace

@@ -263,7 +263,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
           setActiveTerminalId(data.ptys[0]?.id);
         }
-        setActiveSessionID(undefined);
+        // Auto-select the most recent non-archived session
+        const sortedSessions = [...data.sessions]
+          .filter((s) => !s.time.archived)
+          .sort((a, b) => b.time.updated - a.time.updated);
+        setActiveSessionID(sortedSessions[0]?.id);
         setMessages([]);
         setStatusLine(`Loaded ${directory}`);
       } catch (error) {
