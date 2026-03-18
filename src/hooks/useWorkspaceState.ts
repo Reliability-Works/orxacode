@@ -66,16 +66,35 @@ function clampContextMenuPosition(x: number, y: number) {
 }
 
 function mergeMessageParts(previous: SessionMessageBundle["parts"], next: SessionMessageBundle["parts"]) {
+  // Use ID-based merging to preserve part ordering even when tool items
+  // interleave between text deltas during streaming. Parts with valid IDs
+  // are deduplicated (newer wins). Parts without IDs are deduplicated by
+  // content hash to avoid duplicating fallback entries.
   const merged = new Map<string, SessionMessageBundle["parts"][number]>();
-  const fallback = [] as SessionMessageBundle["parts"][number][];
+  const seenFallbackKeys = new Set<string>();
+  const ordered: string[] = [];
+
   for (const part of [...previous, ...next]) {
     if (typeof part.id === "string" && part.id.length > 0) {
+      if (!merged.has(part.id)) {
+        ordered.push(part.id);
+      }
       merged.set(part.id, part);
-      continue;
+    } else {
+      // Fallback: derive a key from type + first 100 chars of content to avoid duplicates
+      const content = typeof (part as { content?: unknown }).content === "string"
+        ? ((part as { content?: string }).content ?? "").slice(0, 100)
+        : "";
+      const key = `_fb_${part.type}_${content}`;
+      if (!seenFallbackKeys.has(key)) {
+        seenFallbackKeys.add(key);
+        ordered.push(key);
+      }
+      merged.set(key, part);
     }
-    fallback.push(part);
   }
-  return [...merged.values(), ...fallback];
+
+  return ordered.map((key) => merged.get(key)!);
 }
 
 function messageUpdatedAt(info: SessionMessageBundle["info"]) {
