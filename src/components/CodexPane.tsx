@@ -421,10 +421,10 @@ export function CodexPane({
   useEffect(() => {
     if (!notifyOnAwaitingInput || document.hasFocus()) return;
     // Derive a key for the current awaiting state
-    const key = pendingApproval?.id
-      ? `approval:${pendingApproval.id}`
-      : pendingUserInput?.id
-        ? `input:${pendingUserInput.id}`
+    const key = pendingApproval
+      ? `approval:${pendingApproval.itemId ?? pendingApproval.id}`
+      : pendingUserInput
+        ? `input:${pendingUserInput.itemId ?? pendingUserInput.id}`
         : planReady
           ? "plan"
           : null;

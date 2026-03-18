@@ -81,7 +81,6 @@ import { preferredAgentForMode } from "./lib/app-mode";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   BROWSER_MODE_TOOLS_POLICY_WITH_MCP,
-  PLAN_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
 } from "./lib/browser-tool-guardrails";
 import {
@@ -1458,15 +1457,16 @@ export default function App() {
   }, [browserAutopilotHint, browserSystemAddendum]);
 
   const mcpConnected = mcpDevToolsState === "running";
+  // Note: PLAN_MODE_TOOLS_POLICY is NOT applied for OpenCode plan agent selection.
+  // The plan agent itself decides tool usage. Only apply browser restrictions.
   const activePromptToolsPolicy = useMemo(
     () =>
       mergeModeToolPolicies(
-        isPlanMode ? PLAN_MODE_TOOLS_POLICY : undefined,
         browserModeEnabled
           ? mcpConnected ? BROWSER_MODE_TOOLS_POLICY_WITH_MCP : BROWSER_MODE_TOOLS_POLICY
           : undefined,
       ),
-    [browserModeEnabled, isPlanMode, mcpConnected],
+    [browserModeEnabled, mcpConnected],
   );
 
   const sendComposerPrompt = useCallback(
