@@ -1612,21 +1612,26 @@ export function MessageFeed({
   return (
     <div ref={messageFeedRef} className="messages-scroll" style={messageFeedStyle}>
       {renderedMessages.length === 0 ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div> : null}
-      {renderedMessages.map((message) => {
+      {renderedMessages.map((message, messageIndex) => {
         const { key, role, timeCreated, visibleParts, toolParts, timeline } = message;
         const timelineBlocks = buildTimelineBlocks(timeline);
         if (visibleParts.length === 0 && timeline.length === 0 && toolParts.length === 0) {
           return null;
         }
+        // Only show header when role changes from previous message (skip consecutive assistant headers)
+        const prevRole = messageIndex > 0 ? renderedMessages[messageIndex - 1]?.role : undefined;
+        const showHeader = role !== prevRole;
         const lastTextPartIndex = visibleParts.reduce<number>((acc, part, i) => (part.type === "text" ? i : acc), -1);
         return (
           <MessageTurn key={key}>
             <article className={`message-card message-${role}`}>
-              <MessageHeader
-                role={role === "user" || role === "assistant" ? role : "assistant"}
-                label={getRoleLabel(role, assistantLabel)}
-                timestamp={timeCreated}
-              />
+              {showHeader ? (
+                <MessageHeader
+                  role={role === "user" || role === "assistant" ? role : "assistant"}
+                  label={getRoleLabel(role, assistantLabel)}
+                  timestamp={timeCreated}
+                />
+              ) : null}
               <div className="message-parts">
                 {visibleParts.map((part, partIndex) => (
                   <section key={`${part.id}:${partIndex}`} className="message-part">

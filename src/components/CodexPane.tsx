@@ -101,10 +101,15 @@ function ThinkingRow({ summary, content }: { summary: string; content: string })
   );
 }
 
-function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; isStreaming: boolean }) {
+function CodexMessageRenderer({ item, isStreaming, prevItem }: { item: CodexMessageItem; isStreaming: boolean; prevItem?: CodexMessageItem }) {
   if (item.kind === "thinking") {
     return <ThinkingRow summary="" content="" />;
   }
+
+  // Determine if we should show the header (skip for consecutive assistant items)
+  const isAssistantItem = item.kind !== "message" || item.role === "assistant";
+  const prevIsAssistantItem = prevItem ? (prevItem.kind !== "message" || prevItem.role === "assistant") : false;
+  const showHeader = !(isAssistantItem && prevIsAssistantItem);
 
   if (item.kind === "message") {
     const isLastStreaming =
@@ -112,11 +117,13 @@ function CodexMessageRenderer({ item, isStreaming }: { item: CodexMessageItem; i
     const role = item.role === "user" ? "user" : "assistant";
     return (
       <article className={`message-card message-${role}`}>
-        <MessageHeader
-          role={role}
-          label={role === "user" ? "User" : "Codex"}
-          timestamp={item.timestamp}
-        />
+        {showHeader ? (
+          <MessageHeader
+            role={role}
+            label={role === "user" ? "User" : "Codex"}
+            timestamp={item.timestamp}
+          />
+        ) : null}
         <section className="message-part">
           {item.content ? (
             <TextPart content={item.content} role={role} showCopy={role === "assistant"} />
@@ -607,8 +614,8 @@ export function CodexPane({
               </div>
             ) : null}
 
-            {messages.map((msg) => (
-              <CodexMessageRenderer key={msg.id} item={msg} isStreaming={isStreaming} />
+            {messages.map((msg, msgIdx) => (
+              <CodexMessageRenderer key={msg.id} item={msg} isStreaming={isStreaming} prevItem={msgIdx > 0 ? messages[msgIdx - 1] : undefined} />
             ))}
 
             {/* Background agents panel — in the chat feed, not sidebar */}
