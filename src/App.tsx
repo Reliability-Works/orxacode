@@ -35,6 +35,7 @@ import type {
 } from "@shared/ipc";
 import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
+import { WorkspaceLanding } from "./components/WorkspaceLanding";
 import { ClaudeTerminalPane } from "./components/ClaudeTerminalPane";
 import { CodexPane } from "./components/CodexPane";
 import { ComposerPanel } from "./components/ComposerPanel";
@@ -3479,7 +3480,12 @@ export default function App() {
             />
           ) : activeProjectDir ? (
             <>
-              {activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
+              {!activeSessionID ? (
+                <WorkspaceLanding
+                  workspaceName={activeProjectDir.split("/").pop() ?? activeProjectDir}
+                  onPickSession={(type) => void createSession(activeProjectDir, type)}
+                />
+              ) : activeSessionID && sessionTypes[activeSessionID] === "canvas" ? (
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
               ) : activeSessionID && sessionTypes[activeSessionID] === "claude" ? (
                 <ClaudeTerminalPane directory={activeProjectDir} onExit={openWorkspaceDashboard} onFirstInteraction={() => activeSessionID && markSessionUsed(activeSessionID)} />
