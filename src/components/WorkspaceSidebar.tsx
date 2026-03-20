@@ -2,6 +2,7 @@ import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, ty
 import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
+import type { AppShellUpdateStatusMessage } from "../hooks/useAppShellUpdateFlow";
 import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
 
@@ -23,7 +24,10 @@ export type WorkspaceSidebarProps = {
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
   updateAvailableVersion: string | null;
+  isCheckingForUpdates: boolean;
   updateInstallPending: boolean;
+  updateStatusMessage: AppShellUpdateStatusMessage | null;
+  onCheckForUpdates: () => Promise<void> | void;
   onDownloadAndInstallUpdate: () => Promise<void> | void;
   openWorkspaceDashboard: () => void;
   projectSearchOpen: boolean;
@@ -60,7 +64,10 @@ export function WorkspaceSidebar({
   setSidebarMode,
   unreadJobRunsCount,
   updateAvailableVersion,
+  isCheckingForUpdates,
   updateInstallPending,
+  updateStatusMessage,
+  onCheckForUpdates,
   onDownloadAndInstallUpdate,
   openWorkspaceDashboard,
   projectSearchOpen,
@@ -91,9 +98,15 @@ export function WorkspaceSidebar({
   onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
-  const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
   const [pickerOpenForProject, setPickerOpenForProject] = useState<string | null>(null);
   const pickerAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const updateButtonLabel = isCheckingForUpdates
+    ? "Checking for updates"
+    : updateInstallPending
+      ? "Downloading update"
+      : updateAvailableVersion
+        ? `Download ${updateAvailableVersion} now`
+        : "Check for updates";
 
   return (
     <aside className="sidebar projects-pane">
@@ -104,22 +117,6 @@ export function WorkspaceSidebar({
           <span className="sidebar-logo-symbol">~</span>
           <span className="sidebar-logo-name">orxa</span>
         </div>
-
-        {/* Update CTA (shown above mode tabs when update available) */}
-        {updateAvailableVersion ? (
-          <button
-            type="button"
-            className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
-            onMouseEnter={() => setUpdateButtonHovered(true)}
-            onMouseLeave={() => setUpdateButtonHovered(false)}
-            onClick={() => void onDownloadAndInstallUpdate()}
-            disabled={updateInstallPending}
-            title={`Version ${updateAvailableVersion}`}
-          >
-            <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
-            <small>{updateAvailableVersion}</small>
-          </button>
-        ) : null}
 
         {/* Mode nav tabs */}
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
@@ -403,6 +400,24 @@ export function WorkspaceSidebar({
 
         {/* Footer */}
         <div className="sidebar-footer-actions">
+          <div className="sidebar-footer-update">
+            {updateStatusMessage ? (
+              <div className={`sidebar-update-status sidebar-update-status--${updateStatusMessage.tone}`.trim()}>
+                {updateStatusMessage.text}
+              </div>
+            ) : (
+              <div className="sidebar-update-status sidebar-update-status--placeholder" aria-hidden="true">
+                &nbsp;
+              </div>
+            )}
+            <IconButton
+              icon="refresh"
+              label={updateButtonLabel}
+              className={`sidebar-update-button ${isCheckingForUpdates ? "is-spinning" : ""}`.trim()}
+              onClick={() => void (updateAvailableVersion ? onDownloadAndInstallUpdate() : onCheckForUpdates())}
+              disabled={isCheckingForUpdates || updateInstallPending}
+            />
+          </div>
           <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
           <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
           <span className="sidebar-footer-spacer" />

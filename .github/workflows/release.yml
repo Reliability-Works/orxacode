@@ -72,14 +72,7 @@ jobs:
     needs:
       - smoke-test
       - prepare-release
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
-          - windows-latest
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
@@ -104,7 +97,6 @@ jobs:
         run: pnpm build
 
       - name: Validate macOS signing credentials
-        if: matrix.os == 'macos-latest'
         env:
           CSC_LINK: ${{ secrets.MACOS_CERT_P12_BASE64 }}
           CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
@@ -119,7 +111,6 @@ jobs:
           test -n "$APPLE_TEAM_ID"
 
       - name: Publish release artifacts (macOS signed + notarized)
-        if: matrix.os == 'macos-latest'
         run: node scripts/publish-release.mjs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -129,14 +120,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Publish release artifacts
-        if: matrix.os != 'macos-latest'
-        run: node scripts/publish-release.mjs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Verify macOS signature
-        if: matrix.os == 'macos-latest'
         run: |
           APP_PATH=$(find dist -name "*.app" -maxdepth 3 | head -n 1)
           if [ -z "$APP_PATH" ]; then

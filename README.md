@@ -8,7 +8,9 @@ A universal AI coding desktop app. Use OpenCode, Codex, or Claude Code — or al
 
 Get the latest release from the [Releases page](https://github.com/Reliability-Works/orxa-code/releases).
 
-Available for **macOS** (dmg, zip), **Windows** (nsis, zip), and **Linux** (AppImage).
+Published releases are currently **macOS-only** (`dmg`, `zip`).
+
+Windows (`nsis`, `zip`) and Linux (`AppImage`) build support remains in the repo, but release publishing for those platforms is temporarily paused until they are dogfooded and validated regularly.
 
 ## Requirements
 
@@ -18,7 +20,7 @@ You need **at least one** of the following AI backends installed:
 |---------|---------|-------------|
 | [OpenCode](https://github.com/anomalyco/opencode) | `npm install -g opencode-ai` | Full agent sessions with tool use, file editing, terminal, memory |
 | [Codex](https://github.com/openai/codex) | `npm install -g @openai/codex` | Agent sessions with plan mode, collaboration modes, subagents |
-| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh | bash` | Terminal-based Claude sessions with permission controls |
+| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash` | Terminal-based Claude sessions with permission controls |
 
 On startup, the app checks which backends are available and enables session types accordingly.
 

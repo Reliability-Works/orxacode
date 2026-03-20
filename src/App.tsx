@@ -806,10 +806,13 @@ export default function App() {
   const [pendingPrUrl, setPendingPrUrl] = useState<string | null>(null);
   const {
     availableUpdateVersion,
+    isCheckingForUpdates,
     updateInstallPending,
     updateProgressState,
+    updateStatusMessage,
     setUpdateProgressState,
     handleUpdaterTelemetry,
+    checkForUpdates,
     downloadAndInstallUpdate,
   } = useAppShellUpdateFlow({ setStatusLine });
   const [dockTodosOpen, setDockTodosOpen] = useState(false);
@@ -3926,7 +3929,10 @@ export default function App() {
             setSidebarMode={setSidebarMode}
             unreadJobRunsCount={unreadJobRunsCount}
             updateAvailableVersion={availableUpdateVersion}
+            isCheckingForUpdates={isCheckingForUpdates}
             updateInstallPending={updateInstallPending}
+            updateStatusMessage={updateStatusMessage}
+            onCheckForUpdates={checkForUpdates}
             onDownloadAndInstallUpdate={downloadAndInstallUpdate}
             openWorkspaceDashboard={openWorkspaceDashboard}
             projectSearchOpen={projectSearchOpen}

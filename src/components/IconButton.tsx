@@ -59,8 +59,10 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
     case "refresh":
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <path d="M21 3v6h-6" />
+          <path d="M3 12a9 9 0 0 1 15.3-6.36" />
+          <path d="M18.3 2.8v4.9h-4.9" />
+          <path d="M21 12a9 9 0 0 1-15.3 6.36" />
+          <path d="M5.7 21.2v-4.9h4.9" />
         </svg>
       );
     case "folderPlus":
