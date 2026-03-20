@@ -1,9 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CLAUDE_SESSION_PTY_TITLE_PREFIX } from "@shared/ipc";
 import type { ProjectBootstrap, SessionMessageBundle, SessionRuntimeSnapshot } from "@shared/ipc";
 import { normalizeMessageBundles, useWorkspaceState } from "./useWorkspaceState";
 
-function createProjectBootstrap(directory: string, sessions: Array<{ id: string; time: { updated: number } }>): ProjectBootstrap {
+function createProjectBootstrap(
+  directory: string,
+  sessions: Array<{ id: string; time: { updated: number } }>,
+  ptys: Array<{ id: string; title: string; command?: string; args?: string[]; cwd?: string; status?: "running" | "exited"; pid?: number }> = [],
+): ProjectBootstrap {
   const sessionStatus = Object.fromEntries(sessions.map((session) => [session.id, { type: "idle" }]));
   return ({
     directory,
@@ -19,7 +24,7 @@ function createProjectBootstrap(directory: string, sessions: Array<{ id: string;
     mcp: {},
     lsp: [],
     formatter: [],
-    ptys: [],
+    ptys,
   } as unknown) as ProjectBootstrap;
 }
 
@@ -285,5 +290,102 @@ describe("useWorkspaceState", () => {
     expect(result.current.activeProjectDir).toBe(targetDirectory);
     expect(result.current.activeSessionID).toBe(targetSessionId);
     expect(getSessionRuntimeMock).toHaveBeenCalledWith(targetDirectory, targetSessionId);
+  });
+
+  it("closes the integrated terminal when switching workspaces", async () => {
+    const directory = "/repo/target";
+    const projectBootstrap = createProjectBootstrap(directory, []);
+    const setTerminalOpen = vi.fn();
+
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () => projectBootstrap),
+          refreshProject: vi.fn(async () => projectBootstrap),
+          createSession: vi.fn(async () => ({ id: "unused", slug: "unused", title: "unused", time: { created: Date.now(), updated: Date.now() } })),
+          getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) => createRuntimeSnapshot(directory, sessionID, [])),
+          sendPrompt: vi.fn(async () => true),
+          deleteSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceState({
+        setStatusLine: vi.fn(),
+        terminalTabIds: [],
+        setTerminalTabs: vi.fn(),
+        setActiveTerminalId: vi.fn(),
+        setTerminalOpen,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.selectProject(directory);
+    });
+
+    expect(setTerminalOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("filters Claude-owned PTYs out of integrated terminal hydration", async () => {
+    const directory = "/repo/target";
+    const projectBootstrap = createProjectBootstrap(
+      directory,
+      [],
+      [
+        {
+          id: "pty-claude",
+          title: `${CLAUDE_SESSION_PTY_TITLE_PREFIX}full`,
+          command: "/bin/zsh",
+          args: [],
+          cwd: directory,
+          status: "running",
+          pid: 1,
+        },
+        {
+          id: "pty-shell",
+          title: "shell",
+          command: "/bin/zsh",
+          args: [],
+          cwd: directory,
+          status: "running",
+          pid: 2,
+        },
+      ],
+    );
+    const setTerminalTabs = vi.fn();
+    const setActiveTerminalId = vi.fn();
+
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () => projectBootstrap),
+          refreshProject: vi.fn(async () => projectBootstrap),
+          createSession: vi.fn(async () => ({ id: "unused", slug: "unused", title: "unused", time: { created: Date.now(), updated: Date.now() } })),
+          getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) => createRuntimeSnapshot(directory, sessionID, [])),
+          sendPrompt: vi.fn(async () => true),
+          deleteSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceState({
+        setStatusLine: vi.fn(),
+        terminalTabIds: [],
+        setTerminalTabs,
+        setActiveTerminalId,
+        setTerminalOpen: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.selectProject(directory);
+    });
+
+    expect(setTerminalTabs).toHaveBeenCalledWith([{ id: "pty-shell", label: "Tab 1" }]);
+    expect(setActiveTerminalId).toHaveBeenCalledWith("pty-shell");
   });
 });

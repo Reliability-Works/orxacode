@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { deriveUnreadState, deriveUnifiedSessionStatus } from "./unified-runtime";
-import { buildCodexSessionStatus, useUnifiedRuntimeStore } from "./unified-runtime-store";
+import { buildCodexSessionStatus, selectSidebarSessionPresentation, useUnifiedRuntimeStore } from "./unified-runtime-store";
 
 describe("unified runtime derivation", () => {
   beforeEach(() => {
@@ -70,6 +70,34 @@ describe("unified runtime derivation", () => {
       unread: false,
       planReady: false,
       activityAt: 0,
+    });
+  });
+
+  it("suppresses sidebar indicators for Claude sessions", () => {
+    useUnifiedRuntimeStore.setState({
+      claudeSessions: {
+        "claude::/tmp/workspace::thread-1": {
+          key: "claude::/tmp/workspace::thread-1",
+          directory: "/tmp/workspace",
+          busy: true,
+          awaiting: false,
+          activityAt: 100,
+        },
+      },
+    });
+
+    expect(
+      selectSidebarSessionPresentation({
+        provider: "claude",
+        directory: "/tmp/workspace",
+        sessionID: "thread-1",
+        updatedAt: 100,
+        isActive: false,
+        sessionKey: "claude::/tmp/workspace::thread-1",
+      }),
+    ).toMatchObject({
+      indicator: "none",
+      statusType: "busy",
     });
   });
 });

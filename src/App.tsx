@@ -113,6 +113,7 @@ import {
   shouldAutoRenameSessionTitle,
   toneForStatusLine,
 } from "./lib/app-session-utils";
+import { isClaudeOwnedPty } from "./lib/terminal-ownership";
 import {
   buildAppShellBrowserSidebarState,
   buildAppShellHomeDashboardProps,
@@ -188,6 +189,9 @@ const SESSION_TITLES_KEY = "orxa:sessionTitles:v2";
 const MANUAL_SESSION_TITLES_KEY = "orxa:manualSessionTitles:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
+const DEFAULT_TERMINAL_PANEL_HEIGHT = 180;
+const MIN_TERMINAL_PANEL_HEIGHT = 120;
+const MAX_TERMINAL_PANEL_HEIGHT = 420;
 
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
@@ -747,6 +751,7 @@ export default function App() {
   const [memoryBackfillStatus, setMemoryBackfillStatus] = useState<MemoryBackfillStatus | null>(null);
   const [memoryBackfillSessionPreparing, setMemoryBackfillSessionPreparing] = useState(false);
   const [composerLayoutHeight, setComposerLayoutHeight] = useState(DEFAULT_COMPOSER_LAYOUT_HEIGHT);
+  const [terminalPanelHeight, setTerminalPanelHeight] = useState(DEFAULT_TERMINAL_PANEL_HEIGHT);
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files" | "browser">("git");
   const [browserModeBySession, setBrowserModeBySession] = usePersistedState<Record<string, boolean>>(
@@ -857,6 +862,11 @@ export default function App() {
   const activeSessionType = useMemo(
     () => getSessionType(activeSessionID ?? "", activeProjectDir),
     [activeProjectDir, activeSessionID, getSessionType],
+  );
+  const canShowIntegratedTerminal = activeSessionType !== "claude" && activeSessionType !== "canvas";
+  const hiddenComposerPtyIds = useMemo(
+    () => new Set((projectData?.ptys ?? []).filter((pty) => isClaudeOwnedPty(pty)).map((pty) => pty.id)),
+    [projectData?.ptys],
   );
   const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null);
@@ -992,6 +1002,10 @@ export default function App() {
     latestX: number;
     currentWidth?: number;
     rafId?: number;
+  }>(null);
+  const terminalResizeStateRef = useRef<null | {
+    startY: number;
+    startHeight: number;
   }>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const projectSearchInputRef = useRef<HTMLInputElement | null>(null);
@@ -3060,8 +3074,10 @@ export default function App() {
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const messageFeedBottomClearance = useMemo(() => Math.max(24, 24 + composerOffsetLift), [composerOffsetLift]);
   const composerAnchorBottom = useMemo(
-    () => Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) + (terminalOpen ? 286 : 0),
-    [composerLayoutHeight, terminalOpen],
+    () =>
+      Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) +
+      (terminalOpen && canShowIntegratedTerminal ? terminalPanelHeight : 0),
+    [canShowIntegratedTerminal, composerLayoutHeight, terminalOpen, terminalPanelHeight],
   );
   const composerToastStyle = useMemo(
     () =>
@@ -3280,6 +3296,20 @@ export default function App() {
     setSelectedBackgroundAgentError(null);
   }, [activeSessionID]);
 
+  useEffect(() => {
+    if (!canShowIntegratedTerminal) {
+      setTerminalOpen(false);
+    }
+  }, [canShowIntegratedTerminal]);
+
+  useEffect(() => {
+    setTerminalTabs((current) => {
+      const next = current.filter((tab) => !hiddenComposerPtyIds.has(tab.id));
+      return next.length === current.length ? current : next;
+    });
+    setActiveTerminalId((current) => (current && hiddenComposerPtyIds.has(current) ? undefined : current));
+  }, [hiddenComposerPtyIds]);
+
   const createTerminalTab = useCallback(async (): Promise<string> => {
     if (!activeProjectDir) {
       throw new Error("No active workspace selected.");
@@ -3305,6 +3335,9 @@ export default function App() {
   }, [createTerminalTab]);
 
   const toggleTerminal = useCallback(async () => {
+    if (!canShowIntegratedTerminal) {
+      return;
+    }
     if (terminalOpen) {
       setTerminalOpen(false);
       return;
@@ -3317,7 +3350,41 @@ export default function App() {
       return;
     }
     setTerminalOpen(true);
-  }, [activeProjectDir, createTerminal, terminalOpen, terminalTabs.length]);
+  }, [activeProjectDir, canShowIntegratedTerminal, createTerminal, terminalOpen, terminalTabs.length]);
+
+  const handleTerminalResizeStart = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    terminalResizeStateRef.current = {
+      startY: event.clientY,
+      startHeight: terminalPanelHeight,
+    };
+  }, [terminalPanelHeight]);
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      const state = terminalResizeStateRef.current;
+      if (!state) {
+        return;
+      }
+      const deltaY = state.startY - event.clientY;
+      const nextHeight = Math.min(
+        MAX_TERMINAL_PANEL_HEIGHT,
+        Math.max(MIN_TERMINAL_PANEL_HEIGHT, state.startHeight + deltaY),
+      );
+      setTerminalPanelHeight(nextHeight);
+    };
+
+    const handleMouseUp = () => {
+      terminalResizeStateRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const upsertCustomRunCommand = useCallback(
     (input: CustomRunCommandInput): CustomRunCommandPreset => {
@@ -3617,7 +3684,7 @@ export default function App() {
   }, [activeSessionID]);
 
   useEffect(() => {
-    if (!terminalOpen || !activeProjectDir) {
+    if (!terminalOpen || !activeProjectDir || !canShowIntegratedTerminal) {
       terminalAutoCreateTried.current = false;
       return;
     }
@@ -3633,7 +3700,7 @@ export default function App() {
 
     terminalAutoCreateTried.current = true;
     void createTerminal();
-  }, [activeProjectDir, createTerminal, terminalOpen, terminalTabs.length]);
+  }, [activeProjectDir, canShowIntegratedTerminal, createTerminal, terminalOpen, terminalTabs.length]);
 
   const openDirectoryInTarget = useCallback(
     async (target: OpenTarget) => {
@@ -3855,6 +3922,7 @@ export default function App() {
           activeProjectDir={activeProjectDir ?? null}
           projectData={projectData}
           terminalOpen={terminalOpen}
+          showTerminalToggle={canShowIntegratedTerminal}
           toggleTerminal={toggleTerminal}
           titleMenuOpen={titleMenuOpen}
           openMenuOpen={openMenuOpen}
@@ -4179,17 +4247,19 @@ export default function App() {
 
                 </>
               )}
-              {!(activeSessionID && (activeSessionType === "canvas" || activeSessionType === "codex" || activeSessionType === "claude")) && (
+              {canShowIntegratedTerminal ? (
                 <TerminalPanel
                   directory={activeProjectDir}
                   tabs={terminalTabs}
                   activeTabId={activeTerminalId}
                   open={terminalOpen}
+                  height={terminalPanelHeight}
                   onCreateTab={createTerminal}
                   onCloseTab={closeTerminalTab}
                   onSwitchTab={setActiveTerminalId}
+                  onResizeStart={handleTerminalResizeStart}
                 />
-              )}
+              ) : null}
             </>
           ) : (
             <HomeDashboard {...homeDashboardProps} />

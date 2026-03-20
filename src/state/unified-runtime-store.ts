@@ -648,12 +648,19 @@ export function selectSidebarSessionPresentation(input: {
       : provider === "claude"
         ? buildClaudeSessionStatus(sessionKey, isActive)
         : buildOpencodeSessionStatus(directory, sessionID, isActive, sessionKey);
-  return buildSidebarSessionPresentation({
+  const presentation = buildSidebarSessionPresentation({
     sessionKey,
     status,
     updatedAt,
     isActive,
   });
+  if (provider === "claude") {
+    return {
+      ...presentation,
+      indicator: "none",
+    };
+  }
+  return presentation;
 }
 
 export function selectActivePendingActionSurface(input: {

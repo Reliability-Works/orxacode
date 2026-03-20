@@ -957,7 +957,7 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
     expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
-    expect(screen.getByText("App.tsx")).toBeInTheDocument();
+    expect(screen.getByText("src/App.tsx")).toBeInTheDocument();
   });
 
   it("does not leak todo content as tool activity target", () => {
@@ -1033,7 +1033,7 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
     expect(screen.getByText("Edited")).toBeInTheDocument();
-    expect(screen.getByText("App.tsx")).toBeInTheDocument();
+    expect(screen.getByText("src/App.tsx")).toBeInTheDocument();
     expect(screen.getByText(/Command: apply_patch <<'PATCH'/i)).toBeInTheDocument();
     expect(screen.queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
@@ -1191,6 +1191,43 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} />);
     expect(screen.getByText("Read .")).toBeInTheDocument();
     expect(screen.queryByText(/^Ran command$/i)).not.toBeInTheDocument();
+  });
+
+  it("renders timeline file labels with the relative path instead of basename-only pills", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-created-path",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-run-created-path",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-created-path",
+            callID: "call-run-created-path",
+            tool: "run",
+            state: {
+              status: "completed",
+              input: {
+                command: "touch /repo/website/app/private-ai-agents.tsx",
+              },
+              output: "",
+              title: "touch /repo/website/app/private-ai-agents.tsx",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    expect(screen.getByText("website/app/private-ai-agents.tsx")).toBeInTheDocument();
   });
 
   it("does not render low-signal completed action rows without command context", () => {
@@ -1388,6 +1425,52 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Changed files")).toBeInTheDocument();
     expect(screen.getByText("src/app.tsx")).toBeInTheDocument();
     expect(screen.getByText("src/new.ts")).toBeInTheDocument();
+  });
+
+  it("hydrates expandable opencode changed-file diffs from metadata patch payloads", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-metadata-patch",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-edit-metadata-patch",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-metadata-patch",
+            callID: "call-edit-metadata-patch",
+            tool: "edit_file",
+            state: {
+              status: "completed",
+              input: {},
+              output: "",
+              title: "edit_file",
+              metadata: {
+                diff: [
+                  "*** Begin Patch",
+                  "*** Update File: /repo/website/components/SiteNav.tsx",
+                  "@@",
+                  "-old value",
+                  "+new value",
+                  "*** End Patch",
+                ].join("\n"),
+              },
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Editedwebsite\/components\/SiteNav\.tsx\+1-1/i }));
+    expect(screen.getByText("+new value")).toBeInTheDocument();
   });
 
   it("renders session stop notices with reason text", () => {

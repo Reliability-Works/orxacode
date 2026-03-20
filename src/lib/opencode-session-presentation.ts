@@ -73,6 +73,29 @@ function compactText(value: string, maxLength = 58) {
   return `${singleLine.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
+function compactPathPreservingBasename(value: string, maxLength = 58) {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  const normalized = singleLine.replace(/\\/g, "/");
+  const slashIndex = normalized.lastIndexOf("/");
+  if (slashIndex < 0) {
+    return compactText(singleLine, maxLength);
+  }
+  const basename = normalized.slice(slashIndex + 1);
+  if (!basename) {
+    return compactText(singleLine, maxLength);
+  }
+  const reserved = basename.length + 4;
+  if (reserved >= maxLength) {
+    return `...${basename.slice(-(maxLength - 3))}`;
+  }
+  const prefixBudget = maxLength - reserved;
+  const prefix = normalized.slice(0, prefixBudget).replace(/[/. -]+$/g, "");
+  return `${prefix}.../${basename}`;
+}
+
 function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | null) {
   const normalizedTarget = target.replace(/\\/g, "/").replace(/\/+$/g, "");
   const normalizedWorkspace = (workspaceDirectory ?? "").replace(/\\/g, "/").replace(/\/+$/g, "");
@@ -93,7 +116,7 @@ function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | n
 }
 
 function formatTarget(target: string, workspaceDirectory?: string | null, maxLength = 58) {
-  return compactText(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
+  return compactPathPreservingBasename(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
 }
 
 function deriveTargetFromCommand(command: string, workspaceDirectory?: string | null) {
@@ -1075,10 +1098,12 @@ function extractChangedFilesFromToolPart(
   }
   const stateRecord = part.state as unknown as Record<string, unknown>;
   const patchFiles = extractPatchFileDetails(part.state.input, stateRecord.output, workspaceDirectory);
+  const metadataPatchFiles = extractPatchFileDetails(stateRecord.metadata, undefined, workspaceDirectory);
   const metadataFiles = extractMetaFileDiffDetails(stateRecord.metadata, workspaceDirectory);
   const writeFile = extractWriteFileDetail(part.state.input, stateRecord.metadata, workspaceDirectory);
   const merged = mergeChangedFileDetails(
     patchFiles,
+    metadataPatchFiles,
     metadataFiles,
     writeFile ? [writeFile] : [],
   );

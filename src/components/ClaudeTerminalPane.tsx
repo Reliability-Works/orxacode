@@ -4,6 +4,7 @@ import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+import { consumeClaudeStartupChunk } from "../lib/claude-terminal-startup";
 
 const TERMINAL_THEME = {
   background: "#000000",
@@ -64,6 +65,8 @@ type PersistedSession = {
   directory: string;
   mode: string;
   outputChunks: string[];
+  startupBuffer: string[];
+  startupReady: boolean;
   exited: boolean;
   exitCode: number | null;
   backgroundUnsubscribe: (() => void) | null;
@@ -124,12 +127,16 @@ async function getOrCreateClaudeSession(
   const createPromise = window.orxa.claudeTerminal
     .create(directory, mode, cols, rows)
     .then(async (result) => {
+      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
+      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
       const session: PersistedSession = {
         processId: result.processId,
         storageKey,
         directory,
         mode,
         outputChunks: [],
+        startupBuffer: [],
+        startupReady: false,
         exited: false,
         exitCode: null,
         backgroundUnsubscribe: null,
@@ -139,28 +146,34 @@ async function getOrCreateClaudeSession(
       if (window.orxa?.events) {
         session.backgroundUnsubscribe = window.orxa.events.subscribe((event) => {
           if (
-            event.type === "claude-terminal.output" &&
-            event.payload.processId === session.processId &&
+            event.type === "pty.output" &&
+            event.payload.ptyID === session.processId &&
             event.payload.directory === directory
           ) {
-            const chunk = event.payload.chunk as string;
-            session.outputChunks.push(chunk);
-            session.listeners.forEach((listener) => listener({ type: "output", chunk }));
+            const next = consumeClaudeStartupChunk(session.startupBuffer, event.payload.chunk as string, session.startupReady);
+            session.startupReady = next.startupReady;
+            session.startupBuffer = next.startupBuffer;
+            const displayChunk = next.displayChunk;
+            if (displayChunk) {
+              session.outputChunks.push(displayChunk);
+              session.listeners.forEach((listener) => listener({ type: "output", chunk: displayChunk }));
+            }
           }
           if (
-            event.type === "claude-terminal.closed" &&
-            event.payload.processId === session.processId &&
+            event.type === "pty.closed" &&
+            event.payload.ptyID === session.processId &&
             event.payload.directory === directory
           ) {
             session.exited = true;
-            session.exitCode = event.payload.exitCode;
+            session.exitCode = null;
             session.listeners.forEach((listener) =>
-              listener({ type: "closed", exitCode: event.payload.exitCode }),
+              listener({ type: "closed", exitCode: session.exitCode }),
             );
           }
         });
       }
 
+      await window.orxa.claudeTerminal.write(result.processId, `exec ${envPrefix} ${claudeCmd}\n`);
       persistedSessions.set(storageKey, session);
       pendingSessionCreates.delete(storageKey);
       return session;

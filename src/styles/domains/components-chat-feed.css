@@ -490,24 +490,24 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #fca5a5;
+  color: var(--accent-green);
   text-decoration: none;
   cursor: pointer;
 }
 
 .part-text-md .md-file-link:hover,
 .message-file-link.interactive:hover {
-  color: #fecaca;
+  color: #86efac;
 }
 
 .md-file-link-name,
 .message-file-link-name {
   display: inline-flex;
   align-items: center;
-  border-radius: 6px;
-  background: rgba(248, 113, 113, 0.14);
-  border: 1px solid rgba(248, 113, 113, 0.22);
-  padding: 1px 7px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
   font-size: 12px;
   line-height: 1.5;
   color: inherit;
@@ -517,11 +517,11 @@
 .message-file-link-line {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  padding: 0 6px;
-  min-height: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0;
+  min-height: 0;
+  background: transparent;
+  border: none;
   color: var(--text-muted);
   font-size: 10px;
   font-family: var(--font-mono);

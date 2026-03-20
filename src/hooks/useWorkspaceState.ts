@@ -3,6 +3,7 @@ import type { ProjectBootstrap, SessionMessageBundle, SessionPermissionMode } fr
 import type { TerminalTab } from "../components/TerminalPanel";
 import { makeUnifiedSessionKey } from "../state/unified-runtime";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+import { filterComposerTerminalPtys, isClaudeOwnedPty } from "../lib/terminal-ownership";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 const RESPONSE_POLL_BASE_DELAY_MS = 1500;
@@ -292,11 +293,13 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           }
         }
 
-        const serverPtyIds = data.ptys.map((p) => p.id);
+        const visiblePtys = filterComposerTerminalPtys(data.ptys);
+        const serverPtyIds = visiblePtys.map((p) => p.id);
         const hasValidTab = terminalTabIds.some((id) => serverPtyIds.includes(id));
-        if (!hasValidTab && serverPtyIds.length > 0) {
-          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-          setActiveTerminalId(data.ptys[0]?.id);
+        const hasHiddenClaudePtys = data.ptys.some((pty) => isClaudeOwnedPty(pty));
+        if (!hasValidTab && (serverPtyIds.length > 0 || hasHiddenClaudePtys)) {
+          setTerminalTabs(visiblePtys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+          setActiveTerminalId(visiblePtys[0]?.id);
         }
 
         if (nextSessionID && !skipMessageLoad) {
@@ -333,6 +336,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setProjectData(cached ?? null);
         setMessages([]);
         setActiveSessionID(undefined);
+        setTerminalOpen(false);
         setTerminalTabs([]);
         setActiveTerminalId(undefined);
         setActiveProjectDir(directory);
@@ -344,10 +348,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated, lastOpenedAt: Date.now() });
 
-        if (data.ptys.length > 0) {
-          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-          setActiveTerminalId(data.ptys[0]?.id);
-        }
+        const visiblePtys = filterComposerTerminalPtys(data.ptys);
+        setTerminalTabs(visiblePtys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+        setActiveTerminalId(visiblePtys[0]?.id);
         // Don't auto-select a session — show the workspace landing screen instead
         setActiveSessionID(undefined);
         setStatusLine(`Loaded ${directory}`);
@@ -355,7 +358,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setMessages, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalTabs, setWorkspaceMeta],
+    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setMessages, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
   );
 
   const openWorkspaceDashboard = useCallback(() => {

@@ -1,6 +1,7 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { ClaudeTerminalPane } from "./ClaudeTerminalPane";
+import { consumeClaudeStartupChunk } from "../lib/claude-terminal-startup";
 
 // xterm uses DOM APIs not available in jsdom — mock it
 vi.mock("xterm", () => {
@@ -43,8 +44,7 @@ const mockOnExit = vi.fn();
 
 function buildClaudeTerminal() {
   return {
-    list: vi.fn(async () => []),
-    create: vi.fn(async () => ({ processId: "claude-term-1", directory: "/workspace/project" })),
+    create: vi.fn(async () => ({ processId: "claude-proc-1", directory: "/workspace/project" })),
     write: vi.fn(async () => true),
     resize: vi.fn(async () => true),
     close: vi.fn(async () => true),
@@ -365,27 +365,81 @@ describe("ClaudeTerminalPane", () => {
     expect(panels.length).toBe(1);
   });
 
-  it("starts Claude via the dedicated claude terminal bridge instead of echoing a shell launch command", () => {
+  it("starts Claude through the dedicated Claude terminal bridge", async () => {
     const claudeTerminal = buildClaudeTerminal();
-    const genericTerminal = {
-      create: vi.fn(),
-      connect: vi.fn(),
-      write: vi.fn(),
-      resize: vi.fn(),
-      close: vi.fn(),
-    };
-
     window.orxa = {
       claudeTerminal,
-      terminal: genericTerminal,
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
     render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
-    expect(claudeTerminal.create).toHaveBeenCalledWith("/workspace/project", "standard", expect.any(Number), expect.any(Number));
-    expect(genericTerminal.create).not.toHaveBeenCalled();
-    expect(genericTerminal.write).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(claudeTerminal.create).toHaveBeenCalledWith("/workspace/project", "standard", expect.any(Number), expect.any(Number));
+      expect(claudeTerminal.write).toHaveBeenCalledWith(
+        "claude-proc-1",
+        expect.stringContaining("exec env -u ANTHROPIC_BASE_URL"),
+      );
+    });
+  });
+
+  it("suppresses only the echoed bootstrap command", () => {
+    const first = consumeClaudeStartupChunk(
+      [],
+      '{"cursor":0}exec env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude --dangerously-skip-permissions\n',
+      false,
+    );
+    expect(first.displayChunk).toBeNull();
+    expect(first.startupReady).toBe(false);
+
+    const second = consumeClaudeStartupChunk(
+      first.startupBuffer,
+      "╭─ Claude Code\n",
+      first.startupReady,
+    );
+    expect(second.displayChunk).toContain("Claude Code");
+    expect(second.displayChunk).not.toContain("exec env");
+  });
+
+  it("suppresses the ANSI-colored shell echo of the bootstrap command", () => {
+    const first = consumeClaudeStartupChunk(
+      [],
+      '\u001b[32m➜\u001b[39m  dreamweaver exec env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude --dangerously-skip-permissions\n',
+      false,
+    );
+    expect(first.displayChunk).toBeNull();
+    expect(first.startupReady).toBe(false);
+
+    const second = consumeClaudeStartupChunk(first.startupBuffer, "╭─ Claude Code v2.1.80\n", first.startupReady);
+    expect(second.displayChunk).toContain("Claude Code");
+    expect(second.displayChunk).not.toContain("dreamweaver exec env");
+  });
+
+  it("buffers partial bootstrap chunks until a full non-command line arrives", () => {
+    const first = consumeClaudeStartupChunk(
+      [],
+      "exec env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY ",
+      false,
+    );
+    expect(first.displayChunk).toBeNull();
+    expect(first.startupReady).toBe(false);
+
+    const second = consumeClaudeStartupChunk(
+      first.startupBuffer,
+      "claude --dangerously-skip-permissions\n\u001b[32m➜\u001b[39m dreamweaver exec env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude --dangerously-skip-permissions\n",
+      first.startupReady,
+    );
+    expect(second.displayChunk).toBeNull();
+    expect(second.startupReady).toBe(false);
+
+    const third = consumeClaudeStartupChunk(
+      second.startupBuffer,
+      "╭─ Claude Code v2.1.80\n",
+      second.startupReady,
+    );
+    expect(third.startupReady).toBe(true);
+    expect(third.displayChunk).toContain("Claude Code");
+    expect(third.displayChunk).not.toContain("exec env");
   });
 });

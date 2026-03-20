@@ -35,7 +35,7 @@ function renderActivityLabel(label: string, onOpenFileReference?: (reference: st
             }
           }}
         >
-          <span className="message-file-link-name">{parsedTarget.basename}</span>
+          <span className="message-file-link-name">{parsedTarget.path}</span>
           {parsedTarget.lineLabel ? <span className="message-file-link-line">{parsedTarget.lineLabel}</span> : null}
         </span>
       ) : (

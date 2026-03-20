@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
@@ -20,9 +20,11 @@ type Props = {
   tabs: TerminalTab[];
   activeTabId: string | undefined;
   open: boolean;
+  height?: number;
   onCreateTab: () => Promise<void>;
   onCloseTab: (ptyId: string) => Promise<void>;
   onSwitchTab: (ptyId: string) => void;
+  onResizeStart?: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 };
 
 const TERMINAL_THEME = {
@@ -49,10 +51,24 @@ const TERMINAL_THEME = {
   brightWhite: "#FFFFFF",
 };
 
-export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab, onCloseTab, onSwitchTab }: Props) {
+function sanitizeTerminalChunk(chunk: string) {
+  const sanitized = chunk.replace(/\{"cursor":\d+\}/g, "");
+  return sanitized.trim() === "%" ? "" : sanitized;
+}
+
+export function TerminalPanel({
+  directory,
+  tabs,
+  activeTabId,
+  open,
+  height,
+  onCreateTab,
+  onCloseTab,
+  onSwitchTab,
+  onResizeStart,
+}: Props) {
   const instancesRef = useRef<Map<string, TerminalInstance>>(new Map());
   const containerMapRef = useRef<Map<string, HTMLDivElement | null>>(new Map());
-  const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !activeTabId) return;
@@ -90,7 +106,10 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
 
       const unsubscribe = window.orxa.events.subscribe((event) => {
         if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
-          terminal.write(event.payload.chunk);
+          const sanitizedChunk = sanitizeTerminalChunk(event.payload.chunk);
+          if (sanitizedChunk) {
+            terminal.write(sanitizedChunk);
+          }
         }
         if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
           terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
@@ -139,7 +158,18 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
   }, []);
 
   return (
-    <section className={`terminal-panel ${open ? "open" : "closed"}`}>
+    <section
+      className={`terminal-panel ${open ? "open" : "closed"}`}
+      style={open && typeof height === "number" ? { height: `${height}px`, maxHeight: `${height}px` } : undefined}
+    >
+      {open ? (
+        <button
+          type="button"
+          className="terminal-resize-handle"
+          onMouseDown={onResizeStart}
+          aria-label="Resize integrated terminal"
+        />
+      ) : null}
       <header className="terminal-header">
         <div className="terminal-tabs">
           <button
@@ -156,24 +186,19 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
               type="button"
               className={`terminal-tab ${activeTabId === tab.id ? "active" : ""}`}
               onClick={() => onSwitchTab(tab.id)}
-              onMouseEnter={() => setHoveredTab(tab.id)}
-              onMouseLeave={() => setHoveredTab(null)}
             >
-              {hoveredTab === tab.id ? (
-                <span
-                  className="terminal-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void onCloseTab(tab.id);
-                  }}
-                  role="button"
-                  tabIndex={-1}
-                >
-                  <X size={11} />
-                </span>
-              ) : (
-                <span className="terminal-tab-label">{tab.label}</span>
-              )}
+              <span className="terminal-tab-label">{tab.label}</span>
+              <span
+                className="terminal-tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onCloseTab(tab.id);
+                }}
+                role="button"
+                tabIndex={-1}
+              >
+                <X size={11} />
+              </span>
             </button>
           ))}
           {tabs.length === 0 ? (

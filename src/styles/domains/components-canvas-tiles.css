@@ -12,6 +12,7 @@
   opacity: 1;
   transform: translateY(0);
   transition: max-height 340ms ease, opacity 340ms ease, transform 340ms ease;
+  position: relative;
 }
 
 .terminal-panel.closed {
@@ -19,6 +20,36 @@
   opacity: 0;
   transform: translateY(18px);
   pointer-events: none;
+}
+
+.terminal-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: row-resize;
+  z-index: 2;
+}
+
+.terminal-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 48px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.terminal-resize-handle:hover::after,
+.terminal-resize-handle:focus-visible::after {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .terminal-header {
@@ -78,10 +109,11 @@
   align-items: center;
   justify-content: center;
   font-size: 11px;
-  padding: 0 8px;
+  padding: 0 24px 0 8px;
   flex-shrink: 0;
   transform: none;
   line-height: 1;
+  position: relative;
 }
 
 .terminal-tab:hover {
@@ -107,10 +139,25 @@
 }
 
 .terminal-tab-close {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-grid;
   place-items: center;
   color: var(--text-muted);
   cursor: pointer;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease;
+}
+
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab.active .terminal-tab-close {
+  opacity: 1;
+  visibility: visible;
 }
 
 .terminal-tab-close:hover {
