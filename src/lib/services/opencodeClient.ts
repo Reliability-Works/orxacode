@@ -1,4 +1,12 @@
 import type {
+  ArtifactExportBundleInput,
+  ArtifactExportBundleResult,
+  ArtifactListQuery,
+  ArtifactPruneResult,
+  ArtifactRecord,
+  ArtifactRetentionPolicy,
+  ArtifactRetentionUpdateInput,
+  ArtifactSessionSummary,
   ChangeProvenanceRecord,
   ExecutionLedgerSnapshot,
   GitBranchState,
@@ -8,6 +16,10 @@ import type {
   SessionMessageBundle,
   SessionPermissionMode,
   SessionProvenanceSnapshot,
+  SessionRuntimeSnapshot,
+  WorkspaceArtifactSummary,
+  WorkspaceContextFile,
+  WorkspaceContextWriteInput,
 } from "@shared/ipc";
 import type { Session } from "@opencode-ai/sdk/v2/client";
 
@@ -83,7 +95,7 @@ async function withRetry<T>(operation: string, run: () => Promise<T>, options: R
 
 function getBridge() {
   if (!window.orxa?.opencode) {
-    throw new OpencodeClientError("Desktop bridge unavailable. Restart Opencode Orxa to reconnect.", "IPC_UNAVAILABLE", false);
+    throw new OpencodeClientError("Desktop bridge unavailable. Restart Orxa Code to reconnect.", "IPC_UNAVAILABLE", false);
   }
   return window.orxa.opencode;
 }
@@ -142,6 +154,10 @@ export const opencodeClient = {
     return withRetry("loadMessages", () => getBridge().loadMessages(directory, sessionID), { retries: 2 });
   },
 
+  async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
+    return withRetry("getSessionRuntime", () => getBridge().getSessionRuntime(directory, sessionID), { retries: 1 });
+  },
+
   async loadExecutionLedger(directory: string, sessionID: string, cursor = 0): Promise<ExecutionLedgerSnapshot> {
     return withRetry("loadExecutionLedger", () => getBridge().loadExecutionLedger(directory, sessionID, cursor), { retries: 1 });
   },
@@ -173,8 +189,70 @@ export const opencodeClient = {
     }, { retries: 0 });
   },
 
+  async listArtifacts(query?: ArtifactListQuery): Promise<ArtifactRecord[]> {
+    return withRetry("listArtifacts", () => getBridge().listArtifacts(query), { retries: 1 });
+  },
+
+  async getArtifact(id: string): Promise<ArtifactRecord | undefined> {
+    return withRetry("getArtifact", () => getBridge().getArtifact(id), { retries: 0 });
+  },
+
+  async deleteArtifact(id: string): Promise<void> {
+    return withRetry("deleteArtifact", async () => {
+      const deleted = await getBridge().deleteArtifact(id);
+      expectTrue(deleted, "deleteArtifact");
+    }, { retries: 0 });
+  },
+
+  async listArtifactSessions(workspace: string): Promise<ArtifactSessionSummary[]> {
+    return withRetry("listArtifactSessions", () => getBridge().listArtifactSessions(workspace), { retries: 1 });
+  },
+
+  async listWorkspaceArtifactSummary(workspace: string): Promise<WorkspaceArtifactSummary> {
+    return withRetry("listWorkspaceArtifactSummary", () => getBridge().listWorkspaceArtifactSummary(workspace), { retries: 1 });
+  },
+
+  async getArtifactRetentionPolicy(): Promise<ArtifactRetentionPolicy> {
+    return withRetry("getArtifactRetentionPolicy", () => getBridge().getArtifactRetentionPolicy(), { retries: 1 });
+  },
+
+  async setArtifactRetentionPolicy(input: ArtifactRetentionUpdateInput): Promise<ArtifactRetentionPolicy> {
+    return withRetry("setArtifactRetentionPolicy", () => getBridge().setArtifactRetentionPolicy(input), { retries: 0 });
+  },
+
+  async pruneArtifactsNow(workspace?: string): Promise<ArtifactPruneResult> {
+    return withRetry("pruneArtifactsNow", () => getBridge().pruneArtifactsNow(workspace), { retries: 0 });
+  },
+
+  async exportArtifactBundle(input: ArtifactExportBundleInput): Promise<ArtifactExportBundleResult> {
+    return withRetry("exportArtifactBundle", () => getBridge().exportArtifactBundle(input), { retries: 0 });
+  },
+
+  async listWorkspaceContext(workspace: string): Promise<WorkspaceContextFile[]> {
+    return withRetry("listWorkspaceContext", () => getBridge().listWorkspaceContext(workspace), { retries: 1 });
+  },
+
+  async readWorkspaceContext(workspace: string, id: string): Promise<WorkspaceContextFile> {
+    return withRetry("readWorkspaceContext", () => getBridge().readWorkspaceContext(workspace, id), { retries: 1 });
+  },
+
+  async writeWorkspaceContext(input: WorkspaceContextWriteInput): Promise<WorkspaceContextFile> {
+    return withRetry("writeWorkspaceContext", () => getBridge().writeWorkspaceContext(input), { retries: 0 });
+  },
+
+  async deleteWorkspaceContext(workspace: string, id: string): Promise<void> {
+    return withRetry("deleteWorkspaceContext", async () => {
+      const deleted = await getBridge().deleteWorkspaceContext(workspace, id);
+      expectTrue(deleted, "deleteWorkspaceContext");
+    }, { retries: 0 });
+  },
+
   async gitDiff(directory: string): Promise<string> {
     return withRetry("gitDiff", () => getBridge().gitDiff(directory), { retries: 1 });
+  },
+
+  async gitStatus(directory: string): Promise<string> {
+    return withRetry("gitStatus", () => getBridge().gitStatus(directory), { retries: 1 });
   },
 
   async gitLog(directory: string): Promise<string> {

@@ -13,6 +13,43 @@ function formatError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function trimCommandErrorPrefix(message: string) {
+  const cleaned = message.replace(/\s+/g, " ").trim();
+  const marker = cleaned.match(/\bexited with code\s+\d+:\s+/i);
+  if (!marker) {
+    return cleaned;
+  }
+  const index = marker.index ?? -1;
+  if (index < 0) {
+    return cleaned;
+  }
+  return cleaned.slice(index + marker[0].length).trim();
+}
+
+export function formatCheckoutBranchError(error: unknown, branch: string) {
+  const raw = formatError(error);
+  const message = trimCommandErrorPrefix(raw);
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("would be overwritten by checkout")) {
+    return `Cannot switch to "${branch}" because local changes would be overwritten. Commit, stash, or discard those files first.`;
+  }
+  if (normalized.includes("is already checked out at")) {
+    return `Cannot switch to "${branch}" because it is already checked out in another worktree.`;
+  }
+  if (normalized.includes("pathspec") && normalized.includes("did not match any file")) {
+    return `Branch "${branch}" was not found locally or on origin.`;
+  }
+  if (normalized.includes("a branch named") && normalized.includes("already exists")) {
+    return `Branch "${branch}" already exists. Try selecting it again to switch.`;
+  }
+  if (normalized.includes("invalid branch name")) {
+    return "Invalid branch name.";
+  }
+
+  return message;
+}
+
 export function parseGitDiffStats(output: string): GitDiffStats {
   const trimmed = output.trim();
   if (
@@ -120,6 +157,7 @@ export function useGitPanel(activeProjectDir: string | null) {
   const [branchCreateModalOpen, setBranchCreateModalOpen] = useState(false);
   const [branchCreateName, setBranchCreateName] = useState("");
   const [branchCreateError, setBranchCreateError] = useState<string | null>(null);
+  const [branchActionError, setBranchActionError] = useState<string | null>(null);
   const gitRefreshTimerRef = useRef<number | undefined>(undefined);
 
   const loadGitDiff = useCallback(async () => {
@@ -260,6 +298,7 @@ export function useGitPanel(activeProjectDir: string | null) {
         setBranchMenuOpen(false);
         return;
       }
+      setBranchActionError(null);
       try {
         setBranchSwitching(true);
         const next = await window.orxa.opencode.gitCheckoutBranch(activeProjectDir, nextBranch);
@@ -275,6 +314,8 @@ export function useGitPanel(activeProjectDir: string | null) {
         } else {
           await loadGitPrs();
         }
+      } catch (error) {
+        setBranchActionError(formatCheckoutBranchError(error, nextBranch));
       } finally {
         setBranchSwitching(false);
       }
@@ -286,6 +327,7 @@ export function useGitPanel(activeProjectDir: string | null) {
     const query = branchQuery.trim();
     setBranchCreateName(query);
     setBranchCreateError(null);
+    setBranchActionError(null);
     setBranchCreateModalOpen(true);
     setBranchMenuOpen(false);
   }, [branchQuery]);
@@ -398,6 +440,7 @@ export function useGitPanel(activeProjectDir: string | null) {
       setGitPanelTab("diff");
       setGitPanelOutput("Select DIFF or LOG.");
       setBranchState(null);
+      setBranchActionError(null);
       setGitDiffStats({ additions: 0, deletions: 0, filesChanged: 0, hasChanges: false });
       return;
     }
@@ -478,6 +521,8 @@ export function useGitPanel(activeProjectDir: string | null) {
     setBranchCreateName,
     branchCreateError,
     setBranchCreateError,
+    branchActionError,
+    setBranchActionError,
     loadGitDiff,
     loadGitLog,
     loadGitIssues,

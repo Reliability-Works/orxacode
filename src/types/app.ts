@@ -8,6 +8,17 @@ export type AppPreferences = {
   commitGuidancePrompt: string;
   codeFont: string;
   hiddenModels: string[];
+  codexPath: string;
+  codexArgs: string;
+  codexDefaultModel: string;
+  codexReasoningEffort: string;
+  codexAccessMode: string;
+  gitAgent: "opencode" | "claude" | "codex";
+  notifyOnAwaitingInput: boolean;
+  notifyOnTaskComplete: boolean;
+  collaborationModesEnabled: boolean;
+  subagentSystemNotificationsEnabled: boolean;
+  orxaBrowserEnabled: boolean;
 };
 
 export type CodeFontOption = {

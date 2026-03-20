@@ -2,7 +2,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionMessageBundle } from "../../shared/ipc";
-import { MemoryStore } from "./memory-store";
 
 let tempUserDataDir = "";
 
@@ -12,17 +11,17 @@ vi.mock("electron", () => ({
   },
 }));
 
-function textBundle(sessionID: string, messageID: string, role: "user" | "assistant", text: string): SessionMessageBundle {
+function textBundle(sessionID: string, messageID: string, role: "user" | "assistant", text: string) {
   return {
-    info: ({
+    info: {
       id: messageID,
-      sessionID,
       role,
+      sessionID,
       time: {
         created: Date.now(),
         updated: Date.now(),
       },
-    } as unknown) as SessionMessageBundle["info"],
+    } as unknown as SessionMessageBundle["info"],
     parts: [
       {
         id: `${messageID}-text`,
@@ -30,18 +29,25 @@ function textBundle(sessionID: string, messageID: string, role: "user" | "assist
         sessionID,
         messageID,
         text,
-      } as SessionMessageBundle["parts"][number],
-    ],
-  };
+      },
+    ] as SessionMessageBundle["parts"],
+  } satisfies SessionMessageBundle;
+}
+
+async function createStore() {
+  const { MemoryStore } = await import("./memory-store");
+  return new MemoryStore();
 }
 
 describe("MemoryStore", () => {
   beforeEach(() => {
+    vi.resetModules();
+    vi.doUnmock("keytar");
     tempUserDataDir = `/tmp/orxa-memory-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   });
 
   it("encrypts memory content and can recover decrypted graph data", async () => {
-    const store = new MemoryStore();
+    const store = await createStore();
     await store.updateSettings({
       global: {
         enabled: true,
@@ -60,7 +66,7 @@ describe("MemoryStore", () => {
   });
 
   it("isolates retrieval by workspace and deduplicates repeated memory", async () => {
-    const store = new MemoryStore();
+    const store = await createStore();
     await store.updateSettings({
       global: {
         enabled: true,
@@ -83,7 +89,7 @@ describe("MemoryStore", () => {
   });
 
   it("creates relationship edges between captured memories", async () => {
-    const store = new MemoryStore();
+    const store = await createStore();
     await store.updateSettings({
       global: {
         enabled: true,
@@ -101,8 +107,55 @@ describe("MemoryStore", () => {
     expect(graph.edges.length).toBeGreaterThan(0);
   });
 
+  it("filters weak/stopword-only prompt queries to avoid irrelevant memory injection", async () => {
+    const store = await createStore();
+    await store.updateSettings({
+      global: {
+        enabled: true,
+        mode: "balanced",
+      },
+    });
+
+    await store.ingestSessionMessages("/repo-signal", "s-signal", [
+      textBundle("s-signal", "m-1", "user", "Project signal: prioritize browser agent reliability and action retries."),
+    ]);
+
+    const stopwordOnly = await store.getPromptMemories("/repo-signal", "please help me with this", 6);
+    const unrelated = await store.getPromptMemories("/repo-signal", "recipe for italian tiramisu", 6);
+
+    expect(stopwordOnly).toHaveLength(0);
+    expect(unrelated).toHaveLength(0);
+  });
+
+  it("avoids substring-only matches for unrelated long-form queries", async () => {
+    const store = await createStore();
+    await store.updateSettings({
+      global: {
+        enabled: true,
+        mode: "balanced",
+      },
+    });
+
+    await store.ingestSessionMessages("/repo-signal", "s-signal", [
+      textBundle(
+        "s-signal",
+        "m-1",
+        "assistant",
+        "User fixed Codex startup config parse error and expects full app-wide UI cleanup for polish requests.",
+      ),
+    ]);
+
+    const unrelated = await store.getPromptMemories(
+      "/repo-signal",
+      "do a comprehensive research task for the top defi news in 2026 then document all of your findings",
+      6,
+    );
+
+    expect(unrelated).toHaveLength(0);
+  });
+
   it("ingests structured ORXA memory lines with explicit workspace routing", async () => {
-    const store = new MemoryStore();
+    const store = await createStore();
     await store.updateSettings({
       global: {
         enabled: true,
@@ -129,5 +182,44 @@ describe("MemoryStore", () => {
     expect(alpha.some((item) => item.content.toLowerCase().includes("retrieval isolated"))).toBe(true);
     expect(beta.some((item) => item.content.toLowerCase().includes("next.js"))).toBe(true);
     expect(seed.length).toBe(0);
+  });
+
+  it("falls back to in-memory secrets when the keychain backend errors", async () => {
+    const keychainFailure = new Error("The keychain backend is unavailable");
+    const getPassword = vi.fn(async () => {
+      throw keychainFailure;
+    });
+    const setPassword = vi.fn(async () => {
+      throw keychainFailure;
+    });
+    vi.doMock("keytar", () => ({
+      getPassword,
+      setPassword,
+    }));
+    const { MemoryStore } = await import("./memory-store");
+    const store = new MemoryStore();
+
+    await expect(
+      store.updateSettings({
+        global: {
+          enabled: true,
+          mode: "balanced",
+        },
+      }),
+    ).resolves.toMatchObject({
+      global: expect.objectContaining({
+        enabled: true,
+        mode: "balanced",
+      }),
+    });
+
+    await store.ingestSessionMessages("/repo-fallback", "s-fallback", [
+      textBundle("s-fallback", "m-1", "user", "Fallback path should still allow memory writes."),
+    ]);
+
+    const graph = await store.getGraph({ workspace: "/repo-fallback" });
+    expect(graph.nodes.some((node) => node.content.includes("Fallback path"))).toBe(true);
+    expect(getPassword).toHaveBeenCalled();
+    expect(setPassword).not.toHaveBeenCalled();
   });
 });

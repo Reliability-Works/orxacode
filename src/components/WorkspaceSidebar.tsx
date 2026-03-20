@@ -1,10 +1,13 @@
-import { type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import type { AppMode, ProjectListItem } from "@shared/ipc";
+import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
+import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
+import type { ProjectListItem } from "@shared/ipc";
+import type { SessionType } from "../types/canvas";
 import { IconButton } from "./IconButton";
+import { NewSessionPicker } from "./NewSessionPicker";
 
 type SidebarMode = "projects" | "jobs" | "skills" | "memory";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
+type SessionSidebarIndicator = "busy" | "awaiting" | "unread" | "none";
 
 type SessionListItem = {
   id: string;
@@ -16,11 +19,12 @@ type SessionListItem = {
 };
 
 export type WorkspaceSidebarProps = {
-  appMode: AppMode;
-  setAppMode: Dispatch<SetStateAction<AppMode>>;
   sidebarMode: SidebarMode;
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
+  updateAvailableVersion: string | null;
+  updateInstallPending: boolean;
+  onDownloadAndInstallUpdate: () => Promise<void> | void;
   openWorkspaceDashboard: () => void;
   projectSearchOpen: boolean;
   setProjectSearchOpen: Dispatch<SetStateAction<boolean>>;
@@ -36,25 +40,28 @@ export type WorkspaceSidebarProps = {
   collapsedProjects: Record<string, boolean>;
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
+  cachedSessionsByProject?: Record<string, SessionListItem[]>;
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
-  getSessionStatusType: (sessionID: string, directory?: string) => string;
+  getSessionTitle: (sessionID: string, directory?: string, fallbackTitle?: string) => string | undefined;
+  getSessionIndicator: (sessionID: string, directory: string, updatedAt: number) => SessionSidebarIndicator;
   selectProject: (directory: string) => Promise<void> | void;
-  createSession: (directory?: string) => Promise<void> | void;
-  openSession: (sessionID: string) => void;
+  createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void;
+  openSession: (directory: string, sessionID: string) => Promise<void> | void;
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
-  setProfileModalOpen: Dispatch<SetStateAction<boolean>>;
+  onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 export function WorkspaceSidebar({
-  appMode,
-  setAppMode,
   sidebarMode,
   setSidebarMode,
   unreadJobRunsCount,
+  updateAvailableVersion,
+  updateInstallPending,
+  onDownloadAndInstallUpdate,
   openWorkspaceDashboard,
   projectSearchOpen,
   setProjectSearchOpen,
@@ -70,27 +77,58 @@ export function WorkspaceSidebar({
   collapsedProjects,
   setCollapsedProjects,
   sessions,
+  cachedSessionsByProject,
   activeSessionID,
   setAllSessionsModalOpen,
-  getSessionStatusType,
+  getSessionTitle,
+  getSessionIndicator,
   selectProject,
   createSession,
   openSession,
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
-  setProfileModalOpen,
+  onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
+  const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
+  const [pickerOpenForProject, setPickerOpenForProject] = useState<string | null>(null);
+  const pickerAnchorRef = useRef<HTMLButtonElement | null>(null);
+
   return (
     <aside className="sidebar projects-pane">
       <div className="sidebar-inner">
+
+        {/* Logo */}
+        <div className="sidebar-logo">
+          <span className="sidebar-logo-symbol">~</span>
+          <span className="sidebar-logo-name">orxa</span>
+        </div>
+
+        {/* Update CTA (shown above mode tabs when update available) */}
+        {updateAvailableVersion ? (
+          <button
+            type="button"
+            className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
+            onMouseEnter={() => setUpdateButtonHovered(true)}
+            onMouseLeave={() => setUpdateButtonHovered(false)}
+            onClick={() => void onDownloadAndInstallUpdate()}
+            disabled={updateInstallPending}
+            title={`Version ${updateAvailableVersion}`}
+          >
+            <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
+            <small>{updateAvailableVersion}</small>
+          </button>
+        ) : null}
+
+        {/* Mode nav tabs */}
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
           <button
             type="button"
             className={sidebarMode === "projects" && !activeProjectDir ? "active" : ""}
             onClick={openWorkspaceDashboard}
           >
+            <LayoutDashboard size={16} aria-hidden="true" />
             Dashboard
           </button>
           <button
@@ -98,37 +136,39 @@ export function WorkspaceSidebar({
             className={sidebarMode === "jobs" ? "active" : ""}
             onClick={() => setSidebarMode("jobs")}
           >
+            <CirclePlay size={16} aria-hidden="true" />
             Jobs
             {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
-          </button>
-          <button
-            type="button"
-            className={sidebarMode === "memory" ? "active" : ""}
-            onClick={() => setSidebarMode("memory")}
-          >
-            Memory
           </button>
           <button
             type="button"
             className={sidebarMode === "skills" ? "active" : ""}
             onClick={() => setSidebarMode("skills")}
           >
+            <Zap size={16} aria-hidden="true" />
             Skills
           </button>
+          <button
+            type="button"
+            className={sidebarMode === "memory" ? "active" : ""}
+            onClick={() => setSidebarMode("memory")}
+          >
+            <Brain size={16} aria-hidden="true" />
+            Memory
+          </button>
         </nav>
-      <>
+
+        {/* Search bar */}
+        <div className="sidebar-search" onClick={() => { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); } }}>
+          <Search size={14} aria-hidden="true" />
+          <span className="sidebar-search-placeholder">search...</span>
+        </div>
+
+        {/* Workspaces section */}
+        <div className="sidebar-workspaces-section">
           <div className="pane-header">
             <h2>Workspaces</h2>
             <div className="pane-header-actions">
-              <IconButton
-                icon="search"
-                className="pane-action-icon"
-                label={projectSearchOpen ? "Close search" : "Search workspaces"}
-                onClick={() => {
-                  setProjectSearchOpen((value) => !value);
-                  setProjectSortOpen(false);
-                }}
-              />
               <IconButton
                 icon="sort"
                 className="pane-action-icon"
@@ -141,6 +181,7 @@ export function WorkspaceSidebar({
               <IconButton icon="folderPlus" className="pane-action-icon" label="Add workspace folder" onClick={() => void addProjectDirectory()} />
             </div>
           </div>
+
           {projectSortOpen ? (
             <div className="project-sort-popover">
               <button
@@ -185,6 +226,7 @@ export function WorkspaceSidebar({
               </button>
             </div>
           ) : null}
+
           {projectSearchOpen ? (
             <div className="project-search-popover">
               <input
@@ -217,12 +259,17 @@ export function WorkspaceSidebar({
               </div>
             </div>
           ) : null}
+
           <div className="project-list">
             {filteredProjects.map((project) => {
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
-              const isExpanded = isActiveProject && !collapsedProjects[project.worktree];
-              const visibleSessions = isExpanded ? sessions : [];
+              const isExpanded = !collapsedProjects[project.worktree];
+              // Use active sessions for active project, cached sessions for others
+              const projectSessions = isActiveProject
+                ? sessions
+                : (cachedSessionsByProject?.[project.worktree] ?? []);
+              const visibleSessions = isExpanded ? projectSessions : [];
               const displayedSessions = (() => {
                 const first = visibleSessions.slice(0, 4);
                 if (!activeSessionID || first.some((session) => session.id === activeSessionID)) {
@@ -243,66 +290,101 @@ export function WorkspaceSidebar({
                   <div className="project-item-header">
                     <button
                       type="button"
-                      className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
-                      onClick={() => {
-                        if (isActiveProject && activeSessionID) {
-                          openWorkspaceDashboard();
-                          return;
-                        }
-                        if (isActiveProject) {
-                          setCollapsedProjects((current) => ({
-                            ...current,
-                            [project.worktree]: !current[project.worktree],
-                          }));
-                          return;
-                        }
-                        void selectProject(project.worktree);
+                      className="project-row-chevron-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setCollapsedProjects((current) => ({
+                          ...current,
+                          [project.worktree]: !current[project.worktree],
+                        }));
                       }}
-                      title={projectLabel}
+                      aria-label={isExpanded ? `Collapse ${projectLabel}` : `Expand ${projectLabel}`}
+                      title={isExpanded ? "Collapse workspace" : "Expand workspace"}
                     >
                       <span className="project-row-arrow" aria-hidden="true">
-                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                       </span>
-                      <span className="project-label-text">{projectLabel}</span>
                     </button>
                     <button
                       type="button"
-                      className="project-add-session"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void createSession(project.worktree);
+                      className={`project-select ${isActiveProject ? "active" : ""}`.trim()}
+                      onClick={() => {
+                        if (isActiveProject) {
+                          void selectProject(project.worktree);
+                          return;
+                        }
+
+                        if (!isActiveProject) {
+                          void selectProject(project.worktree);
+                        }
                       }}
-                      aria-label={`Create session for ${projectLabel}`}
-                      title="New session"
+                      title={projectLabel}
                     >
-                      +
+                      <span className="project-status-dot" aria-hidden="true" />
+                      <span className="project-label-text">{projectLabel}</span>
                     </button>
+                    <div className="project-add-session-wrapper">
+                      <button
+                        ref={(el) => {
+                          if (pickerOpenForProject === project.worktree) {
+                            pickerAnchorRef.current = el;
+                          }
+                        }}
+                        type="button"
+                        className="project-add-session"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPickerOpenForProject((current) =>
+                            current === project.worktree ? null : project.worktree,
+                          );
+                        }}
+                        aria-label={`Create session for ${projectLabel}`}
+                        aria-haspopup="menu"
+                        aria-expanded={pickerOpenForProject === project.worktree}
+                        title="New session"
+                      >
+                        +
+                      </button>
+                      <NewSessionPicker
+                        isOpen={pickerOpenForProject === project.worktree}
+                        onPick={(sessionType) => {
+                          setPickerOpenForProject(null);
+                          void createSession(project.worktree, sessionType);
+                        }}
+                        onClose={() => setPickerOpenForProject(null)}
+                      />
+                    </div>
                   </div>
                   {isExpanded ? (
                     <div className="project-session-list">
                       {visibleSessions.length === 0 ? <p>No sessions yet</p> : null}
                       {displayedSessions.map((session) => {
-                        const status = getSessionStatusType(session.id, project.worktree);
-                        const busy = status === "busy" || status === "retry";
-                        const awaitingPermission = status === "permission";
+                        const sessionTitle = getSessionTitle(
+                          session.id,
+                          project.worktree,
+                          session.title ?? session.slug,
+                        ) ?? session.title ?? session.slug;
+                        const indicator = getSessionIndicator(session.id, project.worktree, session.time.updated);
                         return (
                           <button
                             type="button"
                             key={session.id}
                             className={session.id === activeSessionID ? "active" : ""}
-                            onClick={() => openSession(session.id)}
+                            onClick={() => void openSession(project.worktree, session.id)}
                             onContextMenu={(event) =>
-                              openSessionContextMenu(event, project.worktree, session.id, session.title || session.slug)
+                              openSessionContextMenu(event, project.worktree, session.id, sessionTitle)
                             }
-                            title={session.title || session.slug}
+                            title={sessionTitle}
                           >
-                            <span
-                              className={`session-status-indicator ${awaitingPermission ? "attention" : busy ? "busy" : "idle"}`}
-                              aria-hidden="true"
-                            >
-                              {awaitingPermission ? "!" : null}
-                            </span>
-                            <span>{session.title || session.slug}</span>
+                            {indicator === "none" ? null : (
+                              <span
+                                className={`session-status-indicator ${indicator}`}
+                                aria-hidden="true"
+                              >
+                                {indicator === "awaiting" ? "!" : null}
+                              </span>
+                            )}
+                            <span>{sessionTitle}</span>
                           </button>
                         );
                       })}
@@ -317,23 +399,25 @@ export function WorkspaceSidebar({
               );
             })}
           </div>
-        </>
-      
+        </div>
 
-      <div className="sidebar-footer-actions">
-        <IconButton
-          icon={appMode === "orxa" ? "orxa" : "standard"}
-          label={appMode === "orxa" ? "Orxa Mode (click to switch to Standard)" : "Standard Mode (click to switch to Orxa)"}
-          onClick={() => {
-            const nextMode = appMode === "orxa" ? "standard" : "orxa";
-            void window.orxa.mode.set(nextMode);
-            setAppMode(nextMode);
-          }}
-        />
-        <IconButton icon="profiles" label="Profiles" onClick={() => setProfileModalOpen(true)} />
-        <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
+        {/* Footer */}
+        <div className="sidebar-footer-actions">
+          <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
+          <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
+          <span className="sidebar-footer-spacer" />
+        </div>
+
       </div>
+
+      {/* Collapsed icon rail — shown when sidebar is collapsed to 48px */}
+      <div className="sidebar-collapsed-rail" aria-hidden="true">
+        <LayoutDashboard size={18} />
+        <CirclePlay size={18} />
+        <Zap size={18} />
+        <Brain size={18} />
       </div>
+
     </aside>
   );
 }

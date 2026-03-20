@@ -24,11 +24,15 @@ export type JobSchedule =
       intervalMinutes: number;
     };
 
+export type JobAgentMode = "opencode" | "codex" | "claude";
+
 export type JobRecord = {
   id: string;
   name: string;
   projectDir: string;
   prompt: string;
+  browserModeEnabled: boolean;
+  agentMode: JobAgentMode;
   schedule: JobSchedule;
   enabled: boolean;
   createdAt: number;
@@ -54,6 +58,8 @@ export type JobTemplate = {
   title: string;
   description: string;
   prompt: string;
+  browserModeEnabled: boolean;
+  agentMode?: JobAgentMode;
   icon: "book" | "bug" | "shield" | "activity" | "package" | "sparkles";
   schedule: JobSchedule;
 };
@@ -155,10 +161,10 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title jobs-inbox-title">
-          <h2>Inbox</h2>
+          <h2>inbox // recent runs</h2>
           {unreadRuns > 0 ? (
             <button type="button" className="jobs-mark-read" onClick={onMarkAllRunsRead}>
-              Mark all read
+              mark all read
             </button>
           ) : null}
         </div>
@@ -183,16 +189,20 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title">
-          <h2>Configured jobs</h2>
+          <h2>configured_jobs</h2>
         </div>
         <div className="jobs-config-grid">
           {sortedJobs.map((job) => (
             <article key={job.id} className="jobs-config-card">
               <header>
                 <strong>{job.name}</strong>
-                <span className={`jobs-status-pill ${job.enabled ? "enabled" : "paused"}`.trim()}>
-                  {job.enabled ? "Enabled" : "Paused"}
-                </span>
+                <div className="jobs-config-badges">
+                  <span className={`jobs-status-pill ${job.enabled ? "enabled" : "paused"}`.trim()}>
+                    {job.enabled ? "Enabled" : "Paused"}
+                  </span>
+                  {job.browserModeEnabled ? <span className="jobs-inbox-label">Browser Mode</span> : null}
+                  <span className="jobs-inbox-label">{(job.agentMode ?? "opencode").charAt(0).toUpperCase() + (job.agentMode ?? "opencode").slice(1)}</span>
+                </div>
               </header>
               <p>{job.prompt}</p>
               <footer>
@@ -221,7 +231,7 @@ export function JobsBoard({
 
       <section className="jobs-section">
         <div className="jobs-section-title">
-          <h2>Templates</h2>
+          <h2>templates</h2>
         </div>
         <div className="jobs-template-grid">
           {templates.map((template) => (
@@ -233,7 +243,7 @@ export function JobsBoard({
               <p>{template.description}</p>
               <small>{scheduleSummary(template.schedule)}</small>
               <button type="button" onClick={() => onUseTemplate(template)}>
-                Use template
+                use template
               </button>
             </article>
           ))}
@@ -320,6 +330,35 @@ export function JobEditorModal({ open, draft, projects, onClose, onChange, onSav
               onChange={(event) => update({ prompt: event.target.value })}
               placeholder="Describe what the job should do..."
             />
+          </label>
+
+          <label>
+            Agent
+            <div className="job-editor-agent-select">
+              {(["opencode", "codex", "claude"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={draft.agentMode === mode ? "active" : ""}
+                  onClick={() => update({ agentMode: mode })}
+                >
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
+            </div>
+          </label>
+
+          <label className="job-editor-toggle-row">
+            <span>Enable Browser Mode</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.browserModeEnabled}
+              className={`job-editor-switch${draft.browserModeEnabled ? " on" : ""}`}
+              onClick={() => update({ browserModeEnabled: !draft.browserModeEnabled })}
+            >
+              <span className="job-editor-switch-thumb" />
+            </button>
           </label>
 
           <section className="job-editor-schedule">

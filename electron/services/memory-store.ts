@@ -1,4 +1,4 @@
-import { createHash, createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -15,6 +15,24 @@ import type {
   MemoryTemplate,
   SessionMessageBundle,
 } from "../../shared/ipc";
+import {
+  confidenceFor,
+  detectTags,
+  normalizePolicyMode,
+  normalizeWhitespace,
+  normalizeWorkspace,
+  parseStructuredBackfillLine,
+  parseTags,
+  previewSummary,
+  scopeForWorkspace,
+  scorePromptCandidate,
+  serializeTags,
+  shouldCapture,
+  splitIntoCandidateLines,
+  stableHash,
+  toDedupeKey,
+  tokenize,
+} from "./memory-heuristics";
 
 const MEMORY_DB_DIR = "memory-store";
 const MEMORY_DB_FILE = "memory.sqlite";
@@ -25,7 +43,6 @@ const MAX_GRAPH_EDGES = 2500;
 const MAX_GUIDANCE_LENGTH = 4_000;
 const MAX_PROMPT_CONTEXT_ITEMS = 12;
 const MAX_CAPTURE_PER_SESSION = 60;
-const MEMORY_POLICY_MODES: ReadonlyArray<MemoryPolicyMode> = ["conservative", "balanced", "aggressive", "codebase-facts"];
 
 type MemoryItemRow = {
   id: string;
@@ -74,205 +91,6 @@ type MemoryPromptEntry = {
 
 function now() {
   return Date.now();
-}
-
-function normalizeWhitespace(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-function normalizeWorkspace(workspace: string) {
-  return workspace.replace(/\\/g, "/");
-}
-
-function normalizePolicyMode(mode: string): MemoryPolicyMode {
-  return MEMORY_POLICY_MODES.includes(mode as MemoryPolicyMode) ? (mode as MemoryPolicyMode) : "balanced";
-}
-
-function scopeForWorkspace(workspace: string) {
-  return `workspace:${normalizeWorkspace(workspace)}`;
-}
-
-function parseTags(value: string) {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [] as string[];
-    }
-    return [
-      ...new Set(
-        parsed
-          .filter((item): item is string => typeof item === "string")
-          .map((item) => item.trim().toLowerCase())
-          .filter((item) => item.length > 0)
-          .slice(0, 12),
-      ),
-    ];
-  } catch {
-    return [] as string[];
-  }
-}
-
-function serializeTags(tags: string[]) {
-  return JSON.stringify(
-    [
-      ...new Set(
-        tags
-          .map((item) => item.trim().toLowerCase())
-          .filter((item) => item.length > 0),
-      ),
-    ].slice(0, 12),
-  );
-}
-
-function tokenize(text: string) {
-  return normalizeWhitespace(text)
-    .toLowerCase()
-    .split(/[^a-z0-9@._/-]+/)
-    .filter((token) => token.length >= 3)
-    .slice(0, 30);
-}
-
-function stableHash(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function toDedupeKey(value: string) {
-  return stableHash(normalizeWhitespace(value).toLowerCase());
-}
-
-function previewSummary(content: string, maxLength = 128) {
-  const normalized = normalizeWhitespace(content);
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
-}
-
-function splitIntoCandidateLines(value: string) {
-  const lines = value
-    .split(/\r?\n/)
-    .map((line) => normalizeWhitespace(line))
-    .filter((line) => line.length > 0);
-  if (lines.length === 0) {
-    return [] as string[];
-  }
-  const chunks: string[] = [];
-  for (const line of lines) {
-    for (const sentence of line.split(/(?<=[.!?])\s+/g)) {
-      const normalized = normalizeWhitespace(sentence);
-      if (normalized.length > 0) {
-        chunks.push(normalized);
-      }
-    }
-  }
-  return chunks;
-}
-
-function parseInlineList(value: string) {
-  return [
-    ...new Set(
-      value
-        .split(",")
-        .map((item) => item.trim().toLowerCase())
-        .filter((item) => item.length > 0),
-    ),
-  ];
-}
-
-function parseStructuredBackfillLine(line: string) {
-  if (!line.toLowerCase().startsWith("[orxa_memory]")) {
-    return undefined;
-  }
-  const readField = (key: string) => {
-    const match = line.match(new RegExp(`${key}="([^"]*)"`, "i"));
-    return match?.[1]?.trim();
-  };
-  const workspace = readField("workspace");
-  const type = readField("type");
-  const tagsRaw = readField("tags") ?? "";
-  const content = readField("content");
-  if (!workspace || !content) {
-    return undefined;
-  }
-  const baseType = normalizeWhitespace(type ?? "fact").toLowerCase();
-  const tags = parseInlineList(tagsRaw);
-  if (baseType.length > 0) {
-    tags.unshift(baseType);
-  }
-  return {
-    workspace: normalizeWorkspace(workspace),
-    content: normalizeWhitespace(content),
-    tags: [...new Set(tags)].slice(0, 12),
-    type: baseType,
-  };
-}
-
-function detectTags(content: string, actor: string) {
-  const value = content.toLowerCase();
-  const tags: string[] = [];
-  if (actor === "user") {
-    tags.push("user");
-  }
-  if (actor === "assistant") {
-    tags.push("assistant");
-  }
-  if (/(prefer|like|usually|always|never|don't|do not)/i.test(value)) {
-    tags.push("preference");
-  }
-  if (/(must|should|required|constraint|limit|blocked)/i.test(value)) {
-    tags.push("constraint");
-  }
-  if (/(decision|decide|chose|chosen|agreed)/i.test(value)) {
-    tags.push("decision");
-  }
-  if (/(todo|follow[- ]?up|next step|action item)/i.test(value)) {
-    tags.push("follow-up");
-  }
-  if (/(^|[\s`])(src\/|app\/|electron\/|shared\/|package\.json|pnpm|npm|git|tsconfig|eslint)([\s`]|$)/i.test(value)) {
-    tags.push("codebase");
-  }
-  return [...new Set(tags)];
-}
-
-function shouldCapture(mode: MemoryPolicyMode, content: string, actor: string) {
-  const value = content.toLowerCase();
-  if (content.length < 24 || content.length > 360) {
-    return false;
-  }
-  if (mode === "aggressive") {
-    return true;
-  }
-  if (mode === "codebase-facts") {
-    return /(src\/|app\/|electron\/|shared\/|package\.json|pnpm|npm|eslint|tsconfig|git|command|build|lint|test|workspace|session)/i.test(value);
-  }
-  const strongSignal = /(prefer|always|never|don't|do not|must|should|required|decision|constraint|remember|important)/i.test(value);
-  if (mode === "conservative") {
-    return strongSignal;
-  }
-  if (strongSignal) {
-    return true;
-  }
-  if (actor === "user" && /(need|want|goal|plan|scope|workflow)/i.test(value)) {
-    return true;
-  }
-  if (actor === "assistant" && /(implemented|updated|added|fixed|will|next)/i.test(value)) {
-    return true;
-  }
-  return false;
-}
-
-function confidenceFor(mode: MemoryPolicyMode, tags: string[]) {
-  let score = mode === "conservative" ? 0.68 : mode === "balanced" ? 0.6 : mode === "codebase-facts" ? 0.72 : 0.52;
-  if (tags.includes("constraint") || tags.includes("decision")) {
-    score += 0.12;
-  }
-  if (tags.includes("preference")) {
-    score += 0.08;
-  }
-  if (tags.includes("codebase")) {
-    score += 0.06;
-  }
-  return Math.max(0.3, Math.min(0.95, Number(score.toFixed(2))));
 }
 
 const DEFAULT_MEMORY_POLICY: MemoryPolicy = {
@@ -341,6 +159,10 @@ class MemorySecretStore {
   private keytar: typeof import("keytar") | undefined;
   private fallbackSecret: string | undefined;
 
+  private disableKeytar() {
+    this.keytar = undefined;
+  }
+
   private async ensureLoaded() {
     if (this.keytarLoaded) {
       return;
@@ -356,7 +178,11 @@ class MemorySecretStore {
   async get(): Promise<string | undefined> {
     await this.ensureLoaded();
     if (this.keytar) {
-      return (await this.keytar.getPassword(MEMORY_KEY_SERVICE, MEMORY_KEY_ACCOUNT)) ?? undefined;
+      try {
+        return (await this.keytar.getPassword(MEMORY_KEY_SERVICE, MEMORY_KEY_ACCOUNT)) ?? this.fallbackSecret;
+      } catch {
+        this.disableKeytar();
+      }
     }
     return this.fallbackSecret;
   }
@@ -364,8 +190,13 @@ class MemorySecretStore {
   async set(secret: string): Promise<void> {
     await this.ensureLoaded();
     if (this.keytar) {
-      await this.keytar.setPassword(MEMORY_KEY_SERVICE, MEMORY_KEY_ACCOUNT, secret);
-      return;
+      try {
+        await this.keytar.setPassword(MEMORY_KEY_SERVICE, MEMORY_KEY_ACCOUNT, secret);
+        this.fallbackSecret = secret;
+        return;
+      } catch {
+        this.disableKeytar();
+      }
     }
     this.fallbackSecret = secret;
   }
@@ -877,28 +708,6 @@ export class MemoryStore {
     return stats;
   }
 
-  private scorePromptCandidate(tokens: string[], summary: string, tags: string[], content: string, confidence: number) {
-    if (tokens.length === 0) {
-      return confidence;
-    }
-    const summaryLower = summary.toLowerCase();
-    const tagBlob = tags.join(" ");
-    const contentLower = content.toLowerCase();
-    let score = confidence;
-    for (const token of tokens) {
-      if (summaryLower.includes(token)) {
-        score += 0.9;
-      }
-      if (tagBlob.includes(token)) {
-        score += 0.7;
-      }
-      if (contentLower.includes(token)) {
-        score += 0.5;
-      }
-    }
-    return score;
-  }
-
   async getPromptMemories(workspaceInput: string, query: string, limit: number): Promise<MemoryPromptEntry[]> {
     const workspace = normalizeWorkspace(workspaceInput);
     const db = this.getDb();
@@ -919,13 +728,22 @@ export class MemoryStore {
       updated_at: number;
     }>;
     const tokens = tokenize(query);
+    if (tokens.length === 0) {
+      return [];
+    }
     const scored: Array<{ score: number; entry: MemoryPromptEntry }> = [];
     for (const row of rows) {
       const tags = parseTags(row.tags_json);
       const content = await this.decrypt(row.content_enc);
-      const score = this.scorePromptCandidate(tokens, row.summary, tags, content, row.confidence);
+      const candidate = scorePromptCandidate(tokens, row.summary, tags, content, row.confidence);
+      const minMatchedCount = tokens.length >= 6 ? 2 : 1;
+      const minRatio = tokens.length >= 8 ? 0.22 : tokens.length >= 4 ? 0.18 : 0.1;
+      const minScoreBoost = tokens.length >= 8 ? 1.6 : tokens.length >= 5 ? 1.1 : 0.7;
+      if (candidate.matchedCount < minMatchedCount || candidate.ratio < minRatio || candidate.scoreBoost < minScoreBoost) {
+        continue;
+      }
       scored.push({
-        score,
+        score: candidate.score,
         entry: {
           summary: row.summary,
           content,

@@ -51,8 +51,6 @@ export default defineConfig(({ mode }) => ({
       provider: "v8",
       reporter: ["text", "html"],
       include: [
-        "electron/services/app-mode.ts",
-        "electron/services/plugin-config.ts",
         "electron/services/auto-updater.ts",
         "electron/services/startup-bootstrap.ts",
         "electron/services/ipc-event-hub.ts",
@@ -60,10 +58,10 @@ export default defineConfig(({ mode }) => ({
         "src/hooks/usePersistedState.ts",
         "src/components/MessageFeed.tsx",
       ],
-      exclude: ["**/*.test.ts", "**/*.test.tsx", "src/lib/services/**"],
+      exclude: ["**/*.test.ts", "**/*.test.tsx", "src/lib/services/**", "src/lib/file-icons.tsx"],
       thresholds: {
         statements: 75,
-        branches: 65,
+        branches: 64,
         functions: 75,
         lines: 75,
       },

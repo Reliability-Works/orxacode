@@ -7,13 +7,33 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
-import { Check, ChevronDown, GitBranch, Plus, Search as SearchIcon, Shield, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
+import { TodoDock } from "./chat/TodoDock";
+import type { TodoItem } from "./chat/TodoDock";
+import { QuestionDock } from "./chat/QuestionDock";
+import type { AgentQuestion } from "./chat/QuestionDock";
+import { PermissionDock } from "./chat/PermissionDock";
+import { PlanDock } from "./chat/PlanDock";
+import { FollowupDock } from "./chat/FollowupDock";
+import { QueuedMessagesDock } from "./chat/QueuedMessagesDock";
+import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
+import type { QueuedMessage } from "./chat/QueuedMessagesDock";
+import type { UnifiedBackgroundAgentSummary } from "../lib/session-presentation";
+import { useDismissibleLayer } from "./composer/useDismissibleLayer";
+import { useComposerResize } from "./composer/useComposerResize";
+import { useAttachmentPreview } from "./composer/useAttachmentPreview";
+
+type AgentOption = {
+  name: string;
+  mode: "primary" | "subagent" | "all";
+  description?: string;
+};
 import { IconButton } from "./IconButton";
 
 type Command = {
@@ -32,6 +52,7 @@ type ComposerPanelProps = {
   slashSelectedIndex: number;
   insertSlashCommand: (name: string) => void;
   handleSlashKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  addComposerAttachments: (attachments: Attachment[]) => void;
   sendPrompt: () => void | Promise<void>;
   abortActiveSession: () => void | Promise<void>;
   isSessionBusy: boolean;
@@ -41,6 +62,13 @@ type ComposerPanelProps = {
   isPlanMode: boolean;
   hasPlanAgent: boolean;
   togglePlanMode: (enabled: boolean) => void;
+  browserModeEnabled: boolean;
+  setBrowserModeEnabled: (enabled: boolean) => void;
+  hideBrowserToggle?: boolean;
+  hidePlanToggle?: boolean;
+  agentOptions: AgentOption[];
+  selectedAgent?: string;
+  onAgentChange: (name: string) => void;
   permissionMode: PermissionMode;
   onPermissionModeChange: (mode: PermissionMode) => void;
   compactionProgress: number;
@@ -57,6 +85,8 @@ type ComposerPanelProps = {
   branchSearchInputRef: RefObject<HTMLInputElement | null>;
   branchQuery: string;
   setBranchQuery: (value: string) => void;
+  branchActionError: string | null;
+  clearBranchActionError: () => void;
   checkoutBranch: (name: string) => void | Promise<void>;
   filteredBranches: string[];
   openBranchCreateModal: () => void | Promise<void>;
@@ -67,11 +97,70 @@ type ComposerPanelProps = {
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
   onLayoutHeightChange?: (height: number) => void;
+  /** When true, always use the compact dropdown model selector instead of the full modal picker.
+   *  When omitted/false, auto-decides: ≤10 models → dropdown, >10 → modal. */
+  simpleModelPicker?: boolean;
+  todoItems?: TodoItem[];
+  todoOpen?: boolean;
+  onTodoToggle?: () => void;
+  backgroundAgents?: UnifiedBackgroundAgentSummary[];
+  selectedBackgroundAgentId?: string | null;
+  onOpenBackgroundAgent?: (id: string) => void;
+  onCloseBackgroundAgent?: () => void;
+  backgroundAgentDetail?: ReactNode;
+  backgroundAgentDetailLoading?: boolean;
+  backgroundAgentDetailError?: string | null;
+  pendingPlan?: {
+    onAccept: () => void;
+    onSubmitChanges: (changes: string) => void;
+    onDismiss: () => void;
+  } | null;
+  pendingQuestion?: {
+    questions: AgentQuestion[];
+    onSubmit: (answers: Record<string, string | string[]>) => void;
+    onReject: () => void;
+  } | null;
+  pendingPermission?: {
+    description: string;
+    filePattern?: string;
+    command?: string[];
+    onDecide: (decision: "allow_once" | "allow_always" | "reject") => void;
+  } | null;
+  followupSuggestions?: string[];
+  onFollowupSelect?: (text: string) => void;
+  onFollowupDismiss?: () => void;
+  queuedMessages?: QueuedMessage[];
+  sendingQueuedId?: string;
+  onQueueMessage?: (text: string) => void;
+  onSendQueuedNow?: (id: string) => void;
+  onEditQueued?: (id: string) => void;
+  onRemoveQueued?: (id: string) => void;
 };
 
 const COMPOSER_MIN_HEIGHT = 96;
 const COMPOSER_MAX_HEIGHT = 360;
 const COMPOSER_DEFAULT_HEIGHT = 118;
+
+const IMAGE_FILENAME_FALLBACK = "pasted-image.png";
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to read pasted image."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read pasted image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function isImageAttachment(attachment: Attachment) {
+  return attachment.mime.startsWith("image/") || attachment.url.startsWith("data:image/") || attachment.url.startsWith("file:");
+}
 
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
@@ -85,6 +174,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     slashSelectedIndex,
     insertSlashCommand,
     handleSlashKeyDown,
+    addComposerAttachments,
     sendPrompt,
     abortActiveSession,
     isSessionBusy,
@@ -94,6 +184,13 @@ export function ComposerPanel(props: ComposerPanelProps) {
     isPlanMode,
     hasPlanAgent,
     togglePlanMode,
+    browserModeEnabled,
+    setBrowserModeEnabled,
+    hideBrowserToggle,
+    hidePlanToggle,
+    agentOptions,
+    selectedAgent,
+    onAgentChange,
     permissionMode,
     onPermissionModeChange,
     compactionProgress,
@@ -110,6 +207,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
     branchSearchInputRef,
     branchQuery,
     setBranchQuery,
+    branchActionError,
+    clearBranchActionError,
     checkoutBranch,
     filteredBranches,
     openBranchCreateModal,
@@ -120,13 +219,44 @@ export function ComposerPanel(props: ComposerPanelProps) {
     setSelectedVariant,
     variantOptions,
     onLayoutHeightChange,
+    simpleModelPicker,
+    todoItems,
+    todoOpen,
+    onTodoToggle,
+    backgroundAgents,
+    selectedBackgroundAgentId,
+    onOpenBackgroundAgent,
+    onCloseBackgroundAgent,
+    backgroundAgentDetail,
+    backgroundAgentDetailLoading,
+    backgroundAgentDetailError,
+    pendingPlan,
+    pendingQuestion,
+    pendingPermission,
+    followupSuggestions,
+    onFollowupSelect,
+    onFollowupDismiss,
+    queuedMessages,
+    sendingQueuedId,
+    onQueueMessage,
+    onSendQueuedNow,
+    onEditQueued,
+    onRemoveQueued,
   } = props;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
-  const [composerHeight, setComposerHeight] = useState(COMPOSER_DEFAULT_HEIGHT);
-  const [composerResizeActive, setComposerResizeActive] = useState(false);
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const useDropdownModels = simpleModelPicker || modelSelectOptions.length <= 10;
+  const agentMenuRef = useRef<HTMLDivElement | null>(null);
+  const { composerHeight, composerResizeActive, startComposerResize } = useComposerResize({
+    minHeight: COMPOSER_MIN_HEIGHT,
+    maxHeight: COMPOSER_MAX_HEIGHT,
+    defaultHeight: COMPOSER_DEFAULT_HEIGHT,
+  });
+  const { previewAttachment, setPreviewAttachment, clearPreviewAttachment } = useAttachmentPreview<Attachment>();
   const permissionMenuRef = useRef<HTMLDivElement | null>(null);
   const composerZoneRef = useRef<HTMLElement | null>(null);
-  const composerResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const clampedCompactionProgress = Math.max(0, Math.min(1, compactionProgress));
   const compactionProgressStyle = useMemo(
     () =>
@@ -135,75 +265,11 @@ export function ComposerPanel(props: ComposerPanelProps) {
       }) as CSSProperties,
     [clampedCompactionProgress],
   );
-  const permissionLabel = permissionMode === "yolo-write" ? "Yolo Mode" : "Default Permissions";
+  const permissionLabel = permissionMode === "yolo-write" ? "yolo mode" : "restricted";
 
-  useEffect(() => {
-    if (!permissionMenuOpen) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (!target) {
-        return;
-      }
-      if (permissionMenuRef.current?.contains(target)) {
-        return;
-      }
-      setPermissionMenuOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      setPermissionMenuOpen(false);
-    };
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [permissionMenuOpen]);
-
-  useEffect(() => {
-    if (!composerResizeActive) {
-      return;
-    }
-    const onPointerMove = (event: MouseEvent) => {
-      const state = composerResizeRef.current;
-      if (!state) {
-        return;
-      }
-      const nextHeight = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, state.startHeight + (state.startY - event.clientY)));
-      setComposerHeight(nextHeight);
-    };
-    const onPointerUp = () => {
-      setComposerResizeActive(false);
-      composerResizeRef.current = null;
-    };
-    window.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "ns-resize";
-    return () => {
-      window.removeEventListener("mousemove", onPointerMove);
-      window.removeEventListener("mouseup", onPointerUp);
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-    };
-  }, [composerResizeActive]);
-
-  const startComposerResize = useCallback((event: ReactMouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    composerResizeRef.current = {
-      startY: event.clientY,
-      startHeight: composerHeight,
-    };
-    setComposerResizeActive(true);
-  }, [composerHeight]);
+  useDismissibleLayer(permissionMenuOpen, permissionMenuRef, () => setPermissionMenuOpen(false));
+  useDismissibleLayer(agentMenuOpen, agentMenuRef, () => setAgentMenuOpen(false));
+  useDismissibleLayer(modelDropdownOpen, modelDropdownRef, () => setModelDropdownOpen(false));
 
   useLayoutEffect(() => {
     if (!onLayoutHeightChange) {
@@ -250,8 +316,102 @@ export function ComposerPanel(props: ComposerPanelProps) {
     };
   }, [onLayoutHeightChange]);
 
+  const handlePaste = useCallback(
+    (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = Array.from(event.clipboardData?.items ?? []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((item): item is File => Boolean(item));
+      if (imageFiles.length === 0) {
+        return;
+      }
+      event.preventDefault();
+      void (async () => {
+        const timestamp = Date.now();
+        const attachments = await Promise.all(
+          imageFiles.map(async (file, index) => {
+            const dataUrl = await fileToDataUrl(file);
+            const filename = file.name?.trim() || `pasted-image-${timestamp}-${index + 1}.png`;
+            return {
+              url: dataUrl,
+              filename: filename || IMAGE_FILENAME_FALLBACK,
+              mime: file.type || "image/png",
+              path: `clipboard://${filename || IMAGE_FILENAME_FALLBACK}`,
+            } satisfies Attachment;
+          }),
+        );
+        addComposerAttachments(attachments);
+      })().catch(() => undefined);
+    },
+    [addComposerAttachments],
+  );
+
   return (
     <section ref={composerZoneRef} className="composer-zone">
+      {queuedMessages && queuedMessages.length > 0 && onSendQueuedNow && onEditQueued && onRemoveQueued ? (
+        <QueuedMessagesDock
+          messages={queuedMessages}
+          sendingId={sendingQueuedId}
+          onSendNow={onSendQueuedNow}
+          onEdit={onEditQueued}
+          onRemove={onRemoveQueued}
+        />
+      ) : null}
+
+      {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
+        <BackgroundAgentsPanel
+          agents={backgroundAgents}
+          selectedAgentId={selectedBackgroundAgentId}
+          onOpenAgent={onOpenBackgroundAgent}
+          onBack={onCloseBackgroundAgent}
+          detailBody={backgroundAgentDetail}
+          detailLoading={backgroundAgentDetailLoading}
+          detailError={backgroundAgentDetailError}
+        />
+      ) : null}
+
+      {todoItems && todoItems.length > 0 && onTodoToggle ? (
+        <TodoDock
+          items={todoItems}
+          open={todoOpen ?? false}
+          onToggle={onTodoToggle}
+        />
+      ) : null}
+
+      {pendingPlan ? (
+        <PlanDock
+          onAccept={pendingPlan.onAccept}
+          onSubmitChanges={pendingPlan.onSubmitChanges}
+          onDismiss={pendingPlan.onDismiss}
+        />
+      ) : null}
+
+      {pendingQuestion ? (
+        <QuestionDock
+          questions={pendingQuestion.questions}
+          onSubmit={pendingQuestion.onSubmit}
+          onReject={pendingQuestion.onReject}
+        />
+      ) : null}
+
+      {pendingPermission ? (
+        <PermissionDock
+          description={pendingPermission.description}
+          filePattern={pendingPermission.filePattern}
+          command={pendingPermission.command}
+          onDecide={pendingPermission.onDecide}
+        />
+      ) : null}
+
+      {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
+        <FollowupDock
+          suggestions={followupSuggestions}
+          onSelect={onFollowupSelect}
+          onDismiss={onFollowupDismiss}
+        />
+      ) : null}
+
       <div className="composer-input-wrap">
         <button
           type="button"
@@ -264,6 +424,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
           value={composer}
           style={{ height: `${composerHeight}px` }}
           onChange={(event) => setComposer(event.target.value)}
+          onPaste={handlePaste}
           onKeyDown={(event) => {
             if (slashMenuOpen && (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab" || event.key === "Escape")) {
               handleSlashKeyDown(event);
@@ -279,7 +440,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 return;
               }
               if (isSessionBusy) {
-                void abortActiveSession();
+                const trimmed = composer.trim();
+                if (trimmed && onQueueMessage) {
+                  onQueueMessage(trimmed);
+                }
               } else if (isSendingPrompt) {
                 return;
               } else {
@@ -290,13 +454,29 @@ export function ComposerPanel(props: ComposerPanelProps) {
         />
         <div className="composer-input-actions">
           <IconButton icon="plus" className="composer-attach-button" label="Add attachment" onClick={() => void pickImageAttachment()} />
-          <IconButton
-            icon={isSessionBusy ? "stop" : "send"}
-            className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}
-            label={isSessionBusy ? "Stop" : "Send prompt"}
-            onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
-            disabled={isSessionBusy ? false : !hasActiveSession}
-          />
+          <div
+            className={`composer-compaction-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
+            title={compactionHint}
+          >
+            <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
+            <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
+          </div>
+          {isSessionBusy ? (
+            <IconButton
+              icon="stop"
+              className="composer-send-button composer-stop-button"
+              label="Stop"
+              onClick={() => void abortActiveSession()}
+            />
+          ) : (
+            <IconButton
+              icon="send"
+              className="composer-send-button"
+              label="Send prompt"
+              onClick={() => void sendPrompt()}
+              disabled={!hasActiveSession}
+            />
+          )}
         </div>
       </div>
 
@@ -322,29 +502,102 @@ export function ComposerPanel(props: ComposerPanelProps) {
       {composerAttachments.length > 0 ? (
         <div className="composer-attachments">
           {composerAttachments.map((attachment) => (
-            <button
-              key={attachment.url}
-              type="button"
-              className="attachment-chip"
-              onClick={() => removeAttachment(attachment.url)}
-              title={`Remove ${attachment.filename}`}
-            >
-              {attachment.filename}
-            </button>
+            <div key={attachment.url} className="attachment-chip-wrap">
+              <button
+                type="button"
+                className="attachment-chip attachment-chip-preview"
+                onClick={() => {
+                  if (isImageAttachment(attachment)) {
+                    setPreviewAttachment(attachment);
+                  }
+                }}
+                title={isImageAttachment(attachment) ? `Preview ${attachment.filename}` : attachment.filename}
+                aria-label={isImageAttachment(attachment) ? `Preview ${attachment.filename}` : attachment.filename}
+              >
+                <img src={attachment.url} alt="" className="attachment-chip-thumb" />
+                <span className="attachment-chip-name">{attachment.filename}</span>
+              </button>
+              <button
+                type="button"
+                className="attachment-chip-remove"
+                onClick={() => removeAttachment(attachment.url)}
+                title={`Remove ${attachment.filename}`}
+                aria-label={`Remove ${attachment.filename}`}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
           ))}
         </div>
       ) : null}
 
       <div className="composer-controls">
-        <label className="agent-mode-toggle plan-toggle-inline">
-          <input
-            type="checkbox"
-            checked={isPlanMode}
+        {agentOptions.length > 0 ? (
+          <div ref={agentMenuRef} className={`composer-agent-wrap ${agentMenuOpen ? "open" : ""}`.trim()}>
+            <button
+              type="button"
+              className="composer-agent-control"
+              title={selectedAgent ? `Agent: ${selectedAgent}` : "Select agent"}
+              onClick={() => setAgentMenuOpen((value) => !value)}
+              aria-expanded={agentMenuOpen}
+              aria-haspopup="menu"
+            >
+              <Bot size={11} aria-hidden="true" />
+              <span className="composer-agent-label">{selectedAgent ?? "agent"}</span>
+              <ChevronDown size={10} aria-hidden="true" />
+            </button>
+            {agentMenuOpen ? (
+              <div className="composer-agent-menu" role="menu" aria-label="Select agent">
+                {agentOptions.map((agent) => (
+                  <button
+                    key={agent.name}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={agent.name === selectedAgent}
+                    className={agent.name === selectedAgent ? "active" : ""}
+                    onClick={() => {
+                      onAgentChange(agent.name);
+                      setAgentMenuOpen(false);
+                    }}
+                  >
+                    <span className="composer-agent-option-main">
+                      <span>{agent.name}</span>
+                      <span className={`composer-agent-mode-badge ${agent.mode}`}>{agent.mode}</span>
+                    </span>
+                    {agent.name === selectedAgent ? <Check size={13} aria-hidden="true" /> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {!hidePlanToggle ? (
+          <button
+            type="button"
+            className={`plan-toggle-inline${isPlanMode ? " is-active" : ""}`}
             disabled={!hasPlanAgent}
-            onChange={(event) => togglePlanMode(event.target.checked)}
-          />
-          Plan mode
-        </label>
+            onClick={() => togglePlanMode(!isPlanMode)}
+            aria-pressed={isPlanMode}
+            title={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+            aria-label={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
+          >
+            <span className="plan-toggle-square" aria-hidden="true" />
+            plan mode
+          </button>
+        ) : null}
+        {!hideBrowserToggle ? (
+          <button
+            type="button"
+            className={`composer-mode-toggle-icon ${browserModeEnabled ? "is-active" : ""}`.trim()}
+            aria-pressed={browserModeEnabled}
+            onClick={() => setBrowserModeEnabled(!browserModeEnabled)}
+            title={browserModeEnabled ? "Browser mode enabled" : "Browser mode disabled"}
+            aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
+          >
+            <Compass size={11} aria-hidden="true" />
+            <span className="composer-mode-toggle-label">browser</span>
+          </button>
+        ) : null}
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
@@ -354,9 +607,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
             aria-expanded={permissionMenuOpen}
             aria-haspopup="menu"
           >
-            {permissionMode === "yolo-write" ? <Zap size={13} aria-hidden="true" /> : <Shield size={13} aria-hidden="true" />}
+            {permissionMode === "yolo-write" ? <Zap size={11} aria-hidden="true" /> : <Shield size={11} aria-hidden="true" />}
             <span className="composer-permission-label">{permissionLabel}</span>
-            <ChevronDown size={13} aria-hidden="true" />
+            <ChevronDown size={10} aria-hidden="true" />
           </button>
           {permissionMenuOpen ? (
             <div className="composer-permission-menu" role="menu" aria-label="Permission mode">
@@ -372,7 +625,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               >
                 <span className="composer-permission-option-main">
                   <Shield size={13} aria-hidden="true" />
-                  <span>Default Permissions</span>
+                  <span>restricted</span>
                 </span>
                 {permissionMode === "ask-write" ? <Check size={13} aria-hidden="true" /> : null}
               </button>
@@ -388,7 +641,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               >
                 <span className="composer-permission-option-main">
                   <Zap size={13} aria-hidden="true" />
-                  <span>Yolo Mode</span>
+                  <span>yolo mode</span>
                 </span>
                 {permissionMode === "yolo-write" ? <Check size={13} aria-hidden="true" /> : null}
               </button>
@@ -406,6 +659,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 const next = !value;
                 if (next) {
                   setBranchQuery("");
+                  clearBranchActionError();
                 }
                 return next;
               });
@@ -413,10 +667,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
             title={branchCurrent || "Branch"}
           >
             <span className="composer-branch-leading">
-              <GitBranch size={14} aria-hidden="true" />
+              <GitBranch size={11} aria-hidden="true" />
               <span className="composer-branch-label">{branchDisplayValue}</span>
             </span>
-            <ChevronDown size={13} aria-hidden="true" />
+            <ChevronDown size={10} aria-hidden="true" />
           </button>
           {branchMenuOpen ? (
             <div className="composer-branch-menu">
@@ -425,7 +679,10 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 <input
                   ref={branchSearchInputRef}
                   value={branchQuery}
-                  onChange={(event) => setBranchQuery(event.target.value)}
+                  onChange={(event) => {
+                    clearBranchActionError();
+                    setBranchQuery(event.target.value);
+                  }}
                   placeholder="Search branches"
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
@@ -436,6 +693,9 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 />
               </div>
               <small>Branches</small>
+              <div className="composer-branch-error-slot">
+                {branchActionError ? <p className="composer-branch-error">{branchActionError}</p> : null}
+              </div>
               <div className="composer-branch-list">
                 {filteredBranches.length === 0 ? (
                   <p>No branches found</p>
@@ -458,27 +718,94 @@ export function ComposerPanel(props: ComposerPanelProps) {
                 onClick={() => void openBranchCreateModal()}
               >
                 <Plus size={14} aria-hidden="true" />
-                Create and checkout new branch...
+                Create new branch
               </button>
             </div>
           ) : null}
         </div>
-        <ModelPicker
-          modelSelectOptions={modelSelectOptions}
-          selectedModel={selectedModel}
-          setSelectedModel={setSelectedModel}
-          selectedVariant={selectedVariant}
-          setSelectedVariant={setSelectedVariant}
-          variantOptions={variantOptions}
-        />
+        {useDropdownModels ? (
+          <div ref={modelDropdownRef} className={`composer-model-dropdown-wrap ${modelDropdownOpen ? "open" : ""}`.trim()}>
+            <button
+              type="button"
+              className="composer-select composer-model-btn"
+              onClick={() => setModelDropdownOpen((v) => !v)}
+              aria-expanded={modelDropdownOpen}
+              aria-haspopup="listbox"
+              title={selectedModel ?? "Select model"}
+            >
+              <span className="composer-model-btn-label">
+                {(() => {
+                  const sel = modelSelectOptions.find((o) => o.key === selectedModel);
+                  return sel ? sel.modelName : modelSelectOptions.length === 0 ? "loading..." : "model";
+                })()}
+              </span>
+              <ChevronDown size={10} aria-hidden="true" />
+            </button>
+            {modelDropdownOpen ? (
+              <div className="composer-model-dropdown-menu" role="listbox" aria-label="Select model">
+                <small>Models</small>
+                <div className="composer-model-dropdown-list">
+                  {modelSelectOptions.length === 0 ? (
+                    <p>No models available</p>
+                  ) : (
+                    modelSelectOptions.map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        role="option"
+                        aria-selected={opt.key === selectedModel}
+                        onClick={() => {
+                          setSelectedModel(opt.key);
+                          setModelDropdownOpen(false);
+                        }}
+                      >
+                        <span className="composer-model-dropdown-item-main">
+                          <span>{opt.modelName}</span>
+                        </span>
+                        {opt.key === selectedModel ? <Check size={13} aria-hidden="true" /> : null}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <ModelPicker
+            modelSelectOptions={modelSelectOptions}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            selectedVariant={selectedVariant}
+            setSelectedVariant={setSelectedVariant}
+            variantOptions={variantOptions}
+          />
+        )}
+        <div style={{ flex: 1 }} aria-hidden="true" />
         <div
           className={`composer-compaction-indicator composer-compaction-indicator-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
           title={compactionHint}
           aria-label={compactionHint}
         >
           <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
+          <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
         </div>
       </div>
+      {previewAttachment ? (
+        <div className="composer-image-preview-overlay" onClick={clearPreviewAttachment}>
+          <section className="composer-image-preview-modal" role="dialog" aria-label="Attachment preview" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="composer-image-preview-close"
+              onClick={clearPreviewAttachment}
+              aria-label="Close attachment preview"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+            <img src={previewAttachment.url} alt={previewAttachment.filename} />
+            <p>{previewAttachment.filename}</p>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -629,4 +956,6 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
   );
 }
 
-export type { Command, ComposerPanelProps };
+export type { AgentOption, Command, ComposerPanelProps };
+export type { TodoItem } from "./chat/TodoDock";
+export type { AgentQuestion, QuestionOption } from "./chat/QuestionDock";

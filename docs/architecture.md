@@ -1,46 +1,72 @@
 # Architecture
 
-Opencode Orxa is an Electron app with a strict process split.
+Orxa Code is an Electron app with strict process separation between main, preload, and renderer. It orchestrates three independent AI backend services and presents a unified UI.
 
-```mermaid
-flowchart LR
-    User["User"] --> Renderer["Renderer (React/Vite)"]
-    Renderer -->|"window.orxa bridge"| Preload["Preload (contextBridge + IPC facade)"]
-    Preload -->|"ipcRenderer.invoke / subscribe"| Main["Main Process (Electron)"]
-
-    Main -->|"service orchestration"| OpenCodeSvc["OpencodeService"]
-    Main -->|"profile + mode + update prefs"| Stores["Electron Stores"]
-    Main -->|"runtime control"| Runtime["OpenCode runtime / local server"]
-    Main -->|"auto updates"| Updater["electron-updater"]
-
-    OpenCodeSvc -->|"SDK calls + project/session ops"| Runtime
-    Main -->|"events"| Preload
-    Preload -->|"typed events"| Renderer
+```
+User
+  |
+  v
+Renderer (React/Vite)
+  |  window.orxa bridge
+  v
+Preload (contextBridge + IPC facade)
+  |  ipcRenderer.invoke / subscribe
+  v
+Main Process (Electron)
+  |
+  +---> OpencodeService -----> OpenCode runtime/server
+  +---> CodexService ---------> Codex CLI app-server (JSON-RPC over stdio)
+  +---> Claude Terminal ------> Claude Code CLI (PTY)
+  +---> BrowserController ----> Embedded Chromium (WebContentsView)
+  +---> UsageStatsService ----> ~/.claude JSONL + codex usage cache
+  +---> AutoUpdater ----------> GitHub Releases
+  +---> Stores ---------------> Electron local storage
 ```
 
-## Process boundaries
+## Process Boundaries
 
-- `electron/main.ts`: BrowserWindow lifecycle, IPC handlers, runtime bridge, updater integration.
-- `electron/preload.ts`: safe, typed API surface exposed as `window.orxa`.
-- `src/*`: UI state and rendering only; no direct Node APIs.
+- `electron/main.ts` — BrowserWindow lifecycle, IPC handlers, service orchestration
+- `electron/preload.ts` — typed API surface exposed as `window.orxa`
+- `electron/services/opencode-service.ts` — OpenCode SDK bridge
+- `electron/services/codex-service.ts` — Codex app-server JSON-RPC client
+- `electron/services/usage-stats-service.ts` — Usage data readers for Claude and Codex
+- `electron/services/browser-controller.ts` — In-app browser (tabs, bounds, history, agent actions)
+- `src/*` — React UI, no direct Node APIs
 
-## IPC contract
+## IPC Contract
 
-- Centralized in `shared/ipc.ts`.
-- Renderer only talks through typed channels.
-- High-risk inputs (`sendPrompt`, runtime profile save, config patch) are schema-validated in main.
+Defined in `shared/ipc.ts`:
+- All renderer-main communication goes through typed channels
+- High-risk inputs are validated in main
+- Browser automation IPC is sender-validated and payload-validated per action
 
-## Runtime lifecycle
+## Event Flow
 
-1. App starts, window created.
-2. Main restores mode/profile state and optionally runs Orxa bootstrap.
-3. Renderer boots and hydrates workspace/project/session state through IPC.
-4. Event stream (`orxa:events`) pushes runtime, project, terminal, and updater telemetry updates.
+All three providers emit events through a unified `orxa:events` IPC channel:
 
-## Update lifecycle
+- **OpenCode**: SDK server events (message updates, permissions, questions, todos, session status)
+- **Codex**: App-server notifications (item lifecycle, deltas, approvals, user input, plan updates, thread naming)
+- **Claude**: Terminal output and lifecycle events via PTY
 
-1. Main initializes updater controller (`electron/services/auto-updater.ts`).
-2. Controller loads persisted preferences (`auto check`, `release channel`).
-3. Scheduled or manual checks run via GitHub Releases metadata.
-4. On update available: prompt to download.
-5. On download complete: prompt to restart and install.
+The renderer subscribes once and routes events to the appropriate session hook.
+
+## Provider Services
+
+### OpenCode
+- Full SDK client with session/message/tool APIs
+- Real-time event streaming
+- Permission and question request/reply flow
+- Todo tracking from `todo.updated` events
+
+### Codex
+- Spawns `codex app-server` as child process
+- JSON-RPC 2.0 over stdin/stdout (newline-delimited JSON)
+- Initialize handshake, then model/list and collaborationMode/list
+- Handles: approvals, user input requests, streaming deltas, plan updates, thread naming
+- Module-level session persistence (survives component remounts)
+
+### Claude Code
+- PTY terminal via OpenCode terminal API with `exec` shell replacement
+- Echo clearing: buffers output until CLI starts, then clears terminal
+- Multi-tab and split view support
+- Permission mode stored per workspace in localStorage

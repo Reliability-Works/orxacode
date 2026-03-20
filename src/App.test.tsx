@@ -1,11 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { OrxaAgentDocument } from "@shared/ipc";
+import { setPersistedCodexState } from "./hooks/codex-session-storage";
 import { preferredAgentForMode } from "./lib/app-mode";
 
-const modeGetMock = vi.fn(async () => "orxa");
-const modeSetMock = vi.fn(async (mode: "orxa" | "standard") => mode);
 const checkDependenciesMock = vi.fn(async () => ({
   checkedAt: Date.now(),
   missingAny: false,
@@ -17,13 +15,13 @@ const checkDependenciesMock = vi.fn(async () => ({
       required: true,
       installed: true,
       description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
-      reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+      reason: "Required. Orxa Code depends on the OpenCode server and CLI APIs.",
       installCommand: "npm install -g opencode-ai",
       sourceUrl: "https://github.com/anomalyco/opencode",
     },
     {
       key: "orxa" as const,
-      label: "Opencode Orxa Package",
+      label: "Orxa Code Plugin Package",
       required: false,
       installed: true,
       description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
@@ -37,8 +35,6 @@ const checkDependenciesMock = vi.fn(async () => ({
 beforeEach(() => {
   window.localStorage.clear();
   const subscribe = vi.fn(() => () => undefined);
-  modeGetMock.mockResolvedValue("orxa");
-  modeSetMock.mockImplementation(async (mode: "orxa" | "standard") => mode);
   checkDependenciesMock.mockResolvedValue({
     checkedAt: Date.now(),
     missingAny: false,
@@ -50,13 +46,13 @@ beforeEach(() => {
         required: true,
         installed: true,
         description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
-        reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+        reason: "Required. Orxa Code depends on the OpenCode server and CLI APIs.",
         installCommand: "npm install -g opencode-ai",
         sourceUrl: "https://github.com/anomalyco/opencode",
       },
       {
         key: "orxa",
-        label: "Opencode Orxa Package",
+        label: "Orxa Code Plugin Package",
         required: false,
         installed: true,
         description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
@@ -69,9 +65,11 @@ beforeEach(() => {
 
   Object.defineProperty(window, "orxa", {
     value: {
-      mode: {
-        get: modeGetMock,
-        set: modeSetMock,
+      app: {
+        openExternal: vi.fn(async () => true),
+        openFile: vi.fn(async () => undefined),
+        scanPorts: vi.fn(async () => []),
+        httpRequest: vi.fn(async () => ({ status: 200, headers: {}, body: "", elapsed: 0 })),
       },
       updates: {
         getPreferences: vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" })),
@@ -109,6 +107,18 @@ beforeEach(() => {
           worktree: { name: "feature-test", branch: "feature-test", directory: "/tmp/feature-test" },
           session: { id: "session-2", title: "Worktree: test", slug: "worktree-test", parentID: undefined, sharing: undefined, revert: [], time: { created: Date.now(), updated: Date.now() } },
         })),
+        getSessionRuntime: vi.fn(async (directory: string, sessionID: string) => ({
+          directory,
+          sessionID,
+          session: null,
+          sessionStatus: undefined,
+          permissions: [],
+          questions: [],
+          commands: [],
+          messages: [],
+          executionLedger: { cursor: 0, records: [] },
+          changeProvenance: { cursor: 0, records: [] },
+        })),
         loadMessages: vi.fn(async () => []),
         loadExecutionLedger: vi.fn(async () => ({ cursor: 0, records: [] })),
         clearExecutionLedger: vi.fn(async () => true),
@@ -124,41 +134,18 @@ beforeEach(() => {
         writeRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
         listProviders: vi.fn(async () => ({ all: [], connected: [], default: {} })),
         pickImage: vi.fn(async () => undefined),
-        readOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),
-        writeOrxaConfig: vi.fn(async () => ({ scope: "global", path: "orxa.json", content: "{}" })),
-        readOrxaAgentPrompt: vi.fn(async () => undefined),
-        listOrxaAgents: vi.fn(async (): Promise<OrxaAgentDocument[]> => []),
-        saveOrxaAgent: vi.fn(async () => ({
-          name: "orxa",
-          mode: "primary",
-          path: "orxa.yaml",
-          source: "override",
-        })),
-        getOrxaAgentDetails: vi.fn(async () => ({ history: [] })),
-        resetOrxaAgent: vi.fn(async () => undefined),
-        restoreOrxaAgentHistory: vi.fn(async () => undefined),
         getServerDiagnostics: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
-          plugin: {
-            specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-            configPath: "opencode.jsonc",
-            installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-            configured: false,
-            installed: false,
-          },
         })),
         repairRuntime: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
-          plugin: {
-            specifier: "@reliabilityworks/opencode-orxa@1.0.43",
-            configPath: "opencode.jsonc",
-            installedPath: "node_modules/@reliabilityworks/opencode-orxa",
-            configured: false,
-            installed: false,
-          },
         })),
+        listAgentFiles: vi.fn(async () => []),
+        readAgentFile: vi.fn(async () => ({ filename: "test.md", name: "test", mode: "primary", model: "", content: "", path: "" })),
+        writeAgentFile: vi.fn(async () => true),
+        deleteAgentFile: vi.fn(async () => true),
       },
       terminal: {
         list: vi.fn(async () => []),
@@ -167,6 +154,21 @@ beforeEach(() => {
         write: vi.fn(async () => true),
         resize: vi.fn(async () => true),
         close: vi.fn(async () => true),
+      },
+      browser: {
+        getState: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        setVisible: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        setBounds: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        openTab: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        closeTab: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        switchTab: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        navigate: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        back: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        forward: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        reload: vi.fn(async () => ({ partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] })),
+        listHistory: vi.fn(async () => []),
+        clearHistory: vi.fn(async () => []),
+        performAgentAction: vi.fn(async () => ({ action: "navigate", ok: true, state: { partition: "persist:orxa-browser", bounds: { x: 0, y: 0, width: 0, height: 0 }, tabs: [] } })),
       },
       events: {
         subscribe,
@@ -184,40 +186,275 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Workspaces" })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Profiles" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
   });
 
-  it("chooses preferred agents by mode", () => {
+  it("shows preloaded sessions in the workspace list without selecting the workspace", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    expect(selectProjectMock).toHaveBeenCalledWith("/repo/marketing-websites");
+  });
+
+  it("prefers the busy spinner over unread for inactive Codex sessions that are still streaming", async () => {
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ "/repo/marketing-websites::session-1": "codex" }),
+    );
+    window.localStorage.setItem(
+      "orxa:sessionReadTimestamps:v1",
+      JSON.stringify({ "/repo/marketing-websites::session-1": 1 }),
+    );
+    setPersistedCodexState("/repo/marketing-websites::session-1", {
+      messages: [],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: true,
+      messageIdCounter: 0,
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: 10 },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    expect(document.querySelector(".session-status-indicator.busy")).toBeInTheDocument();
+    expect(document.querySelector(".session-status-indicator.unread")).toBeNull();
+  });
+
+  it("keeps inactive Codex sessions polling in the background", async () => {
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ "/repo/marketing-websites::session-1": "codex" }),
+    );
+    setPersistedCodexState("/repo/marketing-websites::session-1", {
+      messages: [],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: true,
+      messageIdCounter: 0,
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const getThreadRuntimeMock = vi.fn(async (threadId: string) => ({
+      thread: {
+        id: threadId,
+        preview: "Create a booking site",
+        modelProvider: "openai",
+        createdAt: Date.now(),
+        status: { type: "inProgress" as const },
+      },
+      childThreads: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        codex: {
+          getThreadRuntime: getThreadRuntimeMock,
+        },
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getThreadRuntimeMock).toHaveBeenCalledWith("thr-1");
+    });
+  });
+
+  it("removes an archived session from the sidebar instead of falling back to New session", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const activeSession = {
+      id: "session-1",
+      slug: "booking-site",
+      title: "Build Spa Booking Site",
+      time: { created: Date.now(), updated: Date.now() },
+    };
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [activeSession],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const refreshProjectMock = vi.fn(async () => ({
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const archiveSessionMock = vi.fn(async () => ({ ...activeSession, time: { ...activeSession.time, archived: Date.now() } }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          archiveSession: archiveSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    const sessionButton = await screen.findByText("Build Spa Booking Site");
+    fireEvent.contextMenu(sessionButton);
+    fireEvent.click(await screen.findByText("Archive Session"));
+
+    await waitFor(() => {
+      expect(archiveSessionMock).toHaveBeenCalledWith("/repo/dreamweaver", "session-1");
+      expect(screen.queryByText("Build Spa Booking Site")).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("New session")).not.toBeInTheDocument();
+  });
+
+  it("chooses preferred agents", () => {
     expect(
       preferredAgentForMode({
-        mode: "standard",
-        hasOrxaAgent: true,
         hasPlanAgent: true,
-        serverAgentNames: new Set(["orxa", "plan", "build"]),
-        firstAgentName: "orxa",
+        serverAgentNames: new Set(["plan", "build"]),
+        firstAgentName: "plan",
       }),
     ).toBe("build");
 
     expect(
       preferredAgentForMode({
-        mode: "standard",
-        hasOrxaAgent: false,
         hasPlanAgent: true,
         serverAgentNames: new Set(["plan"]),
         firstAgentName: "plan",
       }),
     ).toBe("plan");
-
-    expect(
-      preferredAgentForMode({
-        mode: "orxa",
-        hasOrxaAgent: true,
-        hasPlanAgent: true,
-        serverAgentNames: new Set(["orxa", "plan"]),
-        firstAgentName: "plan",
-      }),
-    ).toBe("orxa");
   });
 
   it("shows dependency modal when required runtime dependency is missing", async () => {
@@ -232,13 +469,13 @@ describe("App", () => {
           required: true,
           installed: false,
           description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
-          reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+          reason: "Required. Orxa Code depends on the OpenCode server and CLI APIs.",
           installCommand: "npm install -g opencode-ai",
           sourceUrl: "https://github.com/anomalyco/opencode",
         },
         {
           key: "orxa",
-          label: "Opencode Orxa Package",
+          label: "Orxa Code Plugin Package",
           required: false,
           installed: false,
           description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",
@@ -276,13 +513,13 @@ describe("App", () => {
           required: true,
           installed: true,
           description: "Core runtime and CLI backend used by the app for sessions, tools, and streaming.",
-          reason: "Required. Opencode Orxa depends on the OpenCode server and CLI APIs.",
+          reason: "Required. Orxa Code depends on the OpenCode server and CLI APIs.",
           installCommand: "npm install -g opencode-ai",
           sourceUrl: "https://github.com/anomalyco/opencode",
         },
         {
           key: "orxa",
-          label: "Opencode Orxa Package",
+          label: "Orxa Code Plugin Package",
           required: false,
           installed: true,
           description: "Orxa workflows, agents, and plugin assets for the dedicated Orxa mode experience.",

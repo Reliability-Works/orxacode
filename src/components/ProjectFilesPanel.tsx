@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProjectFileDocument, ProjectFileEntry } from "@shared/ipc";
-import { ChevronDown, ChevronRight, FileCode2, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
+import { getFileIcon } from "../lib/file-icons";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-css";
@@ -11,6 +12,11 @@ import "prismjs/components/prism-sql";
 import "prismjs/components/prism-tsx";
 import "prismjs/components/prism-typescript";
 import "prismjs/themes/prism-tomorrow.css";
+
+function FileEntryIcon({ name }: { name: string }) {
+  const { icon, color } = getFileIcon(name);
+  return <span style={{ color, display: "inline-flex", flexShrink: 0 }}>{icon}</span>;
+}
 
 type Props = {
   directory: string;
@@ -30,6 +36,13 @@ type LineSelection = {
   anchorTop: number;
   anchorBottom: number;
   clamped: boolean;
+};
+
+type EditablePreviewState = {
+  content: string;
+  savedContent: string;
+  dirty: boolean;
+  saving: boolean;
 };
 
 function extensionOf(name: string) {
@@ -112,8 +125,11 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
   const [projectFileCountError, setProjectFileCountError] = useState(false);
   const [preview, setPreview] = useState<ProjectFileDocument | null>(null);
   const [selection, setSelection] = useState<LineSelection | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editorState, setEditorState] = useState<EditablePreviewState | null>(null);
   const previewScrollerRef = useRef<HTMLDivElement | null>(null);
   const selectionPopoverRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const nodesByPathRef = useRef<TreeState>({});
   const folderRequestsRef = useRef<Record<string, Promise<ProjectFileEntry[]>>>({});
 
@@ -235,6 +251,8 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
     setSearchLoading(false);
     setPreview(null);
     setSelection(null);
+    setIsEditing(false);
+    setEditorState(null);
     void loadFolder("");
   }, [directory, loadFolder]);
 
@@ -246,13 +264,15 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelection(null);
-        setPreview(null);
+        if (!isEditing) {
+          setPreview(null);
+        }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [preview]);
+  }, [isEditing, preview]);
 
   useEffect(() => {
     if (!searchActive) {
@@ -297,6 +317,13 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
         const doc = await window.orxa.opencode.readProjectFile(directory, entry.relativePath);
         setPreview(doc);
         setSelection(null);
+        setIsEditing(false);
+        setEditorState({
+          content: doc.content ?? "",
+          savedContent: doc.content ?? "",
+          dirty: false,
+          saving: false,
+        });
       } catch (error) {
         onStatus(error instanceof Error ? error.message : String(error));
       }
@@ -368,6 +395,31 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
     });
   }, [preview]);
 
+  useEffect(() => {
+    if (!preview || isEditing) {
+      return;
+    }
+
+    let frameId: number | null = null;
+    const scheduleSelectionCapture = () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        captureSelection();
+      });
+    };
+
+    document.addEventListener("selectionchange", scheduleSelectionCapture);
+    return () => {
+      document.removeEventListener("selectionchange", scheduleSelectionCapture);
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, [captureSelection, isEditing, preview]);
+
   useLayoutEffect(() => {
     if (!selection || selection.clamped) {
       return;
@@ -418,6 +470,52 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
   }, [nodesByPath]);
 
   const effectiveTotalFileCount = projectFileCount ?? totalFileCount;
+  const canEditPreview = Boolean(preview && !preview.binary && !preview.truncated);
+
+  const savePreview = useCallback(async () => {
+    if (!preview || !editorState || editorState.saving || !editorState.dirty) {
+      return;
+    }
+    setEditorState((current) => current ? { ...current, saving: true } : current);
+    try {
+      await window.orxa.app.writeTextFile(preview.path, editorState.content);
+      setPreview((current) => current ? { ...current, content: editorState.content, truncated: false, binary: false } : current);
+      setEditorState({
+        content: editorState.content,
+        savedContent: editorState.content,
+        dirty: false,
+        saving: false,
+      });
+      onStatus(`Saved ${preview.relativePath}`);
+    } catch (error) {
+      setEditorState((current) => current ? { ...current, saving: false } : current);
+      onStatus(error instanceof Error ? error.message : String(error));
+    }
+  }, [editorState, onStatus, preview]);
+
+  const undoPreviewChanges = useCallback(() => {
+    setEditorState((current) => current ? {
+      ...current,
+      content: current.savedContent,
+      dirty: false,
+    } : current);
+    editorRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!preview || !isEditing) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isSave = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s";
+      if (isSave) {
+        event.preventDefault();
+        void savePreview();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isEditing, preview, savePreview]);
 
   const filteredView = useMemo(() => {
     if (!searchActive) {
@@ -529,7 +627,9 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                 {isDir ? (isOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : <span className="file-tree-caret-dot" />}
               </span>
               <span className="file-tree-icon" aria-hidden="true">
-                {isDir ? (isOpen ? <FolderOpen size={14} /> : <Folder size={14} />) : <FileCode2 size={14} />}
+                {isDir
+                  ? (isOpen ? <FolderOpen size={14} /> : <Folder size={14} />)
+                  : <FileEntryIcon name={entry.name} />}
               </span>
               <span className="file-tree-label">{renderLabel(entry.name)}</span>
             </button>
@@ -610,11 +710,46 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                   >
                     <Send size={14} aria-hidden="true" />
                   </button>
+                  {canEditPreview ? (
+                    <button
+                      type="button"
+                      className="file-preview-icon-action"
+                      onClick={() => {
+                        setIsEditing((current) => !current);
+                        setSelection(null);
+                      }}
+                      aria-label={isEditing ? "Preview file" : "Edit file"}
+                      title={isEditing ? "Preview file" : "Edit file"}
+                    >
+                      <FileText size={14} aria-hidden="true" />
+                    </button>
+                  ) : null}
                   <button type="button" className="file-preview-icon-action" onClick={() => setPreview(null)} aria-label="Close preview">
                     <X size={14} aria-hidden="true" />
                   </button>
                 </div>
               </div>
+              {isEditing && editorState ? (
+                <div className="file-preview-edit-actions">
+                  <button
+                    type="button"
+                    className="file-preview-primary-action"
+                    onClick={() => void savePreview()}
+                    disabled={!editorState.dirty || editorState.saving}
+                  >
+                    {editorState.saving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="file-preview-secondary-action"
+                    onClick={undoPreviewChanges}
+                    disabled={!editorState.dirty || editorState.saving}
+                  >
+                    Undo
+                  </button>
+                  <small className="file-preview-shortcut-hint">Cmd/Ctrl+S to save. Native undo/redo works while editing.</small>
+                </div>
+              ) : null}
               {preview.truncated ? <small>Preview truncated</small> : null}
             </header>
             <div
@@ -623,7 +758,22 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
               onMouseUp={captureSelection}
               onScroll={() => setSelection(null)}
             >
-              {preview.binary ? (
+              {isEditing && editorState ? (
+                <textarea
+                  ref={editorRef}
+                  className="file-preview-editor"
+                  value={editorState.content}
+                  onChange={(event) => {
+                    const nextContent = event.target.value;
+                    setEditorState((current) => current ? {
+                      ...current,
+                      content: nextContent,
+                      dirty: nextContent !== current.savedContent,
+                    } : current);
+                  }}
+                  spellCheck={false}
+                />
+              ) : preview.binary ? (
                 <div className="file-preview-line" data-line-number={1}>
                   <span className="file-preview-line-number">1</span>
                   <span className="file-preview-line-code">{preview.content}</span>
@@ -641,7 +791,7 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                 ))
               )}
 
-              {selection ? (
+              {selection && !isEditing ? (
                 <div
                   ref={selectionPopoverRef}
                   className="file-preview-selection-popover"
@@ -681,7 +831,7 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
             </div>
             <footer className="file-preview-footer">
               <FileText size={13} aria-hidden="true" />
-              <span>Select text to add path and line range into chat.</span>
+              <span>{isEditing ? "Edit the file, then save or undo your changes." : "Select text to add path and line range into chat."}</span>
             </footer>
           </div>
         </div>

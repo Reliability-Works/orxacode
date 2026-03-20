@@ -31,3 +31,6 @@ coverage/
 
 # Generated image outputs
 output/imagegen/final/
+
+# Workpack execution state
+.workpack/

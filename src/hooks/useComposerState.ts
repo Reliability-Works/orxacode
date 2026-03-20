@@ -22,6 +22,12 @@ export type ModelPayload = {
   modelID: string;
 };
 
+export type SendPromptInput = {
+  systemAddendum?: string;
+  promptSource?: "user" | "job" | "machine";
+  tools?: Record<string, boolean>;
+};
+
 type UseComposerStateOptions = {
   availableSlashCommands: SlashCommand[];
   refreshMessages: () => Promise<void>;
@@ -38,8 +44,37 @@ type UseComposerStateOptions = {
   onSessionAbortRequested?: (directory: string, sessionID: string) => void;
 };
 
+// Per-workspace composer text cache (survives workspace switches)
+const composerByWorkspace = new Map<string, string>();
+
 export function useComposerState(activeProjectDir: string | null, activeSessionID: string | null, options: UseComposerStateOptions) {
-  const [composer, setComposer] = useState("");
+  const [composer, setComposerRaw] = useState(() => (activeProjectDir ? composerByWorkspace.get(activeProjectDir) ?? "" : ""));
+  const prevProjectDirRef = useRef(activeProjectDir);
+
+  // Sync composer text when switching workspaces
+  useEffect(() => {
+    const prev = prevProjectDirRef.current;
+    if (prev === activeProjectDir) return;
+    // Save current text for the previous workspace (including empty string)
+    if (prev) {
+      composerByWorkspace.set(prev, composer);
+    }
+    // Restore text for the new workspace
+    prevProjectDirRef.current = activeProjectDir;
+    setComposerRaw(activeProjectDir ? composerByWorkspace.get(activeProjectDir) ?? "" : "");
+  }, [activeProjectDir, composer]);
+
+  // Wrapper that also updates the cache
+  const setComposer = useCallback((value: string | ((prev: string) => string)) => {
+    setComposerRaw((prev) => {
+      const next = typeof value === "function" ? value(prev) : value;
+      if (activeProjectDir) {
+        composerByWorkspace.set(activeProjectDir, next);
+      }
+      return next;
+    });
+  }, [activeProjectDir]);
+
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
   const [isSendingPrompt, setIsSendingPrompt] = useState(false);
   const sendingPromptRef = useRef(false);
@@ -79,7 +114,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         return open;
       });
     }
-  }, []);
+  }, [setComposer]);
 
   const insertSlashCommand = useCallback((commandName: string) => {
     setComposer((prev) => {
@@ -89,7 +124,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     });
     setSlashMenuOpen(false);
     setSlashQuery("");
-  }, []);
+  }, [setComposer]);
 
   const filteredSlashCommandsRef = useRef(filteredSlashCommands);
   useEffect(() => {
@@ -125,22 +160,38 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     [insertSlashCommand],
   );
 
+  const addComposerAttachments = useCallback((attachments: Attachment[]) => {
+    if (attachments.length === 0) {
+      return;
+    }
+    setComposerAttachments((current) => {
+      const seen = new Set(current.map((item) => item.url));
+      const next: Attachment[] = [];
+      for (const attachment of attachments) {
+        if (!attachment.url || seen.has(attachment.url)) {
+          continue;
+        }
+        seen.add(attachment.url);
+        next.push(attachment);
+      }
+      if (next.length === 0) {
+        return current;
+      }
+      return [...current, ...next];
+    });
+  }, []);
+
   const pickImageAttachment = useCallback(async () => {
     try {
       const selection = await window.orxa.opencode.pickImage();
       if (!selection) {
         return;
       }
-      setComposerAttachments((current) => {
-        if (current.some((item) => item.url === selection.url)) {
-          return current;
-        }
-        return [...current, selection];
-      });
+      addComposerAttachments([selection]);
     } catch (error) {
       options.setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [options]);
+  }, [addComposerAttachments, options]);
 
   const removeAttachment = useCallback((url: string) => {
     setComposerAttachments((current) => current.filter((item) => item.url !== url));
@@ -158,7 +209,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     return { providerID, modelID };
   }, [selectedModel]);
 
-  const sendPrompt = useCallback(async () => {
+  const sendPrompt = useCallback(async (input?: string | SendPromptInput) => {
     if (sendingPromptRef.current) {
       return;
     }
@@ -172,7 +223,15 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
-    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}`;
+    const promptInput: SendPromptInput = typeof input === "string"
+      ? { systemAddendum: input }
+      : input ?? {};
+    const normalizedSystemAddendum = promptInput.systemAddendum?.trim() ?? "";
+    const promptSource = promptInput.promptSource ?? "user";
+    const toolsKey = promptInput.tools
+      ? JSON.stringify(Object.entries(promptInput.tools).sort(([left], [right]) => left.localeCompare(right)))
+      : "";
+    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}:${normalizedSystemAddendum}:${promptSource}:${toolsKey}`;
     if (lastSendRef.current && lastSendRef.current.token === sendToken && Date.now() - lastSendRef.current.at < 6_000) {
       return;
     }
@@ -200,6 +259,9 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         directory: activeProjectDir,
         sessionID: activeSessionID,
         text,
+        system: normalizedSystemAddendum.length > 0 ? normalizedSystemAddendum : undefined,
+        promptSource,
+        tools: promptInput.tools,
         attachments: capturedAttachments.map((attachment) => ({
           url: attachment.url,
           mime: attachment.mime,
@@ -234,6 +296,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     composer,
     composerAttachments,
     options,
+    setComposer,
     selectedVariant,
     selectedModelPayload,
   ]);
@@ -274,6 +337,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     handleComposerChange,
     insertSlashCommand,
     handleSlashKeyDown,
+    addComposerAttachments,
     pickImageAttachment,
     removeAttachment,
     sendPrompt,

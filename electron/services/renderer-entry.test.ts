@@ -4,9 +4,9 @@ import { resolveRendererHtmlPath } from "./renderer-entry";
 
 describe("resolveRendererHtmlPath", () => {
   it("resolves packaged app path to app.asar/dist/index.html", () => {
-    const mainDir = "/Applications/Opencode Orxa.app/Contents/Resources/app.asar/dist-electron";
+    const mainDir = "/Applications/Orxa Code.app/Contents/Resources/app.asar/dist-electron";
     const expected = path.resolve(
-      "/Applications/Opencode Orxa.app/Contents/Resources/app.asar/dist/index.html",
+      "/Applications/Orxa Code.app/Contents/Resources/app.asar/dist/index.html",
     );
 
     expect(resolveRendererHtmlPath(mainDir)).toBe(expected);

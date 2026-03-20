@@ -26,25 +26,27 @@ type Props = {
 };
 
 const TERMINAL_THEME = {
-  background: "#0d1117",
-  foreground: "#d5e3f0",
-  cursor: "#ffffff",
-  black: "#041018",
-  red: "#ff6f91",
-  green: "#70f1b6",
-  yellow: "#ffd97d",
-  blue: "#8ec7ff",
-  magenta: "#d4a5ff",
-  cyan: "#8ce6ff",
-  white: "#e9f1f7",
-  brightBlack: "#4d6478",
-  brightRed: "#ff8fad",
-  brightGreen: "#9bffd4",
-  brightYellow: "#ffe7a8",
-  brightBlue: "#b6dbff",
-  brightMagenta: "#e5c4ff",
-  brightCyan: "#b6f4ff",
-  brightWhite: "#ffffff",
+  background: "#000000",
+  foreground: "#E5E5E5",
+  cursor: "#22C55E",
+  cursorAccent: "#000000",
+  selectionBackground: "#22C55E33",
+  black: "#000000",
+  red: "#EF4444",
+  green: "#22C55E",
+  yellow: "#F59E0B",
+  blue: "#3B82F6",
+  magenta: "#A78BFA",
+  cyan: "#06B6D4",
+  white: "#E5E5E5",
+  brightBlack: "#525252",
+  brightRed: "#F87171",
+  brightGreen: "#4ADE80",
+  brightYellow: "#FBBF24",
+  brightBlue: "#60A5FA",
+  brightMagenta: "#C4B5FD",
+  brightCyan: "#22D3EE",
+  brightWhite: "#FFFFFF",
 };
 
 export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab, onCloseTab, onSwitchTab }: Props) {
@@ -81,24 +83,26 @@ export function TerminalPanel({ directory, tabs, activeTabId, open, onCreateTab,
 
     const cleanups: Array<() => void> = [];
 
+    // Connect first, then subscribe to PTY output AFTER connect resolves
+    // to avoid the connect response (e.g. {"cursor":0}) leaking into the terminal display
     void window.orxa.terminal.connect(directory, activeTabId).then(() => {
       void window.orxa.terminal.resize(directory, activeTabId, terminal.cols, terminal.rows);
+
+      const unsubscribe = window.orxa.events.subscribe((event) => {
+        if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
+          terminal.write(event.payload.chunk);
+        }
+        if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
+          terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
+        }
+      });
+      cleanups.push(unsubscribe);
     });
 
     const disposeInput = terminal.onData((data) => {
       void window.orxa.terminal.write(directory, activeTabId, data);
     });
     cleanups.push(() => disposeInput.dispose());
-
-    const unsubscribe = window.orxa.events.subscribe((event) => {
-      if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
-        terminal.write(event.payload.chunk);
-      }
-      if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
-        terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
-      }
-    });
-    cleanups.push(unsubscribe);
 
     const resizeObs = new ResizeObserver(() => {
       fit.fit();

@@ -1,447 +1,74 @@
-import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { IconButton } from "./IconButton";
+import type { ChangeProvenanceRecord, GitBranchState, McpDevToolsServerState } from "@shared/ipc";
+import { McpStatusIndicator } from "./McpStatusIndicator";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
-import { Plus, Eye, RotateCcw, Minus, List, AlignJustify, Columns2, ChevronDown, ChevronRight, Folder, FileText, Search, X, PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  AlignJustify,
+  ArrowLeft,
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Columns2,
+  Eye,
+  FileText,
+  Folder,
+  List,
+  Minus,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  X,
+} from "lucide-react";
 import type { GitDiffViewMode } from "../hooks/useGitPanel";
+import {
+  inferStatusTag,
+  lineNumber,
+  parseDiffHunks,
+  parseHunkHeader,
+  parseGitDiffOutput,
+  toDiffSections,
+  type GitDiffFile,
+  type ParsedHunk,
+  type ParsedHunkLine,
+} from "../lib/git-diff";
+import { buildFileTree, filterTreeNodes, type FileTreeNode } from "../lib/git-file-tree";
 
 export type BranchState = GitBranchState;
 
-type SidebarPanelTab = "git" | "files";
+type SidebarPanelTab = "git" | "files" | "browser";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
-type GitDiffSection = "unstaged" | "staged";
-type GitFileStatus = "modified" | "added" | "deleted" | "renamed";
 
-type ParsedDiffChunk = {
-  section: GitDiffSection;
-  path: string;
-  oldPath?: string;
-  status: GitFileStatus;
-  added: number;
-  removed: number;
-  lines: string[];
-};
+export type BrowserControlOwner = "agent" | "human";
 
-type GitDiffFile = {
-  key: string;
-  path: string;
-  oldPath?: string;
-  status: GitFileStatus;
-  added: number;
-  removed: number;
-  hasUnstaged: boolean;
-  hasStaged: boolean;
-  diffLines: string[];
-  unstagedDiffLines?: string[];
-  stagedDiffLines?: string[];
-};
-
-type GitDiffViewSection = {
-  key: string;
-  label: string;
-  data: {
-    oldFile: { fileName: string; content?: string };
-    newFile: { fileName: string; content?: string };
-    hunks: string[];
-  };
-};
-
-type ParsedHunkLine = {
+export type BrowserTabState = {
   id: string;
-  type: "context" | "add" | "remove";
-  text: string;
-  oldLine: number | null;
-  newLine: number | null;
+  title: string;
+  url: string;
+  isActive: boolean;
 };
 
-type ParsedHunk = {
-  key: string;
-  header: string;
-  lines: ParsedHunkLine[];
+export type BrowserHistoryEntry = {
+  id: string;
+  label: string;
+  url: string;
 };
 
-function mergeDiffLines(existing: string[] | undefined, next: string[]) {
-  if (!existing || existing.length === 0) {
-    return [...next];
-  }
-  if (next.length === 0) {
-    return [...existing];
-  }
-  if (existing[existing.length - 1] === "" || next[0] === "") {
-    return [...existing, ...next];
-  }
-  return [...existing, "", ...next];
-}
-
-function normalizeDiffPath(rawPath: string | undefined, fallback: string) {
-  if (!rawPath) {
-    return fallback;
-  }
-  const value = rawPath.trim().split(/\s+/)[0] ?? fallback;
-  if (value === "/dev/null") {
-    return fallback;
-  }
-  return value.replace(/^[ab]\//, "");
-}
-
-function buildDiffViewData(file: GitDiffFile, hunks: string[]) {
-  const oldHeader = hunks.find((line) => line.startsWith("--- "));
-  const newHeader = hunks.find((line) => line.startsWith("+++ "));
-  const oldFileName = normalizeDiffPath(oldHeader?.slice(4), file.oldPath ?? file.path);
-  const newFileName = normalizeDiffPath(newHeader?.slice(4), file.path);
-
-  return {
-    oldFile: { fileName: oldFileName },
-    newFile: { fileName: newFileName },
-    hunks,
-  };
-}
-
-function statusPriority(status: GitFileStatus) {
-  if (status === "renamed") {
-    return 4;
-  }
-  if (status === "deleted") {
-    return 3;
-  }
-  if (status === "added") {
-    return 2;
-  }
-  return 1;
-}
-
-function inferStatusTag(status: GitFileStatus) {
-  if (status === "added") {
-    return "A";
-  }
-  if (status === "deleted") {
-    return "D";
-  }
-  if (status === "renamed") {
-    return "R";
-  }
-  return "M";
-}
-
-type FileTreeNode = {
-  name: string;
-  fullPath: string;
-  type: "file" | "folder";
-  children: FileTreeNode[];
-  file?: GitDiffFile;
+export type BrowserSidebarState = {
+  modeEnabled: boolean;
+  controlOwner: BrowserControlOwner;
+  tabs: BrowserTabState[];
+  activeTabID: string | null;
+  activeUrl: string;
+  history: BrowserHistoryEntry[];
+  canGoBack: boolean;
+  canGoForward: boolean;
+  isLoading: boolean;
+  actionRunning: boolean;
+  canStop?: boolean;
 };
-
-function buildFileTree(files: GitDiffFile[]): FileTreeNode[] {
-  const root: FileTreeNode[] = [];
-  for (const file of files) {
-    const parts = file.path.split("/");
-    let siblings = root;
-    for (let i = 0; i < parts.length; i++) {
-      const name = parts[i]!;
-      const isFile = i === parts.length - 1;
-      const fullPath = parts.slice(0, i + 1).join("/");
-      let node = siblings.find((n) => n.name === name && n.type === (isFile ? "file" : "folder"));
-      if (!node) {
-        node = { name, fullPath, type: isFile ? "file" : "folder", children: [], file: isFile ? file : undefined };
-        siblings.push(node);
-      }
-      siblings = node.children;
-    }
-  }
-  const sortNodes = (nodes: FileTreeNode[]) => {
-    nodes.sort((a, b) => {
-      if (a.type !== b.type) {
-        return a.type === "folder" ? -1 : 1;
-      }
-      return a.name.localeCompare(b.name);
-    });
-    for (const node of nodes) {
-      sortNodes(node.children);
-    }
-  };
-  sortNodes(root);
-  return root;
-}
-
-function filterTreeNodes(nodes: FileTreeNode[], query: string): FileTreeNode[] {
-  if (!query.trim()) {
-    return nodes;
-  }
-  const lower = query.toLowerCase();
-  const result: FileTreeNode[] = [];
-  for (const node of nodes) {
-    if (node.type === "file") {
-      if (node.name.toLowerCase().includes(lower) || node.fullPath.toLowerCase().includes(lower)) {
-        result.push(node);
-      }
-    } else {
-      const filtered = filterTreeNodes(node.children, query);
-      if (filtered.length > 0) {
-        result.push({ ...node, children: filtered });
-      }
-    }
-  }
-  return result;
-}
-
-function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: string } {
-  if (!output.trim()) {
-    return { files: [], message: "No local changes." };
-  }
-  if (output.startsWith("Loading diff")) {
-    return { files: [], message: "Loading diff..." };
-  }
-  if (output === "No local changes." || output === "Not a git repository.") {
-    return { files: [], message: output };
-  }
-
-  const lines = output.split(/\r?\n/);
-  const chunks: ParsedDiffChunk[] = [];
-  let section: GitDiffSection = "unstaged";
-  let current: ParsedDiffChunk | null = null;
-
-  const flushCurrent = () => {
-    if (current) {
-      chunks.push(current);
-      current = null;
-    }
-  };
-
-  for (const line of lines) {
-    if (line === "## Unstaged") {
-      flushCurrent();
-      section = "unstaged";
-      continue;
-    }
-    if (line === "## Staged") {
-      flushCurrent();
-      section = "staged";
-      continue;
-    }
-    if (line === "## Untracked") {
-      flushCurrent();
-      section = "unstaged";
-      continue;
-    }
-
-    const diffMatch = line.match(/^diff --git a\/(.+) b\/(.+)$/);
-    if (diffMatch) {
-      flushCurrent();
-      current = {
-        section,
-        path: diffMatch[2] ?? diffMatch[1] ?? "",
-        oldPath: undefined,
-        status: "modified",
-        added: 0,
-        removed: 0,
-        lines: [line],
-      };
-      continue;
-    }
-
-    if (!current) {
-      continue;
-    }
-
-    current.lines.push(line);
-
-    if (line.startsWith("new file mode ")) {
-      current.status = "added";
-    } else if (line.startsWith("deleted file mode ")) {
-      current.status = "deleted";
-    } else if (line.startsWith("rename from ")) {
-      current.status = "renamed";
-      current.oldPath = line.replace("rename from ", "").trim();
-    } else if (line.startsWith("rename to ")) {
-      current.status = "renamed";
-      current.path = line.replace("rename to ", "").trim();
-    } else if (line.startsWith("--- /dev/null")) {
-      current.status = "added";
-    } else if (line.startsWith("+++ /dev/null")) {
-      current.status = "deleted";
-    }
-
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      current.added += 1;
-    } else if (line.startsWith("-") && !line.startsWith("---")) {
-      current.removed += 1;
-    }
-  }
-  flushCurrent();
-
-  if (chunks.length === 0) {
-    return { files: [], message: output.trim() };
-  }
-
-  const grouped = new Map<string, GitDiffFile>();
-  for (const chunk of chunks) {
-    const key = chunk.oldPath ? `${chunk.oldPath}->${chunk.path}` : chunk.path;
-    const existing = grouped.get(key);
-    const chunkLines = [...chunk.lines];
-    const nextDiffLines = mergeDiffLines(existing?.diffLines, chunkLines);
-
-    if (!existing) {
-      grouped.set(key, {
-        key,
-        path: chunk.path,
-        oldPath: chunk.oldPath,
-        status: chunk.status,
-        added: chunk.added,
-        removed: chunk.removed,
-        hasUnstaged: chunk.section === "unstaged",
-        hasStaged: chunk.section === "staged",
-        diffLines: nextDiffLines,
-        unstagedDiffLines: chunk.section === "unstaged" ? [...chunkLines] : undefined,
-        stagedDiffLines: chunk.section === "staged" ? [...chunkLines] : undefined,
-      });
-      continue;
-    }
-
-    existing.added += chunk.added;
-    existing.removed += chunk.removed;
-    existing.hasUnstaged = existing.hasUnstaged || chunk.section === "unstaged";
-    existing.hasStaged = existing.hasStaged || chunk.section === "staged";
-    existing.diffLines = nextDiffLines;
-    if (chunk.section === "unstaged") {
-      existing.unstagedDiffLines = mergeDiffLines(existing.unstagedDiffLines, chunkLines);
-    }
-    if (chunk.section === "staged") {
-      existing.stagedDiffLines = mergeDiffLines(existing.stagedDiffLines, chunkLines);
-    }
-
-    if (statusPriority(chunk.status) > statusPriority(existing.status)) {
-      existing.status = chunk.status;
-    }
-    if (!existing.oldPath && chunk.oldPath) {
-      existing.oldPath = chunk.oldPath;
-    }
-    existing.path = chunk.path;
-  }
-
-  const files = Array.from(grouped.values()).sort((left, right) => left.path.localeCompare(right.path));
-  return { files };
-}
-
-function toDiffSections(file: GitDiffFile | null): GitDiffViewSection[] {
-  if (!file) {
-    return [];
-  }
-  const sections: GitDiffViewSection[] = [];
-  if (file.unstagedDiffLines && file.unstagedDiffLines.length > 0) {
-    sections.push({
-      key: `${file.key}:unstaged`,
-      label: "Unstaged",
-      data: buildDiffViewData(file, file.unstagedDiffLines),
-    });
-  }
-  if (file.stagedDiffLines && file.stagedDiffLines.length > 0) {
-    sections.push({
-      key: `${file.key}:staged`,
-      label: "Staged",
-      data: buildDiffViewData(file, file.stagedDiffLines),
-    });
-  }
-  if (sections.length === 0 && file.diffLines.length > 0) {
-    sections.push({
-      key: `${file.key}:diff`,
-      label: "Changes",
-      data: buildDiffViewData(file, file.diffLines),
-    });
-  }
-  return sections;
-}
-
-function parseHunkHeader(line: string) {
-  const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
-  if (!match) {
-    return { oldStart: 0, newStart: 0 };
-  }
-  return {
-    oldStart: Number(match[1] ?? "0"),
-    newStart: Number(match[3] ?? "0"),
-  };
-}
-
-function parseDiffHunks(section: GitDiffViewSection): ParsedHunk[] {
-  const lines = section.data.hunks;
-  const hunks: ParsedHunk[] = [];
-  let current: ParsedHunk | null = null;
-  let oldLine = 0;
-  let newLine = 0;
-
-  const flush = () => {
-    if (current) {
-      hunks.push(current);
-      current = null;
-    }
-  };
-
-  for (const line of lines) {
-    if (line.startsWith("@@ ")) {
-      flush();
-      const start = parseHunkHeader(line);
-      oldLine = start.oldStart;
-      newLine = start.newStart;
-      current = {
-        key: `${section.key}:${hunks.length}`,
-        header: line,
-        lines: [],
-      };
-      continue;
-    }
-
-    if (!current) {
-      continue;
-    }
-
-    if (line.startsWith("+") && !line.startsWith("+++")) {
-      current.lines.push({
-        id: `${current.key}:n${newLine}`,
-        type: "add",
-        text: line.slice(1),
-        oldLine: null,
-        newLine,
-      });
-      newLine += 1;
-      continue;
-    }
-
-    if (line.startsWith("-") && !line.startsWith("---")) {
-      current.lines.push({
-        id: `${current.key}:o${oldLine}`,
-        type: "remove",
-        text: line.slice(1),
-        oldLine,
-        newLine: null,
-      });
-      oldLine += 1;
-      continue;
-    }
-
-    if (line.startsWith(" ")) {
-      current.lines.push({
-        id: `${current.key}:c${oldLine}:${newLine}`,
-        type: "context",
-        text: line.slice(1),
-        oldLine,
-        newLine,
-      });
-      oldLine += 1;
-      newLine += 1;
-      continue;
-    }
-  }
-
-  flush();
-  return hunks;
-}
-
-function lineNumber(value: number | null) {
-  if (value === null) {
-    return "";
-  }
-  return String(value);
-}
 
 export type GitSidebarProps = {
   sidebarPanelTab: SidebarPanelTab;
@@ -467,6 +94,22 @@ export type GitSidebarProps = {
   fileProvenanceByPath?: Record<string, ChangeProvenanceRecord>;
   onAddToChatPath: (filePath: string) => void;
   onStatusChange: (message: string) => void;
+  onCollapse?: () => void;
+  browserState: BrowserSidebarState;
+  onBrowserOpenTab?: () => Promise<void> | void;
+  onBrowserCloseTab?: (tabID: string) => Promise<void> | void;
+  onBrowserNavigate: (url: string) => Promise<void> | void;
+  onBrowserGoBack: () => Promise<void> | void;
+  onBrowserGoForward: () => Promise<void> | void;
+  onBrowserReload: () => Promise<void> | void;
+  onBrowserSelectTab: (tabID: string) => Promise<void> | void;
+  onBrowserSelectHistory: (url: string) => Promise<void> | void;
+  onBrowserReportViewportBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void> | void;
+  onBrowserTakeControl: () => Promise<void> | void;
+  onBrowserHandBack: () => Promise<void> | void;
+  onBrowserStop: () => Promise<void> | void;
+  mcpDevToolsState?: McpDevToolsServerState;
+  browserEnabled?: boolean;
 };
 
 export function GitSidebar(props: GitSidebarProps) {
@@ -491,6 +134,22 @@ export function GitSidebar(props: GitSidebarProps) {
     fileProvenanceByPath,
     onAddToChatPath,
     onStatusChange,
+    onCollapse,
+    browserState,
+    onBrowserOpenTab,
+    onBrowserCloseTab,
+    onBrowserNavigate,
+    onBrowserGoBack,
+    onBrowserGoForward,
+    onBrowserReload,
+    onBrowserSelectTab,
+    onBrowserSelectHistory,
+    onBrowserReportViewportBounds,
+    onBrowserTakeControl,
+    onBrowserHandBack,
+    onBrowserStop,
+    mcpDevToolsState,
+    browserEnabled = true,
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
@@ -502,6 +161,16 @@ export function GitSidebar(props: GitSidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
+  const [browserUrlInput, setBrowserUrlInput] = useState("");
+  const [browserHistoryValue, setBrowserHistoryValue] = useState("");
+
+  // Fall back to git tab if browser is disabled while active
+  useEffect(() => {
+    if (!browserEnabled && sidebarPanelTab === "browser") {
+      setSidebarPanelTab("git");
+    }
+  }, [browserEnabled, sidebarPanelTab, setSidebarPanelTab]);
+  const browserViewportHostRef = useRef<HTMLDivElement | null>(null);
 
   const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {
     const direct = fileProvenanceByPath?.[file.path];
@@ -578,6 +247,71 @@ export function GitSidebar(props: GitSidebarProps) {
       setPendingAction(null);
     }
   };
+
+  const runBrowserAction = (action: () => void | Promise<void>) => {
+    void Promise.resolve(action()).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      onStatusChange(message);
+    });
+  };
+
+  useEffect(() => {
+    setBrowserUrlInput(browserState.activeUrl);
+  }, [browserState.activeUrl]);
+
+  useEffect(() => {
+    setBrowserHistoryValue("");
+  }, [browserState.history, browserState.activeTabID]);
+
+  useLayoutEffect(() => {
+    if (sidebarPanelTab !== "browser") {
+      return;
+    }
+    const host = browserViewportHostRef.current;
+    if (!host) {
+      return;
+    }
+    let frameID: number | null = null;
+    const report = () => {
+      const rect = host.getBoundingClientRect();
+      void onBrowserReportViewportBounds({
+        x: Math.round(rect.left),
+        y: Math.round(rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
+    };
+    const schedule = () => {
+      if (frameID !== null) {
+        window.cancelAnimationFrame(frameID);
+      }
+      frameID = window.requestAnimationFrame(() => {
+        frameID = null;
+        report();
+      });
+    };
+
+    report();
+    window.addEventListener("resize", schedule);
+    window.addEventListener("scroll", schedule, true);
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        schedule();
+      });
+      observer.observe(host);
+    }
+    return () => {
+      if (observer) {
+        observer.disconnect();
+      }
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("scroll", schedule, true);
+      if (frameID !== null) {
+        window.cancelAnimationFrame(frameID);
+      }
+    };
+  }, [onBrowserReportViewportBounds, sidebarPanelTab, browserState.activeTabID, browserState.activeUrl]);
 
   const renderListView = () => (
     <div className="git-list-view">
@@ -657,7 +391,7 @@ export function GitSidebar(props: GitSidebarProps) {
     </div>
   );
 
-  const renderTreeNodes = (nodes: FileTreeNode[], depth = 0): ReactNode[] => {
+  const renderTreeNodes = (nodes: Array<FileTreeNode<GitDiffFile>>, depth = 0): ReactNode[] => {
     return nodes.map((node) => {
       if (node.type === "folder") {
         const isExpanded = expandedFolders[node.fullPath] !== false;
@@ -911,63 +645,313 @@ export function GitSidebar(props: GitSidebarProps) {
     return rows;
   };
 
+  const submitBrowserNavigation = () => {
+    const rawValue = browserUrlInput.trim();
+    if (!rawValue) {
+      return;
+    }
+    const normalized = /^https?:\/\//i.test(rawValue) ? rawValue : `https://${rawValue}`;
+    setBrowserUrlInput(normalized);
+    runBrowserAction(() => onBrowserNavigate(normalized));
+  };
+
+  const renderBrowserPane = () => (
+    <section className="ops-section ops-section-fill browser-pane">
+      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
+        {browserState.tabs.length === 0 ? (
+          <span className="browser-tab-empty">No tabs</span>
+        ) : (
+          browserState.tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={tab.isActive}
+              className={`browser-tab ${tab.isActive ? "active" : ""}`.trim()}
+              onClick={() => runBrowserAction(() => onBrowserSelectTab(tab.id))}
+              title={tab.url || tab.title}
+            >
+              <span className="browser-tab-title">{tab.title || tab.url || "Untitled"}</span>
+              {onBrowserCloseTab ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="browser-tab-close"
+                  aria-label={`Close ${tab.title || tab.url || "tab"}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    runBrowserAction(() => onBrowserCloseTab(tab.id));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      runBrowserAction(() => onBrowserCloseTab(tab.id));
+                    }
+                  }}
+                >
+                  <X size={11} />
+                </span>
+              ) : null}
+            </button>
+          ))
+        )}
+        {onBrowserOpenTab ? (
+          <button
+            type="button"
+            className="browser-tab browser-tab-add"
+            onClick={() => runBrowserAction(onBrowserOpenTab)}
+            title="Open new tab"
+            aria-label="Open new tab"
+          >
+            <Plus size={12} />
+            <span>new tab</span>
+          </button>
+        ) : null}
+      </div>
+
+      <div className="browser-nav-row">
+        <button
+          type="button"
+          className="browser-nav-btn"
+          onClick={() => runBrowserAction(onBrowserGoBack)}
+          disabled={!browserState.canGoBack}
+          aria-label="Back"
+          title="Back"
+        >
+          <ArrowLeft size={14} />
+        </button>
+        <button
+          type="button"
+          className="browser-nav-btn"
+          onClick={() => runBrowserAction(onBrowserGoForward)}
+          disabled={!browserState.canGoForward}
+          aria-label="Forward"
+          title="Forward"
+        >
+          <ArrowRight size={14} />
+        </button>
+        <button
+          type="button"
+          className="browser-nav-btn"
+          onClick={() => runBrowserAction(onBrowserReload)}
+          aria-label="Reload"
+          title={browserState.isLoading ? "Loading..." : "Reload"}
+        >
+          <RefreshCw size={14} className={browserState.isLoading ? "spin" : ""} />
+        </button>
+        <form
+          className="browser-url-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitBrowserNavigation();
+          }}
+        >
+          <input
+            type="text"
+            className="browser-url-input"
+            value={browserUrlInput}
+            placeholder="Enter URL"
+            onChange={(event) => setBrowserUrlInput(event.target.value)}
+            aria-label="Browser URL"
+          />
+          <button type="submit" className="browser-url-go">Go</button>
+        </form>
+      </div>
+
+      <div className="browser-history-row">
+        <select
+          className="browser-history-select"
+          value={browserHistoryValue}
+          onChange={(event) => {
+            const selected = event.target.value;
+            setBrowserHistoryValue(selected);
+            if (selected) {
+              runBrowserAction(() => onBrowserSelectHistory(selected));
+            }
+          }}
+          aria-label="Browser history"
+        >
+          <option value="">History</option>
+          {browserState.history.map((entry) => (
+            <option key={entry.id} value={entry.url}>
+              {entry.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="browser-control-strip">
+        <span className={`browser-owner-chip owner-${browserState.controlOwner}`.trim()}>
+          {browserState.controlOwner === "human" ? "human" : "agent"}
+        </span>
+        {mcpDevToolsState ? <McpStatusIndicator state={mcpDevToolsState} /> : null}
+        <div className="browser-control-actions">
+          <button
+            type="button"
+            className="browser-control-btn"
+            onClick={() => runBrowserAction(browserState.controlOwner === "human" ? onBrowserHandBack : onBrowserTakeControl)}
+          >
+            {browserState.controlOwner === "human" ? "hand back" : "take control"}
+          </button>
+          <button
+            type="button"
+            className="browser-control-btn danger"
+            onClick={() => runBrowserAction(onBrowserStop)}
+            disabled={!(browserState.canStop ?? browserState.actionRunning)}
+          >
+            stop
+          </button>
+        </div>
+      </div>
+
+      {!browserState.modeEnabled ? (
+        <p className="browser-mode-note">browser mode disabled</p>
+      ) : null}
+
+      <div className="browser-viewport-pane">
+        <div ref={browserViewportHostRef} className="browser-viewport-host">
+          <span className="browser-viewport-label">Renderer viewport host</span>
+          <span className="browser-viewport-url">{browserState.activeUrl || "No active URL"}</span>
+        </div>
+      </div>
+    </section>
+  );
+
   return (
     <aside className="sidebar ops-pane">
-      <section className="ops-toolbar ops-tabs">
-        <IconButton
-          icon="git"
-          label="Git"
-          className={`tab-icon ops-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
+      <div className="ops-panel-tabs">
+        <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("git")}
-        />
-        <IconButton
-          icon="files"
-          label="Files"
-          className={`tab-icon ops-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
+          aria-label="Git"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <circle cx="7" cy="6" r="2.2" />
+              <circle cx="17" cy="12" r="2.2" />
+              <circle cx="7" cy="18" r="2.2" />
+              <path d="M8.9 7.3 15 10.7" />
+              <path d="M8.9 16.7 15 13.3" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Git</span>
+        </button>
+        <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
           onClick={() => setSidebarPanelTab("files")}
-        />
-      </section>
+          aria-label="Files"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 18 20H6A2.5 2.5 0 0 1 3.5 17.5z" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Files</span>
+        </button>
+        {browserEnabled ? <button
+          type="button"
+          className={`ops-panel-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
+          onClick={() => setSidebarPanelTab("browser")}
+          aria-label="Browser"
+        >
+          <span className="ops-panel-tab-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18" />
+              <path d="M12 3a15 15 0 0 1 0 18" />
+              <path d="M12 3a15 15 0 0 0 0 18" />
+            </svg>
+          </span>
+          <span className="ops-panel-tab-label">Browser</span>
+        </button> : null}
+        {onCollapse ? (
+          <button
+            type="button"
+            className="ops-panel-collapse"
+            onClick={onCollapse}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelRightClose size={14} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
 
       {sidebarPanelTab === "git" ? (
         <section className="ops-section ops-section-fill">
-          <h3>Git</h3>
-          <div className="ops-icon-row ops-icon-tabs">
-            <IconButton
-              icon="diff"
-              label="Diff"
-              className={gitPanelTab === "diff" ? "active" : ""}
+          <div className="ops-git-sub-tabs">
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "diff" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("diff");
                 void onLoadGitDiff();
               }}
-            />
-            <IconButton
-              icon="log"
-              label="Log"
-              className={gitPanelTab === "log" ? "active" : ""}
+            >
+              Diff
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "log" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("log");
                 void onLoadGitLog();
               }}
-            />
-            <IconButton
-              icon="issues"
-              label="Issues"
-              className={gitPanelTab === "issues" ? "active" : ""}
+            >
+              Log
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "issues" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("issues");
                 void onLoadGitIssues();
               }}
-            />
-            <IconButton
-              icon="pulls"
-              label="Pull requests"
-              className={gitPanelTab === "prs" ? "active" : ""}
+            >
+              Issues
+            </button>
+            <button
+              type="button"
+              className={`ops-git-sub-tab ${gitPanelTab === "prs" ? "active" : ""}`.trim()}
               onClick={() => {
                 setGitPanelTab("prs");
                 void onLoadGitPrs();
               }}
-            />
+            >
+              PRs
+            </button>
+            <div className="ops-git-view-modes">
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
+                aria-label="List view"
+                title="List view"
+                onClick={() => setGitDiffViewMode("list")}
+              >
+                <List size={13} />
+              </button>
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
+                aria-label="Unified view"
+                title="Unified view"
+                onClick={() => setGitDiffViewMode("unified")}
+              >
+                <AlignJustify size={13} />
+              </button>
+              <button
+                type="button"
+                className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
+                aria-label="Split view"
+                title="Split view"
+                onClick={() => setGitDiffViewMode("split")}
+              >
+                <Columns2 size={13} />
+              </button>
+            </div>
           </div>
           {gitPanelTab === "diff" ? (
             <div className="git-files-panel">
@@ -1034,46 +1018,17 @@ export function GitSidebar(props: GitSidebarProps) {
                 <div className={`git-diff-layout git-diff-layout-${gitDiffViewMode}${gitDiffViewMode !== "list" && !showFileTree ? " tree-hidden" : ""}`.trim()}>
                   <div className="git-files-heading">
                     <p className="git-files-count">Files ({parsedDiff.files.length})</p>
-                    <div className="git-diff-mode-toggle" role="group" aria-label="Git diff view mode">
+                    {gitDiffViewMode !== "list" ? (
                       <button
                         type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
-                        aria-label="List view"
-                        title="List view"
-                        onClick={() => setGitDiffViewMode("list")}
+                        className="git-action-icon-btn"
+                        aria-label={showFileTree ? "Hide file tree" : "Show file tree"}
+                        title={showFileTree ? "Hide file tree" : "Show file tree"}
+                        onClick={() => setShowFileTree((v) => !v)}
                       >
-                        <List size={15} />
+                        {showFileTree ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
                       </button>
-                      <button
-                        type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
-                        aria-label="Unified view"
-                        title="Unified view"
-                        onClick={() => setGitDiffViewMode("unified")}
-                      >
-                        <AlignJustify size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
-                        aria-label="Split view"
-                        title="Split view"
-                        onClick={() => setGitDiffViewMode("split")}
-                      >
-                        <Columns2 size={15} />
-                      </button>
-                      {gitDiffViewMode !== "list" ? (
-                        <button
-                          type="button"
-                          className="git-action-icon-btn"
-                          aria-label={showFileTree ? "Hide file tree" : "Show file tree"}
-                          title={showFileTree ? "Hide file tree" : "Show file tree"}
-                          onClick={() => setShowFileTree((v) => !v)}
-                        >
-                          {showFileTree ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
-                        </button>
-                      ) : null}
-                    </div>
+                    ) : null}
                   </div>
 
                   {gitDiffViewMode === "list" ? (
@@ -1199,7 +1154,9 @@ export function GitSidebar(props: GitSidebarProps) {
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
       ) : null}
 
-      {gitDiffViewMode === "list" && listViewFocusFile ? (
+      {sidebarPanelTab === "browser" && browserEnabled ? renderBrowserPane() : null}
+
+      {sidebarPanelTab === "git" && gitDiffViewMode === "list" && listViewFocusFile ? (
         <div className="git-list-diff-overlay">
           <div className="git-diff-file-header">
             <button

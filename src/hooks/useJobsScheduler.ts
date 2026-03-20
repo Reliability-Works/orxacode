@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import type { JobRecord, JobRunRecord, JobTemplate } from "../components/JobsBoard";
+import {
+  BROWSER_MODE_TOOLS_POLICY,
+  mergeModeToolPolicies,
+} from "../lib/browser-tool-guardrails";
 
 const JOBS_KEY = "orxa:jobs:v1";
 const JOB_RUNS_KEY = "orxa:jobRuns:v1";
 
 const DEFAULT_JOB_SCHEDULE: JobRecord["schedule"] = { type: "daily", time: "09:00", days: [1, 2, 3, 4, 5] };
+const JOB_BROWSER_MODE_SYSTEM_ADDENDUM = [
+  "Browser Mode is enabled in Orxa Code.",
+  "To request browser automation, emit exactly one tag per action:",
+  "<orxa_browser_action>{\"id\":\"unique-action-id\",\"action\":\"navigate\",\"args\":{\"url\":\"https://example.com\"}}</orxa_browser_action>",
+  "Supported actions: open_tab, close_tab, switch_tab, navigate, back, forward, reload, click, type, press, scroll, extract_text, exists, visible, wait_for, wait_for_navigation, wait_for_idle, screenshot.",
+  "For dynamic pages prefer robust locators in args.locator (selector/selectors/text/role/name/label/frameSelector/includeShadowDom/exact), plus timeoutMs/maxAttempts where needed.",
+  "Prefer integrated Orxa browser actions over any external/headless browser tool for web tasks.",
+  "Machine results are returned in assistant messages prefixed with [ORXA_BROWSER_RESULT].",
+].join("\n");
 
 const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
   {
@@ -14,6 +27,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Draft weekly release notes from merged PRs and include links.",
     prompt:
       "Draft weekly release notes from merged PRs (include links when available). Scope only the last 7 days and group by feature, fix, and infra.",
+    browserModeEnabled: false,
     icon: "book",
     schedule: { type: "daily", time: "09:00", days: [5] },
   },
@@ -23,6 +37,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Review recent commits and flag likely regressions with severity.",
     prompt:
       "Scan commits from the last 24h and list likely bugs, impact, and minimal fixes. Prioritize risky changes and include file references.",
+    browserModeEnabled: false,
     icon: "bug",
     schedule: { type: "daily", time: "10:00", days: [1, 2, 3, 4, 5] },
   },
@@ -32,6 +47,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Run a lightweight security review and summarize findings.",
     prompt:
       "Perform a focused security scan of recent changes and dependencies. Report exploitable paths, confidence, and remediation steps.",
+    browserModeEnabled: false,
     icon: "shield",
     schedule: { type: "daily", time: "11:00", days: [1, 3, 5] },
   },
@@ -40,6 +56,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     title: "CI failure triage",
     description: "Summarize flaky failures and propose top fixes.",
     prompt: "Summarize CI failures in the last 24h, cluster root causes, and suggest top 3 fixes with owner recommendations.",
+    browserModeEnabled: false,
     icon: "activity",
     schedule: { type: "daily", time: "09:30", days: [1, 2, 3, 4, 5] },
   },
@@ -49,6 +66,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Detect outdated dependencies and safe upgrade paths.",
     prompt:
       "Scan dependencies for security and compatibility drift; propose minimal safe updates and rollout order.",
+    browserModeEnabled: false,
     icon: "package",
     schedule: { type: "interval", intervalMinutes: 1440 },
   },
@@ -58,6 +76,7 @@ const DEFAULT_JOB_TEMPLATES: JobTemplate[] = [
     description: "Summarize recent PR quality trends and risks.",
     prompt:
       "Analyze merged PRs in the last week and summarize quality trends, hotspots, and high-risk areas for next sprint planning.",
+    browserModeEnabled: false,
     icon: "sparkles",
     schedule: { type: "daily", time: "16:00", days: [5] },
   },
@@ -67,6 +86,8 @@ export type JobInput = {
   name: string;
   projectDir: string;
   prompt: string;
+  browserModeEnabled?: boolean;
+  agentMode?: JobRecord["agentMode"];
   schedule: JobRecord["schedule"];
   enabled?: boolean;
 };
@@ -83,6 +104,8 @@ function createDraft(projectDir?: string, template?: JobTemplate): JobRecord {
     name: template?.title ?? "",
     projectDir: projectDir ?? "",
     prompt: template?.prompt ?? "",
+    browserModeEnabled: template?.browserModeEnabled ?? false,
+    agentMode: template?.agentMode ?? "opencode",
     schedule: template?.schedule ?? DEFAULT_JOB_SCHEDULE,
     enabled: true,
     createdAt: now,
@@ -101,6 +124,15 @@ function readStoredList<T>(key: string): T[] {
   } catch {
     return [];
   }
+}
+
+function readStoredJobs() {
+  const parsed = readStoredList<Partial<JobRecord>>(JOBS_KEY);
+  return parsed.map((job) => ({
+    ...job,
+    browserModeEnabled: job.browserModeEnabled === true,
+    agentMode: job.agentMode ?? "opencode",
+  })) as JobRecord[];
 }
 
 function minutesSinceMidnight(timestamp: number) {
@@ -160,7 +192,7 @@ function isJobDueNow(job: JobRecord, now: number) {
 }
 
 export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedulerOptions = {}) {
-  const [jobs, setJobs] = useState<JobRecord[]>(() => readStoredList<JobRecord>(JOBS_KEY));
+  const [jobs, setJobs] = useState<JobRecord[]>(() => readStoredJobs());
   const [jobTemplates, setJobTemplates] = useState<JobTemplate[]>(DEFAULT_JOB_TEMPLATES);
   const [jobEditorOpen, setJobEditorOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<JobRecord | null>(null);
@@ -171,7 +203,7 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
   const runningJobIDsRef = useRef<Set<string>>(new Set());
 
   const loadJobs = useCallback(async () => {
-    setJobs(readStoredList<JobRecord>(JOBS_KEY));
+    setJobs(readStoredJobs());
     setJobRuns(readStoredList<JobRunRecord>(JOB_RUNS_KEY));
   }, []);
 
@@ -192,6 +224,8 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
           name: trimmedName,
           projectDir: trimmedProjectDir,
           prompt: trimmedPrompt,
+          browserModeEnabled: job.browserModeEnabled ?? false,
+          agentMode: job.agentMode ?? "opencode",
           schedule: job.schedule,
           enabled: job.enabled ?? true,
           createdAt: now,
@@ -229,6 +263,8 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
       name: editingJob.name,
       projectDir: editingJob.projectDir,
       prompt: editingJob.prompt,
+      browserModeEnabled: editingJob.browserModeEnabled,
+      agentMode: editingJob.agentMode,
       schedule: editingJob.schedule,
       enabled: editingJob.enabled,
     });
@@ -272,70 +308,111 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
       runningJobIDsRef.current.add(job.id);
       const runID = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       try {
-        const created = await window.orxa.opencode.createSession(job.projectDir, `Job: ${job.name}`);
-        setJobRuns((current) => [
-          {
-            id: runID,
-            jobID: job.id,
-            jobName: job.name,
-            projectDir: job.projectDir,
-            sessionID: created.id,
-            createdAt: Date.now(),
-            status: "running",
-            unread: false,
-          },
-          ...current,
-        ]);
+        const agentMode = job.agentMode ?? "opencode";
 
-        await window.orxa.opencode.sendPrompt({
-          directory: job.projectDir,
-          sessionID: created.id,
-          text: job.prompt,
-        });
+        if (agentMode === "codex" || agentMode === "claude") {
+          // Run via CLI exec mode
+          setJobRuns((current) => [
+            {
+              id: runID,
+              jobID: job.id,
+              jobName: job.name,
+              projectDir: job.projectDir,
+              sessionID: runID,
+              createdAt: Date.now(),
+              status: "running",
+              unread: false,
+            },
+            ...current,
+          ]);
 
-        setJobs((current) =>
-          current.map((item) =>
-            item.id === job.id
-              ? {
-                  ...item,
-                  lastRunAt: Date.now(),
-                  updatedAt: Date.now(),
-                }
-              : item,
-          ),
-        );
-
-        const startedAt = Date.now();
-        let runCompleted = false;
-        while (Date.now() - startedAt < 180_000) {
-          const snapshot = await window.orxa.opencode.refreshProject(job.projectDir);
-          const status = snapshot.sessionStatus[created.id]?.type ?? "idle";
-          if (status === "idle") {
-            runCompleted = true;
-            break;
-          }
-          await new Promise<void>((resolve) => {
-            window.setTimeout(resolve, 1200);
+          const result = await window.orxa.app.runAgentCli({
+            agent: agentMode,
+            prompt: job.prompt,
+            cwd: job.projectDir,
           });
-        }
 
-        if (!runCompleted) {
-          throw new Error("Timed out waiting for job output");
-        }
+          setJobs((current) =>
+            current.map((item) =>
+              item.id === job.id ? { ...item, lastRunAt: Date.now(), updatedAt: Date.now() } : item,
+            ),
+          );
 
-        setJobRuns((current) =>
-          current.map((run) =>
-            run.id === runID
-              ? {
-                  ...run,
-                  status: "completed",
-                  completedAt: Date.now(),
-                  unread: true,
-                }
-              : run,
-          ),
-        );
-        onStatus?.(`Job completed: ${job.name}`);
+          setJobRuns((current) =>
+            current.map((run) =>
+              run.id === runID
+                ? {
+                    ...run,
+                    status: result.ok ? "completed" : "failed",
+                    completedAt: Date.now(),
+                    unread: true,
+                    error: result.ok ? undefined : result.output.slice(0, 500),
+                  }
+                : run,
+            ),
+          );
+          onStatus?.(result.ok ? `Job completed: ${job.name}` : `Job failed: ${job.name}`);
+        } else {
+          // OpenCode path: create session + send prompt
+          const created = await window.orxa.opencode.createSession(job.projectDir, `Job: ${job.name}`);
+          setJobRuns((current) => [
+            {
+              id: runID,
+              jobID: job.id,
+              jobName: job.name,
+              projectDir: job.projectDir,
+              sessionID: created.id,
+              createdAt: Date.now(),
+              status: "running",
+              unread: false,
+            },
+            ...current,
+          ]);
+
+          await window.orxa.opencode.sendPrompt({
+            directory: job.projectDir,
+            sessionID: created.id,
+            text: job.prompt,
+            promptSource: "job",
+            tools: mergeModeToolPolicies(
+              job.browserModeEnabled ? BROWSER_MODE_TOOLS_POLICY : undefined,
+            ),
+            ...(job.browserModeEnabled ? { system: JOB_BROWSER_MODE_SYSTEM_ADDENDUM } : {}),
+          });
+
+          setJobs((current) =>
+            current.map((item) =>
+              item.id === job.id ? { ...item, lastRunAt: Date.now(), updatedAt: Date.now() } : item,
+            ),
+          );
+
+          const startedAt = Date.now();
+          let runCompleted = false;
+          while (Date.now() - startedAt < 180_000) {
+            const snapshot = await window.orxa.opencode.refreshProject(job.projectDir);
+            const status = snapshot.sessionStatus[created.id]?.type ?? "idle";
+            if (status === "idle") {
+              runCompleted = true;
+              break;
+            }
+            await new Promise<void>((resolve) => {
+              window.setTimeout(resolve, 1200);
+            });
+          }
+
+          if (!runCompleted) {
+            throw new Error("Timed out waiting for job output");
+          }
+
+          setJobRuns((current) =>
+            current.map((run) =>
+              run.id === runID
+                ? { ...run, status: "completed", completedAt: Date.now(), unread: true }
+                : run,
+            ),
+          );
+          onStatus?.(`Job completed: ${job.name}`);
+        }
       } catch (error) {
         setJobRuns((current) =>
           current.map((run) =>

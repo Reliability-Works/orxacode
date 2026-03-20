@@ -2,18 +2,17 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 import { MessageFeed } from "./MessageFeed";
 import type { SessionMessageBundle } from "@shared/ipc";
+import { createSessionMessageBundle, createTextPart } from "../test/session-message-bundle-factory";
 
 describe("MessageFeed", () => {
   it("renders persistent timeline rows for completed tool actions", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-actions",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-assistant-actions",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
         parts: [
           {
             id: "tool-read-1",
@@ -31,8 +30,8 @@ describe("MessageFeed", () => {
               time: { start: now, end: now },
             },
           },
-        ] as SessionMessageBundle["parts"],
-      },
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
@@ -42,40 +41,99 @@ describe("MessageFeed", () => {
     expect(screen.queryByText("Why this changed: Main agent via read")).not.toBeInTheDocument();
   });
 
+  it("does not classify completed read tools with file metadata as changed files", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-assistant-read-metadata",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
+        parts: [
+          {
+            id: "tool-read-metadata",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-read-metadata",
+            callID: "call-read-metadata",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/website/app/page.tsx" },
+              output: "",
+              title: "read_file",
+              metadata: {
+                filepath: "/repo/website/app/page.tsx",
+                additions: 120,
+                deletions: 14,
+              },
+              time: { start: now, end: now },
+            },
+          },
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Explored 1 file")).toBeInTheDocument();
+    expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edited website/app/page.tsx")).not.toBeInTheDocument();
+  });
+
+  it("shows live tool cards for active edit tools while a session is streaming", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-assistant-active-edit",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
+        parts: [
+          {
+            id: "tool-edit-1",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-active-edit",
+            callID: "call-edit-1",
+            tool: "apply_patch",
+            state: {
+              status: "running",
+              input: "*** Begin Patch\n*** Update File: src/App.tsx\n@@\n-old\n+new\n*** End Patch\n",
+              output: "",
+              title: "apply_patch",
+              metadata: {},
+              time: { start: now, end: now },
+            },
+          },
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Editing src/App.tsx...")).toBeInTheDocument();
+  });
+
   it("shows assistant text and hides internal metadata/tool payloads", () => {
     const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-user-1",
-          role: "user",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
+      createSessionMessageBundle({
+        id: "msg-user-1",
+        role: "user",
+        sessionID: "session-1",
+        parts: [createTextPart({ id: "part-user-1", sessionID: "session-1", messageID: "msg-user-1", text: "hi" })],
+      }),
+      createSessionMessageBundle({
+        id: "msg-assistant-1",
+        role: "assistant",
+        sessionID: "session-1",
         parts: [
-          {
-            id: "part-user-1",
-            type: "text",
-            sessionID: "session-1",
-            messageID: "msg-user-1",
-            text: "hi",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-      {
-        info: ({
-          id: "msg-assistant-1",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: Date.now(), updated: Date.now() },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
+          createTextPart({
             id: "part-start-1",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-assistant-1",
             text: '{"type":"step-start","id":"prt_1","sessionID":"session-1","messageID":"msg-assistant-1"}',
-          },
+          }),
           {
             id: "part-tool-1",
             type: "tool",
@@ -92,15 +150,14 @@ describe("MessageFeed", () => {
               time: { start: Date.now(), end: Date.now() },
             },
           },
-          {
+          createTextPart({
             id: "part-text-1",
-            type: "text",
             sessionID: "session-1",
             messageID: "msg-assistant-1",
             text: "Hey! How can I help today?",
-          },
-        ] as SessionMessageBundle["parts"],
-      },
+          }),
+        ],
+      }),
     ];
 
     render(<MessageFeed messages={messages} />);
@@ -110,7 +167,248 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/todowrite/i)).not.toBeInTheDocument();
   });
 
-  it("shows a single thinking bubble with collapsible live events when busy", () => {
+  it("hides internal ORXA browser machine-result user prompts", () => {
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-user-machine-result",
+        role: "user",
+        sessionID: "session-1",
+        parts: [
+          createTextPart({
+            id: "part-user-machine-result",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-result",
+            text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
+          }),
+        ],
+      }),
+      createSessionMessageBundle({
+        id: "msg-assistant-visible",
+        role: "assistant",
+        sessionID: "session-1",
+        parts: [
+          createTextPart({
+            id: "part-assistant-visible",
+            sessionID: "session-1",
+            messageID: "msg-assistant-visible",
+            text: "Captured first source. Continuing evidence collection.",
+          }),
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.queryByText(/\[ORXA_BROWSER_RESULT\]/)).not.toBeInTheDocument();
+    expect(screen.getByText("Captured first source. Continuing evidence collection.")).toBeInTheDocument();
+  });
+
+  it("keeps visible user text when a bundle also contains internal machine-result lines", () => {
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-user-mixed",
+        role: "user",
+        sessionID: "session-1",
+        parts: [
+          createTextPart({
+            id: "part-user-visible",
+            sessionID: "session-1",
+            messageID: "msg-user-mixed",
+            text: "Research and summarize top DeFi news from 2026.",
+          }),
+          createTextPart({
+            id: "part-user-internal",
+            sessionID: "session-1",
+            messageID: "msg-user-mixed",
+            text: '[ORXA_BROWSER_RESULT]{"id":"action-1","action":"navigate","ok":true}',
+          }),
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText("Research and summarize top DeFi news from 2026.")).toBeInTheDocument();
+    expect(screen.queryByText(/\[ORXA_BROWSER_RESULT\]/)).not.toBeInTheDocument();
+  });
+
+  it("renders all visible user text parts instead of truncating to the first one", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-multipart",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-line-1",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-multipart",
+            text: "Line one.",
+          },
+          {
+            id: "part-user-line-2",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-multipart",
+            text: "Line two.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText("Line one.")).toBeInTheDocument();
+    expect(screen.getByText("Line two.")).toBeInTheDocument();
+  });
+
+  it("hides ORXA browser action tags from chat text", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-browser-action",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-browser-action",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-browser-action",
+            text: '<orxa_browser_action>{"id":"action-1","action":"navigate","args":{"url":"https://defillama.com"}}</orxa_browser_action>',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/<orxa_browser_action>/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps ORXA screenshot machine-result attachments out of user chat messages", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-machine-screenshot",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-machine-screenshot-text",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-screenshot",
+            text: '[ORXA_BROWSER_RESULT]{"id":"shot-1","action":"screenshot","ok":true}',
+          },
+          {
+            id: "part-user-machine-screenshot-file",
+            type: "file",
+            sessionID: "session-1",
+            messageID: "msg-user-machine-screenshot",
+            mime: "image/png",
+            url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/Attached file:/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ORXA_BROWSER_RESULT/i)).not.toBeInTheDocument();
+  });
+
+  it("hides internal SUPERMEMORY user context lines from chat", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-supermemory",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-supermemory",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-supermemory",
+            text: "[SUPERMEMORY] injected 4 items",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/\[SUPERMEMORY\]/)).not.toBeInTheDocument();
+  });
+
+  it("ignores non-status SUPERMEMORY payload text", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-supermemory-noise",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-user-supermemory-noise",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-supermemory-noise",
+            text: "[SUPERMEMORY] Recent Context: fixed startup config and UI cleanup notes",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText("Applied in-app memory context")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Recent Context:/)).not.toBeInTheDocument();
+  });
+
+  it("hides assistant ORXA memory lines from chat", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-orxa-memory",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-orxa-memory",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-orxa-memory",
+            text:
+              '[ORXA_MEMORY] workspace="/repo-a" type="decision" tags="memory" content="Keep local memory only."\n'
+              + '[ORXA_MEMORY] workspace="/repo-a" type="fact" tags="guardrail" content="External memory tools disabled."',
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/\[ORXA_MEMORY\]/)).not.toBeInTheDocument();
+  });
+
+  it("shows thinking shimmer when busy with no visible parts", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
@@ -141,8 +439,7 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    expect(screen.getByText("Thinking...")).toBeInTheDocument();
-    expect(screen.getByText(/Live events \(1\)/i)).toBeInTheDocument();
+    expect(document.querySelector(".message-thinking")).toBeInTheDocument();
   });
 
   it("cleans up thinking timer when placeholder is turned off", () => {
@@ -179,118 +476,9 @@ describe("MessageFeed", () => {
     }
   });
 
-  it("keeps full live event history instead of truncating to 5 entries", () => {
-    const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-events",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
-            id: "finish-1",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-1",
-            cost: 0,
-            tokens: {
-              input: 1,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 1, write: 0 },
-            },
-          },
-          {
-            id: "finish-2",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-2",
-            cost: 0,
-            tokens: {
-              input: 2,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 2, write: 0 },
-            },
-          },
-          {
-            id: "finish-3",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-3",
-            cost: 0,
-            tokens: {
-              input: 3,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 3, write: 0 },
-            },
-          },
-          {
-            id: "finish-4",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-4",
-            cost: 0,
-            tokens: {
-              input: 4,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 4, write: 0 },
-            },
-          },
-          {
-            id: "finish-5",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-5",
-            cost: 0,
-            tokens: {
-              input: 5,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 5, write: 0 },
-            },
-          },
-          {
-            id: "finish-6",
-            type: "step-finish",
-            sessionID: "session-1",
-            messageID: "msg-assistant-events",
-            reason: "tool-calls",
-            snapshot: "snap-6",
-            cost: 0,
-            tokens: {
-              input: 6,
-              output: 1,
-              reasoning: 0,
-              cache: { read: 6, write: 0 },
-            },
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-    ];
+  // Live events display removed — internal events are now represented by tool cards and shimmer
 
-    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-
-    expect(screen.getByText(/Live events \(6\)/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/Step finished/i).length).toBeGreaterThanOrEqual(6);
-  });
-
-  it("shows delegation bubble when task tool is running", () => {
+  it("shows delegation summary when task tool is running", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -333,11 +521,8 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.getByText(/Delegating .* to @build/i)).toBeInTheDocument();
-    const bubble = screen.getByRole("button", { name: /build/i });
-    expect(bubble).toBeInTheDocument();
-    fireEvent.click(bubble);
-    const dialog = screen.getByRole("dialog", { name: /delegation: build/i });
-    expect(within(dialog).getByText("Build Spencer Solutions site")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /build/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
   it("renders completed task tool as delegation timeline entry", () => {
@@ -381,7 +566,7 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/Ran on - Description/i)).not.toBeInTheDocument();
   });
 
-  it("shows delegated task result output in modal live output", () => {
+  it("shows delegated task result output inline in the timeline disclosure", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -417,14 +602,12 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const dialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
-    const dialog = dialogs[dialogs.length - 1]!;
-    expect(within(dialog).getByText(/Implemented homepage and contact page\./i)).toBeInTheDocument();
+    const summary = screen.getByText(/Delegated Build Spencer Solutions site to @build/i);
+    fireEvent.click(summary.closest("summary")!);
+    expect(screen.getByText(/Implemented homepage and contact page\./i)).toBeInTheDocument();
   });
 
-  it("loads delegated session output using task_id fallback when metadata is missing", async () => {
+  it("does not load delegated session output inside the transcript surface", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => []);
     const currentOrxa = (window as { orxa?: unknown }).orxa as { opencode?: Record<string, unknown> } | undefined;
@@ -469,15 +652,12 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
 
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
     await waitFor(() => {
-      expect(loadMessages).toHaveBeenCalledWith("/repo", "abc123");
+      expect(loadMessages).not.toHaveBeenCalled();
     });
   });
 
-  it("shows patch file +/- summary in delegated session live output", async () => {
+  it("keeps delegated patch transcript loading out of MessageFeed", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => [
       {
@@ -550,19 +730,12 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const dialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
-    const dialog = dialogs[dialogs.length - 1]!;
-
     await waitFor(() => {
-      expect(within(dialog).getByText(/Applied patch package\.json/i)).toBeInTheDocument();
-      expect(within(dialog).getByText("+2")).toHaveClass("message-diff-add");
-      expect(within(dialog).getByText("-1")).toHaveClass("message-diff-del");
+      expect(loadMessages).not.toHaveBeenCalled();
     });
   });
 
-  it("shows delegation bubbles with modal details for sub-agent tasks", () => {
+  it("renders sub-agent delegation as timeline context instead of a transcript bubble", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -605,19 +778,12 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    const bubble = screen.getByRole("button", { name: /reviewer/i });
-    expect(bubble).toBeInTheDocument();
-
-    fireEvent.click(bubble);
-
-    const dialog = screen.getByRole("dialog", { name: /delegation: reviewer/i });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText(/Model: openai\/gpt-5-codex/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Inspect files and implement a fix/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Applied patch/i)).toBeInTheDocument();
+    expect(screen.getByText(/Delegated to reviewer: Fix the bug in renderer state handling/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reviewer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
-  it("groups delegated read/list output into explored summary blocks", async () => {
+  it("leaves delegated subagent transcript loading to the shared background-agent surface", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => [
       {
@@ -719,18 +885,13 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
     await waitFor(() => {
-      expect(screen.getByText("Explored 2 files, 1 list")).toBeInTheDocument();
+      expect(loadMessages).not.toHaveBeenCalled();
     });
-    expect(screen.getByText(/Scanned _template\/src\/app/i)).toBeInTheDocument();
-    expect(screen.getByText(/Read _template\/src\/app\/layout\.tsx/i)).toBeInTheDocument();
-    expect(screen.getByText(/Read _template\/src\/app\/page\.tsx/i)).toBeInTheDocument();
+    expect(screen.getByText(/Delegated Inspect project structure to @build/i)).toBeInTheDocument();
   });
 
-  it("closes delegation modal on backdrop click and on escape", () => {
+  it("keeps delegation details out of the transcript placeholder", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -755,60 +916,11 @@ describe("MessageFeed", () => {
       },
     ];
 
-    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const openedDialogs = within(view.container).getAllByRole("dialog", { name: /delegation: build/i });
-    expect(openedDialogs[openedDialogs.length - 1]).toBeInTheDocument();
-
-    const backdrop = view.container.querySelector(".delegation-modal-overlay");
-    expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
-
-    const reopenedBuildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(reopenedBuildButtons[reopenedBuildButtons.length - 1]!);
-    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
-
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
-  });
-
-  it("keeps delegation modal open on inner click and closes via close button", () => {
-    const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-delegation-inner-click",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
-            id: "subtask-inner-click",
-            type: "subtask",
-            sessionID: "session-1",
-            messageID: "msg-assistant-delegation-inner-click",
-            prompt: "Do work.",
-            description: "Inner click behavior",
-            agent: "build",
-            model: { providerID: "openai", modelID: "gpt-5-codex" },
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-    ];
-    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
-    const dialog = within(view.container).getByRole("dialog", { name: /delegation: build/i });
-    fireEvent.click(dialog);
-    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: /close/i }));
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/thinking/i)).toBeInTheDocument();
+    expect(screen.queryByText("Close behavior test")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
   it("shows in-place activity with current file target from tool calls", () => {
@@ -844,7 +956,8 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
-    expect(screen.getAllByText(/Read src\/App.tsx/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+    expect(screen.getByText("App.tsx")).toBeInTheDocument();
   });
 
   it("does not leak todo content as tool activity target", () => {
@@ -919,7 +1032,8 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
-    expect(screen.getByText(/Edited src\/App.tsx/i)).toBeInTheDocument();
+    expect(screen.getByText("Edited")).toBeInTheDocument();
+    expect(screen.getByText("App.tsx")).toBeInTheDocument();
     expect(screen.getByText(/Command: apply_patch <<'PATCH'/i)).toBeInTheDocument();
     expect(screen.queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
@@ -999,11 +1113,10 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    const createdPrefix = screen.getByText(/Created src\/components\/ui\/sheet\.tsx/i);
-    const createdRow = createdPrefix.closest(".message-timeline-row");
-    expect(createdRow).toBeTruthy();
-    expect(within(createdRow as HTMLElement).getByText("+2")).toHaveClass("message-diff-add");
-    expect(within(createdRow as HTMLElement).getByText("-0")).toHaveClass("message-diff-del");
+    expect(screen.getByText("Changed files")).toBeInTheDocument();
+    expect(screen.getByText("src/components/ui/sheet.tsx")).toBeInTheDocument();
+    expect(screen.getByText("+2")).toHaveClass("diff-block-stat--add");
+    expect(screen.getByText("-0")).toHaveClass("diff-block-stat--del");
     expect(screen.queryByText(/Command: src\/components\/ui\/sheet\.tsx/i)).not.toBeInTheDocument();
   });
 
@@ -1041,7 +1154,7 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
     expect(screen.getByText(/^Failed package\.json$/i)).toBeInTheDocument();
-    expect(screen.getByText(/Error: File not found: \/repo\/package\.json/i)).toBeInTheDocument();
+    expect(screen.getByText(/File not found: \/repo\/package\.json/i)).toBeInTheDocument();
   });
 
   it("does not render a generic ran-command row for non-command read-like titles", () => {
@@ -1224,10 +1337,57 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    const additions = screen.getAllByText("+2");
-    const deletions = screen.getAllByText("-0");
-    expect(additions.some((node) => node.classList.contains("message-diff-add"))).toBe(true);
-    expect(deletions.some((node) => node.classList.contains("message-diff-del"))).toBe(true);
+    expect(screen.getByText("+2")).toHaveClass("diff-block-stat--add");
+    expect(screen.getByText("-0")).toHaveClass("diff-block-stat--del");
+  });
+
+  it("renders opencode edit tools inside the shared changed files cluster", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-changed-files",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-apply-patch-1",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-changed-files",
+            callID: "call-apply-patch-1",
+            tool: "apply_patch",
+            state: {
+              status: "completed",
+              input: {
+                patch: [
+                  "*** Begin Patch",
+                  "*** Update File: /repo/src/app.tsx",
+                  "@@",
+                  "-old",
+                  "+new",
+                  "*** Add File: /repo/src/new.ts",
+                  "+export const created = true;",
+                  "*** End Patch",
+                ].join("\n"),
+              },
+              output: "",
+              title: "apply_patch",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Changed files")).toBeInTheDocument();
+    expect(screen.getByText("src/app.tsx")).toBeInTheDocument();
+    expect(screen.getByText("src/new.ts")).toBeInTheDocument();
   });
 
   it("renders session stop notices with reason text", () => {
@@ -1249,6 +1409,189 @@ describe("MessageFeed", () => {
 
     expect(screen.getByText("Session stopped due to an error")).toBeInTheDocument();
     expect(screen.getByText(/Reason: Permission request rejected by user/i)).toBeInTheDocument();
+  });
+
+  it("shows copy button on user messages and copies visible text", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-user-copy",
+          role: "user",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-text-copy-1",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-copy",
+            text: "Here is the answer.",
+          },
+          {
+            id: "part-text-copy-2",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-user-copy",
+            text: "And a follow-up.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    const copyBtn = screen.getByRole("button", { name: /copy message/i });
+    expect(copyBtn).toBeInTheDocument();
+    expect(copyBtn).toHaveClass("message-copy-btn");
+
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("Here is the answer.\n\nAnd a follow-up.");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /copied/i })).toBeInTheDocument();
+    });
+  });
+
+  it("does not show copy button for assistant messages", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-copy-disabled",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-copy-disabled",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-copy-disabled",
+            text: "Assistant text should not render a copy affordance.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
+  });
+
+  it("shows command output in expandable timeline details", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-run-output",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-run-output",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-run-output",
+            callID: "call-run-output",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { cmd: "pwd" },
+              output: "/Users/callumspencer/Repos/macapp/orxacode",
+              title: "pwd",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText(/^pwd$/i)).toBeInTheDocument();
+    expect(screen.getByText("/Users/callumspencer/Repos/macapp/orxacode")).toBeInTheDocument();
+  });
+
+  it("does not show copy button for timeline-only messages", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-timeline-only",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-read-timeline-only",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-timeline-only",
+            callID: "call-read-timeline-only",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/src/app.tsx" },
+              output: "",
+              title: "read_file",
+              metadata: {},
+              time: { start: now, end: now },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+    expect(screen.queryByRole("button", { name: /copy message/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show copy button on thinking placeholder", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-thinking-copy",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-step-thinking-copy",
+            type: "step-finish",
+            sessionID: "session-1",
+            messageID: "msg-assistant-thinking-copy",
+            reason: "tool-calls",
+            snapshot: "snap-1",
+            cost: 0,
+            tokens: {
+              input: 10,
+              output: 2,
+              reasoning: 0,
+              cache: { read: 4, write: 0 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /copy message/i })).not.toBeInTheDocument();
   });
 
   it("uses mode-aware assistant label", () => {
@@ -1275,5 +1618,90 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} assistantLabel="Assistant" />);
 
     expect(screen.getByText("Assistant")).toBeInTheDocument();
+  });
+
+  it("auto-scrolls to bottom when user is at bottom and new messages arrive", async () => {
+    const now = Date.now();
+    const makeMessage = (id: string, text: string): SessionMessageBundle => ({
+      info: ({
+        id,
+        role: "assistant",
+        sessionID: "session-scroll",
+        time: { created: now, updated: now },
+      } as unknown) as SessionMessageBundle["info"],
+      parts: [
+        {
+          id: `${id}-part`,
+          type: "text",
+          sessionID: "session-scroll",
+          messageID: id,
+          text,
+        },
+      ] as SessionMessageBundle["parts"],
+    });
+
+    const initialMessages = [makeMessage("msg-1", "Hello")];
+    const { rerender } = render(<MessageFeed messages={initialMessages} />);
+
+    const scrollEl = document.querySelector(".messages-scroll") as HTMLElement;
+    expect(scrollEl).toBeTruthy();
+
+    // Simulate user being at the bottom (jsdom starts at scrollTop=0, scrollHeight=0)
+    Object.defineProperty(scrollEl, "scrollHeight", { configurable: true, value: 500 });
+    Object.defineProperty(scrollEl, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollEl, "scrollTop", { configurable: true, writable: true, value: 100 });
+
+    const updatedMessages = [...initialMessages, makeMessage("msg-2", "New message")];
+    rerender(<MessageFeed messages={updatedMessages} />);
+
+    await waitFor(() => {
+      // scrollTop should have been set to scrollHeight (500)
+      expect(scrollEl.scrollTop).toBe(500);
+    });
+  });
+
+  it("does not auto-scroll when user has scrolled up", async () => {
+    const now = Date.now();
+    const makeMessage = (id: string, text: string): SessionMessageBundle => ({
+      info: ({
+        id,
+        role: "assistant",
+        sessionID: "session-scroll-up",
+        time: { created: now, updated: now },
+      } as unknown) as SessionMessageBundle["info"],
+      parts: [
+        {
+          id: `${id}-part`,
+          type: "text",
+          sessionID: "session-scroll-up",
+          messageID: id,
+          text,
+        },
+      ] as SessionMessageBundle["parts"],
+    });
+
+    const initialMessages = [makeMessage("msg-a", "First message")];
+    const { rerender } = render(<MessageFeed messages={initialMessages} />);
+
+    const scrollEl = document.querySelector(".messages-scroll") as HTMLElement;
+    expect(scrollEl).toBeTruthy();
+
+    Object.defineProperty(scrollEl, "scrollHeight", { configurable: true, value: 1000 });
+    Object.defineProperty(scrollEl, "clientHeight", { configurable: true, value: 400 });
+    Object.defineProperty(scrollEl, "scrollTop", { configurable: true, writable: true, value: 0 });
+
+    // Simulate user scrolling up — fire a scroll event so the handler marks isAtBottom as false
+    fireEvent.scroll(scrollEl);
+
+    // Record the scrollTop before the rerender
+    const scrollTopBefore = scrollEl.scrollTop;
+
+    const updatedMessages = [...initialMessages, makeMessage("msg-b", "Another message")];
+    rerender(<MessageFeed messages={updatedMessages} />);
+
+    await waitFor(() => {
+      // scrollTop should NOT have changed because user scrolled up
+      expect(scrollEl.scrollTop).toBe(scrollTopBefore);
+    });
   });
 });

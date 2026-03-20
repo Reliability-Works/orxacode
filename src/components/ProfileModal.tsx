@@ -60,9 +60,9 @@ export function ProfileModal({
     <div className="overlay" role="dialog" aria-modal="true" aria-label="Connection profiles">
       <div className="modal profile-modal">
         <header className="modal-header">
-          <h2>Connection Profiles</h2>
-          <button type="button" onClick={onClose}>
-            Close
+          <h2>profiles</h2>
+          <button type="button" className="modal-close-btn" onClick={onClose}>
+            X
           </button>
         </header>
 
