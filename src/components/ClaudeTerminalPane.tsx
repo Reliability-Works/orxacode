@@ -117,21 +117,15 @@ async function getOrCreateClaudeSession(
   if (pending) {
     return pending;
   }
-  if (!window.orxa?.terminal) {
+  if (!window.orxa?.claudeTerminal) {
     throw new Error("Claude terminal bridge not available");
   }
 
-  const createPromise = window.orxa.terminal
-    .create(directory, directory, "claude code")
+  const createPromise = window.orxa.claudeTerminal
+    .create(directory, mode, cols, rows)
     .then(async (result) => {
-      await window.orxa?.terminal?.connect(directory, result.id);
-      await window.orxa?.terminal?.resize(directory, result.id, cols, rows);
-      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
-      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
-      await window.orxa?.terminal?.write(directory, result.id, `exec ${envPrefix} ${claudeCmd}\n`);
-
       const session: PersistedSession = {
-        processId: result.id,
+        processId: result.processId,
         storageKey,
         directory,
         mode,
@@ -145,8 +139,8 @@ async function getOrCreateClaudeSession(
       if (window.orxa?.events) {
         session.backgroundUnsubscribe = window.orxa.events.subscribe((event) => {
           if (
-            event.type === "pty.output" &&
-            event.payload.ptyID === session.processId &&
+            event.type === "claude-terminal.output" &&
+            event.payload.processId === session.processId &&
             event.payload.directory === directory
           ) {
             const chunk = event.payload.chunk as string;
@@ -154,14 +148,14 @@ async function getOrCreateClaudeSession(
             session.listeners.forEach((listener) => listener({ type: "output", chunk }));
           }
           if (
-            event.type === "pty.closed" &&
-            event.payload.ptyID === session.processId &&
+            event.type === "claude-terminal.closed" &&
+            event.payload.processId === session.processId &&
             event.payload.directory === directory
           ) {
             session.exited = true;
-            session.exitCode = null;
+            session.exitCode = event.payload.exitCode;
             session.listeners.forEach((listener) =>
-              listener({ type: "closed", exitCode: null }),
+              listener({ type: "closed", exitCode: event.payload.exitCode }),
             );
           }
         });
@@ -238,8 +232,8 @@ function ClaudePanelInstance({
     const existing = persistedSessions.get(key);
     if (existing) {
       if (existing.backgroundUnsubscribe) existing.backgroundUnsubscribe();
-      if (!existing.exited && window.orxa?.terminal) {
-        void window.orxa.terminal.close(existing.directory, existing.processId);
+      if (!existing.exited && window.orxa?.claudeTerminal) {
+        void window.orxa.claudeTerminal.close(existing.processId);
       }
       pendingSessionCreates.delete(key);
       persistedSessions.delete(key);
@@ -345,7 +339,7 @@ function ClaudeTerminalInstance({
     const container = containerRef.current;
     if (!container) return;
 
-    if (!window.orxa?.terminal) return;
+    if (!window.orxa?.claudeTerminal) return;
 
     runCleanups();
     if (terminalRef.current) {
@@ -394,7 +388,7 @@ function ClaudeTerminalInstance({
       cleanups.push(() => {
         session.listeners.delete(listener);
       });
-      void window.orxa?.terminal?.resize(directory, session.processId, terminal.cols, terminal.rows);
+      void window.orxa?.claudeTerminal?.resize(session.processId, terminal.cols, terminal.rows);
     });
     cleanups.push(() => {
       detached = true;
@@ -402,8 +396,8 @@ function ClaudeTerminalInstance({
 
     const disposeInput = terminal.onData((data) => {
       const pid = processIdRef.current;
-      if (pid && window.orxa?.terminal) {
-        void window.orxa.terminal.write(directory, pid, data);
+      if (pid && window.orxa?.claudeTerminal) {
+        void window.orxa.claudeTerminal.write(pid, data);
       }
     });
     cleanups.push(() => disposeInput.dispose());
@@ -411,8 +405,8 @@ function ClaudeTerminalInstance({
     const resizeObs = new ResizeObserver(() => {
       fit.fit();
       const pid = processIdRef.current;
-      if (pid && window.orxa?.terminal) {
-        void window.orxa.terminal.resize(directory, pid, terminal.cols, terminal.rows);
+      if (pid && window.orxa?.claudeTerminal) {
+        void window.orxa.claudeTerminal.resize(pid, terminal.cols, terminal.rows);
       }
     });
     resizeObs.observe(container);
@@ -503,7 +497,7 @@ export function ClaudeTerminalPane({
 
   // Detect unavailable on first render when mode is resolved
   useEffect(() => {
-    setUnavailable(permissionMode !== "pending" && !window.orxa?.terminal);
+    setUnavailable(permissionMode !== "pending" && !window.orxa?.claudeTerminal);
     // If a stored mode was loaded (skipping permission modal), mark session as used
     if (permissionMode !== "pending") {
       onFirstInteraction?.();

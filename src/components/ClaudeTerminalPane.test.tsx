@@ -41,11 +41,10 @@ window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
 const mockOnExit = vi.fn();
 
-function buildOrxaTerminal() {
+function buildClaudeTerminal() {
   return {
     list: vi.fn(async () => []),
-    create: vi.fn(async () => ({ id: "pty-claude-1", directory: "/workspace/project" })),
-    connect: vi.fn(async () => ({ ptyID: "pty-claude-1", directory: "/workspace/project", connected: true })),
+    create: vi.fn(async () => ({ processId: "claude-term-1", directory: "/workspace/project" })),
     write: vi.fn(async () => true),
     resize: vi.fn(async () => true),
     close: vi.fn(async () => true),
@@ -77,7 +76,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders permission modal when no stored preference", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -90,7 +89,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders toolbar with claude code label in permission modal state", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -101,7 +100,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("renders workspace directory path in toolbar", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -112,7 +111,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("launches terminal after choosing standard mode", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -128,7 +127,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("launches terminal after choosing full access mode", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -142,7 +141,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("remembers choice when checkbox is checked", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -158,7 +157,7 @@ describe("ClaudeTerminalPane", () => {
     localStorage.setItem("claude-permission-mode:/workspace/project", "full");
 
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -171,7 +170,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("keeps the selected mode for the same session without requiring remember choice", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -187,7 +186,7 @@ describe("ClaudeTerminalPane", () => {
   });
 
   it("shows unavailable message when claude terminal API is not available", () => {
-    // Ensure window.orxa.terminal is absent
+    // Ensure window.orxa.claudeTerminal is absent
     window.orxa = {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
@@ -216,7 +215,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("shows tab bar with initial tab after choosing mode", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -230,7 +229,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("adds a new tab when + button is clicked", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -247,7 +246,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("switches active tab when clicked", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -271,7 +270,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("shows split menu when split button is clicked", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -287,7 +286,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("creates a split view when horizontal split is selected", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -307,7 +306,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("creates a split view when vertical split is selected", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -327,7 +326,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("shows unsplit option when already split", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -346,7 +345,7 @@ describe("ClaudeTerminalPane", () => {
 
   it("removes split when unsplit is selected", () => {
     window.orxa = {
-      terminal: buildOrxaTerminal(),
+      claudeTerminal: buildClaudeTerminal(),
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
@@ -364,5 +363,29 @@ describe("ClaudeTerminalPane", () => {
 
     const panels = document.querySelectorAll(".claude-split-panel");
     expect(panels.length).toBe(1);
+  });
+
+  it("starts Claude via the dedicated claude terminal bridge instead of echoing a shell launch command", () => {
+    const claudeTerminal = buildClaudeTerminal();
+    const genericTerminal = {
+      create: vi.fn(),
+      connect: vi.fn(),
+      write: vi.fn(),
+      resize: vi.fn(),
+      close: vi.fn(),
+    };
+
+    window.orxa = {
+      claudeTerminal,
+      terminal: genericTerminal,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    expect(claudeTerminal.create).toHaveBeenCalledWith("/workspace/project", "standard", expect.any(Number), expect.any(Number));
+    expect(genericTerminal.create).not.toHaveBeenCalled();
+    expect(genericTerminal.write).not.toHaveBeenCalled();
   });
 });
