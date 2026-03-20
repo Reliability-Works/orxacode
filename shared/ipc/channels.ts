@@ -38,6 +38,7 @@ export const IPC = {
   opencodeReadRawConfig: "orxa:opencode:readRawConfig",
   opencodeWriteRawConfig: "orxa:opencode:writeRawConfig",
   opencodeListProviders: "orxa:opencode:listProviders",
+  opencodeListAgents: "orxa:opencode:listAgents",
   opencodePickImage: "orxa:opencode:pickImage",
   opencodeGitDiff: "orxa:opencode:gitDiff",
   opencodeGitStatus: "orxa:opencode:gitStatus",

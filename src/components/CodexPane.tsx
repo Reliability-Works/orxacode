@@ -596,8 +596,8 @@ export function CodexPane({
     [messages, isStreaming],
   );
   const visibleMessages = useMemo(
-    () => (trailingReasoningId ? messages.filter((msg) => msg.id !== trailingReasoningId) : messages),
-    [messages, trailingReasoningId],
+    () => messages.filter((msg) => msg.kind !== "reasoning"),
+    [messages],
   );
   const trailingReasoning = trailingReasoningId
     ? messages.find((msg) => msg.id === trailingReasoningId && msg.kind === "reasoning")

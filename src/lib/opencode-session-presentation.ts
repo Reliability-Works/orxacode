@@ -980,6 +980,9 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       if (isToolStatusActive(status)) {
         const shouldSurfaceActivity =
           label.trim().length > 0 &&
+          kind !== "read" &&
+          kind !== "search" &&
+          kind !== "list" &&
           !/^working(?: on)?/i.test(label) &&
           !/^delegating\b/i.test(label);
         activity = shouldSurfaceActivity

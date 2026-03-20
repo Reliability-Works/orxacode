@@ -135,4 +135,57 @@ describe("TerminalPanel", () => {
     expect(terminalWriteMocks[0]).toBeDefined();
     expect(terminalWriteMocks[0]).not.toHaveBeenCalled();
   });
+
+  it("refits and resizes the active PTY when the panel height changes", async () => {
+    const resizeMock = vi.fn(async () => true);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        terminal: {
+          connect: vi.fn(async () => ({ connected: true })),
+          resize: resizeMock,
+          write: vi.fn(async () => true),
+          close: vi.fn(async () => true),
+        },
+        events: {
+          subscribe: vi.fn(() => vi.fn()),
+        },
+      },
+    });
+
+    const view = render(
+      <TerminalPanel
+        directory="/workspace/project"
+        tabs={[{ id: "tab-1", label: "Tab 1" }]}
+        activeTabId="tab-1"
+        open
+        height={180}
+        onCreateTab={vi.fn(async () => undefined)}
+        onCloseTab={vi.fn(async () => undefined)}
+        onSwitchTab={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(resizeMock).toHaveBeenCalled();
+    });
+
+    const callsBefore = resizeMock.mock.calls.length;
+    view.rerender(
+      <TerminalPanel
+        directory="/workspace/project"
+        tabs={[{ id: "tab-1", label: "Tab 1" }]}
+        activeTabId="tab-1"
+        open
+        height={260}
+        onCreateTab={vi.fn(async () => undefined)}
+        onCloseTab={vi.fn(async () => undefined)}
+        onSwitchTab={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(resizeMock.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
 });

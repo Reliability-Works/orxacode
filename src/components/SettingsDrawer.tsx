@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import type {
   AgentsDocument,
   CodexDoctorResult,
@@ -681,9 +682,9 @@ export function SettingsDrawer({
           <div className="settings-layout">
             <aside className="settings-sidebar-nav">
               <div className="settings-nav-header">
-                <span className="settings-nav-title">settings</span>
-                <button type="button" className="settings-close-button" onClick={onClose}>
-                  X
+                <button type="button" className="settings-back-button" onClick={onClose}>
+                  <ArrowLeft size={14} aria-hidden="true" />
+                  <span>Back to app</span>
                 </button>
               </div>
               <div className="settings-nav-list">

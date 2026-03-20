@@ -22,7 +22,7 @@ describe("useComposerState", () => {
         refreshProject: vi.fn(async () => undefined),
         sessions: [{ id: "session-1", title: "Session 1" }],
         selectedAgent: "build",
-        serverAgentNames: new Set(["build"]),
+        availableAgentNames: new Set(["build"]),
         setStatusLine: vi.fn(),
         shouldAutoRenameSessionTitle: vi.fn(() => false),
         deriveSessionTitleFromPrompt: vi.fn((prompt: string) => prompt),
@@ -39,5 +39,89 @@ describe("useComposerState", () => {
 
     expect(onSessionAbortRequested).toHaveBeenCalledWith("/repo", "session-1");
     expect(abortSessionMock).toHaveBeenCalledWith("/repo", "session-1");
+  });
+
+  it("sends the selected agent when it is available from the picker set", async () => {
+    const sendPromptMock = vi.fn(async () => true);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          sendPrompt: sendPromptMock,
+          renameSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useComposerState("/repo", "session-1", {
+        availableSlashCommands: [],
+        refreshMessages: vi.fn(async () => undefined),
+        refreshProject: vi.fn(async () => undefined),
+        sessions: [{ id: "session-1", title: "Session 1" }],
+        selectedAgent: "builder",
+        availableAgentNames: new Set(["builder"]),
+        setStatusLine: vi.fn(),
+        shouldAutoRenameSessionTitle: vi.fn(() => false),
+        deriveSessionTitleFromPrompt: vi.fn((prompt: string) => prompt),
+        startResponsePolling: vi.fn(),
+        stopResponsePolling: vi.fn(),
+        clearPendingSession: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.setComposer("Ship it");
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt();
+    });
+
+    expect(sendPromptMock).toHaveBeenCalledWith(expect.objectContaining({
+      agent: "builder",
+    }));
+  });
+
+  it("omits the selected agent when it is not in the available picker set", async () => {
+    const sendPromptMock = vi.fn(async () => true);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          sendPrompt: sendPromptMock,
+          renameSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useComposerState("/repo", "session-1", {
+        availableSlashCommands: [],
+        refreshMessages: vi.fn(async () => undefined),
+        refreshProject: vi.fn(async () => undefined),
+        sessions: [{ id: "session-1", title: "Session 1" }],
+        selectedAgent: "builder",
+        availableAgentNames: new Set(["plan", "build"]),
+        setStatusLine: vi.fn(),
+        shouldAutoRenameSessionTitle: vi.fn(() => false),
+        deriveSessionTitleFromPrompt: vi.fn((prompt: string) => prompt),
+        startResponsePolling: vi.fn(),
+        stopResponsePolling: vi.fn(),
+        clearPendingSession: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.setComposer("Ship it");
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt();
+    });
+
+    expect(sendPromptMock).toHaveBeenCalledWith(expect.not.objectContaining({
+      agent: "builder",
+    }));
   });
 });

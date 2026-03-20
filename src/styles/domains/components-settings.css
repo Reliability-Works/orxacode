@@ -314,19 +314,17 @@
 .settings-overlay {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
   z-index: 50;
-  background: #00000099;
+  background: var(--bg-page);
 }
 
 .settings-center {
-  width: 1200px;
-  height: 800px;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 40px);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border);
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  border: none;
   background: var(--bg-surface);
   overflow: hidden;
   display: flex;
@@ -355,7 +353,7 @@
 
 .settings-sidebar-nav {
   border-right: 1px solid var(--border);
-  padding: 20px 0;
+  padding: 52px 0 20px;
   display: flex;
   flex-direction: column;
   background: var(--bg-page);
@@ -367,33 +365,32 @@
 .settings-nav-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0 16px;
   margin-bottom: 12px;
   flex-shrink: 0;
 }
 
-.settings-nav-title {
-  font-size: 13px;
-  font-weight: 500;
+.settings-back-button {
+  border: none;
+  background: transparent;
   color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 13px;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  cursor: pointer;
 }
 
+.settings-back-button:hover {
+  color: var(--text-primary);
+}
+
+.settings-nav-title,
 .settings-close-button {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  font-size: 12px;
-  color: var(--text-tertiary);
-  background: transparent;
-  border: 1px solid transparent;
-  cursor: pointer;
-  flex-shrink: 0;
+  display: none;
 }
 
 .settings-close-button:hover {
@@ -443,17 +440,17 @@
 
 .settings-nav-chevron {
   color: var(--accent-green);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   flex-shrink: 0;
 }
 
 .settings-nav-group-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   padding: 12px 12px 2px;
   line-height: 1;
   user-select: none;
@@ -461,6 +458,12 @@
 
 .settings-nav-group-label:first-child {
   padding-top: 0;
+}
+
+.settings-nav-group-label:not(:first-child) {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .settings-nav-list > button {
@@ -2023,18 +2026,18 @@
 
 @media (max-width: 1280px) {
   .settings-center {
-    width: calc(100vw - 40px);
-    height: calc(100vh - 40px);
+    width: 100vw;
+    height: 100vh;
   }
 }
 
 @media (max-width: 1080px) {
   .settings-center {
-    width: calc(100vw - 20px);
-    height: calc(100vh - 20px);
+    width: 100vw;
+    height: 100vh;
     max-width: none;
     max-height: none;
-    border-radius: var(--radius-md);
+    border-radius: 0;
   }
 
   .settings-layout {
@@ -2876,11 +2879,11 @@
 
 .settings-nav-group-label::before {
   content: "▾";
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
   transition: transform 0.15s ease;
   display: inline-block;
-  width: 10px;
+  width: 12px;
 }
 
 .settings-nav-group-label.collapsed::before {

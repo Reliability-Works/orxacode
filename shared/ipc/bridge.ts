@@ -1,4 +1,4 @@
-import type { Config, ProviderListResponse, Pty, QuestionAnswer, Session } from "@opencode-ai/sdk/v2/client";
+import type { Agent, Config, ProviderListResponse, Pty, QuestionAnswer, Session } from "@opencode-ai/sdk/v2/client";
 
 import type {
   ArtifactExportBundleInput,
@@ -122,6 +122,7 @@ export interface OrxaBridge {
     readRawConfig: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
     writeRawConfig: (scope: "project" | "global", content: string, directory?: string) => Promise<RawConfigDocument>;
     listProviders: (directory?: string) => Promise<ProviderListResponse>;
+    listAgents: (directory?: string) => Promise<Agent[]>;
     pickImage: () => Promise<ImageSelection | undefined>;
     gitDiff: (directory: string) => Promise<string>;
     gitStatus: (directory: string) => Promise<string>;

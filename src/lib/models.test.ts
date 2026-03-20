@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderListResponse } from "@opencode-ai/sdk/v2/client";
 import {
+  filterModelOptionsByProviderIDs,
   filterHiddenModelOptions,
   findFallbackModel,
   listAgentOptions,
@@ -358,6 +359,40 @@ describe("model discovery", () => {
       "cloudflare/@cf/meta/llama-3.1-8b-instruct",
       "openai/gpt-5.2",
       "openai/gpt-5.2-codex",
+    ]);
+  });
+
+  it("filters model options to the authenticated provider set", () => {
+    const options = [
+      {
+        key: "openai/gpt-5.4",
+        providerID: "openai",
+        modelID: "gpt-5.4",
+        providerName: "OpenAI",
+        modelName: "GPT-5.4",
+        variants: [],
+      },
+      {
+        key: "zai-coding-plan/glm-5-turbo",
+        providerID: "zai-coding-plan",
+        modelID: "glm-5-turbo",
+        providerName: "Z.AI Coding Plan",
+        modelName: "GLM-5 Turbo",
+        variants: [],
+      },
+      {
+        key: "anthropic/claude-sonnet-4.6",
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4.6",
+        providerName: "Anthropic",
+        modelName: "Claude Sonnet 4.6",
+        variants: [],
+      },
+    ];
+
+    expect(filterModelOptionsByProviderIDs(options, ["openai", "zai-coding-plan"]).map((item) => item.key)).toEqual([
+      "openai/gpt-5.4",
+      "zai-coding-plan/glm-5-turbo",
     ]);
   });
 

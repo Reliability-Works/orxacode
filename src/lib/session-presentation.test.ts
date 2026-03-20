@@ -82,7 +82,7 @@ describe("session-presentation", () => {
     );
   });
 
-  it("projects Codex non-message row kinds through the shared timeline model", () => {
+  it("projects Codex non-message row kinds through the shared timeline model without historical reasoning rows", () => {
     const presentation = projectCodexSessionPresentation([
       {
         id: "assistant-1",
@@ -132,11 +132,15 @@ describe("session-presentation", () => {
 
     expect(presentation.rows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "thinking", summary: "Inspecting the current implementation" }),
         expect.objectContaining({ kind: "tool", title: "Run validation", defaultExpanded: true }),
         expect.objectContaining({ kind: "context" }),
         expect.objectContaining({ kind: "explore" }),
         expect.objectContaining({ kind: "compaction" }),
+      ]),
+    );
+    expect(presentation.rows).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "thinking" }),
       ]),
     );
   });

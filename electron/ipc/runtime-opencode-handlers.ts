@@ -172,6 +172,9 @@ export function registerRuntimeOpencodeHandlers({
   ipcMain.handle(IPC.opencodeListProviders, async (_event, directory?: unknown) =>
     service.listProviders(typeof directory === "string" ? directory : undefined),
   );
+  ipcMain.handle(IPC.opencodeListAgents, async (_event, directory?: unknown) =>
+    service.listAgents(typeof directory === "string" ? directory : undefined),
+  );
   ipcMain.handle(IPC.opencodePickImage, async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ["openFile"],

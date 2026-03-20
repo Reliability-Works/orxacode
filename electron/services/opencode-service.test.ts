@@ -1,8 +1,9 @@
 /** @vitest-environment node */
 
+import { createServer } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
-import { OpencodeService } from "./opencode-service";
+import { buildManagedServerEnv, OpencodeService, resolveManagedServerLaunchPort, sanitizeManagedRuntimeConfig } from "./opencode-service";
 import { createSessionMessageBundle, createTextPart } from "../../src/test/session-message-bundle-factory";
 
 vi.mock("electron", () => ({
@@ -203,6 +204,87 @@ describe("OpencodeService memory prompt integration", () => {
     expect(buildContextMock).not.toHaveBeenCalled();
     const payload = promptMock.mock.calls[0]?.[0] as { system?: string } | undefined;
     expect(payload?.system).toBeUndefined();
+  });
+});
+
+describe("OpencodeService provider filtering", () => {
+  it("keeps credential-backed and env-backed providers while excluding unauthenticated catalog entries", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      listProviders: (directory?: string) => Promise<{ all: Array<{ id: string }>; connected: string[]; default: Record<string, string> }>;
+      client: () => { provider: { list: () => Promise<{ data: unknown }> } };
+      listAuthenticatedProviderIDs: () => Promise<Set<string>>;
+      providerHasSatisfiedEnv: (provider: unknown) => boolean;
+    };
+
+    service.client = () => ({
+      provider: {
+        list: async () => ({
+          data: {
+            all: [
+              { id: "google", name: "Google", env: ["GEMINI_API_KEY"], models: { gemini: { id: "gemini" } } },
+              { id: "zai-coding-plan", name: "Z.AI Coding Plan", env: ["ZHIPU_API_KEY"], models: { glm: { id: "glm" } } },
+              { id: "anthropic", name: "Anthropic", env: ["ANTHROPIC_API_KEY"], models: { sonnet: { id: "sonnet" } } },
+            ],
+            connected: ["google"],
+            default: {
+              google: "gemini",
+              "zai-coding-plan": "glm",
+              anthropic: "sonnet",
+            },
+          },
+        }),
+      },
+    });
+    service.listAuthenticatedProviderIDs = async () => new Set(["zai-coding-plan"]);
+    service.providerHasSatisfiedEnv = (provider) => {
+      const id = (provider as { id?: string }).id;
+      return id === "google";
+    };
+
+    const providers = await service.listProviders();
+
+    expect(providers.all.map((provider) => provider.id)).toEqual(["google", "zai-coding-plan"]);
+    expect(providers.connected).toEqual(["google", "zai-coding-plan"]);
+    expect(providers.default).toEqual({
+      google: "gemini",
+      "zai-coding-plan": "glm",
+    });
+  });
+
+  it("treats a provider as env-authenticated when any supported env key is present", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      providerHasSatisfiedEnv: (provider: unknown) => boolean;
+    };
+
+    const previousApiToken = process.env.CLOUDFLARE_API_TOKEN;
+    const previousAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const previousGatewayId = process.env.CLOUDFLARE_GATEWAY_ID;
+    process.env.CLOUDFLARE_API_TOKEN = "configured";
+    delete process.env.CLOUDFLARE_ACCOUNT_ID;
+    delete process.env.CLOUDFLARE_GATEWAY_ID;
+
+    try {
+      expect(service.providerHasSatisfiedEnv({
+        id: "cloudflare-ai-gateway",
+        env: ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_GATEWAY_ID"],
+      })).toBe(true);
+    } finally {
+      if (previousApiToken === undefined) {
+        delete process.env.CLOUDFLARE_API_TOKEN;
+      } else {
+        process.env.CLOUDFLARE_API_TOKEN = previousApiToken;
+      }
+      if (previousAccountId === undefined) {
+        delete process.env.CLOUDFLARE_ACCOUNT_ID;
+      } else {
+        process.env.CLOUDFLARE_ACCOUNT_ID = previousAccountId;
+      }
+      if (previousGatewayId === undefined) {
+        delete process.env.CLOUDFLARE_GATEWAY_ID;
+      } else {
+        process.env.CLOUDFLARE_GATEWAY_ID = previousGatewayId;
+      }
+    }
   });
 });
 
@@ -732,5 +814,95 @@ describe("OpencodeService runtime dependency detection", () => {
     const opencode = report.dependencies.find((item) => item.key === "opencode");
 
     expect(opencode?.installed).toBe(false);
+  });
+});
+
+describe("OpencodeService managed local runtime startup", () => {
+  it("starts the managed local runtime instead of attaching to an arbitrary existing server", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      initializeFromStoredProfile: () => Promise<{ status: string }>;
+      profileStore: {
+        list: () => Array<{ id: string; startCommand: boolean; host: string; port: number; https: boolean }>;
+        activeProfileId: () => string | undefined;
+      };
+      startLocal: ReturnType<typeof vi.fn>;
+      attach: ReturnType<typeof vi.fn>;
+      runtimeState: () => { status: string };
+      setState: (next: unknown) => void;
+      managedProcess?: unknown;
+    };
+
+    service.profileStore = {
+      list: () => [{ id: "local-profile", startCommand: true, host: "127.0.0.1", port: 4096, https: false }],
+      activeProfileId: () => "local-profile",
+    };
+    service.startLocal = vi.fn(async () => ({ status: "connected" }));
+    service.attach = vi.fn(async () => ({ status: "connected" }));
+    service.runtimeState = () => ({ status: "connected" });
+    service.setState = () => undefined;
+
+    const runtime = await service.initializeFromStoredProfile();
+
+    expect(service.startLocal).toHaveBeenCalledWith("local-profile");
+    expect(service.attach).not.toHaveBeenCalled();
+    expect(runtime.status).toBe("connected");
+  });
+
+  it("falls back to an ephemeral port when the preferred managed runtime port is already occupied", async () => {
+    const server = createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const occupiedPort = (server.address() as { port: number }).port;
+
+    try {
+      await expect(resolveManagedServerLaunchPort("127.0.0.1", occupiedPort)).resolves.toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("strips repo-local npm lifecycle variables from the managed server environment", () => {
+    const env = buildManagedServerEnv({
+      PATH: "/usr/bin",
+      HOME: "/Users/test",
+      INIT_CWD: "/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa",
+      PNPM_SCRIPT_SRC_DIR: "/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa",
+      VITE_DEV_SERVER_URL: "http://localhost:5173",
+      npm_package_name: "opencode-orxa",
+      npm_lifecycle_event: "dev",
+    });
+
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.HOME).toBe("/Users/test");
+    expect(env.INIT_CWD).toBeUndefined();
+    expect(env.PNPM_SCRIPT_SRC_DIR).toBeUndefined();
+    expect(env.VITE_DEV_SERVER_URL).toBeUndefined();
+    expect(env.npm_package_name).toBeUndefined();
+    expect(env.npm_lifecycle_event).toBeUndefined();
+  });
+
+  it("removes plugin configuration from the managed runtime config snapshot", () => {
+    const raw = JSON.stringify({
+      plugin: ["opencode-supermemory", "opencode-sync-plugin"],
+      provider: {
+        "zai-coding-plan": {
+          name: "Z.AI Coding Plan",
+        },
+      },
+    }, null, 2);
+
+    expect(sanitizeManagedRuntimeConfig(raw)).toBe(
+      `${JSON.stringify({
+        provider: {
+          "zai-coding-plan": {
+            name: "Z.AI Coding Plan",
+          },
+        },
+      }, null, 2)}\n`,
+    );
   });
 });

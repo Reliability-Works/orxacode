@@ -814,6 +814,41 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/Delegating/i)).not.toBeInTheDocument();
   });
 
+  it("does not mirror live search activity into the transcript footer", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-live-search",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-search-live",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-live-search",
+            callID: "call-search-live",
+            tool: "grep_search",
+            state: {
+              status: "running",
+              input: { query: "booking", path: "/repo/src" },
+              metadata: {},
+              time: { start: now },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByText(/Searching/i)).not.toBeInTheDocument();
+  });
+
   it("leaves delegated subagent transcript loading to the shared background-agent surface", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => [

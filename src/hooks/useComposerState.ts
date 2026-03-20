@@ -34,7 +34,7 @@ type UseComposerStateOptions = {
   refreshProject: (directory: string) => Promise<unknown>;
   sessions: ComposerSession[];
   selectedAgent?: string;
-  serverAgentNames: Set<string>;
+  availableAgentNames: Set<string>;
   setStatusLine: (status: string) => void;
   shouldAutoRenameSessionTitle: (title: string | undefined) => boolean;
   deriveSessionTitleFromPrompt: (prompt: string, maxLength?: number) => string;
@@ -241,7 +241,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     setComposer("");
     setComposerAttachments([]);
 
-    const supportsSelectedAgent = options.selectedAgent ? options.serverAgentNames.has(options.selectedAgent) : false;
+    const supportsSelectedAgent = options.selectedAgent ? options.availableAgentNames.has(options.selectedAgent) : false;
     const activeSession = options.sessions.find((item) => item.id === activeSessionID);
     const shouldAutoTitle = text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title);
 

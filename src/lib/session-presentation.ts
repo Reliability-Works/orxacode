@@ -690,6 +690,9 @@ export function projectCodexSessionPresentation(
       continue;
     }
     if (item.kind === "reasoning") {
+      if (!isStreaming) {
+        continue;
+      }
       rawRows.push({ id: item.id, kind: "thinking", summary: item.summary, content: item.content });
       continue;
     }

@@ -65,6 +65,7 @@ const bridge: OrxaBridge = {
     readRawConfig: (scope, directory) => ipcRenderer.invoke(IPC.opencodeReadRawConfig, scope, directory),
     writeRawConfig: (scope, content, directory) => ipcRenderer.invoke(IPC.opencodeWriteRawConfig, scope, content, directory),
     listProviders: (directory) => ipcRenderer.invoke(IPC.opencodeListProviders, directory),
+    listAgents: (directory) => ipcRenderer.invoke(IPC.opencodeListAgents, directory),
     pickImage: () => ipcRenderer.invoke(IPC.opencodePickImage),
     gitDiff: (directory) => ipcRenderer.invoke(IPC.opencodeGitDiff, directory),
     gitStatus: (directory) => ipcRenderer.invoke(IPC.opencodeGitStatus, directory),

@@ -90,7 +90,7 @@ describe("useWorkspaceState", () => {
         directory,
         undefined,
         {
-          serverAgentNames: new Set<string>(),
+          availableAgentNames: new Set<string>(),
           permissionMode: "yolo-write",
         },
       );
@@ -215,6 +215,62 @@ describe("useWorkspaceState", () => {
 
     expect(result.current.activeProjectDir).toBe(targetDirectory);
     expect(result.current.activeSessionID).toBe(createdSession.id);
+  });
+
+  it("refreshes messages immediately after sending the initial prompt for a new session", async () => {
+    const directory = "/repo";
+    const now = Date.now();
+    const createdSession = {
+      id: "session-created",
+      slug: "session-created",
+      title: "Which agent are you",
+      time: { created: now, updated: now },
+    };
+
+    const refreshProjectMock = vi.fn(async () => createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }]));
+    const sendPromptMock = vi.fn(async () => true);
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, sessionID: string) => createRuntimeSnapshot(directory, sessionID, []));
+
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+          refreshProject: refreshProjectMock,
+          createSession: vi.fn(async () => createdSession),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: sendPromptMock,
+          deleteSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceState({
+        setStatusLine: vi.fn(),
+        terminalTabIds: [],
+        setTerminalTabs: vi.fn(),
+        setActiveTerminalId: vi.fn(),
+        setTerminalOpen: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await (result.current.createSession as unknown as (directory: string, prompt?: string, options?: unknown) => Promise<void>)(
+        directory,
+        "Which agent are you",
+        {
+          selectedAgent: "builder",
+          availableAgentNames: new Set(["builder"]),
+        },
+      );
+    });
+
+    expect(sendPromptMock).toHaveBeenCalledWith(expect.objectContaining({
+      agent: "builder",
+      text: "Which agent are you",
+    }));
+    expect(getSessionRuntimeMock).toHaveBeenCalledWith(expect.any(String), createdSession.id);
   });
 
   it("can select a session in another workspace immediately after selecting that workspace", async () => {

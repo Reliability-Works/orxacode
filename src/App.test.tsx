@@ -133,7 +133,42 @@ beforeEach(() => {
         readRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
         writeRawConfig: vi.fn(async () => ({ scope: "global", path: "config.json", content: "{}" })),
         listProviders: vi.fn(async () => ({ all: [], connected: [], default: {} })),
+        listAgents: vi.fn(async () => []),
         pickImage: vi.fn(async () => undefined),
+        gitCommitSummary: vi.fn(async () => ({
+          repoRoot: "/repo/dreamweaver",
+          branch: "main",
+          filesChanged: 0,
+          insertions: 0,
+          deletions: 0,
+        })),
+        gitGenerateCommitMessage: vi.fn(async () => "test commit"),
+        gitCommit: vi.fn(async () => ({
+          repoRoot: "/repo/dreamweaver",
+          branch: "main",
+          commitSha: "abc123",
+          pushed: false,
+          createdPullRequest: false,
+        })),
+        gitBranches: vi.fn(async () => ({
+          current: "main",
+          branches: ["main"],
+          hasChanges: false,
+          ahead: 0,
+          behind: 0,
+        })),
+        gitCheckoutBranch: vi.fn(async () => ({
+          current: "main",
+          branches: ["main"],
+          hasChanges: false,
+          ahead: 0,
+          behind: 0,
+        })),
+        gitStageAll: vi.fn(async () => true),
+        gitRestoreAllUnstaged: vi.fn(async () => true),
+        gitStagePath: vi.fn(async () => true),
+        gitRestorePath: vi.fn(async () => true),
+        gitUnstagePath: vi.fn(async () => true),
         getServerDiagnostics: vi.fn(async () => ({
           runtime: { status: "disconnected", managedServer: false },
           health: "disconnected",
@@ -455,6 +490,67 @@ describe("App", () => {
         firstAgentName: "plan",
       }),
     ).toBe("plan");
+  });
+
+  it("loads the global Opencode agent registry independently of workspace-scoped agents", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "design-session",
+        title: "Design session",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [{ name: "plan", mode: "primary", description: "Plan" }],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const listAgentsMock = vi.fn(async () => ([
+      { name: "plan", mode: "primary", description: "Plan" },
+      { name: "conductor", mode: "primary", description: "Conductor" },
+      { name: "builder", mode: "primary", description: "Builder" },
+      { name: "orchestrator", mode: "primary", description: "Orchestrator" },
+    ]));
+    const listAgentFilesMock = vi.fn(async () => ([
+      { filename: "plan.md", name: "plan", mode: "primary", description: "Plan", model: "openai/gpt-5.4", content: "", path: "/Users/test/.config/opencode/agents/plan.md" },
+      { filename: "conductor.md", name: "conductor", mode: "primary", description: "Conductor", model: "kimi-for-coding/kimi-k2.5", content: "", path: "/Users/test/.config/opencode/agents/conductor.md" },
+      { filename: "builder.md", name: "builder", mode: "primary", description: "Builder", model: "openai/gpt-5.4", content: "", path: "/Users/test/.config/opencode/agents/builder.md" },
+      { filename: "orchestrator.md", name: "orchestrator", mode: "primary", description: "Orchestrator", model: "openai/gpt-5.4", content: "", path: "/Users/test/.config/opencode/agents/orchestrator.md" },
+    ]));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          listAgents: listAgentsMock,
+          listAgentFiles: listAgentFilesMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(listAgentsMock).toHaveBeenCalled();
+      expect(listAgentFilesMock).toHaveBeenCalled();
+    });
   });
 
   it("shows dependency modal when required runtime dependency is missing", async () => {

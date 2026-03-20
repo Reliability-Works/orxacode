@@ -61,23 +61,33 @@ export function UnifiedTimelineRowView({
     case "thinking":
       return <ThinkingRow summary={row.summary} content={row.content} />;
     case "tool":
-      return (
-        <article className="message-card message-assistant">
-          <ToolCallCard title={row.title} status={row.status} defaultExpanded={row.defaultExpanded}>
-            {row.command !== undefined ? (
-              <CommandOutput
-                command={row.command}
-                output={row.output ?? row.error ?? ""}
-                exitCode={row.status === "error" ? 1 : 0}
-              />
-            ) : row.output ? (
-              <pre className="tool-call-card-output">{row.output}</pre>
-            ) : row.error ? (
-              <pre className="tool-call-card-output">{row.error}</pre>
-            ) : null}
-          </ToolCallCard>
-        </article>
-      );
+      {
+        const normalizedTitle = row.title.trim();
+        const normalizedCommand = row.command?.trim() ?? "";
+        const hideDuplicateCommandPrompt =
+          normalizedCommand.length > 0 &&
+          normalizedTitle.length > 0 &&
+          normalizedTitle === normalizedCommand;
+        const hasCommandBodyContent = Boolean(row.output ?? row.error);
+        return (
+          <article className="message-card message-assistant">
+            <ToolCallCard title={row.title} status={row.status} defaultExpanded={row.defaultExpanded}>
+              {row.command !== undefined && (!hideDuplicateCommandPrompt || hasCommandBodyContent) ? (
+                <CommandOutput
+                  command={row.command}
+                  output={row.output ?? row.error ?? ""}
+                  exitCode={row.status === "error" ? 1 : 0}
+                  hidePrompt={hideDuplicateCommandPrompt}
+                />
+              ) : row.output ? (
+                <pre className="tool-call-card-output">{row.output}</pre>
+              ) : row.error ? (
+                <pre className="tool-call-card-output">{row.error}</pre>
+              ) : null}
+            </ToolCallCard>
+          </article>
+        );
+      }
     case "diff":
       return (
         <article className="message-card message-assistant">

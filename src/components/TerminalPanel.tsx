@@ -136,6 +136,20 @@ export function TerminalPanel({
   }, [open, activeTabId, directory]);
 
   useEffect(() => {
+    if (!open || !activeTabId) {
+      return;
+    }
+    const instance = instancesRef.current.get(activeTabId);
+    if (!instance) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      instance.fit.fit();
+      void window.orxa.terminal.resize(directory, activeTabId, instance.terminal.cols, instance.terminal.rows);
+    });
+  }, [activeTabId, directory, height, open]);
+
+  useEffect(() => {
     const activeIds = new Set(tabs.map((t) => t.id));
     for (const [id, inst] of instancesRef.current.entries()) {
       if (!activeIds.has(id)) {

@@ -8,6 +8,105 @@ afterEach(() => {
 });
 
 describe("SettingsDrawer", () => {
+  it("renders a back-to-app action instead of the old modal title", () => {
+    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
+
+    const diagnostics: ServerDiagnostics = {
+      runtime: { status: "disconnected", managedServer: false },
+      health: "disconnected",
+    };
+
+    render(
+      <SettingsDrawer
+        open
+        directory={undefined}
+        onClose={() => undefined}
+        onReadRaw={vi.fn(async () => rawDoc)}
+        onWriteRaw={vi.fn(async () => rawDoc)}
+        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
+        appPreferences={{
+          showOperationsPane: true,
+          autoOpenTerminalOnCreate: true,
+          confirmDangerousActions: true,
+          permissionMode: "ask-write",
+          commitGuidancePrompt: "",
+          codeFont: "IBM Plex Mono",
+          hiddenModels: [],
+          codexPath: "",
+          codexArgs: "",
+          codexDefaultModel: "",
+          codexReasoningEffort: "medium",
+          codexAccessMode: "on-request",
+          gitAgent: "opencode" as const,
+          notifyOnAwaitingInput: false,
+          notifyOnTaskComplete: false,
+          collaborationModesEnabled: false,
+          subagentSystemNotificationsEnabled: false,
+          orxaBrowserEnabled: true,
+        }}
+        onAppPreferencesChange={() => undefined}
+        onGetServerDiagnostics={vi.fn(async () => diagnostics)}
+        onRepairRuntime={vi.fn(async () => diagnostics)}
+        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onUpdateMemorySettings={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onListMemoryTemplates={vi.fn(async () => [])}
+        onApplyMemoryTemplate={vi.fn(async () => ({
+          global: {
+            enabled: false,
+            mode: "balanced" as const,
+            guidance: "",
+            maxPromptMemories: 6,
+            maxCapturePerSession: 24,
+          },
+          hasWorkspaceOverride: false,
+        }))}
+        onBackfillMemory={vi.fn(async () => ({
+          running: false,
+          progress: 1,
+          scannedSessions: 0,
+          totalSessions: 0,
+          inserted: 0,
+          updated: 0,
+        }))}
+        onClearWorkspaceMemory={vi.fn(async () => true)}
+        allModelOptions={[]}
+        profiles={[]}
+        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        onSaveProfile={vi.fn()}
+        onDeleteProfile={vi.fn()}
+        onAttachProfile={vi.fn()}
+        onStartLocalProfile={vi.fn()}
+        onStopLocalProfile={vi.fn()}
+        onRefreshProfiles={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Back to app" })).toBeInTheDocument();
+    expect(screen.queryByText(/^settings$/i)).not.toBeInTheDocument();
+  });
+
   it("renders provider models only from discoverable option input", () => {
     const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
 

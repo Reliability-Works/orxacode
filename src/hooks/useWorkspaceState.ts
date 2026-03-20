@@ -43,7 +43,7 @@ type CreateSessionPromptOptions = {
   selectedModelPayload?: { providerID: string; modelID: string };
   selectedVariant?: string;
   permissionMode?: SessionPermissionMode;
-  serverAgentNames: Set<string>;
+  availableAgentNames: Set<string>;
 };
 
 function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
@@ -533,7 +533,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         }
         if (resolvedSessionID && firstPrompt.length > 0) {
           const supportsSelectedAgent = promptOptions?.selectedAgent
-            ? promptOptions.serverAgentNames.has(promptOptions.selectedAgent)
+            ? promptOptions.availableAgentNames.has(promptOptions.selectedAgent)
             : false;
           await window.orxa.opencode.sendPrompt({
             directory: targetDirectory,
@@ -543,6 +543,36 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
             model: promptOptions?.selectedModelPayload,
             variant: promptOptions?.selectedVariant,
           });
+          void loadOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID)
+            .then((runtime) => {
+              const normalized = normalizeMessageBundles(runtime.messages);
+              const runtimeProject = buildRuntimeProjectSlice(targetDirectory, runtime);
+              setOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID, {
+                ...runtime,
+                sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[resolvedSessionID],
+                permissions: runtimeProject.permissions,
+                questions: runtimeProject.questions,
+                commands: runtimeProject.commands,
+                messages: normalized,
+              });
+            })
+            .catch(() => undefined);
+          window.setTimeout(() => {
+            void loadOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID)
+              .then((runtime) => {
+                const normalized = normalizeMessageBundles(runtime.messages);
+                const runtimeProject = buildRuntimeProjectSlice(targetDirectory, runtime);
+                setOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID, {
+                  ...runtime,
+                  sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[resolvedSessionID],
+                  permissions: runtimeProject.permissions,
+                  questions: runtimeProject.questions,
+                  commands: runtimeProject.commands,
+                  messages: normalized,
+                });
+              })
+              .catch(() => undefined);
+          }, 180);
           startResponsePolling(targetDirectory, resolvedSessionID);
           setStatusLine("Session started");
         } else {
@@ -559,7 +589,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         return undefined;
       }
     },
-    [activeProjectDir, cleanupEmptySession, getRuntimeState, refreshProject, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setPendingSessionId, setStatusLine, startResponsePolling, stopResponsePolling],
+    [activeProjectDir, buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, refreshProject, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setOpencodeRuntimeSnapshot, setPendingSessionId, setStatusLine, startResponsePolling, stopResponsePolling],
   );
 
   const queueRefresh = useCallback(

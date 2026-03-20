@@ -1,10 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { cp, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parse as parseJsonc, printParseErrorCode } from "jsonc-parser";
 import {
+  type Agent,
   createOpencodeClient,
   type Config,
   type Event,
@@ -258,6 +260,101 @@ function parsePatchMutations(patchText: string, directory: string) {
   return mutations;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function listProviderEnvKeys(provider: unknown) {
+  if (!isRecord(provider) || !Array.isArray(provider.env)) {
+    return [];
+  }
+
+  return provider.env.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+}
+
+const MANAGED_SERVER_ENV_BLOCKLIST = new Set([
+  "INIT_CWD",
+  "PNPM_SCRIPT_SRC_DIR",
+  "VITE_DEV_SERVER_URL",
+]);
+
+const MANAGED_SERVER_ENV_BLOCKLIST_PREFIXES = [
+  "npm_lifecycle_",
+  "npm_package_",
+];
+
+export function buildManagedServerEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = { ...baseEnv };
+  for (const key of Object.keys(nextEnv)) {
+    if (MANAGED_SERVER_ENV_BLOCKLIST.has(key) || MANAGED_SERVER_ENV_BLOCKLIST_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      delete nextEnv[key];
+    }
+  }
+  return nextEnv;
+}
+
+type ManagedRuntimePaths = {
+  root: string;
+  dataHome: string;
+  configHome: string;
+  stateHome: string;
+  cacheHome: string;
+  authPath: string;
+  configDir: string;
+};
+
+const MANAGED_RUNTIME_CONFIG_DIRS = ["agent", "agents"] as const;
+
+function managedRuntimePaths(profileID: string): ManagedRuntimePaths {
+  const root = path.join(homedir(), ".orxa-code", "managed-opencode", profileID);
+  const dataHome = path.join(root, "data");
+  const configHome = path.join(root, "config");
+  const stateHome = path.join(root, "state");
+  const cacheHome = path.join(root, "cache");
+  return {
+    root,
+    dataHome,
+    configHome,
+    stateHome,
+    cacheHome,
+    authPath: path.join(dataHome, "opencode", "auth.json"),
+    configDir: path.join(configHome, "opencode"),
+  };
+}
+
+export function sanitizeManagedRuntimeConfig(rawContent: string) {
+  const parseErrors: Parameters<typeof parseJsonc>[1] = [];
+  const parsed = parseJsonc(rawContent, parseErrors, { allowTrailingComma: true });
+  if (parseErrors.length > 0 || !isRecord(parsed)) {
+    return "{}\n";
+  }
+
+  const next = { ...parsed };
+  delete next.plugin;
+  return `${JSON.stringify(next, null, 2)}\n`;
+}
+
+async function canListenOnPort(host: string, port: number) {
+  if (!Number.isInteger(port) || port <= 0) {
+    return false;
+  }
+  return await new Promise<boolean>((resolve) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", () => resolve(false));
+    server.listen({ host, port, exclusive: true }, () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+export async function resolveManagedServerLaunchPort(host: string, preferredPort: number) {
+  if (!Number.isInteger(preferredPort) || preferredPort <= 0) {
+    return 0;
+  }
+  return await canListenOnPort(host, preferredPort) ? preferredPort : 0;
+}
+
 function classifyTool(
   toolName: string,
   stateInput: unknown,
@@ -448,16 +545,18 @@ export class OpencodeService {
     });
 
     const binary = await this.resolveBinary(profile.cliPath);
+    const launchPort = await resolveManagedServerLaunchPort(profile.startHost, profile.startPort);
+    const runtimePaths = await this.prepareManagedRuntimeHome(profile.id);
     const args = [
       "serve",
       `--hostname=${profile.startHost}`,
-      `--port=${profile.startPort}`,
+      `--port=${launchPort}`,
       ...profile.corsOrigins.map((origin) => `--cors=${origin}`),
     ];
 
     const child = spawn(binary, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: this.buildManagedRuntimeEnv(process.env, runtimePaths),
     });
 
     this.managedProcess = child;
@@ -500,12 +599,61 @@ export class OpencodeService {
       lastError: undefined,
     });
 
-    profile.host = profile.startHost;
-    profile.port = profile.startPort;
-    profile.https = launchedUrl.startsWith("https://");
+    const launchedEndpoint = new URL(launchedUrl);
+    profile.host = launchedEndpoint.hostname || profile.startHost;
+    profile.port = launchedEndpoint.port ? Number.parseInt(launchedEndpoint.port, 10) : launchPort || profile.startPort;
+    profile.https = launchedEndpoint.protocol === "https:";
     this.profileStore.save(profile);
 
     return this.attach(profileID);
+  }
+
+  private buildManagedRuntimeEnv(baseEnv: NodeJS.ProcessEnv, runtimePaths: ManagedRuntimePaths) {
+    const env = buildManagedServerEnv(baseEnv);
+    delete env.OPENCODE_CONFIG_DIR;
+    delete env.OPENCODE_CONFIG_CONTENT;
+    env.OPENCODE_DISABLE_DEFAULT_PLUGINS = "true";
+    env.OPENCODE_TEST_HOME = runtimePaths.root;
+    env.XDG_DATA_HOME = runtimePaths.dataHome;
+    env.XDG_CONFIG_HOME = runtimePaths.configHome;
+    env.XDG_STATE_HOME = runtimePaths.stateHome;
+    env.XDG_CACHE_HOME = runtimePaths.cacheHome;
+    return env;
+  }
+
+  private async prepareManagedRuntimeHome(profileID: string) {
+    const runtimePaths = managedRuntimePaths(profileID);
+    await rm(runtimePaths.root, { recursive: true, force: true });
+    await mkdir(path.dirname(runtimePaths.authPath), { recursive: true });
+    await mkdir(runtimePaths.configDir, { recursive: true });
+    await mkdir(runtimePaths.stateHome, { recursive: true });
+    await mkdir(runtimePaths.cacheHome, { recursive: true });
+
+    const authSource = path.join(homedir(), ".local", "share", "opencode", "auth.json");
+    if (existsSync(authSource)) {
+      await copyFile(authSource, runtimePaths.authPath);
+    }
+
+    const globalConfigRoot = path.join(homedir(), ".config", "opencode");
+    const globalConfigPath = this.findConfigFile(globalConfigRoot);
+    if (existsSync(globalConfigPath)) {
+      const rawConfig = await readFile(globalConfigPath, "utf8");
+      const sanitizedConfig = sanitizeManagedRuntimeConfig(rawConfig);
+      await writeFile(path.join(runtimePaths.configDir, "opencode.json"), sanitizedConfig, "utf8");
+    }
+
+    for (const directoryName of MANAGED_RUNTIME_CONFIG_DIRS) {
+      const source = path.join(globalConfigRoot, directoryName);
+      if (!existsSync(source) || !statSync(source).isDirectory()) {
+        continue;
+      }
+      await cp(source, path.join(runtimePaths.configDir, directoryName), {
+        force: true,
+        recursive: true,
+      });
+    }
+
+    return runtimePaths;
   }
 
   async stopLocal() {
@@ -1465,9 +1613,19 @@ export class OpencodeService {
     const fallback: ProviderListResponse = { all: [], connected: [], default: {} };
     try {
       const response = await this.client(directory).provider.list(directory ? { directory } : undefined);
-      return this.unwrap(response, fallback);
+      const providers = await this.unwrap(response, fallback);
+      return await this.filterAuthenticatedProviders(providers);
     } catch {
       return fallback;
+    }
+  }
+
+  async listAgents(directory?: string): Promise<Agent[]> {
+    try {
+      const response = await this.client(directory).app.agents(directory ? { directory } : undefined);
+      return this.unwrap(response, []);
+    } catch {
+      return [];
     }
   }
 
@@ -2161,6 +2319,72 @@ export class OpencodeService {
     throw new Error("OpenCode API returned no data");
   }
 
+  private async listAuthenticatedProviderIDs() {
+    const authPath = path.join(homedir(), ".local", "share", "opencode", "auth.json");
+    const content = await readFile(authPath, "utf8").catch(() => "");
+    if (!content.trim()) {
+      return new Set<string>();
+    }
+
+    const parsed = parseJsonc(content);
+    if (!isRecord(parsed)) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      Object.entries(parsed)
+        .filter(([, value]) => isRecord(value))
+        .map(([providerID]) => providerID),
+    );
+  }
+
+  private providerHasSatisfiedEnv(provider: unknown) {
+    const envKeys = listProviderEnvKeys(provider);
+    if (envKeys.length === 0) {
+      return false;
+    }
+
+    return envKeys.some((envKey) => {
+      const value = process.env[envKey];
+      return typeof value === "string" && value.trim().length > 0;
+    });
+  }
+
+  private async filterAuthenticatedProviders(providers: ProviderListResponse): Promise<ProviderListResponse> {
+    const authIDs = await this.listAuthenticatedProviderIDs();
+    const connectedIDs = Array.isArray(providers.connected)
+      ? providers.connected.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      : [];
+    const allowed = new Set<string>([...connectedIDs, ...authIDs]);
+    const all = Array.isArray(providers.all)
+      ? providers.all.filter((provider) => {
+        if (!isRecord(provider) || typeof provider.id !== "string" || provider.id.trim().length === 0) {
+          return false;
+        }
+        return allowed.has(provider.id) || this.providerHasSatisfiedEnv(provider);
+      })
+      : [];
+
+    const authenticatedIDs = new Set<string>();
+    for (const provider of all) {
+      if (isRecord(provider) && typeof provider.id === "string" && provider.id.trim().length > 0) {
+        authenticatedIDs.add(provider.id);
+      }
+    }
+
+    const nextDefault = isRecord(providers.default)
+      ? Object.fromEntries(
+        Object.entries(providers.default).filter(([providerID]) => authenticatedIDs.has(providerID)),
+      )
+      : {};
+
+    return {
+      all,
+      connected: [...authenticatedIDs].sort((a, b) => a.localeCompare(b)),
+      default: nextDefault,
+    };
+  }
+
   private ptyKey(directory: string, ptyID: string) {
     return `${directory}::${ptyID}`;
   }
@@ -2306,25 +2530,25 @@ export class OpencodeService {
       return this.runtimeState();
     }
 
+    if (activeProfile.startCommand) {
+      try {
+        return await this.startLocal(activeID);
+      } catch (startError) {
+        const message = `Failed to start managed local OpenCode: ${sanitizeError(startError)}`;
+        this.setState({
+          status: "error",
+          activeProfileId: activeID,
+          managedServer: !!this.managedProcess,
+          baseUrl: this.baseUrl(activeProfile),
+          lastError: message,
+        });
+        return this.runtimeState();
+      }
+    }
+
     try {
       return await this.attach(activeID);
     } catch (error) {
-      if (activeProfile.startCommand) {
-        try {
-          return await this.startLocal(activeID);
-        } catch (startError) {
-          const message = `Failed to connect or start local OpenCode: ${sanitizeError(startError)}`;
-          this.setState({
-            status: "error",
-            activeProfileId: activeID,
-            managedServer: !!this.managedProcess,
-            baseUrl: this.baseUrl(activeProfile),
-            lastError: message,
-          });
-          return this.runtimeState();
-        }
-      }
-
       const message = sanitizeError(error);
       this.setState({
         status: "error",

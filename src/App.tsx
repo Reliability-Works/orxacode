@@ -21,6 +21,7 @@ import type {
   ChangeProvenanceRecord,
   MemoryBackfillStatus,
   MemoryGraphSnapshot,
+  OpenCodeAgentFile,
   ProjectListItem,
   ProjectBootstrap,
   RuntimeProfile,
@@ -35,7 +36,7 @@ import type {
   McpDevToolsServerState,
   ProviderUsageStats,
 } from "@shared/ipc";
-import type { ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
+import type { Agent, ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
 import { BackgroundSessionSupervisorHost } from "./components/BackgroundSessionSupervisorHost";
 import { WorkspaceLanding } from "./components/WorkspaceLanding";
@@ -89,6 +90,7 @@ import {
   useUnifiedRuntimeStore,
 } from "./state/unified-runtime-store";
 import {
+  filterModelOptionsByProviderIDs,
   filterHiddenModelOptions,
   findFallbackModel,
   listAgentOptions,
@@ -579,6 +581,8 @@ export default function App() {
     },
   });
   const [globalProviders, setGlobalProviders] = useState<ProviderListResponse>({ all: [], connected: [], default: {} });
+  const [globalAgents, setGlobalAgents] = useState<Agent[]>([]);
+  const [opencodeAgentFiles, setOpencodeAgentFiles] = useState<OpenCodeAgentFile[]>([]);
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
@@ -1049,39 +1053,35 @@ export default function App() {
     return projectData?.commands ?? [];
   }, [projectData?.commands]);
 
-  const agentOptions = useMemo(() => listAgentOptions(projectData?.agents ?? []), [projectData?.agents]);
-  // Fetch OpenCode agent files from ~/.config/opencode/agents
-  const [opencodeAgentFiles, setOpencodeAgentFiles] = useState<Array<{ name: string; mode: string; description?: string }>>([]);
-  useEffect(() => {
-    void window.orxa.opencode.listAgentFiles()
-      .then((files) => setOpencodeAgentFiles(files.map((f) => ({ name: f.name, mode: f.mode, description: f.description }))))
-      .catch(() => {});
-  }, [activeProjectDir, projectData?.agents]);
-
-  const composerAgentOptions = useMemo(() => {
-    // Use OpenCode agent files (from ~/.config/opencode/agents), filter to primary/all
-    return opencodeAgentFiles
-      .filter((agent) => {
-        const mode = agent.mode as string;
-        return mode === "primary" || mode === "all";
-      })
+  const fileBackedAgentOptions = useMemo(() => (
+    opencodeAgentFiles
+      .filter((agent) => agent.mode === "primary" || agent.mode === "all")
       .map((agent) => ({
         name: agent.name,
-        mode: agent.mode as "primary" | "subagent" | "all",
+        model: agent.model || undefined,
         description: agent.description,
       }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [opencodeAgentFiles]);
-  const serverModelOptions = useMemo(
-    () => listModelOptions(projectData?.providers ?? { all: [], connected: [], default: {} }),
-    [projectData],
+      .sort((a, b) => a.name.localeCompare(b.name))
+  ), [opencodeAgentFiles]);
+  const agentOptions = useMemo(
+    () => (fileBackedAgentOptions.length > 0
+      ? fileBackedAgentOptions
+      : listAgentOptions(projectData?.agents ?? globalAgents)),
+    [fileBackedAgentOptions, globalAgents, projectData?.agents],
   );
   const globalServerModelOptions = useMemo(() => {
     return listModelOptions(globalProviders);
   }, [globalProviders]);
+  const authenticatedProviderIDs = useMemo(
+    () => new Set(globalProviders.all.map((provider) => provider.id)),
+    [globalProviders],
+  );
   const discoverableModelOptions = useMemo(
-    () => mergeDiscoverableModelOptions(configModelOptions, serverModelOptions, globalServerModelOptions),
-    [configModelOptions, globalServerModelOptions, serverModelOptions],
+    () => filterModelOptionsByProviderIDs(
+      mergeDiscoverableModelOptions(configModelOptions, globalServerModelOptions),
+      authenticatedProviderIDs,
+    ),
+    [authenticatedProviderIDs, configModelOptions, globalServerModelOptions],
   );
   const settingsModelsRef = useRef<ModelOption[]>([]);
   const settingsModelOptions = useMemo(() => {
@@ -1099,9 +1099,20 @@ export default function App() {
     [agentOptions, selectedAgent],
   );
   const serverAgentNames = useMemo(() => new Set(agentOptions.map((agent) => agent.name)), [agentOptions]);
+  const effectiveComposerAgentOptions = useMemo(() => {
+    return agentOptions.map((agent) => ({
+      name: agent.name,
+      mode: "primary" as const,
+      description: agent.description,
+    }));
+  }, [agentOptions]);
+  const availableAgentNames = useMemo(
+    () => new Set(effectiveComposerAgentOptions.map((agent) => agent.name)),
+    [effectiveComposerAgentOptions],
+  );
   const hasPlanAgent = useMemo(
-    () => serverAgentNames.has("plan"),
-    [serverAgentNames],
+    () => availableAgentNames.has("plan"),
+    [availableAgentNames],
   );
   const isPlanMode = selectedAgent === "plan";
   const composerPlaceholder = "Send message";
@@ -1169,22 +1180,13 @@ export default function App() {
 
   const refreshConfigModels = useCallback(async () => {
     try {
-      const docs: Array<{ content: string }> = [];
-      if (activeProjectDir) {
-        const projectDoc = await window.orxa.opencode.readRawConfig("project", activeProjectDir).catch(() => undefined);
-        if (projectDoc) {
-          docs.push(projectDoc);
-        }
-      }
       const globalDoc = await window.orxa.opencode.readRawConfig("global");
-      docs.push(globalDoc);
-      const parsed = docs.map((doc) => parseJsonc(doc.content) as unknown);
-      const merged = mergeDiscoverableModelOptions(...parsed.map((item) => listModelOptionsFromConfigReferences(item)));
-      setConfigModelOptions(merged);
+      const parsed = parseJsonc(globalDoc.content) as unknown;
+      setConfigModelOptions(listModelOptionsFromConfigReferences(parsed));
     } catch {
       setConfigModelOptions([]);
     }
-  }, [activeProjectDir]);
+  }, []);
 
   const refreshGlobalProviders = useCallback(async () => {
     try {
@@ -1192,6 +1194,24 @@ export default function App() {
       setGlobalProviders(providers);
     } catch {
       setGlobalProviders({ all: [], connected: [], default: {} });
+    }
+  }, []);
+
+  const refreshGlobalAgents = useCallback(async () => {
+    try {
+      const agents = await window.orxa.opencode.listAgents();
+      setGlobalAgents(agents);
+    } catch {
+      setGlobalAgents([]);
+    }
+  }, []);
+
+  const refreshAgentFiles = useCallback(async () => {
+    try {
+      const files = await window.orxa.opencode.listAgentFiles();
+      setOpencodeAgentFiles(files);
+    } catch {
+      setOpencodeAgentFiles([]);
     }
   }, []);
 
@@ -1468,7 +1488,7 @@ export default function App() {
     refreshProject,
     sessions,
     selectedAgent,
-    serverAgentNames,
+    availableAgentNames,
     setStatusLine,
     shouldAutoRenameSessionTitle,
     deriveSessionTitleFromPrompt,
@@ -1593,12 +1613,16 @@ export default function App() {
     { message: "Bootstrapping workspaces…", action: bootstrap },
     { message: "Loading model references…", action: refreshConfigModels },
     { message: "Loading provider registry…", action: refreshGlobalProviders },
+    { message: "Loading agent registry…", action: refreshGlobalAgents },
+    { message: "Loading agent files…", action: refreshAgentFiles },
     { message: "Checking runtime dependencies…", action: refreshRuntimeDependencies },
     { message: "Syncing browser state…", action: syncBrowserSnapshot },
   ], [
     bootstrap,
     refreshConfigModels,
+    refreshGlobalAgents,
     refreshGlobalProviders,
+    refreshAgentFiles,
     refreshProfiles,
     refreshRuntimeDependencies,
     syncBrowserSnapshot,
@@ -1645,8 +1669,8 @@ export default function App() {
     if (!settingsOpen) {
       return;
     }
-    void Promise.all([refreshConfigModels(), refreshGlobalProviders()]).catch(() => undefined);
-  }, [refreshConfigModels, refreshGlobalProviders, settingsOpen]);
+    void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(() => undefined);
+  }, [refreshAgentFiles, refreshConfigModels, refreshGlobalProviders, settingsOpen]);
 
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
@@ -1709,18 +1733,11 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    // Use composerAgentOptions (from listAgentFiles) for availability check,
-    // not agentOptions (from SDK which may have a different/stale list)
-    const available = new Set([
-      ...agentOptions.map((item) => item.name),
-      ...composerAgentOptions.map((item) => item.name),
-    ]);
-    if (hasPlanAgent) available.add("plan");
+    const available = new Set(availableAgentNames);
 
     let nextAgent = selectedAgent;
     if (!selectedAgent || !available.has(selectedAgent)) {
-      // Prefer first composerAgentOption (user's actual primary agents)
-      const firstPrimary = composerAgentOptions[0]?.name;
+      const firstPrimary = effectiveComposerAgentOptions[0]?.name;
       nextAgent = firstPrimary ?? preferredAgentForMode({
         hasPlanAgent,
         serverAgentNames,
@@ -1743,6 +1760,7 @@ export default function App() {
   }, [
     agentModelPrefs,
     agentOptions,
+    availableAgentNames,
     hasPlanAgent,
     modelSelectOptions,
     preferredAgentModel,
@@ -1752,7 +1770,7 @@ export default function App() {
     selectedModel,
     setSelectedModel,
     serverAgentNames,
-    composerAgentOptions,
+    effectiveComposerAgentOptions,
   ]);
 
   const prevSelectedAgentRef = useRef<string | undefined>(selectedAgent);
@@ -2056,6 +2074,8 @@ export default function App() {
   const getSessionStatusType = useCallback(
     (sessionID: string, directory?: string) => {
       void claudeSessionStateMap;
+      void codexSessionStateMap;
+      void opencodeSessionStateMap;
       if (!directory) return "idle";
       const sessionType = getSessionType(sessionID, directory);
       const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
@@ -2073,7 +2093,7 @@ export default function App() {
         sessionKey,
       }).statusType;
     },
-    [activeProjectDir, activeSessionID, getSessionType, claudeSessionStateMap, normalizePresentationProvider],
+    [activeProjectDir, activeSessionID, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
   );
 
   const setSessionReadTimestamp = useCallback((directory: string, sessionID: string, nextReadAt: number) => {
@@ -2084,6 +2104,8 @@ export default function App() {
   const getSessionIndicator = useCallback(
     (sessionID: string, directory: string, updatedAt: number) => {
       void claudeSessionStateMap;
+      void codexSessionStateMap;
+      void opencodeSessionStateMap;
       const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
       const sessionType = getSessionType(sessionID, directory);
       const isActiveSession = activeProjectDir === directory && activeSessionID === sessionID;
@@ -2100,7 +2122,7 @@ export default function App() {
         sessionKey,
       }).indicator;
     },
-    [activeProjectDir, activeSessionID, getSessionType, claudeSessionStateMap, normalizePresentationProvider],
+    [activeProjectDir, activeSessionID, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
   );
 
   useEffect(() => {
@@ -2190,7 +2212,7 @@ export default function App() {
         selectedAgent,
         selectedModelPayload,
         selectedVariant,
-        serverAgentNames,
+        availableAgentNames,
       });
 
       if (sessionType !== "standalone" && createdSessionId) {
@@ -2217,7 +2239,7 @@ export default function App() {
         }
       }
     },
-    [activeProjectDir, appPreferences.permissionMode, createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, serverAgentNames, setManualSessionTitles, setSessionTypes, setSessionTitles],
+    [activeProjectDir, appPreferences.permissionMode, availableAgentNames, createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, setManualSessionTitles, setSessionTypes, setSessionTitles],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -3911,7 +3933,7 @@ export default function App() {
           </div>
         </section>
       ) : null}
-      {hasProjectContext ? (
+      {hasProjectContext && !settingsOpen ? (
         <ContentTopBar
           projectsPaneVisible={showProjectsPane}
           toggleProjectsPane={() => setProjectsSidebarVisible(!showProjectsPane)}
@@ -4192,7 +4214,7 @@ export default function App() {
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
                     hideBrowserToggle={!(appPreferences.orxaBrowserEnabled ?? true)}
                     hidePlanToggle
-                    agentOptions={composerAgentOptions}
+                    agentOptions={effectiveComposerAgentOptions}
                     selectedAgent={selectedAgent}
                     onAgentChange={setSelectedAgent}
                     permissionMode={appPreferences.permissionMode}
@@ -4618,18 +4640,21 @@ export default function App() {
         onAttachProfile={async (profileID) => {
           await window.orxa.runtime.attach(profileID);
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           await bootstrap();
           setStatusLine("Attached to server");
         }}
         onStartLocalProfile={async (profileID) => {
           await window.orxa.runtime.startLocal(profileID);
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           await bootstrap();
           setStatusLine("Local server started");
         }}
         onStopLocalProfile={async () => {
           await window.orxa.runtime.stopLocal();
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           setStatusLine("Local server stopped");
         }}
       />
@@ -4683,16 +4708,19 @@ export default function App() {
         onAttachProfile={async (profileID) => {
           await window.orxa.runtime.attach(profileID);
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           await bootstrap();
         }}
         onStartLocalProfile={async (profileID) => {
           await window.orxa.runtime.startLocal(profileID);
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           await bootstrap();
         }}
         onStopLocalProfile={async () => {
           await window.orxa.runtime.stopLocal();
           await refreshProfiles();
+          await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
         }}
         onRefreshProfiles={refreshProfiles}
       />

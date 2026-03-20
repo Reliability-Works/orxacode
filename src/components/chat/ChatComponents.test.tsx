@@ -55,6 +55,15 @@ describe("ToolCallCard", () => {
     );
     expect(screen.getByText("custom child content")).toBeInTheDocument();
   });
+
+  it("only applies the expanded card chrome when opened", () => {
+    render(<ToolCallCard title="run_command" status="completed" output="done" />);
+    const card = document.querySelector(".tool-call-card");
+    expect(card?.getAttribute("data-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button"));
+    expect(card?.getAttribute("data-expanded")).toBe("true");
+    expect(card?.className).toContain("is-expanded");
+  });
 });
 
 describe("CommandOutput", () => {
@@ -102,6 +111,13 @@ describe("CommandOutput", () => {
     expect(screen.getByText("tail 200")).toBeInTheDocument();
     expect(screen.queryByText("line 1")).not.toBeInTheDocument();
     expect(document.querySelector(".command-output-body")).toHaveTextContent("line 250");
+  });
+
+  it("can hide the duplicated prompt line while keeping output visible", () => {
+    render(<CommandOutput command="npm run lint" output="ok" hidePrompt />);
+    expect(screen.queryByText("$")).not.toBeInTheDocument();
+    expect(screen.queryByText("npm run lint")).not.toBeInTheDocument();
+    expect(screen.getByText("ok")).toBeInTheDocument();
   });
 });
 
