@@ -184,6 +184,11 @@ function toWorkspaceRelativePath(directory: string, target: string) {
   return normalizedTarget.replace(/^\/+/, "");
 }
 
+function isTaskToolName(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === "task" || normalized.endsWith("/task");
+}
+
 function collectStringPaths(input: unknown, output: string[]) {
   if (typeof input === "string") {
     const value = input.trim();
@@ -704,7 +709,12 @@ export class OpencodeService {
   }
 
   async abortSession(directory: string, sessionID: string) {
-    await this.client(directory).session.abort({ directory, sessionID });
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const abortTree = await this.collectAbortableSessionTree(normalizedDirectory, sessionID);
+    const client = this.client(normalizedDirectory);
+    for (const targetSessionID of abortTree) {
+      await client.session.abort({ directory: normalizedDirectory, sessionID: targetSessionID }).catch(() => undefined);
+    }
     return true;
   }
 
@@ -1806,6 +1816,115 @@ export class OpencodeService {
     } finally {
       this.sessionSyncInFlight.delete(syncKey);
     }
+  }
+
+  private toObjectRecord(input: unknown) {
+    if (!input) {
+      return null;
+    }
+    if (typeof input === "string") {
+      try {
+        const parsed = JSON.parse(input) as Record<string, unknown>;
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof input === "object" && !Array.isArray(input)) {
+      return input as Record<string, unknown>;
+    }
+    return null;
+  }
+
+  private extractStringByKeys(input: unknown, keys: string[]): string | undefined {
+    if (!input || typeof input !== "object") {
+      return undefined;
+    }
+    if (Array.isArray(input)) {
+      for (const value of input) {
+        const nested = this.extractStringByKeys(value, keys);
+        if (nested) {
+          return nested;
+        }
+      }
+      return undefined;
+    }
+    const record = input as Record<string, unknown>;
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    for (const value of Object.values(record)) {
+      const nested = this.extractStringByKeys(value, keys);
+      if (nested) {
+        return nested;
+      }
+    }
+    return undefined;
+  }
+
+  private extractTaskChildSessionID(part: SessionMessageBundle["parts"][number]) {
+    if (part.type !== "tool" || !isTaskToolName(part.tool)) {
+      return undefined;
+    }
+    const state = part.state as Record<string, unknown>;
+    const metadata = this.toObjectRecord(state.metadata);
+    const fromMetadata = metadata
+      ? this.extractStringByKeys(metadata, ["sessionId", "sessionID", "task_id", "taskId", "session_id"])
+      : undefined;
+    if (fromMetadata) {
+      return fromMetadata;
+    }
+    const output = state.output;
+    const outputRecord = this.toObjectRecord(output);
+    const fromOutputRecord = outputRecord
+      ? this.extractStringByKeys(outputRecord, ["sessionId", "sessionID", "task_id", "taskId", "session_id"])
+      : undefined;
+    if (fromOutputRecord) {
+      return fromOutputRecord;
+    }
+    if (typeof output !== "string") {
+      return undefined;
+    }
+    const trimmed = output.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    return (
+      trimmed.match(/<task_id>\s*([A-Za-z0-9._:-]+)\s*<\/task_id>/i)?.[1]?.trim() ??
+      trimmed.match(/\b(?:task[_-]?id|session[_-]?id|taskId|sessionId)\b\s*[:=]\s*([A-Za-z0-9._:-]+)/i)?.[1]?.trim()
+    );
+  }
+
+  private async collectAbortableSessionTree(directory: string, sessionID: string, seen = new Set<string>()) {
+    if (!sessionID || seen.has(sessionID)) {
+      return [];
+    }
+    seen.add(sessionID);
+    const bundles = await this.loadMessages(directory, sessionID).catch(() => []);
+    const childSessionIDs = new Set<string>();
+    for (const bundle of bundles) {
+      if (bundle.info.role !== "assistant") {
+        continue;
+      }
+      for (const part of bundle.parts) {
+        if (part.type === "subtask" && typeof part.sessionID === "string" && part.sessionID.trim()) {
+          childSessionIDs.add(part.sessionID.trim());
+          continue;
+        }
+        const taskChildSessionID = this.extractTaskChildSessionID(part);
+        if (taskChildSessionID) {
+          childSessionIDs.add(taskChildSessionID);
+        }
+      }
+    }
+    const descendants: string[] = [];
+    for (const childSessionID of childSessionIDs) {
+      descendants.push(...await this.collectAbortableSessionTree(directory, childSessionID, seen));
+    }
+    return [...descendants, sessionID];
   }
 
   private extractSessionIDFromStreamEvent(event: Event) {

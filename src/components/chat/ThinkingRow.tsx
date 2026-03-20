@@ -8,6 +8,7 @@ interface ThinkingRowProps {
 export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
   const normalizedSummary = summary
     .replace(/^thinking(?:\.\.\.)?[:\s-]*/i, "")
+    .replace(/^working(?:\.\.\.)?[:\s-]*/i, "")
     .trim();
   const summaryText = normalizedSummary || "...";
   const hasContent = content.trim().length > 0;

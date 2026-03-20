@@ -308,8 +308,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     try {
       options.onSessionAbortRequested?.(activeProjectDir, activeSessionID);
       await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID);
-      options.setStatusLine("Stopped");
-      options.stopResponsePolling();
+      options.setStatusLine("Stopping session...");
       void options.refreshProject(activeProjectDir).catch(() => undefined);
       void options.refreshMessages().catch(() => undefined);
     } catch (error) {

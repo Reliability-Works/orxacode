@@ -130,9 +130,15 @@ export function BackgroundAgentsPanel({
                     {agent.statusText}
                   </span>
                 </div>
-                <button type="button" className="agent-dock-open" onClick={() => onOpenAgent(agent.id)}>
-                  Open
-                </button>
+                {agent.sessionID ? (
+                  <button type="button" className="agent-dock-open" onClick={() => onOpenAgent(agent.id)}>
+                    Open
+                  </button>
+                ) : (
+                  <button type="button" className="agent-dock-open" disabled aria-disabled="true">
+                    Pending
+                  </button>
+                )}
               </div>
             ))}
           </div>

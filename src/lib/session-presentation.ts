@@ -494,53 +494,54 @@ export function buildOpencodeBackgroundAgents(
   messages: SessionMessageBundle[],
   sessionStatusByID?: Record<string, { type?: string }>,
 ): UnifiedBackgroundAgentSummary[] {
-  const latestAssistant = [...messages].reverse().find((bundle) => bundle.info.role === "assistant");
-  if (!latestAssistant) {
-    return [];
-  }
   const agents: UnifiedBackgroundAgentSummary[] = [];
-  for (const part of latestAssistant.parts) {
-    if (part.type === "subtask") {
-      const status = deriveOpencodeAgentStatus(
-        part.sessionID ? sessionStatusByID?.[part.sessionID]?.type : undefined,
-      );
+  for (const bundle of messages) {
+    if (bundle.info.role !== "assistant") {
+      continue;
+    }
+    for (const part of bundle.parts) {
+      if (part.type === "subtask") {
+        const status = deriveOpencodeAgentStatus(
+          part.sessionID ? sessionStatusByID?.[part.sessionID]?.type : undefined,
+        );
+        upsertBackgroundAgent(agents, {
+          id: part.sessionID ?? part.id,
+          provider: "opencode",
+          name: part.agent,
+          role: undefined,
+          status: status.status,
+          statusText: status.statusText,
+          prompt: part.prompt,
+          modelLabel: extractModelLabel(part.model),
+          command: part.command,
+          sessionID: part.sessionID,
+        });
+        continue;
+      }
+      if (part.type !== "tool" || !isTaskToolName(part.tool)) {
+        continue;
+      }
+      const metadata = (part.state as Record<string, unknown>).metadata;
+      const output = (part.state as Record<string, unknown>).output;
+      const taskDelegation = extractTaskDelegationInfo(part.state.input, metadata);
+      if (!taskDelegation) {
+        continue;
+      }
+      const sessionID = taskDelegation.sessionID ?? extractTaskSessionIDFromOutput(output);
+      const status = deriveOpencodeAgentStatus(sessionID ? sessionStatusByID?.[sessionID]?.type : undefined);
       upsertBackgroundAgent(agents, {
-        id: part.sessionID ?? part.id,
+        id: sessionID ?? `task:${part.id}`,
         provider: "opencode",
-        name: part.agent,
+        name: taskDelegation.agent,
         role: undefined,
         status: status.status,
         statusText: status.statusText,
-        prompt: part.prompt,
-        modelLabel: extractModelLabel(part.model),
-        command: part.command,
-        sessionID: part.sessionID,
+        prompt: taskDelegation.prompt,
+        modelLabel: taskDelegation.modelLabel,
+        command: taskDelegation.command,
+        sessionID,
       });
-      continue;
     }
-    if (part.type !== "tool" || !isTaskToolName(part.tool)) {
-      continue;
-    }
-    const metadata = (part.state as Record<string, unknown>).metadata;
-    const output = (part.state as Record<string, unknown>).output;
-    const taskDelegation = extractTaskDelegationInfo(part.state.input, metadata);
-    if (!taskDelegation) {
-      continue;
-    }
-    const sessionID = taskDelegation.sessionID ?? extractTaskSessionIDFromOutput(output);
-    const status = deriveOpencodeAgentStatus(sessionID ? sessionStatusByID?.[sessionID]?.type : undefined);
-    upsertBackgroundAgent(agents, {
-      id: sessionID ?? `task:${part.id}`,
-      provider: "opencode",
-      name: taskDelegation.agent,
-      role: undefined,
-      status: status.status,
-      statusText: status.statusText,
-      prompt: taskDelegation.prompt,
-      modelLabel: taskDelegation.modelLabel,
-      command: taskDelegation.command,
-      sessionID,
-    });
   }
   return agents.map((agent) => ({
     ...agent,

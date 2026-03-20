@@ -344,6 +344,11 @@ function isLowSignalCompletedLabel(label: string) {
   return normalized === "completed action" || normalized.startsWith("completed action on ");
 }
 
+function isLowSignalActiveLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "working..." || normalized.startsWith("working on ");
+}
+
 function mapPatchVerbToKind(verb: "Edited" | "Created" | "Deleted"): TimelineKind {
   if (verb === "Created") {
     return "create";
@@ -888,15 +893,6 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       delegations.push(trace);
       activeDelegation = trace;
       currentActor = part.agent;
-      activity = {
-        id: `${part.id}:activity`,
-        label: `Delegating to ${part.agent}...`,
-      };
-      timeline.push({
-        id: `${part.id}:timeline`,
-        label: `Delegated to ${part.agent}: ${part.description}`,
-        kind: "delegate",
-      });
       continue;
     }
 
@@ -982,11 +978,20 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         currentActor = taskDelegation.agent;
       }
       if (isToolStatusActive(status)) {
-        activity = {
-          id: `${part.id}:activity`,
-          label,
-        };
+        const shouldSurfaceActivity =
+          label.trim().length > 0 &&
+          !/^working(?: on)?/i.test(label) &&
+          !/^delegating\b/i.test(label);
+        activity = shouldSurfaceActivity
+          ? {
+              id: `${part.id}:activity`,
+              label,
+            }
+          : null;
       } else {
+        if (taskDelegation) {
+          continue;
+        }
         const showReason = kind === "create" || kind === "delete";
         const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
         const commandPreview = showCommand
@@ -1024,7 +1029,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       const summary = typeof record.summary === "string" ? record.summary : typeof record.text === "string" ? record.text : "";
       if (summary) {
         const trimmed = summary.length > 80 ? `${summary.slice(0, 77)}...` : summary;
-        activity = { id: `${part.id}:activity`, label: `Thinking  ${trimmed}` };
+        activity = { id: `${part.id}:activity`, label: trimmed };
       }
       continue;
     }
@@ -1129,9 +1134,12 @@ function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
       }
       return kind === "run" || kind === "git" || kind === "edit" || kind === "create" || kind === "delete";
     })
-    .map((part) => {
+    .flatMap((part) => {
       const props = buildToolCallCardProps(part, workspaceDirectory);
-      return {
+      if (isLowSignalActiveLabel(props.title) && !props.command && !props.output && !props.error) {
+        return [];
+      }
+      return [{
         id: `tool:${part.id}`,
         kind: "tool" as const,
         title: props.title,
@@ -1139,7 +1147,7 @@ function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
         command: props.command,
         output: props.output,
         error: props.error,
-      };
+      }];
     });
 }
 

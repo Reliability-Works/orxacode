@@ -124,6 +124,34 @@ describe("CodexPane", () => {
     expect(screen.getByRole("log", { name: /codex conversation/i })).toBeInTheDocument();
   });
 
+  it("renders the Codex transcript without virtualization", async () => {
+    window.orxa = {
+      codex: buildOrxaCodex(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    setPersistedCodexState("/workspace/project::session-1", {
+      messages: [{
+        id: "msg-assistant-1",
+        kind: "message",
+        role: "assistant",
+        content: "Transcript rows stay in normal flow.",
+        timestamp: Date.now(),
+      }],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: false,
+      messageIdCounter: 1,
+    });
+
+    const { container } = render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Transcript rows stay in normal flow.")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".messages-virtual-row")).toBeNull();
+    expect(container.querySelector(".messages-virtual-spacer")).toBeNull();
+  });
+
   it("shows the bottom copy action for persisted user messages", async () => {
     window.orxa = {
       codex: buildOrxaCodex(),

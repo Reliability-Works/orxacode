@@ -612,6 +612,86 @@ describe("OpencodeService git flows", () => {
   });
 });
 
+describe("OpencodeService abortSession", () => {
+  it("aborts delegated child sessions before the parent session", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      abortSession: (directory: string, sessionID: string) => Promise<boolean>;
+      ensureWorkspaceDirectory: (directory: string) => string;
+      loadMessages: (directory: string, sessionID: string) => Promise<ReturnType<typeof createSessionMessageBundle>[]>;
+      client: (directory: string) => { session: { abort: (payload: { directory: string; sessionID: string }) => Promise<void> } };
+    };
+
+    const now = Date.now();
+    const abortMock = vi.fn(async () => undefined);
+    service.ensureWorkspaceDirectory = (directory: string) => directory;
+    service.client = () => ({
+      session: {
+        abort: abortMock,
+      },
+    });
+    service.loadMessages = vi.fn(async (_directory: string, sessionID: string) => {
+      if (sessionID === "root-session") {
+        return [
+          createSessionMessageBundle({
+            id: "assistant-root",
+            role: "assistant",
+            sessionID,
+            createdAt: now,
+            parts: [
+              {
+                id: "subtask-root",
+                type: "subtask",
+                sessionID: "child-session",
+                messageID: "assistant-root",
+                prompt: "Inspect the booking stack.",
+                description: "Inspect booking stack",
+                agent: "explorer",
+                model: { providerID: "openai", modelID: "gpt-5.4" },
+              },
+            ],
+          }),
+        ];
+      }
+      if (sessionID === "child-session") {
+        return [
+          createSessionMessageBundle({
+            id: "assistant-child",
+            role: "assistant",
+            sessionID,
+            createdAt: now + 1,
+            parts: [
+              {
+                id: "subtask-child",
+                type: "subtask",
+                sessionID: "grandchild-session",
+                messageID: "assistant-child",
+                prompt: "Inspect the schema.",
+                description: "Inspect schema",
+                agent: "librarian",
+                model: { providerID: "openai", modelID: "gpt-5.4" },
+              },
+            ],
+          }),
+        ];
+      }
+      return [];
+    });
+
+    await service.abortSession("/repo", "root-session");
+
+    expect(
+      abortMock.mock.calls.map((call: unknown[]) => {
+        const payload = call.at(0) as { sessionID: string } | undefined;
+        return payload?.sessionID;
+      }),
+    ).toEqual([
+      "grandchild-session",
+      "child-session",
+      "root-session",
+    ]);
+  });
+});
+
 describe("OpencodeService runtime dependency detection", () => {
   it("marks opencode installed when shell fallback succeeds", async () => {
     const service = Object.create(OpencodeService.prototype) as {

@@ -98,7 +98,7 @@ export function MessageFeed({
       className="messages-scroll"
       onScroll={undefined}
       style={messageFeedStyle}
-      virtualize={!showAssistantPlaceholder}
+      virtualize={false}
       emptyState={
         renderedRows.length === 0 && !(showAssistantPlaceholder && messages.length > 0)
           ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div>

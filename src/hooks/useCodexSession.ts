@@ -2402,9 +2402,14 @@ export function useCodexSession(
     // Remove thinking indicator if present
     const tId = thinkingItemIdRef.current;
     thinkingItemIdRef.current = null;
-    if (tId) {
-      updateMessages((prev) => prev.filter((m) => m.id !== tId));
-    }
+    updateMessages((prev) =>
+      prev.filter((message) => {
+        if (tId && message.id === tId) {
+          return false;
+        }
+        return !(message.kind === "reasoning" && !message.content && !message.summary);
+      }),
+    );
     try {
       await window.orxa.codex.interruptThreadTree(thread.id, turnId ?? "pending");
     } catch (err) {

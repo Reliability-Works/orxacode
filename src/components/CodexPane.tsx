@@ -111,7 +111,7 @@ const CodexConversationView = memo(function CodexConversationView({
       ariaLabel="codex conversation"
       onScroll={handleScroll}
       estimateSize={estimateUnifiedTimelineRowHeight}
-      virtualize={!isStreaming}
+      virtualize={false}
       emptyState={
         showEmptyState ? (
           <div className="codex-empty">

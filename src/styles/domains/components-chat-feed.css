@@ -1832,6 +1832,14 @@
   background: var(--bg-hover);
 }
 
+.agent-dock-open:disabled {
+  cursor: default;
+  opacity: 0.6;
+  border-color: var(--border);
+  color: var(--text-muted);
+  background: transparent;
+}
+
 .agent-dock-detail {
   display: grid;
   gap: 12px;

@@ -181,9 +181,27 @@ describe("session-presentation", () => {
     });
   });
 
-  it("derives shared opencode background agents from the latest assistant turn", () => {
+  it("derives shared opencode background agents across assistant turns", () => {
     const now = Date.now();
     const messages = [
+      createSessionMessageBundle({
+        id: "assistant-0",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now - 10,
+        parts: [
+          {
+            id: "subtask-0",
+            type: "subtask",
+            sessionID: "child-session-0",
+            messageID: "assistant-0",
+            prompt: "Inspect the routing layer.",
+            description: "Inspect routing layer",
+            agent: "Librarian",
+            model: { providerID: "openai", modelID: "gpt-5.4" },
+          },
+        ],
+      }),
       createSessionMessageBundle({
         id: "assistant-1",
         role: "assistant",
@@ -206,17 +224,26 @@ describe("session-presentation", () => {
 
     expect(
       buildOpencodeBackgroundAgents(messages, {
+        "child-session-0": { type: "idle" },
         "child-session-1": { type: "busy" },
       }),
-    ).toEqual([
-      expect.objectContaining({
-        id: "child-session-1",
-        provider: "opencode",
-        name: "Explorer",
-        modelLabel: "openai/gpt-5.4",
-        status: "thinking",
-      }),
-    ]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "child-session-0",
+          provider: "opencode",
+          name: "Librarian",
+          status: "idle",
+        }),
+        expect.objectContaining({
+          id: "child-session-1",
+          provider: "opencode",
+          name: "Explorer",
+          modelLabel: "openai/gpt-5.4",
+          status: "thinking",
+        }),
+      ]),
+    );
   });
 
   it("extracts opencode todo items from the latest todo tool state", () => {

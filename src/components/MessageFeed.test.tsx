@@ -478,7 +478,7 @@ describe("MessageFeed", () => {
 
   // Live events display removed — internal events are now represented by tool cards and shimmer
 
-  it("shows delegation summary when task tool is running", () => {
+  it("keeps live task delegation out of the transcript surface", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -520,12 +520,13 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    expect(screen.getByText(/Delegating .* to @build/i)).toBeInTheDocument();
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByText(/Delegating .* to @build/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /build/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
-  it("renders completed task tool as delegation timeline entry", () => {
+  it("keeps completed task delegation summaries out of the transcript", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -562,11 +563,11 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} />);
 
-    expect(screen.getByText(/Delegated Build Spencer Solutions site to @build/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Ran on - Description/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Delegated Build Spencer Solutions site to @build/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/No messages yet/i)).toBeInTheDocument();
   });
 
-  it("shows delegated task result output inline in the timeline disclosure", () => {
+  it("keeps delegated task result output out of the transcript", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -602,9 +603,8 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-    const summary = screen.getByText(/Delegated Build Spencer Solutions site to @build/i);
-    fireEvent.click(summary.closest("summary")!);
-    expect(screen.getByText(/Implemented homepage and contact page\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/Delegated Build Spencer Solutions site to @build/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Implemented homepage and contact page\./i)).not.toBeInTheDocument();
   });
 
   it("does not load delegated session output inside the transcript surface", async () => {
@@ -735,7 +735,7 @@ describe("MessageFeed", () => {
     });
   });
 
-  it("renders sub-agent delegation as timeline context instead of a transcript bubble", () => {
+  it("keeps sub-agent delegation out of the transcript surface", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -778,9 +778,40 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    expect(screen.getByText(/Delegated to reviewer: Fix the bug in renderer state handling/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Delegated to reviewer: Fix the bug in renderer state handling/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /reviewer/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
+  });
+
+  it("does not mirror live delegation status into the transcript footer", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-live-delegation",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "subtask-live-1",
+            type: "subtask",
+            sessionID: "child-1",
+            messageID: "msg-assistant-live-delegation",
+            prompt: "Inspect the stack.",
+            description: "Inspect the stack",
+            agent: "explorer",
+            model: { providerID: "openai", modelID: "gpt-5.4" },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByText(/Delegating/i)).not.toBeInTheDocument();
   });
 
   it("leaves delegated subagent transcript loading to the shared background-agent surface", async () => {
@@ -888,7 +919,7 @@ describe("MessageFeed", () => {
     await waitFor(() => {
       expect(loadMessages).not.toHaveBeenCalled();
     });
-    expect(screen.getByText(/Delegated Inspect project structure to @build/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Delegated Inspect project structure to @build/i)).not.toBeInTheDocument();
   });
 
   it("keeps delegation details out of the transcript placeholder", () => {
@@ -1261,6 +1292,38 @@ describe("MessageFeed", () => {
     ];
     const view = render(<MessageFeed messages={messages} />);
     expect(within(view.container).queryByText(/^Completed action$/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render low-signal working rows without command context", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-no-working-noise",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-run-generic-active",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-no-working-noise",
+            callID: "call-run-generic-active",
+            tool: "run",
+            state: {
+              status: "running",
+              input: {},
+              metadata: {},
+              time: { start: now },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    expect(within(view.container).queryByText(/^Working\.\.\.$/i)).not.toBeInTheDocument();
   });
 
   it("renders loaded skill label without synthetic command line", () => {
@@ -1786,5 +1849,33 @@ describe("MessageFeed", () => {
       // scrollTop should NOT have changed because user scrolled up
       expect(scrollEl.scrollTop).toBe(scrollTopBefore);
     });
+  });
+
+  it("renders the shared feed without transcript virtualization", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-no-virtualizer",
+          role: "assistant",
+          sessionID: "session-plain",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "msg-no-virtualizer-part",
+            type: "text",
+            sessionID: "session-plain",
+            messageID: "msg-no-virtualizer",
+            text: "Transcript rows stay in normal document flow.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    const { container } = render(<MessageFeed messages={messages} />);
+
+    expect(container.querySelector(".messages-virtual-row")).toBeNull();
+    expect(container.querySelector(".messages-virtual-spacer")).toBeNull();
   });
 });

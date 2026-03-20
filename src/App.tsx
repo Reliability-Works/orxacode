@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -2908,7 +2909,11 @@ export default function App() {
     [activeProjectDir, activeSessionID, activeSessionKey, activeSessionType, isSendingPrompt, normalizePresentationProvider],
   );
   const isSessionBusy = activeComposerPresentation.busy;
-  const isSessionInProgress = isSessionBusy || isSendingPrompt;
+  const activeManualStopState = getManualSessionStopState(activeSessionKey);
+  const suppressActiveBusyUi = Boolean(
+    activeManualStopState?.requestedAt && Date.now() - activeManualStopState.requestedAt < 30_000,
+  );
+  const isSessionInProgress = (isSessionBusy || isSendingPrompt) && !suppressActiveBusyUi;
   const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
@@ -4077,7 +4082,7 @@ export default function App() {
               backfillStatus={memoryBackfillStatus}
             />
           ) : activeProjectDir ? (
-            <>
+            <Fragment key={activeSessionKey ?? activeSessionType ?? "workspace-landing"}>
               {!activeSessionID ? (
                 <WorkspaceLanding
                   workspaceName={activeProjectDir.split("/").pop() ?? activeProjectDir}
@@ -4260,7 +4265,7 @@ export default function App() {
                   onResizeStart={handleTerminalResizeStart}
                 />
               ) : null}
-            </>
+            </Fragment>
           ) : (
             <HomeDashboard {...homeDashboardProps} />
           )}
