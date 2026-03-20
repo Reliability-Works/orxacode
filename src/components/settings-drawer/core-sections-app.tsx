@@ -96,6 +96,9 @@ export function AppSettingsSection({
             onChange={(e) => onAppPreferencesChange({ ...appPreferences, notifyOnTaskComplete: e.target.checked })}
           />
         </label>
+        <p className="settings-inline-note">
+          Desktop notifications are experimental right now and are not recommended to be enabled by default.
+        </p>
         <label className="settings-inline-toggle">
           enable collaboration modes (codex)
           <input

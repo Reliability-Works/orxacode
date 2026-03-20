@@ -9,6 +9,55 @@ export type ModelOption = {
   variants: string[];
 };
 
+type ProviderLike = {
+  id?: unknown;
+  name?: unknown;
+  models?: unknown;
+};
+
+type ProviderModelLike = {
+  id?: unknown;
+  name?: unknown;
+  status?: unknown;
+  variants?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function listConnectedProviderIDs(providers: ProviderListResponse): string[] {
+  return Array.isArray(providers.connected)
+    ? providers.connected.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function listProviderEntries(providers: ProviderListResponse): Array<{ id: string; name: string; models: ProviderModelLike[] }> {
+  if (!Array.isArray(providers.all)) {
+    return [];
+  }
+
+  return providers.all.flatMap((providerValue) => {
+    if (!isRecord(providerValue)) {
+      return [];
+    }
+
+    const provider = providerValue as ProviderLike;
+    if (typeof provider.id !== "string" || provider.id.trim().length === 0) {
+      return [];
+    }
+
+    const providerID = provider.id;
+    const providerName = typeof provider.name === "string" && provider.name.trim().length > 0
+      ? provider.name
+      : providerID;
+    const modelValues = isRecord(provider.models) ? Object.values(provider.models) : [];
+    const models = modelValues.filter((model): model is ProviderModelLike => isRecord(model));
+
+    return [{ id: providerID, name: providerName, models }];
+  });
+}
+
 export function mergeDiscoverableModelOptions(...sources: Array<ModelOption[]>) {
   const unique = new Map<string, ModelOption>();
   for (const source of sources) {
@@ -54,15 +103,18 @@ export function listAgentOptions(agents: Agent[]) {
 }
 
 export function listModelOptions(providers: ProviderListResponse): ModelOption[] {
-  const connected = new Set(providers.connected);
+  const connected = new Set(listConnectedProviderIDs(providers));
   const options: ModelOption[] = [];
 
-  for (const provider of providers.all) {
+  for (const provider of listProviderEntries(providers)) {
     if (!connected.has(provider.id)) {
       continue;
     }
 
-    for (const model of Object.values(provider.models)) {
+    for (const model of provider.models) {
+      if (typeof model.id !== "string" || model.id.trim().length === 0) {
+        continue;
+      }
       if (model.status === "deprecated") {
         continue;
       }
@@ -72,8 +124,8 @@ export function listModelOptions(providers: ProviderListResponse): ModelOption[]
         providerID: provider.id,
         modelID: model.id,
         providerName: provider.name,
-        modelName: model.name,
-        variants: model.variants ? Object.keys(model.variants) : [],
+        modelName: typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.id,
+        variants: isRecord(model.variants) ? Object.keys(model.variants) : [],
       });
     }
   }
@@ -84,8 +136,11 @@ export function listModelOptions(providers: ProviderListResponse): ModelOption[]
 export function listAllModelOptions(providers: ProviderListResponse): ModelOption[] {
   const options: ModelOption[] = [];
 
-  for (const provider of providers.all) {
-    for (const model of Object.values(provider.models)) {
+  for (const provider of listProviderEntries(providers)) {
+    for (const model of provider.models) {
+      if (typeof model.id !== "string" || model.id.trim().length === 0) {
+        continue;
+      }
       if (model.status === "deprecated") {
         continue;
       }
@@ -95,8 +150,8 @@ export function listAllModelOptions(providers: ProviderListResponse): ModelOptio
         providerID: provider.id,
         modelID: model.id,
         providerName: provider.name,
-        modelName: model.name,
-        variants: model.variants ? Object.keys(model.variants) : [],
+        modelName: typeof model.name === "string" && model.name.trim().length > 0 ? model.name : model.id,
+        variants: isRecord(model.variants) ? Object.keys(model.variants) : [],
       });
     }
   }

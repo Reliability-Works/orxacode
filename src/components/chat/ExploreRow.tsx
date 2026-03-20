@@ -1,13 +1,17 @@
 import { useState } from "react";
-import type { CodexMessageItem } from "../../hooks/useCodexSession";
 import type { ExploreEntry, ExploreEntryKind } from "../../lib/explore-utils";
 import { buildExploreLabel } from "../../lib/explore-utils";
 import { ChatFileIcon, ChatSearchIcon, ChatFolderIcon } from "./chat-icons";
 
-type ExploreMessageItem = Extract<CodexMessageItem, { kind: "explore" }>;
+export interface ExploreRowItem {
+  id: string;
+  status: "exploring" | "explored";
+  entries: ExploreEntry[];
+  timestamp?: number;
+}
 
 interface ExploreRowProps {
-  item: ExploreMessageItem;
+  item: ExploreRowItem;
 }
 
 function EntryIcon({ kind }: { kind: ExploreEntryKind }) {

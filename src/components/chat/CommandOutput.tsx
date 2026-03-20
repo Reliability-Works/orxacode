@@ -4,7 +4,16 @@ interface CommandOutputProps {
   exitCode?: number;
 }
 
+const MAX_COMMAND_OUTPUT_LINES = 200;
+
 export function CommandOutput({ command, output, exitCode }: CommandOutputProps) {
+  const lines = output.split("\n");
+  const isTruncated = lines.length > MAX_COMMAND_OUTPUT_LINES;
+  const visibleOutput = isTruncated
+    ? lines.slice(lines.length - MAX_COMMAND_OUTPUT_LINES).join("\n")
+    : output;
+  const hasVisibleOutput = visibleOutput.trim().length > 0;
+
   return (
     <div className="command-output">
       <div className="command-output-prompt">
@@ -17,8 +26,11 @@ export function CommandOutput({ command, output, exitCode }: CommandOutputProps)
             [{exitCode}]
           </span>
         ) : null}
+        {isTruncated ? (
+          <span className="command-output-exit-code">tail {MAX_COMMAND_OUTPUT_LINES}</span>
+        ) : null}
       </div>
-      <pre className="command-output-body">{output}</pre>
+      {hasVisibleOutput ? <pre className="command-output-body">{visibleOutput}</pre> : null}
     </div>
   );
 }

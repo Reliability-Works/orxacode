@@ -8,8 +8,10 @@ import type {
   CodexCollaborationMode,
   CodexModelEntry,
   CodexNotification,
+  CodexRunMetadata,
   CodexState,
   CodexThread,
+  CodexThreadRuntime,
 } from "@shared/ipc";
 
 // ---------------------------------------------------------------------------
@@ -175,6 +177,222 @@ function resolveCodexBinary(): string | null {
 // ---------------------------------------------------------------------------
 
 const REQUEST_TIMEOUT_MS = 60_000;
+const RUN_METADATA_MAX_PROMPT_CHARS = 1200;
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : value ? String(value) : "";
+}
+
+function cleanRunMetadataPrompt(prompt: string) {
+  if (!prompt) {
+    return "";
+  }
+  const withoutImages = prompt.replace(/\[image(?: x\d+)?\]/gi, " ");
+  const withoutSkills = withoutImages.replace(/(^|\s)\$[A-Za-z0-9_-]+(?=\s|$)/g, " ");
+  const normalized = withoutSkills.replace(/\s+/g, " ").trim();
+  return normalized.length > RUN_METADATA_MAX_PROMPT_CHARS
+    ? normalized.slice(0, RUN_METADATA_MAX_PROMPT_CHARS)
+    : normalized;
+}
+
+export function buildRunMetadataPrompt(cleanedPrompt: string) {
+  return [
+    "You create concise run metadata for a coding task.",
+    "Return ONLY a JSON object with keys:",
+    "- title: short, clear, 3-7 words, Title Case",
+    "- worktreeName: lower-case, kebab-case slug prefixed with one of: feat/, fix/, chore/, test/, docs/, refactor/, perf/, build/, ci/, style/.",
+    "",
+    "Choose fix/ when the task is a bug fix, error, regression, crash, or cleanup.",
+    "Use the closest match for chores/tests/docs/refactors/perf/build/ci/style.",
+    "Otherwise use feat/.",
+    "",
+    "Examples:",
+    '{"title":"Fix Login Redirect Loop","worktreeName":"fix/login-redirect-loop"}',
+    '{"title":"Add Workspace Home View","worktreeName":"feat/workspace-home"}',
+    '{"title":"Update Lint Config","worktreeName":"chore/update-lint-config"}',
+    '{"title":"Add Coverage Tests","worktreeName":"test/add-coverage-tests"}',
+    "",
+    "Task:",
+    cleanedPrompt,
+  ].join("\n");
+}
+
+function extractJsonValue(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return asRecord(parsed);
+  } catch {
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start < 0 || end <= start) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(trimmed.slice(start, end + 1)) as unknown;
+      return asRecord(parsed);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function sanitizeRunWorktreeName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+export function parseRunMetadataValue(raw: string): CodexRunMetadata {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("No metadata was generated");
+  }
+  const jsonValue = extractJsonValue(trimmed);
+  if (!jsonValue) {
+    throw new Error("Failed to parse metadata JSON");
+  }
+  const title = asString(jsonValue.title).trim();
+  const worktreeName = sanitizeRunWorktreeName(asString(jsonValue.worktreeName ?? jsonValue.worktree_name));
+  if (!title) {
+    throw new Error("Missing title in metadata");
+  }
+  if (!worktreeName) {
+    throw new Error("Missing worktree name in metadata");
+  }
+  return { title, worktreeName };
+}
+
+function extractThreadIdFromResult(result: unknown): string | null {
+  const record = asRecord(result);
+  if (!record) {
+    return null;
+  }
+  const resultRecord = asRecord(record.result);
+  const threadRecord = asRecord(resultRecord?.thread ?? record.thread);
+  return (
+    asString(resultRecord?.threadId).trim() ||
+    asString(threadRecord?.id).trim() ||
+    asString(record.threadId).trim() ||
+    null
+  );
+}
+
+function getParentThreadIdFromSource(source: unknown): string | null {
+  const sourceRecord = asRecord(source);
+  if (!sourceRecord) {
+    return null;
+  }
+  const subAgent = asRecord(sourceRecord.subAgent ?? sourceRecord.sub_agent ?? sourceRecord.subagent);
+  if (!subAgent) {
+    return null;
+  }
+  const threadSpawn = asRecord(subAgent.thread_spawn ?? subAgent.threadSpawn);
+  if (!threadSpawn) {
+    return null;
+  }
+  return asString(threadSpawn.parent_thread_id ?? threadSpawn.parentThreadId).trim() || null;
+}
+
+function getParentThreadIdFromThread(thread: Record<string, unknown>): string | null {
+  return (
+    getParentThreadIdFromSource(thread.source) ||
+    asString(
+      thread.parentThreadId ??
+      thread.parent_thread_id ??
+      thread.parentId ??
+      thread.parent_id ??
+      thread.senderThreadId ??
+      thread.sender_thread_id,
+    ).trim() ||
+    null
+  );
+}
+
+function normalizeTurnStatus(value: unknown) {
+  return asString(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+}
+
+function getActiveTurnIdFromThread(thread: Record<string, unknown>): string | null {
+  const explicit =
+    asString(thread.activeTurnId ?? thread.active_turn_id).trim() ||
+    asString(asRecord(thread.activeTurn ?? thread.active_turn ?? thread.currentTurn ?? thread.current_turn)?.id).trim();
+  if (explicit) {
+    return explicit;
+  }
+  const turns = Array.isArray(thread.turns) ? thread.turns : [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = asRecord(turns[index]);
+    if (!turn) {
+      continue;
+    }
+    const status = normalizeTurnStatus(turn.status ?? turn.turnStatus ?? turn.turn_status);
+    if (
+      status === "inprogress" ||
+      status === "running" ||
+      status === "processing" ||
+      status === "pending" ||
+      status === "started" ||
+      status === "queued" ||
+      status === "waiting" ||
+      status === "blocked" ||
+      status === "needsinput" ||
+      status === "requiresaction" ||
+      status === "awaitinginput" ||
+      status === "waitingforinput"
+    ) {
+      return asString(turn.id ?? turn.turnId ?? turn.turn_id).trim() || null;
+    }
+  }
+  return null;
+}
+
+function collectDescendantThreadIds(rootThreadId: string, threads: Record<string, unknown>[]) {
+  const childrenByParent = new Map<string, string[]>();
+  for (const thread of threads) {
+    const childId = asString(thread.id).trim();
+    const parentId = getParentThreadIdFromThread(thread);
+    if (!childId || !parentId || childId === parentId) {
+      continue;
+    }
+    const children = childrenByParent.get(parentId) ?? [];
+    children.push(childId);
+    childrenByParent.set(parentId, children);
+  }
+
+  const visited = new Set<string>([rootThreadId]);
+  const descendants: string[] = [];
+  const queue = [...(childrenByParent.get(rootThreadId) ?? [])];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+    descendants.push(current);
+    const children = childrenByParent.get(current) ?? [];
+    children.forEach((child) => queue.push(child));
+  }
+
+  return descendants;
+}
+
+function isMissingCodexThreadArchiveError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no rollout found for thread id/i.test(message) || /no thread found for thread id/i.test(message);
+}
 
 export class CodexService extends EventEmitter {
   private process: ChildProcess | null = null;
@@ -184,6 +402,10 @@ export class CodexService extends EventEmitter {
   private _state: CodexState = { status: "disconnected" };
   private _models: CodexModelEntry[] = [];
   private _collaborationModes: CodexCollaborationMode[] = [];
+  private readonly hiddenThreadIds = new Set<string>();
+  private readonly hiddenThreadListeners = new Map<string, Set<(notification: CodexNotification) => void>>();
+  private readonly itemThreadIds = new Map<string, string>();
+  private readonly turnThreadIds = new Map<string, string>();
 
   get state(): CodexState {
     return { ...this._state };
@@ -342,6 +564,160 @@ export class CodexService extends EventEmitter {
     return result;
   }
 
+  async getThreadRuntime(threadId: string): Promise<CodexThreadRuntime> {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    await this.ensureConnected();
+    const threadRecords = await this.listThreadRecords();
+    const threadRecord = threadRecords.find((candidate) => asString(candidate.id).trim() === normalizedThreadId) ?? null;
+    if (!threadRecord) {
+      return { thread: null, childThreads: [] };
+    }
+    const childThreads = threadRecords
+      .filter((candidate) => getParentThreadIdFromThread(candidate) === normalizedThreadId)
+      .map((candidate) => candidate as unknown as CodexThread);
+    return {
+      thread: threadRecord as unknown as CodexThread,
+      childThreads,
+    };
+  }
+
+  private async listThreadRecords(params?: {
+    cursor?: string | null;
+    limit?: number;
+    archived?: boolean;
+  }): Promise<Record<string, unknown>[]> {
+    const result = (await this.request("thread/list", params ?? {})) as Record<string, unknown>;
+    const threads = Array.isArray(result.threads) ? result.threads : [];
+    return threads.map((thread) => asRecord(thread)).filter((thread): thread is Record<string, unknown> => Boolean(thread));
+  }
+
+  async archiveThread(threadId: string): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    await this.ensureConnected();
+    try {
+      await this.request("thread/archive", { threadId: normalizedThreadId });
+    } catch (error) {
+      if (!isMissingCodexThreadArchiveError(error)) {
+        throw error;
+      }
+    }
+    this.cleanupThreadMappings(normalizedThreadId);
+  }
+
+  async archiveThreadTree(rootThreadId: string): Promise<void> {
+    const normalizedRootThreadId = rootThreadId.trim();
+    if (!normalizedRootThreadId) {
+      throw new Error("threadId is required");
+    }
+    await this.ensureConnected();
+    const threadRecords = await this.listThreadRecords();
+    const descendants = collectDescendantThreadIds(normalizedRootThreadId, threadRecords);
+    for (const descendantId of descendants) {
+      await this.archiveThread(descendantId);
+    }
+    await this.archiveThread(normalizedRootThreadId);
+  }
+
+  async setThreadName(threadId: string, name: string): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    const normalizedName = name.replace(/\s+/g, " ").trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    if (!normalizedName) {
+      throw new Error("name is required");
+    }
+    await this.ensureConnected();
+    await this.request("thread/name/set", { threadId: normalizedThreadId, name: normalizedName });
+  }
+
+  async generateRunMetadata(cwd: string, prompt: string): Promise<CodexRunMetadata> {
+    const cleanedPrompt = cleanRunMetadataPrompt(prompt);
+    if (!cleanedPrompt) {
+      throw new Error("Prompt is required to generate run metadata");
+    }
+
+    await this.ensureConnected(cwd);
+
+    const threadResult = await this.request("thread/start", {
+      cwd,
+      approvalPolicy: "never",
+    });
+    const threadId = extractThreadIdFromResult(threadResult);
+    if (!threadId) {
+      throw new Error("Failed to resolve background Codex thread ID");
+    }
+
+    let responseText = "";
+    const unsubscribe = this.subscribeHiddenThread(threadId, (notification) => {
+      if (notification.method === "item/agentMessage/delta") {
+        const delta = asString(notification.params.delta);
+        if (delta) {
+          responseText += delta;
+        }
+      }
+    });
+
+    try {
+      await this.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: buildRunMetadataPrompt(cleanedPrompt), text_elements: [] }],
+        cwd,
+        approvalPolicy: "never",
+        sandboxPolicy: { type: "readOnly" },
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          release();
+          reject(new Error("Timed out generating run metadata"));
+        }, REQUEST_TIMEOUT_MS);
+
+        const finish = (error?: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          release();
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        };
+
+        const release = this.subscribeHiddenThread(threadId, (notification: CodexNotification) => {
+          if (notification.method === "turn/completed") {
+            finish();
+            return;
+          }
+          if (notification.method === "turn/error") {
+            const message = asString(asRecord(notification.params)?.error).trim() || "Failed to generate run metadata";
+            finish(new Error(message));
+          }
+        });
+      });
+
+      return parseRunMetadataValue(responseText);
+    } finally {
+      unsubscribe();
+      await this.archiveHiddenThread(threadId);
+      this.cleanupThreadMappings(threadId);
+    }
+  }
+
   async startTurn(params: {
     threadId: string;
     prompt: string;
@@ -372,6 +748,25 @@ export class CodexService extends EventEmitter {
       await this.request("turn/interrupt", params);
     } catch {
       // Timeout is expected if the server handles interrupt as notification-only
+    }
+  }
+
+  async interruptThreadTree(rootThreadId: string, rootTurnId?: string): Promise<void> {
+    const normalizedRootThreadId = rootThreadId.trim();
+    if (!normalizedRootThreadId) {
+      throw new Error("threadId is required");
+    }
+    await this.ensureConnected();
+    const threadRecords = await this.listThreadRecords();
+    const threadMap = new Map(threadRecords.map((thread) => [asString(thread.id).trim(), thread]));
+    const descendants = collectDescendantThreadIds(normalizedRootThreadId, threadRecords);
+    const threadIds = [normalizedRootThreadId, ...descendants];
+    for (const threadId of threadIds) {
+      const threadRecord = threadMap.get(threadId);
+      const turnId = threadId === normalizedRootThreadId
+        ? (rootTurnId?.trim() || getActiveTurnIdFromThread(threadRecord ?? {}))
+        : getActiveTurnIdFromThread(threadRecord ?? {});
+      await this.interruptTurn(threadId, turnId ?? "pending");
     }
   }
 
@@ -428,6 +823,16 @@ export class CodexService extends EventEmitter {
     });
   }
 
+  private async ensureConnected(cwd?: string): Promise<void> {
+    if (this.process && this._state.status === "connected") {
+      return;
+    }
+    const state = await this.start(cwd);
+    if (state.status !== "connected") {
+      throw new Error(state.lastError ?? "Codex process is not connected");
+    }
+  }
+
   private sendNotification(method: string, params: unknown): void {
     if (!this.process?.stdin?.writable) return;
     const msg = { method, params };
@@ -470,17 +875,137 @@ export class CodexService extends EventEmitter {
 
     // Server request (has id + method → requires a response from us, e.g. approval)
     if (typeof msg.id === "number" && typeof msg.method === "string") {
-      this.handleServerRequest(msg.id, msg.method, (msg.params ?? {}) as Record<string, unknown>);
+      const params = (msg.params ?? {}) as Record<string, unknown>;
+      this.trackThreadMappings(msg.method, params);
+      const threadId = this.extractThreadId(msg.method, params);
+      if (threadId && this.hiddenThreadIds.has(threadId)) {
+        const notification = { method: msg.method, params } satisfies CodexNotification;
+        this.notifyHiddenThread(threadId, notification);
+        this.sendResponse(msg.id, {});
+        return;
+      }
+      this.handleServerRequest(msg.id, msg.method, params);
       return;
     }
 
     // Notification (has method but no id)
     if (typeof msg.method === "string" && msg.id === undefined) {
-      this.emit("notification", {
+      const params = (msg.params ?? {}) as Record<string, unknown>;
+      this.trackThreadMappings(msg.method, params);
+      const notification = {
         method: msg.method,
-        params: (msg.params ?? {}) as Record<string, unknown>,
-      } satisfies CodexNotification);
+        params,
+      } satisfies CodexNotification;
+      const threadId = this.extractThreadId(msg.method, params);
+      if (threadId && this.hiddenThreadIds.has(threadId)) {
+        this.notifyHiddenThread(threadId, notification);
+        return;
+      }
+      this.emit("notification", notification);
       return;
+    }
+  }
+
+  private subscribeHiddenThread(threadId: string, listener: (notification: CodexNotification) => void) {
+    this.hiddenThreadIds.add(threadId);
+    const listeners = this.hiddenThreadListeners.get(threadId) ?? new Set<(notification: CodexNotification) => void>();
+    listeners.add(listener);
+    this.hiddenThreadListeners.set(threadId, listeners);
+    return () => {
+      const current = this.hiddenThreadListeners.get(threadId);
+      if (!current) {
+        return;
+      }
+      current.delete(listener);
+      if (current.size === 0) {
+        this.hiddenThreadListeners.delete(threadId);
+        this.hiddenThreadIds.delete(threadId);
+      }
+    };
+  }
+
+  private notifyHiddenThread(threadId: string, notification: CodexNotification) {
+    const listeners = this.hiddenThreadListeners.get(threadId);
+    if (!listeners) {
+      return;
+    }
+    for (const listener of listeners) {
+      listener(notification);
+    }
+  }
+
+  private trackThreadMappings(method: string, params: Record<string, unknown>) {
+    const threadId = this.extractThreadId(method, params);
+    if (method === "item/started" || method === "item/completed") {
+      const itemId = asString(params.itemId ?? asRecord(params.item)?.id).trim();
+      if (itemId && threadId) {
+        this.itemThreadIds.set(itemId, threadId);
+      }
+      if (method === "item/completed" && itemId) {
+        this.itemThreadIds.delete(itemId);
+      }
+    }
+    if (method === "turn/started" || method === "turn/completed") {
+      const turnId = asString(params.turnId ?? asRecord(params.turn)?.id).trim();
+      if (turnId && threadId) {
+        this.turnThreadIds.set(turnId, threadId);
+      }
+      if (method === "turn/completed" && turnId) {
+        this.turnThreadIds.delete(turnId);
+      }
+    }
+    if ((method === "thread/archived" || method === "thread/closed") && threadId) {
+      this.cleanupThreadMappings(threadId);
+    }
+  }
+
+  private extractThreadId(method: string, params: Record<string, unknown>): string | null {
+    const itemRecord = asRecord(params.item);
+    const turnRecord = asRecord(params.turn);
+    const threadRecord = asRecord(params.thread);
+    const itemId = asString(params.itemId ?? itemRecord?.id).trim();
+    const turnId = asString(params.turnId ?? turnRecord?.id).trim();
+    const directThreadId =
+      asString(params.threadId ?? params.thread_id).trim() ||
+      asString(threadRecord?.id).trim() ||
+      asString(turnRecord?.threadId ?? turnRecord?.thread_id).trim() ||
+      asString(itemRecord?.threadId ?? itemRecord?.thread_id).trim();
+
+    if (directThreadId) {
+      return directThreadId;
+    }
+    if (itemId && this.itemThreadIds.has(itemId)) {
+      return this.itemThreadIds.get(itemId) ?? null;
+    }
+    if (turnId && this.turnThreadIds.has(turnId)) {
+      return this.turnThreadIds.get(turnId) ?? null;
+    }
+    if (method === "thread/name/updated") {
+      return asString(params.threadId ?? params.thread_id ?? threadRecord?.id).trim() || null;
+    }
+    return null;
+  }
+
+  private async archiveHiddenThread(threadId: string) {
+    try {
+      await this.request("thread/archive", { threadId });
+    } catch {
+      // Non-fatal cleanup.
+    }
+    this.hiddenThreadListeners.delete(threadId);
+    this.hiddenThreadIds.delete(threadId);
+  }
+
+  private cleanupThreadMappings(threadId: string) {
+    for (const [itemId, ownerThreadId] of this.itemThreadIds.entries()) {
+      if (ownerThreadId === threadId) {
+        this.itemThreadIds.delete(itemId);
+      }
+    }
+    for (const [turnId, ownerThreadId] of this.turnThreadIds.entries()) {
+      if (ownerThreadId === threadId) {
+        this.turnThreadIds.delete(turnId);
+      }
     }
   }
 
@@ -542,5 +1067,9 @@ export class CodexService extends EventEmitter {
       }
       this.process = null;
     }
+    this.hiddenThreadIds.clear();
+    this.hiddenThreadListeners.clear();
+    this.itemThreadIds.clear();
+    this.turnThreadIds.clear();
   }
 }

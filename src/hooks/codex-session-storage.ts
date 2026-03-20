@@ -10,16 +10,20 @@ export interface PersistedCodexState {
 
 const persistedSessions = new Map<string, PersistedCodexState>();
 
-export function getPersistedCodexState(directory: string): PersistedCodexState {
-  const existing = persistedSessions.get(directory);
+export function getPersistedCodexState(sessionKey: string): PersistedCodexState {
+  const existing = persistedSessions.get(sessionKey);
   if (existing) {
     return existing;
   }
   const fresh: PersistedCodexState = { messages: [], thread: null, isStreaming: false, messageIdCounter: 0 };
-  persistedSessions.set(directory, fresh);
+  persistedSessions.set(sessionKey, fresh);
   return fresh;
 }
 
-export function setPersistedCodexState(directory: string, next: PersistedCodexState) {
-  persistedSessions.set(directory, next);
+export function setPersistedCodexState(sessionKey: string, next: PersistedCodexState) {
+  persistedSessions.set(sessionKey, next);
+}
+
+export function clearPersistedCodexState(sessionKey: string) {
+  persistedSessions.delete(sessionKey);
 }

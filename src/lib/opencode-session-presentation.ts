@@ -1,0 +1,1249 @@
+import type { Part } from "@opencode-ai/sdk/v2/client";
+import type { SessionMessageBundle } from "@shared/ipc";
+import type { ToolCallStatus } from "../components/chat/ToolCallCard";
+import type { UnifiedMessageSection, UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
+import {
+  extractMetaFileDiffSummary,
+  extractMetaFileDiffDetails,
+  extractPatchFileDetails,
+  extractPatchSummary,
+  extractWriteFileDetail,
+  mergeChangedFileDetails,
+  extractWriteFileSummary,
+} from "./message-feed-patch-summary";
+import {
+  buildTimelineBlocks,
+  pluralize,
+  type InternalEvent,
+  type TimelineEvent,
+  type TimelineKind,
+} from "./message-feed-timeline";
+import {
+  countOrxaMemoryLines,
+  extractVisibleText,
+  getVisibleParts,
+  isLikelyTelemetryJson,
+  isProgressUpdateText,
+  parseJsonObject,
+  shouldHideAssistantText,
+  summarizeOrxaBrowserActionText,
+} from "./message-feed-visibility";
+import { groupChangedFileRows, type UnifiedProjectedSessionPresentation } from "./session-presentation";
+
+export type ActivityEvent = {
+  id: string;
+  label: string;
+};
+
+type DelegationTrace = {
+  id: string;
+  agent: string;
+  description: string;
+  prompt: string;
+  modelLabel?: string;
+  command?: string;
+  sessionID?: string;
+  events: InternalEvent[];
+};
+
+type TaskDelegationInfo = {
+  agent: string;
+  description: string;
+  prompt: string;
+  command?: string;
+  modelLabel?: string;
+  sessionID?: string;
+};
+
+function getRoleLabel(role: string, assistantLabel: string) {
+  if (role === "assistant") {
+    return assistantLabel;
+  }
+  if (role === "user") {
+    return "User";
+  }
+  return role;
+}
+
+function compactText(value: string, maxLength = 58) {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | null) {
+  const normalizedTarget = target.replace(/\\/g, "/").replace(/\/+$/g, "");
+  const normalizedWorkspace = (workspaceDirectory ?? "").replace(/\\/g, "/").replace(/\/+$/g, "");
+  if (!normalizedWorkspace) {
+    return normalizedTarget;
+  }
+  if (normalizedTarget === normalizedWorkspace) {
+    return ".";
+  }
+  if (normalizedTarget.startsWith(`${normalizedWorkspace}/`)) {
+    return normalizedTarget.slice(normalizedWorkspace.length + 1);
+  }
+  const embeddedWorkspaceIndex = normalizedTarget.indexOf(`${normalizedWorkspace}/`);
+  if (embeddedWorkspaceIndex >= 0) {
+    return normalizedTarget.slice(embeddedWorkspaceIndex + normalizedWorkspace.length + 1);
+  }
+  return normalizedTarget;
+}
+
+function formatTarget(target: string, workspaceDirectory?: string | null, maxLength = 58) {
+  return compactText(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
+}
+
+function deriveTargetFromCommand(command: string, workspaceDirectory?: string | null) {
+  const quotedPath = command.match(/["']([^"']+\.[^"']+)["']/)?.[1];
+  if (quotedPath) {
+    return formatTarget(quotedPath, workspaceDirectory);
+  }
+  const redirectPath = command.match(/(?:>|>>)\s*([~./][^\s"'`]+)/)?.[1];
+  if (redirectPath) {
+    return formatTarget(redirectPath, workspaceDirectory);
+  }
+  const slashPath = command.match(/(?:^|\s)([~./][^\s"'`]+)/)?.[1];
+  if (slashPath) {
+    return formatTarget(slashPath, workspaceDirectory);
+  }
+  const extensionPath = command.match(/(?:^|\s)([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)(?=\s|$)/)?.[1];
+  if (extensionPath) {
+    return formatTarget(extensionPath, workspaceDirectory);
+  }
+  return null;
+}
+
+function extractStringByKeys(input: unknown, keys: string[]): string | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  if (Array.isArray(input)) {
+    for (const value of input) {
+      const nested = extractStringByKeys(value, keys);
+      if (nested) {
+        return nested;
+      }
+    }
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  for (const value of Object.values(record)) {
+    const nested = extractStringByKeys(value, keys);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function extractPatchTarget(input: unknown, workspaceDirectory?: string | null): { verb: "Edited" | "Created" | "Deleted"; target: string } | null {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const patchMatch = trimmed.match(/\*\*\*\s+(Update|Add|Delete)\s+File:\s+([^\n]+)/i);
+    if (patchMatch) {
+      const action = patchMatch[1]?.toLowerCase();
+      const filePath = patchMatch[2]?.trim();
+      if (!filePath) {
+        return null;
+      }
+      return {
+        verb: action === "add" ? "Created" : action === "delete" ? "Deleted" : "Edited",
+        target: formatTarget(filePath, workspaceDirectory, 64),
+      };
+    }
+    const parsed = parseJsonObject(trimmed);
+    return parsed ? extractPatchTarget(parsed, workspaceDirectory) : null;
+  }
+  if (Array.isArray(input)) {
+    for (const value of input) {
+      const patch = extractPatchTarget(value, workspaceDirectory);
+      if (patch) {
+        return patch;
+      }
+    }
+    return null;
+  }
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const directPatch = extractStringByKeys(input, ["patch", "content", "text"]);
+  if (directPatch) {
+    const patch = extractPatchTarget(directPatch, workspaceDirectory);
+    if (patch) {
+      return patch;
+    }
+  }
+  return null;
+}
+
+function extractCommand(input: unknown) {
+  return extractStringByKeys(input, ["cmd", "command"]);
+}
+
+function extractCommandPreview(input: unknown, maxLength = 92) {
+  const command = extractCommand(input);
+  if (!command) {
+    return null;
+  }
+  const firstLine = command
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) {
+    return null;
+  }
+  return compactText(firstLine, maxLength);
+}
+
+function isLikelyShellCommand(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^loaded skill:/i.test(trimmed)) {
+    return false;
+  }
+  if (/[;&|><`$]/.test(trimmed)) {
+    return true;
+  }
+  return /^(pnpm|npm|yarn|bun|node|git|ls|cat|sed|rg|grep|find|mkdir|touch|mv|cp|rm|echo|printf|bash|zsh|sh)\b/i.test(trimmed);
+}
+
+function isTaskToolName(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === "task" || normalized.endsWith("/task");
+}
+
+function isToolStatusActive(status: string) {
+  return status === "pending" || status === "running";
+}
+
+function toObjectRecord(input: unknown): Record<string, unknown> | null {
+  if (!input) {
+    return null;
+  }
+  if (typeof input === "string") {
+    return parseJsonObject(input.trim());
+  }
+  if (typeof input === "object" && !Array.isArray(input)) {
+    return input as Record<string, unknown>;
+  }
+  return null;
+}
+
+function extractModelLabel(input: unknown) {
+  const record = toObjectRecord(input);
+  if (!record) {
+    return undefined;
+  }
+  const modelCandidate = record.model;
+  const modelRecord = toObjectRecord(modelCandidate);
+  if (!modelRecord) {
+    return undefined;
+  }
+  const providerID = typeof modelRecord.providerID === "string" ? modelRecord.providerID : undefined;
+  const modelID = typeof modelRecord.modelID === "string" ? modelRecord.modelID : undefined;
+  if (!providerID || !modelID) {
+    return undefined;
+  }
+  return `${providerID}/${modelID}`;
+}
+
+function extractTaskDelegationInfo(input: unknown, metadata?: unknown): TaskDelegationInfo | null {
+  const record = toObjectRecord(input);
+  if (!record) {
+    return null;
+  }
+  const agent =
+    extractStringByKeys(record, ["subagent_type", "subagentType", "agent", "subagent"]) ??
+    "subagent";
+  const description = extractStringByKeys(record, ["description"]) ?? "Delegated task";
+  const prompt = extractStringByKeys(record, ["prompt"]) ?? "";
+  const command = extractStringByKeys(record, ["command"]) ?? undefined;
+  const modelLabel = extractModelLabel(metadata);
+  const metadataRecord = toObjectRecord(metadata);
+  const sessionID = metadataRecord ? extractStringByKeys(metadataRecord, ["sessionId", "sessionID"]) ?? undefined : undefined;
+  return {
+    agent,
+    description,
+    prompt,
+    command,
+    modelLabel,
+    sessionID,
+  };
+}
+
+function extractTaskSessionIDFromOutput(output: unknown) {
+  const objectRecord = toObjectRecord(output);
+  const fromRecord = objectRecord
+    ? extractStringByKeys(objectRecord, ["sessionId", "sessionID", "task_id", "taskId", "session_id"])
+    : null;
+  if (fromRecord) {
+    return fromRecord;
+  }
+  if (typeof output !== "string") {
+    return undefined;
+  }
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const fromTag = trimmed.match(/<task_id>\s*([A-Za-z0-9._:-]+)\s*<\/task_id>/i)?.[1];
+  if (fromTag) {
+    return fromTag.trim();
+  }
+  const fromLine = trimmed.match(/\b(?:task[_-]?id|session[_-]?id|taskId|sessionId)\b\s*[:=]\s*([A-Za-z0-9._:-]+)/i)?.[1];
+  if (fromLine) {
+    return fromLine.trim();
+  }
+  return undefined;
+}
+
+function isBareCommandLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "ran command" || normalized.startsWith("ran command on ");
+}
+
+function isLowSignalCompletedLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "completed action" || normalized.startsWith("completed action on ");
+}
+
+function mapPatchVerbToKind(verb: "Edited" | "Created" | "Deleted"): TimelineKind {
+  if (verb === "Created") {
+    return "create";
+  }
+  if (verb === "Deleted") {
+    return "delete";
+  }
+  return "edit";
+}
+
+function classifyCommandKind(command: string, workspaceDirectory?: string | null): TimelineKind {
+  const patch = extractPatchTarget(command, workspaceDirectory);
+  if (patch) {
+    return mapPatchVerbToKind(patch.verb);
+  }
+  if (/\b(rg|grep|find)\b/.test(command)) {
+    return "search";
+  }
+  if (/\b(cat|sed|head|tail|bat)\b/.test(command)) {
+    return "read";
+  }
+  if (/\b(ls|tree|fd)\b/.test(command)) {
+    return "list";
+  }
+  if (/\bgit\b/.test(command)) {
+    return "git";
+  }
+  if (/\brm\b/.test(command)) {
+    return "delete";
+  }
+  if (/\b(mkdir|touch)\b/.test(command)) {
+    return "create";
+  }
+  if (/\b(mv|cp|echo|printf)\b/.test(command)) {
+    return "edit";
+  }
+  return "run";
+}
+
+function inferTimelineKind(toolName: string, input: unknown, workspaceDirectory?: string | null): TimelineKind {
+  const name = toolName.toLowerCase();
+  if (isTaskToolName(name)) {
+    return "delegate";
+  }
+  if (name.includes("todo")) {
+    return "todo";
+  }
+  if (name.includes("delete") || name.includes("remove")) {
+    return "delete";
+  }
+  if (name.includes("create") || name.includes("mkdir") || name.includes("touch")) {
+    return "create";
+  }
+  if (name.includes("write") || name.includes("edit") || name.includes("replace")) {
+    return "edit";
+  }
+  if (name.includes("apply_patch")) {
+    const patch = extractPatchTarget(input, workspaceDirectory);
+    return patch ? mapPatchVerbToKind(patch.verb) : "edit";
+  }
+  if (name.includes("read")) {
+    return "read";
+  }
+  if (name.includes("rg") || name.includes("grep") || name.includes("search") || name.includes("find")) {
+    return "search";
+  }
+  if (name.includes("ls") || name.includes("list")) {
+    return "list";
+  }
+  if (name.includes("git")) {
+    return "git";
+  }
+  if (name.includes("exec_command") || name.includes("bash") || name.includes("run")) {
+    const command = extractCommand(input);
+    return command ? classifyCommandKind(command, workspaceDirectory) : "run";
+  }
+  return "run";
+}
+
+function describeSearchCommand(command: string, workspaceDirectory?: string | null) {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  const patternMatch = normalized.match(/\b(?:rg|grep)\b(?:\s+-{1,2}[^\s]+\s+)*("([^"]+)"|'([^']+)'|([^\s]+))/);
+  const pattern = (patternMatch?.[2] ?? patternMatch?.[3] ?? patternMatch?.[4] ?? "").replace(/^["']|["']$/g, "");
+  const target = deriveTargetFromCommand(command, workspaceDirectory);
+  if (pattern && target) {
+    return `for: ${compactText(pattern, 42)} in ${target}`;
+  }
+  if (pattern) {
+    return `for: ${compactText(pattern, 42)}`;
+  }
+  if (target) {
+    return `in ${target}`;
+  }
+  return null;
+}
+
+function extractToolTarget(input: unknown, workspaceDirectory?: string | null): string | null {
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = parseJsonObject(trimmed);
+    if (parsed) {
+      return extractToolTarget(parsed, workspaceDirectory);
+    }
+    return deriveTargetFromCommand(trimmed, workspaceDirectory);
+  }
+  if (Array.isArray(input)) {
+    for (const value of input) {
+      const target = extractToolTarget(value, workspaceDirectory);
+      if (target) {
+        return target;
+      }
+    }
+    return null;
+  }
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const record = input as Record<string, unknown>;
+  const prioritizedKeys = [
+    "path",
+    "paths",
+    "filePath",
+    "filepath",
+    "file_path",
+    "relativePath",
+    "file",
+    "filename",
+    "target",
+    "targetPath",
+    "destination",
+    "from",
+    "to",
+    "oldPath",
+    "newPath",
+    "directory",
+    "uri",
+    "ref_id",
+    "refId",
+  ];
+
+  for (const key of prioritizedKeys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return formatTarget(value, workspaceDirectory);
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "string" && item.trim()) {
+          return formatTarget(item, workspaceDirectory);
+        }
+      }
+    }
+  }
+
+  for (const value of Object.values(record)) {
+    const nested = extractToolTarget(value, workspaceDirectory);
+    if (nested) {
+      return nested;
+    }
+  }
+  return null;
+}
+
+function toToolActivityLabel(
+  toolName: string,
+  status: string,
+  input: unknown,
+  workspaceDirectory?: string | null,
+  metadata?: unknown,
+  output?: unknown,
+) {
+  const name = toolName.toLowerCase();
+  const isActive = isToolStatusActive(status);
+  const isError = status === "error";
+  const target = extractToolTarget(input, workspaceDirectory);
+  const command = extractCommand(input);
+  const commandPreview = extractCommandPreview(input, 72);
+  const withTarget = (activeLabel: string, completedLabel: string, failedLabel = "Failed") => {
+    if (target) {
+      if (isActive) {
+        return `${activeLabel} ${target}...`;
+      }
+      if (isError) {
+        return `${failedLabel} ${target}`;
+      }
+      return `${completedLabel} ${target}`;
+    }
+    if (isActive) {
+      return `${activeLabel}...`;
+    }
+    if (isError) {
+      return failedLabel;
+    }
+    return completedLabel;
+  };
+
+  if (isTaskToolName(name)) {
+    const task = extractTaskDelegationInfo(input);
+    const agentLabel = task?.agent ? `@${task.agent}` : "subagent";
+    const taskLabel = task?.description ? compactText(task.description, 56) : "delegated task";
+    if (isActive) {
+      return `Delegating ${taskLabel} to ${agentLabel}...`;
+    }
+    if (isError) {
+      return `Delegation failed for ${agentLabel}`;
+    }
+    return `Delegated ${taskLabel} to ${agentLabel}`;
+  }
+
+  if (name.includes("todo")) {
+    return isActive ? "Updating todo list..." : "Updated todo list";
+  }
+  if (name.includes("delete")) {
+    return withTarget("Deleting", "Deleted");
+  }
+  if (name.includes("create") || name.includes("mkdir") || name.includes("touch")) {
+    return withTarget("Creating", "Created");
+  }
+  if (name.includes("write")) {
+    const writeSummary = extractWriteFileSummary(input, metadata, workspaceDirectory);
+    if (isActive) {
+      return writeSummary ? `Writing ${writeSummary.summary}...` : "Writing...";
+    }
+    if (isError) {
+      return writeSummary ? `Failed ${writeSummary.summary}` : "Write failed";
+    }
+    if (writeSummary) {
+      return `${writeSummary.verb} ${writeSummary.summary}`;
+    }
+    return withTarget("Writing", "Edited", "Write failed");
+  }
+  if (name.includes("edit") || name.includes("replace")) {
+    const filediffSummary = extractMetaFileDiffSummary(metadata, workspaceDirectory);
+    if (!isActive && !isError && filediffSummary) {
+      return `Edited ${filediffSummary}`;
+    }
+    return withTarget("Editing", "Edited");
+  }
+  if (name.includes("rename") || name.includes("move")) {
+    return withTarget("Moving", "Moved");
+  }
+  if (name.includes("apply_patch")) {
+    const patch = extractPatchTarget(input, workspaceDirectory);
+    const patchSummary = extractPatchSummary(input, output, workspaceDirectory) ?? extractMetaFileDiffSummary(metadata, workspaceDirectory);
+    if (patch) {
+      if (isActive) {
+        return `${patch.verb === "Deleted" ? "Deleting" : patch.verb === "Created" ? "Creating" : "Editing"} ${patch.target}...`;
+      }
+      if (isError) {
+        return patchSummary ? `Patch failed on ${patch.target} (${patchSummary})` : `Patch failed on ${patch.target}`;
+      }
+      return patchSummary ? `${patch.verb} ${patchSummary}` : `${patch.verb} ${patch.target}`;
+    }
+    if (patchSummary) {
+      return isActive ? `Applying patch (${patchSummary})...` : isError ? `Patch failed (${patchSummary})` : `Applied patch ${patchSummary}`;
+    }
+    return isActive ? "Applying patch..." : isError ? "Patch failed" : "Applied patch";
+  }
+  if (name.includes("read")) {
+    return withTarget("Reading", "Read");
+  }
+  if (name.includes("rg") || name.includes("grep") || name.includes("search") || name.includes("find")) {
+    return withTarget("Searching", "Searched", "Search failed");
+  }
+  if (name.includes("ls") || name.includes("list")) {
+    return withTarget("Scanning", "Scanned");
+  }
+  if (name.includes("exec_command") || name.includes("bash") || name.includes("run")) {
+    const commandPatch = command ? extractPatchTarget(command, workspaceDirectory) : null;
+    if (commandPatch) {
+      if (isActive) {
+        return `${commandPatch.verb === "Deleted" ? "Deleting" : commandPatch.verb === "Created" ? "Creating" : "Editing"} ${commandPatch.target}...`;
+      }
+      if (isError) {
+        return `${commandPatch.verb} failed on ${commandPatch.target}`;
+      }
+      return `${commandPatch.verb} ${commandPatch.target}`;
+    }
+    const commandTarget = command ? deriveTargetFromCommand(command, workspaceDirectory) : null;
+    if (command && /\b(rg|grep|find)\b/.test(command)) {
+      const detail = describeSearchCommand(command, workspaceDirectory);
+      return isActive
+        ? `Searching ${detail ?? commandTarget ?? "workspace"}...`
+        : `Searched ${detail ?? commandTarget ?? "workspace"}`;
+    }
+    if (command && /\b(cat|sed|head|tail|bat)\b/.test(command)) {
+      return isActive
+        ? `Reading ${commandTarget ?? "file"}...`
+        : `Read ${commandTarget ?? "file"}`;
+    }
+    if (command && /\b(ls|tree|fd)\b/.test(command)) {
+      return isActive ? "Scanning workspace..." : "Scanned workspace";
+    }
+    if (command && /\bgit\b/.test(command)) {
+      return isActive ? "Checking git changes..." : "Checked git changes";
+    }
+    if (command && /\b(rm)\b/.test(command)) {
+      return isActive
+        ? `Deleting ${commandTarget ?? "files"}...`
+        : `Deleted ${commandTarget ?? "files"}`;
+    }
+    if (command && /\b(mkdir|touch)\b/.test(command)) {
+      return isActive
+        ? `Creating ${commandTarget ?? "files"}...`
+        : `Created ${commandTarget ?? "files"}`;
+    }
+    if (command && /\bmv\b/.test(command)) {
+      return isActive
+        ? `Moving ${commandTarget ?? "files"}...`
+        : `Moved ${commandTarget ?? "files"}`;
+    }
+    if (command && /\bcp\b/.test(command)) {
+      return isActive
+        ? `Copying ${commandTarget ?? "files"}...`
+        : `Copied ${commandTarget ?? "files"}`;
+    }
+    if (command && /\b(echo|printf)\b/.test(command) && commandTarget) {
+      return isActive
+        ? `Editing ${commandTarget}...`
+        : `Edited ${commandTarget}`;
+    }
+    if (commandPreview && /^loaded skill:/i.test(commandPreview)) {
+      return isActive ? `Loading ${compactText(commandPreview.replace(/^loaded skill:/i, "skill"), 72)}...` : commandPreview;
+    }
+    if (commandPreview && !isLikelyShellCommand(commandPreview)) {
+      return isActive ? `${compactText(commandPreview, 72)}...` : compactText(commandPreview, 92);
+    }
+    if (commandPreview) {
+      return isActive ? `Running ${commandPreview}...` : `Ran ${commandPreview}`;
+    }
+    if (commandTarget) {
+      return isActive ? "Running command..." : "Ran command";
+    }
+    return isActive ? "Running command..." : "Ran command";
+  }
+  if (name.includes("git")) {
+    return withTarget("Checking git", "Checked git");
+  }
+  if (target) {
+    return isActive ? `Working on ${target}...` : `Completed action on ${target}`;
+  }
+  return isActive ? "Working..." : "Completed action";
+}
+
+function modelLabel(model: { providerID: string; modelID: string } | undefined) {
+  if (!model) {
+    return undefined;
+  }
+  return `${model.providerID}/${model.modelID}`;
+}
+
+function toToolReason(toolName: string) {
+  const normalized = toolName.trim().toLowerCase();
+  if (!normalized) {
+    return "action";
+  }
+  if (normalized.includes("todo")) {
+    return "todo update";
+  }
+  if (isTaskToolName(normalized)) {
+    return "delegation";
+  }
+  if (normalized.includes("apply_patch")) {
+    return "patch";
+  }
+  if (normalized.includes("read")) {
+    return "read";
+  }
+  if (normalized.includes("search") || normalized.includes("find") || normalized.includes("grep") || normalized.includes("rg")) {
+    return "search";
+  }
+  if (normalized.includes("edit") || normalized.includes("write") || normalized.includes("replace")) {
+    return "edit";
+  }
+  if (normalized.includes("delete") || normalized.includes("remove")) {
+    return "delete";
+  }
+  if (normalized.includes("create") || normalized.includes("mkdir") || normalized.includes("touch")) {
+    return "create";
+  }
+  if (normalized.includes("git")) {
+    return "git check";
+  }
+  return normalized.replace(/[_-]+/g, " ");
+}
+
+function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEvent | null {
+  if (part.type === "step-start") {
+    return { id: part.id, summary: "Step started", actor };
+  }
+  if (part.type === "step-finish") {
+    const tokens = part.tokens;
+    const details = `reason: ${part.reason} | input: ${tokens.input} | output: ${tokens.output} | cache read: ${tokens.cache.read}`;
+    return { id: part.id, summary: "Step finished", details, actor };
+  }
+  if (part.type === "retry") {
+    return { id: part.id, summary: `Retry attempt ${part.attempt}`, actor };
+  }
+  if (part.type === "compaction") {
+    const auto = part.auto !== false;
+    return {
+      id: part.id,
+      summary: auto ? "Automatic context compaction" : "Manual context compaction",
+      details: auto ? "Summarized conversation state to recover context." : "Manual summarize/compaction requested.",
+      actor,
+    };
+  }
+  if (part.type === "snapshot") {
+    return { id: part.id, summary: "Snapshot update", actor };
+  }
+  if (part.type === "text") {
+    const text = part.text.trim();
+    const browserActionSummary = summarizeOrxaBrowserActionText(text);
+    if (browserActionSummary) {
+      return { id: part.id, summary: browserActionSummary, actor };
+    }
+    const memoryLineCount = countOrxaMemoryLines(text);
+    if (memoryLineCount > 0) {
+      return {
+        id: part.id,
+        summary: `Captured ${pluralize(memoryLineCount, "memory item")}`,
+        actor,
+      };
+    }
+    if (isLikelyTelemetryJson(text)) {
+      const parsed = parseJsonObject(text);
+      const summary = typeof parsed?.type === "string" ? parsed.type : "Telemetry event";
+      return { id: part.id, summary, actor };
+    }
+  }
+  return null;
+}
+
+function summarizeDelegationEvent(part: Part, actor?: string, workspaceDirectory?: string | null): InternalEvent | null {
+  if (part.type === "step-start") {
+    return { id: part.id, summary: "Step started", actor };
+  }
+  if (part.type === "step-finish") {
+    const tokens = part.tokens;
+    const details = `reason: ${part.reason} | input: ${tokens.input} | output: ${tokens.output} | cache read: ${tokens.cache.read}`;
+    return { id: part.id, summary: "Step finished", details, actor };
+  }
+  if (part.type === "tool") {
+    const stateRecord = part.state as unknown as Record<string, unknown>;
+    const stateMetadata = stateRecord.metadata;
+    const stateOutput = stateRecord.output;
+    const status = part.state.status;
+    const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+    const isCommandTool =
+      part.tool.trim().toLowerCase().includes("exec_command") ||
+      part.tool.trim().toLowerCase().includes("bash") ||
+      part.tool.trim().toLowerCase().includes("run");
+    const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
+    const commandPreview = showCommand ? extractCommandPreview(part.state.input) : null;
+    const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : undefined;
+    const failure = status === "error" ? (typeof stateRecord.error === "string" ? compactText(stateRecord.error, 220) : "Tool execution failed") : undefined;
+    let label = toToolActivityLabel(part.tool, status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
+
+    if (part.tool.trim().toLowerCase().includes("apply_patch") || part.tool.trim().toLowerCase().includes("patch")) {
+      const patchSummary = extractPatchSummary(stateRecord.input, stateRecord.output, workspaceDirectory) ?? extractMetaFileDiffSummary(stateMetadata, workspaceDirectory);
+      if (patchSummary && /applied patch$/i.test(label.trim())) {
+        label = `${label} ${patchSummary}`;
+      }
+    }
+
+    if (kind === "run" && !command && !failure && isBareCommandLabel(label)) {
+      return null;
+    }
+    if (isLowSignalCompletedLabel(label) && !command && !failure) {
+      return null;
+    }
+
+    return {
+      id: part.id,
+      summary: label,
+      details: failure,
+      actor,
+      kind,
+      command,
+      failure,
+    };
+  }
+  if (part.type === "reasoning") {
+    return { id: part.id, summary: "Reasoning update", actor };
+  }
+  if (part.type === "retry") {
+    return { id: part.id, summary: `Retry attempt ${part.attempt}`, actor };
+  }
+  if (part.type === "compaction") {
+    const auto = part.auto !== false;
+    return {
+      id: part.id,
+      summary: auto ? "Automatic context compaction" : "Manual context compaction",
+      details: auto ? "Summarized conversation state to recover context." : "Manual summarize/compaction requested.",
+      actor,
+    };
+  }
+  if (part.type === "snapshot") {
+    return { id: part.id, summary: "Snapshot update", actor };
+  }
+  if (part.type === "patch") {
+    return { id: part.id, summary: `Patch update (${part.files.length} files)`, actor };
+  }
+  if (part.type === "text") {
+    const text = part.text.trim();
+    if (isProgressUpdateText(text)) {
+      return { id: part.id, summary: text.replace(/:\s*$/, ""), actor };
+    }
+    if (isLikelyTelemetryJson(text)) {
+      const parsed = parseJsonObject(text);
+      const summary = typeof parsed?.type === "string" ? parsed.type : "Telemetry event";
+      return { id: part.id, summary, actor };
+    }
+  }
+  return null;
+}
+
+function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | null) {
+  const visible: Part[] = [];
+  const internal: InternalEvent[] = [];
+  const delegations: DelegationTrace[] = [];
+  const timeline: TimelineEvent[] = [];
+  const changedFiles: Array<Extract<UnifiedTimelineRenderRow, { kind: "diff" }>> = [];
+  let activity: ActivityEvent | null = null;
+  let currentActor = "Main agent";
+  let activeDelegation: DelegationTrace | null = null;
+
+  for (const part of parts) {
+    if (part.type === "subtask") {
+      const trace: DelegationTrace = {
+        id: part.id,
+        agent: part.agent,
+        description: part.description,
+        prompt: part.prompt,
+        modelLabel: modelLabel(part.model),
+        command: part.command,
+        events: [],
+      };
+      delegations.push(trace);
+      activeDelegation = trace;
+      currentActor = part.agent;
+      activity = {
+        id: `${part.id}:activity`,
+        label: `Delegating to ${part.agent}...`,
+      };
+      timeline.push({
+        id: `${part.id}:timeline`,
+        label: `Delegated to ${part.agent}: ${part.description}`,
+        kind: "delegate",
+      });
+      continue;
+    }
+
+    if (part.type === "text") {
+      if (shouldHideAssistantText(part.text)) {
+        const telemetryEvent = summarizeAssistantTelemetryPart(part, currentActor);
+        if (telemetryEvent) {
+          internal.push(telemetryEvent);
+        }
+        if (activeDelegation) {
+          const delegationEvent = summarizeDelegationEvent(part, currentActor, workspaceDirectory);
+          if (delegationEvent) {
+            activeDelegation.events.push(delegationEvent);
+          }
+        }
+        continue;
+      }
+      visible.push(part);
+      continue;
+    }
+
+    if (part.type === "file") {
+      visible.push(part);
+      continue;
+    }
+
+    if (part.type === "tool") {
+      const status = part.state.status;
+      const stateTitle = "title" in part.state && typeof part.state.title === "string" ? part.state.title.trim() : "";
+      const stateRecord = part.state as unknown as Record<string, unknown>;
+      const stateMetadata = stateRecord.metadata;
+      const stateOutput = typeof stateRecord.output === "string" ? stateRecord.output : undefined;
+      const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
+      let label = toToolActivityLabel(part.tool, status, part.state.input, workspaceDirectory, stateMetadata, stateOutput);
+      const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+      const toolName = part.tool.trim().toLowerCase();
+      const toolChangedFiles = extractChangedFilesFromToolPart(part, kind, workspaceDirectory);
+      if (toolChangedFiles.length > 0) {
+        changedFiles.push(...toolChangedFiles);
+      }
+      const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+      const explicitCommand = extractCommand(part.state.input);
+      const explicitCommandPreview = extractCommandPreview(part.state.input, 92);
+      const explicitCommandLooksNarrative =
+        Boolean(explicitCommandPreview) &&
+        !isLikelyShellCommand(explicitCommandPreview ?? "") &&
+        (stateTitle.length === 0 || explicitCommandPreview?.toLowerCase() === stateTitle.toLowerCase());
+      const hasExplicitCommand = Boolean(explicitCommand) && !explicitCommandLooksNarrative;
+      const hasNarrativeTitle =
+        isCommandTool &&
+        kind === "run" &&
+        stateTitle.length > 0 &&
+        (!hasExplicitCommand || explicitCommandLooksNarrative) &&
+        !isLikelyShellCommand(stateTitle);
+      if (hasNarrativeTitle) {
+        if (isToolStatusActive(status)) {
+          label = `${compactText(stateTitle, 72)}...`;
+        } else if (status === "error") {
+          label = `Failed ${compactText(stateTitle, 92)}`;
+        } else {
+          label = compactText(stateTitle, 92);
+        }
+      } else if ((isBareCommandLabel(label) || label === "Running command...") && stateTitle) {
+        label = isToolStatusActive(status) ? `Running ${compactText(stateTitle, 72)}...` : `Ran ${compactText(stateTitle, 72)}`;
+      }
+      const taskDelegation = isTaskToolName(toolName)
+        ? extractTaskDelegationInfo(part.state.input, "metadata" in part.state ? part.state.metadata : undefined)
+        : null;
+      if (taskDelegation) {
+        const outputSessionID = "output" in part.state ? extractTaskSessionIDFromOutput(part.state.output) : undefined;
+        const delegationTrace: DelegationTrace = {
+          id: `task:${part.id}`,
+          agent: taskDelegation.agent,
+          description: taskDelegation.description,
+          prompt: taskDelegation.prompt,
+          modelLabel: taskDelegation.modelLabel,
+          command: taskDelegation.command,
+          sessionID: taskDelegation.sessionID ?? outputSessionID,
+          events: [],
+        };
+        delegations.push(delegationTrace);
+        activeDelegation = delegationTrace;
+        currentActor = taskDelegation.agent;
+      }
+      if (isToolStatusActive(status)) {
+        activity = {
+          id: `${part.id}:activity`,
+          label,
+        };
+      } else {
+        const showReason = kind === "create" || kind === "delete";
+        const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
+        const commandPreview = showCommand
+          ? extractCommandPreview(part.state.input) ??
+            (kind === "run" && !hasExplicitCommand && stateTitle && isLikelyShellCommand(stateTitle)
+              ? compactText(stateTitle, 92)
+              : null)
+          : null;
+        const command = commandPreview && isLikelyShellCommand(commandPreview) ? commandPreview : null;
+        if (kind === "run" && !command && !stateError && isBareCommandLabel(label)) {
+          continue;
+        }
+        if (isLowSignalCompletedLabel(label) && !command && !stateError) {
+          continue;
+        }
+        if (toolChangedFiles.length > 0 && (kind === "edit" || kind === "create" || kind === "delete" || kind === "run")) {
+          continue;
+        }
+        timeline.push({
+          id: `${part.id}:timeline`,
+          label,
+          kind,
+          reason: showReason ? `Why this changed: ${currentActor} via ${toToolReason(part.tool)}` : undefined,
+          command: command ?? undefined,
+          output: stateOutput && stateOutput.trim().length > 0 ? stateOutput.trim() : undefined,
+          failure: status === "error"
+            ? (stateError?.trim() || stateOutput?.trim() || "Tool execution failed")
+            : undefined,
+        });
+      }
+    }
+
+    if (part.type === "reasoning") {
+      const record = part as unknown as Record<string, unknown>;
+      const summary = typeof record.summary === "string" ? record.summary : typeof record.text === "string" ? record.text : "";
+      if (summary) {
+        const trimmed = summary.length > 80 ? `${summary.slice(0, 77)}...` : summary;
+        activity = { id: `${part.id}:activity`, label: `Thinking  ${trimmed}` };
+      }
+      continue;
+    }
+
+    const telemetryEvent = summarizeAssistantTelemetryPart(part, currentActor);
+    if (telemetryEvent) {
+      internal.push(telemetryEvent);
+    }
+
+    if (activeDelegation) {
+      const delegationEvent = summarizeDelegationEvent(part, currentActor, workspaceDirectory);
+      if (delegationEvent) {
+        activeDelegation.events.push(delegationEvent);
+      }
+    }
+
+    if (part.type === "agent") {
+      currentActor = part.name;
+      activity = {
+        id: `${part.id}:activity`,
+        label: `Switched to ${part.name}`,
+      };
+    }
+  }
+
+  return { visible, internal, delegations, timeline, activity, changedFiles };
+}
+
+function mapToolStateStatus(status: string): ToolCallStatus {
+  if (status === "completed") return "completed";
+  if (status === "error") return "error";
+  if (status === "running") return "running";
+  return "pending";
+}
+
+function buildToolCallCardProps(part: Part & { type: "tool" }, workspaceDirectory?: string | null) {
+  const stateRecord = part.state as unknown as Record<string, unknown>;
+  const stateTitle = "title" in part.state && typeof part.state.title === "string" ? part.state.title.trim() : "";
+  const status = mapToolStateStatus(part.state.status);
+  const toolName = part.tool.trim().toLowerCase();
+  const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+  const stateOutput = typeof stateRecord.output === "string" ? stateRecord.output : undefined;
+  const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
+  const explicitCommand = extractCommand(part.state.input);
+  const derivedTitle = toToolActivityLabel(
+    part.tool,
+    part.state.status,
+    part.state.input,
+    workspaceDirectory,
+    stateRecord.metadata,
+    stateRecord.output,
+  );
+  const genericStateTitle = !stateTitle || stateTitle.toLowerCase() === toolName;
+  const title = genericStateTitle ? derivedTitle : stateTitle;
+  const command = (isCommandTool && explicitCommand && isLikelyShellCommand(explicitCommand)) ? explicitCommand : undefined;
+  const output = stateOutput || undefined;
+  const error = status === "error" ? (stateError ?? "Tool execution failed") : undefined;
+  return { title, status, command, output, error };
+}
+
+function extractChangedFilesFromToolPart(
+  part: Part & { type: "tool" },
+  kind: TimelineKind,
+  workspaceDirectory?: string | null,
+) {
+  if (kind !== "edit" && kind !== "create" && kind !== "delete" && kind !== "run") {
+    return [];
+  }
+  if (isToolStatusActive(part.state.status) || part.state.status === "error") {
+    return [];
+  }
+  const stateRecord = part.state as unknown as Record<string, unknown>;
+  const patchFiles = extractPatchFileDetails(part.state.input, stateRecord.output, workspaceDirectory);
+  const metadataFiles = extractMetaFileDiffDetails(stateRecord.metadata, workspaceDirectory);
+  const writeFile = extractWriteFileDetail(part.state.input, stateRecord.metadata, workspaceDirectory);
+  const merged = mergeChangedFileDetails(
+    patchFiles,
+    metadataFiles,
+    writeFile ? [writeFile] : [],
+  );
+  return merged.map((file, index) => ({
+    id: `${part.id}:diff:${file.path}:${index}`,
+    kind: "diff" as const,
+    path: file.path,
+    type: file.type,
+    diff: file.diff,
+    insertions: file.insertions,
+    deletions: file.deletions,
+  }));
+}
+
+function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
+  return parts
+    .filter((part): part is Part & { type: "tool" } => part.type === "tool")
+    .filter((part) => isToolStatusActive(part.state.status))
+    .filter((part) => {
+      const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+      if (isTaskToolName(part.tool)) {
+        return false;
+      }
+      return kind === "run" || kind === "git" || kind === "edit" || kind === "create" || kind === "delete";
+    })
+    .map((part) => {
+      const props = buildToolCallCardProps(part, workspaceDirectory);
+      return {
+        id: `tool:${part.id}`,
+        kind: "tool" as const,
+        title: props.title,
+        status: props.status,
+        command: props.command,
+        output: props.output,
+        error: props.error,
+      };
+    });
+}
+
+function summarizeReasoningPart(part: Part & { type: "reasoning" }) {
+  const record = part as unknown as Record<string, unknown>;
+  const content = typeof record.text === "string" ? record.text : typeof record.content === "string" ? record.content : "";
+  const summary = typeof record.summary === "string" ? record.summary : "";
+  return {
+    id: `reasoning:${part.id}`,
+    kind: "thinking" as const,
+    summary: summary || (content ? content.slice(0, 80) + (content.length > 80 ? "..." : "") : "..."),
+    content,
+  };
+}
+
+function buildMessageRows(
+  bundle: SessionMessageBundle,
+  visibleParts: Part[],
+  toolParts: Part[],
+  changedFiles: Array<Extract<UnifiedTimelineRenderRow, { kind: "diff" }>>,
+  timelineBlocks: ReturnType<typeof buildTimelineBlocks>,
+  assistantLabel: string,
+  showHeader: boolean,
+  workspaceDirectory?: string | null,
+): UnifiedTimelineRenderRow[] {
+  const rows: UnifiedTimelineRenderRow[] = [];
+  const messageSections = visibleParts.reduce<UnifiedMessageSection[]>((sections, part) => {
+    if (part.type === "text") {
+      sections.push({ id: `${bundle.info.id}:${part.id}:text`, type: "text", content: part.text });
+      return sections;
+    }
+    if (part.type === "file") {
+      sections.push({ id: `${bundle.info.id}:${part.id}:file`, type: "file", label: part.filename ?? part.url });
+    }
+    return sections;
+  }, []);
+
+  if (messageSections.length > 0) {
+    rows.push({
+      id: `${bundle.info.id}:message`,
+      kind: "message",
+      role: bundle.info.role === "user" ? "user" : "assistant",
+      label: getRoleLabel(bundle.info.role, assistantLabel),
+      timestamp: bundle.info.time.created,
+      showHeader,
+      copyText: bundle.info.role === "user" ? extractVisibleText(visibleParts) : undefined,
+      copyLabel: bundle.info.role === "user" ? "Copy message" : undefined,
+      sections: messageSections,
+    });
+  }
+
+  for (const part of visibleParts) {
+    if (part.type === "reasoning") {
+      rows.push(summarizeReasoningPart(part));
+    }
+  }
+
+  rows.push(...renderToolParts(toolParts, workspaceDirectory));
+  rows.push(...changedFiles);
+
+  if (timelineBlocks.length > 0) {
+    rows.push({
+      id: `${bundle.info.id}:timeline`,
+      kind: "timeline",
+      blocks: timelineBlocks,
+    });
+  }
+
+  return rows;
+}
+
+export function projectOpencodeSessionPresentation(input: {
+  messages: SessionMessageBundle[];
+  assistantLabel?: string;
+  workspaceDirectory?: string | null;
+}): UnifiedProjectedSessionPresentation {
+  const { assistantLabel = "Orxa", messages, workspaceDirectory } = input;
+  if (messages.length === 0) {
+    return {
+      provider: "opencode" as const,
+      rows: [] as UnifiedTimelineRenderRow[],
+      latestActivity: null as ActivityEvent | null,
+      placeholderTimestamp: 0,
+    };
+  }
+
+  let latestActivity: ActivityEvent | null = null;
+  let lastRenderedRole: string | undefined;
+
+  const nextRows = messages.flatMap((bundle) => {
+    const role = bundle.info.role;
+    const assistantClassification = role === "assistant" ? classifyAssistantParts(bundle.parts, workspaceDirectory) : undefined;
+    const visibleParts = assistantClassification?.visible ?? getVisibleParts(role, bundle.parts);
+    const toolParts = role === "assistant" ? bundle.parts.filter((part) => part.type === "tool") : [];
+    const changedFiles = assistantClassification?.changedFiles ?? [];
+    const timelineBlocks = buildTimelineBlocks(assistantClassification?.timeline ?? []);
+    if (role === "assistant") {
+      latestActivity = assistantClassification?.activity ?? null;
+    }
+    if (visibleParts.length === 0 && timelineBlocks.length === 0 && toolParts.length === 0 && changedFiles.length === 0) {
+      return [];
+    }
+    const showHeader = role !== lastRenderedRole;
+    if (visibleParts.some((part) => part.type === "text" || part.type === "file")) {
+      lastRenderedRole = role;
+    }
+
+    return buildMessageRows(
+      bundle,
+      visibleParts,
+      toolParts,
+      changedFiles,
+      timelineBlocks,
+      assistantLabel,
+      showHeader,
+      workspaceDirectory,
+    );
+  });
+
+  const lastMessage = messages.at(-1);
+  const placeholderTimestamp =
+    lastMessage && "updated" in lastMessage.info.time && typeof lastMessage.info.time.updated === "number"
+      ? lastMessage.info.time.updated
+      : lastMessage?.info.time.created ?? 0;
+
+  return {
+    provider: "opencode" as const,
+    rows: groupChangedFileRows(nextRows),
+    latestActivity,
+    placeholderTimestamp,
+  };
+}

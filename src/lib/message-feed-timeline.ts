@@ -7,6 +7,7 @@ export type InternalEvent = {
   actor?: string;
   kind?: TimelineKind;
   command?: string;
+  output?: string;
   failure?: string;
 };
 
@@ -16,6 +17,7 @@ export type TimelineEvent = {
   kind: TimelineKind;
   reason?: string;
   command?: string;
+  output?: string;
   failure?: string;
 };
 

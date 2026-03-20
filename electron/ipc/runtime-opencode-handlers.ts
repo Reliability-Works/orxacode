@@ -91,6 +91,9 @@ export function registerRuntimeOpencodeHandlers({
       typeof name === "string" ? name : undefined,
     ),
   );
+  ipcMain.handle(IPC.opencodeGetSessionRuntime, async (_event, directory: unknown, sessionID: unknown) =>
+    service.getSessionRuntime(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
+  );
   ipcMain.handle(IPC.opencodeLoadMessages, async (_event, directory: unknown, sessionID: unknown) =>
     service.loadMessages(assertString(directory, "directory"), assertString(sessionID, "sessionID")),
   );
@@ -199,6 +202,9 @@ export function registerRuntimeOpencodeHandlers({
   });
   ipcMain.handle(IPC.opencodeGitDiff, async (_event, directory: unknown) =>
     service.gitDiff(assertString(directory, "directory")),
+  );
+  ipcMain.handle(IPC.opencodeGitStatus, async (_event, directory: unknown) =>
+    service.gitStatus(assertString(directory, "directory")),
   );
   ipcMain.handle(IPC.opencodeGitLog, async (_event, directory: unknown) =>
     service.gitLog(assertString(directory, "directory")),

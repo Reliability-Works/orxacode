@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
@@ -18,9 +19,12 @@ import type { TodoItem } from "./chat/TodoDock";
 import { QuestionDock } from "./chat/QuestionDock";
 import type { AgentQuestion } from "./chat/QuestionDock";
 import { PermissionDock } from "./chat/PermissionDock";
+import { PlanDock } from "./chat/PlanDock";
 import { FollowupDock } from "./chat/FollowupDock";
 import { QueuedMessagesDock } from "./chat/QueuedMessagesDock";
+import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
 import type { QueuedMessage } from "./chat/QueuedMessagesDock";
+import type { UnifiedBackgroundAgentSummary } from "../lib/session-presentation";
 import { useDismissibleLayer } from "./composer/useDismissibleLayer";
 import { useComposerResize } from "./composer/useComposerResize";
 import { useAttachmentPreview } from "./composer/useAttachmentPreview";
@@ -99,6 +103,18 @@ type ComposerPanelProps = {
   todoItems?: TodoItem[];
   todoOpen?: boolean;
   onTodoToggle?: () => void;
+  backgroundAgents?: UnifiedBackgroundAgentSummary[];
+  selectedBackgroundAgentId?: string | null;
+  onOpenBackgroundAgent?: (id: string) => void;
+  onCloseBackgroundAgent?: () => void;
+  backgroundAgentDetail?: ReactNode;
+  backgroundAgentDetailLoading?: boolean;
+  backgroundAgentDetailError?: string | null;
+  pendingPlan?: {
+    onAccept: () => void;
+    onSubmitChanges: (changes: string) => void;
+    onDismiss: () => void;
+  } | null;
   pendingQuestion?: {
     questions: AgentQuestion[];
     onSubmit: (answers: Record<string, string | string[]>) => void;
@@ -207,6 +223,14 @@ export function ComposerPanel(props: ComposerPanelProps) {
     todoItems,
     todoOpen,
     onTodoToggle,
+    backgroundAgents,
+    selectedBackgroundAgentId,
+    onOpenBackgroundAgent,
+    onCloseBackgroundAgent,
+    backgroundAgentDetail,
+    backgroundAgentDetailLoading,
+    backgroundAgentDetailError,
+    pendingPlan,
     pendingQuestion,
     pendingPermission,
     followupSuggestions,
@@ -335,11 +359,31 @@ export function ComposerPanel(props: ComposerPanelProps) {
         />
       ) : null}
 
+      {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
+        <BackgroundAgentsPanel
+          agents={backgroundAgents}
+          selectedAgentId={selectedBackgroundAgentId}
+          onOpenAgent={onOpenBackgroundAgent}
+          onBack={onCloseBackgroundAgent}
+          detailBody={backgroundAgentDetail}
+          detailLoading={backgroundAgentDetailLoading}
+          detailError={backgroundAgentDetailError}
+        />
+      ) : null}
+
       {todoItems && todoItems.length > 0 && onTodoToggle ? (
         <TodoDock
           items={todoItems}
           open={todoOpen ?? false}
           onToggle={onTodoToggle}
+        />
+      ) : null}
+
+      {pendingPlan ? (
+        <PlanDock
+          onAccept={pendingPlan.onAccept}
+          onSubmitChanges={pendingPlan.onSubmitChanges}
+          onDismiss={pendingPlan.onDismiss}
         />
       ) : null}
 
@@ -417,31 +461,20 @@ export function ComposerPanel(props: ComposerPanelProps) {
             <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
             <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
           </div>
-          {isSessionBusy && onQueueMessage && composer.trim() ? (
-            <>
-              <IconButton
-                icon="send"
-                className="composer-send-button composer-queue-button"
-                label="Queue message"
-                onClick={() => {
-                  const trimmed = composer.trim();
-                  if (trimmed) onQueueMessage(trimmed);
-                }}
-              />
-              <IconButton
-                icon="stop"
-                className="composer-send-button composer-stop-button"
-                label="Stop"
-                onClick={() => void abortActiveSession()}
-              />
-            </>
+          {isSessionBusy ? (
+            <IconButton
+              icon="stop"
+              className="composer-send-button composer-stop-button"
+              label="Stop"
+              onClick={() => void abortActiveSession()}
+            />
           ) : (
             <IconButton
-              icon={isSessionBusy ? "stop" : "send"}
-              className={isSessionBusy ? "composer-send-button composer-stop-button" : "composer-send-button"}
-              label={isSessionBusy ? "Stop" : "Send prompt"}
-              onClick={() => (isSessionBusy ? void abortActiveSession() : void sendPrompt())}
-              disabled={isSessionBusy ? false : !hasActiveSession}
+              icon="send"
+              className="composer-send-button"
+              label="Send prompt"
+              onClick={() => void sendPrompt()}
+              disabled={!hasActiveSession}
             />
           )}
         </div>

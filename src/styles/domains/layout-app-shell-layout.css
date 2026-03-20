@@ -166,6 +166,41 @@
   height: 12px;
 }
 
+.project-row-chevron-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+.project-row-chevron-btn:hover,
+.project-row-chevron-btn:focus-visible,
+.project-item.active .project-row-chevron-btn {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.project-item:hover .project-row-chevron-btn,
+.project-row-chevron-btn:hover {
+  color: var(--text-primary);
+}
+
+.project-item.active .project-row-chevron-btn {
+  color: var(--accent-green);
+}
+
 /* Active workspace dot */
 .project-status-dot {
   display: none;
@@ -182,7 +217,7 @@
 }
 
 .project-select:hover {
-  background: var(--bg-hover);
+  background: transparent;
   border-color: transparent;
   color: var(--text-primary);
 }
@@ -193,7 +228,7 @@
 
 .project-select.active {
   border-color: transparent;
-  background: var(--bg-input);
+  background: transparent;
   color: var(--accent-green);
   font-weight: 500;
 }

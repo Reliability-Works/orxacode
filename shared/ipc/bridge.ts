@@ -37,6 +37,7 @@ import type {
   ProjectFileEntry,
   PromptRequest,
   RawConfigDocument,
+  SessionRuntimeSnapshot,
   SessionMessageBundle,
   SessionPermissionMode,
   SessionProvenanceSnapshot,
@@ -53,7 +54,9 @@ import type {
   CodexCollaborationMode,
   CodexDoctorResult,
   CodexModelEntry,
+  CodexRunMetadata,
   CodexState,
+  CodexThreadRuntime,
   CodexThread,
   CodexUpdateResult,
 } from "./codex";
@@ -99,6 +102,7 @@ export interface OrxaBridge {
     renameSession: (directory: string, sessionID: string, title: string) => Promise<Session>;
     archiveSession: (directory: string, sessionID: string) => Promise<Session>;
     createWorktreeSession: (directory: string, sessionID: string, name?: string) => Promise<WorktreeSessionResult>;
+    getSessionRuntime: (directory: string, sessionID: string) => Promise<SessionRuntimeSnapshot>;
     loadMessages: (directory: string, sessionID: string) => Promise<SessionMessageBundle[]>;
     loadExecutionLedger: (directory: string, sessionID: string, cursor?: number) => Promise<ExecutionLedgerSnapshot>;
     clearExecutionLedger: (directory: string, sessionID: string) => Promise<boolean>;
@@ -120,6 +124,7 @@ export interface OrxaBridge {
     listProviders: (directory?: string) => Promise<ProviderListResponse>;
     pickImage: () => Promise<ImageSelection | undefined>;
     gitDiff: (directory: string) => Promise<string>;
+    gitStatus: (directory: string) => Promise<string>;
     gitLog: (directory: string) => Promise<string>;
     gitIssues: (directory: string) => Promise<string>;
     gitPrs: (directory: string) => Promise<string>;
@@ -219,11 +224,16 @@ export interface OrxaBridge {
     getState: () => Promise<CodexState>;
     startThread: (options?: { model?: string; cwd?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => Promise<CodexThread>;
     listThreads: (options?: { cursor?: string | null; limit?: number; archived?: boolean }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>;
+    getThreadRuntime: (threadId: string) => Promise<CodexThreadRuntime>;
+    archiveThreadTree: (threadId: string) => Promise<void>;
+    setThreadName: (threadId: string, name: string) => Promise<void>;
+    generateRunMetadata: (cwd: string, prompt: string) => Promise<CodexRunMetadata>;
     startTurn: (threadId: string, prompt: string, cwd?: string, model?: string, effort?: string, collaborationMode?: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;
     deny: (requestId: number) => Promise<void>;
     respondToUserInput: (requestId: number, response: string) => Promise<void>;
     interruptTurn: (threadId: string, turnId: string) => Promise<void>;
+    interruptThreadTree: (threadId: string, turnId?: string) => Promise<void>;
   };
   events: {
     subscribe: (listener: (event: OrxaEvent) => void) => () => void;

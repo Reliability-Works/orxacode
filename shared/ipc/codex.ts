@@ -46,6 +46,16 @@ export type CodexThread = {
   ephemeral?: boolean;
 };
 
+export type CodexRunMetadata = {
+  title: string;
+  worktreeName: string;
+};
+
+export type CodexThreadRuntime = {
+  thread: CodexThread | null;
+  childThreads: CodexThread[];
+};
+
 export type CodexNotification = {
   method: string;
   params: Record<string, unknown>;

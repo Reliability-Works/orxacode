@@ -271,6 +271,57 @@ describe("model discovery", () => {
     expect(listModelOptions(providers).map((item) => item.key)).toEqual(["cloudflare/@cf/meta/llama-3.1-8b-instruct"]);
   });
 
+  it("handles malformed provider registry payloads safely", () => {
+    const providers = {
+      all: [
+        null,
+        {
+          id: "openai",
+          name: "OpenAI",
+          models: {
+            "gpt-5": {
+              id: "gpt-5",
+              name: "GPT 5",
+              variants: { default: {} },
+            },
+            broken: false,
+            missingId: {
+              name: "Missing ID",
+            },
+          },
+        },
+        {
+          id: "broken-provider",
+          name: "Broken Provider",
+          models: false,
+        },
+        {
+          name: "Missing provider id",
+          models: {
+            foo: {
+              id: "foo",
+              name: "Foo",
+            },
+          },
+        },
+      ],
+      connected: ["openai", 42, null],
+      default: {},
+    } as unknown as ProviderListResponse;
+
+    expect(listModelOptions(providers)).toEqual([
+      {
+        key: "openai/gpt-5",
+        providerID: "openai",
+        modelID: "gpt-5",
+        providerName: "OpenAI",
+        modelName: "GPT 5",
+        variants: ["default"],
+      },
+    ]);
+    expect(listAllModelOptions(providers).map((item) => item.key)).toEqual(["openai/gpt-5"]);
+  });
+
   it("merges discoverable options from configured and connected sources without catalog-only models", () => {
     const configured = [
       {

@@ -41,6 +41,80 @@ describe("MessageFeed", () => {
     expect(screen.queryByText("Why this changed: Main agent via read")).not.toBeInTheDocument();
   });
 
+  it("does not classify completed read tools with file metadata as changed files", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-assistant-read-metadata",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
+        parts: [
+          {
+            id: "tool-read-metadata",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-read-metadata",
+            callID: "call-read-metadata",
+            tool: "read_file",
+            state: {
+              status: "completed",
+              input: { path: "/repo/website/app/page.tsx" },
+              output: "",
+              title: "read_file",
+              metadata: {
+                filepath: "/repo/website/app/page.tsx",
+                additions: 120,
+                deletions: 14,
+              },
+              time: { start: now, end: now },
+            },
+          },
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Explored 1 file")).toBeInTheDocument();
+    expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
+    expect(screen.queryByText("Edited website/app/page.tsx")).not.toBeInTheDocument();
+  });
+
+  it("shows live tool cards for active edit tools while a session is streaming", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-assistant-active-edit",
+        role: "assistant",
+        sessionID: "session-1",
+        createdAt: now,
+        parts: [
+          {
+            id: "tool-edit-1",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-active-edit",
+            callID: "call-edit-1",
+            tool: "apply_patch",
+            state: {
+              status: "running",
+              input: "*** Begin Patch\n*** Update File: src/App.tsx\n@@\n-old\n+new\n*** End Patch\n",
+              output: "",
+              title: "apply_patch",
+              metadata: {},
+              time: { start: now, end: now },
+            },
+          },
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Editing src/App.tsx...")).toBeInTheDocument();
+  });
+
   it("shows assistant text and hides internal metadata/tool payloads", () => {
     const messages: SessionMessageBundle[] = [
       createSessionMessageBundle({
@@ -404,7 +478,7 @@ describe("MessageFeed", () => {
 
   // Live events display removed — internal events are now represented by tool cards and shimmer
 
-  it("shows delegation bubble when task tool is running", () => {
+  it("shows delegation summary when task tool is running", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -447,11 +521,8 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
     expect(screen.getByText(/Delegating .* to @build/i)).toBeInTheDocument();
-    const bubble = screen.getByRole("button", { name: /build/i });
-    expect(bubble).toBeInTheDocument();
-    fireEvent.click(bubble);
-    const dialog = screen.getByRole("dialog", { name: /delegation: build/i });
-    expect(within(dialog).getByText("Build Spencer Solutions site")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /build/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
   it("renders completed task tool as delegation timeline entry", () => {
@@ -495,7 +566,7 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/Ran on - Description/i)).not.toBeInTheDocument();
   });
 
-  it("shows delegated task result output in modal live output", () => {
+  it("shows delegated task result output inline in the timeline disclosure", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -531,14 +602,12 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const dialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
-    const dialog = dialogs[dialogs.length - 1]!;
-    expect(within(dialog).getByText(/Implemented homepage and contact page\./i)).toBeInTheDocument();
+    const summary = screen.getByText(/Delegated Build Spencer Solutions site to @build/i);
+    fireEvent.click(summary.closest("summary")!);
+    expect(screen.getByText(/Implemented homepage and contact page\./i)).toBeInTheDocument();
   });
 
-  it("loads delegated session output using task_id fallback when metadata is missing", async () => {
+  it("does not load delegated session output inside the transcript surface", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => []);
     const currentOrxa = (window as { orxa?: unknown }).orxa as { opencode?: Record<string, unknown> } | undefined;
@@ -583,15 +652,12 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
 
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
     await waitFor(() => {
-      expect(loadMessages).toHaveBeenCalledWith("/repo", "abc123");
+      expect(loadMessages).not.toHaveBeenCalled();
     });
   });
 
-  it("shows patch file +/- summary in delegated session live output", async () => {
+  it("keeps delegated patch transcript loading out of MessageFeed", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => [
       {
@@ -664,19 +730,12 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const dialogs = screen.getAllByRole("dialog", { name: /delegation: build/i });
-    const dialog = dialogs[dialogs.length - 1]!;
-
     await waitFor(() => {
-      expect(within(dialog).getByText(/Applied patch package\.json/i)).toBeInTheDocument();
-      expect(within(dialog).getByText("+2")).toHaveClass("message-diff-add");
-      expect(within(dialog).getByText("-1")).toHaveClass("message-diff-del");
+      expect(loadMessages).not.toHaveBeenCalled();
     });
   });
 
-  it("shows delegation bubbles with modal details for sub-agent tasks", () => {
+  it("renders sub-agent delegation as timeline context instead of a transcript bubble", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -719,19 +778,12 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    const bubble = screen.getByRole("button", { name: /reviewer/i });
-    expect(bubble).toBeInTheDocument();
-
-    fireEvent.click(bubble);
-
-    const dialog = screen.getByRole("dialog", { name: /delegation: reviewer/i });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getByText(/Model: openai\/gpt-5-codex/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Inspect files and implement a fix/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Applied patch/i)).toBeInTheDocument();
+    expect(screen.getByText(/Delegated to reviewer: Fix the bug in renderer state handling/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reviewer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
-  it("groups delegated read/list output into explored summary blocks", async () => {
+  it("leaves delegated subagent transcript loading to the shared background-agent surface", async () => {
     const now = Date.now();
     const loadMessages = vi.fn(async () => [
       {
@@ -833,18 +885,13 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/repo" />);
-    const buildButtons = screen.getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
     await waitFor(() => {
-      expect(screen.getByText("Explored 2 files, 1 list")).toBeInTheDocument();
+      expect(loadMessages).not.toHaveBeenCalled();
     });
-    expect(screen.getByText(/Scanned _template\/src\/app/i)).toBeInTheDocument();
-    expect(screen.getByText(/Read _template\/src\/app\/layout\.tsx/i)).toBeInTheDocument();
-    expect(screen.getByText(/Read _template\/src\/app\/page\.tsx/i)).toBeInTheDocument();
+    expect(screen.getByText(/Delegated Inspect project structure to @build/i)).toBeInTheDocument();
   });
 
-  it("closes delegation modal on backdrop click and on escape", () => {
+  it("keeps delegation details out of the transcript placeholder", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -869,60 +916,11 @@ describe("MessageFeed", () => {
       },
     ];
 
-    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
+    render(<MessageFeed messages={messages} showAssistantPlaceholder />);
 
-    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-    const openedDialogs = within(view.container).getAllByRole("dialog", { name: /delegation: build/i });
-    expect(openedDialogs[openedDialogs.length - 1]).toBeInTheDocument();
-
-    const backdrop = view.container.querySelector(".delegation-modal-overlay");
-    expect(backdrop).not.toBeNull();
-    fireEvent.click(backdrop!);
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
-
-    const reopenedBuildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(reopenedBuildButtons[reopenedBuildButtons.length - 1]!);
-    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
-
-    fireEvent.keyDown(window, { key: "Escape" });
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
-  });
-
-  it("keeps delegation modal open on inner click and closes via close button", () => {
-    const now = Date.now();
-    const messages: SessionMessageBundle[] = [
-      {
-        info: ({
-          id: "msg-assistant-delegation-inner-click",
-          role: "assistant",
-          sessionID: "session-1",
-          time: { created: now, updated: now },
-        } as unknown) as SessionMessageBundle["info"],
-        parts: [
-          {
-            id: "subtask-inner-click",
-            type: "subtask",
-            sessionID: "session-1",
-            messageID: "msg-assistant-delegation-inner-click",
-            prompt: "Do work.",
-            description: "Inner click behavior",
-            agent: "build",
-            model: { providerID: "openai", modelID: "gpt-5-codex" },
-          },
-        ] as SessionMessageBundle["parts"],
-      },
-    ];
-    const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
-    const buildButtons = within(view.container).getAllByRole("button", { name: /build/i });
-    fireEvent.click(buildButtons[buildButtons.length - 1]!);
-
-    const dialog = within(view.container).getByRole("dialog", { name: /delegation: build/i });
-    fireEvent.click(dialog);
-    expect(within(view.container).getByRole("dialog", { name: /delegation: build/i })).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: /close/i }));
-    expect(within(view.container).queryByRole("dialog", { name: /delegation: build/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/thinking/i)).toBeInTheDocument();
+    expect(screen.queryByText("Close behavior test")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /delegation:/i })).not.toBeInTheDocument();
   });
 
   it("shows in-place activity with current file target from tool calls", () => {
@@ -958,7 +956,8 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
-    expect(screen.getAllByText(/Read src\/App.tsx/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Read").length).toBeGreaterThan(0);
+    expect(screen.getByText("App.tsx")).toBeInTheDocument();
   });
 
   it("does not leak todo content as tool activity target", () => {
@@ -1033,7 +1032,8 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
-    expect(screen.getByText(/Edited src\/App.tsx/i)).toBeInTheDocument();
+    expect(screen.getByText("Edited")).toBeInTheDocument();
+    expect(screen.getByText("App.tsx")).toBeInTheDocument();
     expect(screen.getByText(/Command: apply_patch <<'PATCH'/i)).toBeInTheDocument();
     expect(screen.queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
@@ -1113,11 +1113,10 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    const createdPrefix = screen.getByText(/Created src\/components\/ui\/sheet\.tsx/i);
-    const createdRow = createdPrefix.closest(".message-timeline-row");
-    expect(createdRow).toBeTruthy();
-    expect(within(createdRow as HTMLElement).getByText("+2")).toHaveClass("message-diff-add");
-    expect(within(createdRow as HTMLElement).getByText("-0")).toHaveClass("message-diff-del");
+    expect(screen.getByText("Changed files")).toBeInTheDocument();
+    expect(screen.getByText("src/components/ui/sheet.tsx")).toBeInTheDocument();
+    expect(screen.getByText("+2")).toHaveClass("diff-block-stat--add");
+    expect(screen.getByText("-0")).toHaveClass("diff-block-stat--del");
     expect(screen.queryByText(/Command: src\/components\/ui\/sheet\.tsx/i)).not.toBeInTheDocument();
   });
 
@@ -1155,7 +1154,7 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
     expect(screen.getByText(/^Failed package\.json$/i)).toBeInTheDocument();
-    expect(screen.getByText(/Error: File not found: \/repo\/package\.json/i)).toBeInTheDocument();
+    expect(screen.getByText(/File not found: \/repo\/package\.json/i)).toBeInTheDocument();
   });
 
   it("does not render a generic ran-command row for non-command read-like titles", () => {
@@ -1338,10 +1337,57 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    const additions = screen.getAllByText("+2");
-    const deletions = screen.getAllByText("-0");
-    expect(additions.some((node) => node.classList.contains("message-diff-add"))).toBe(true);
-    expect(deletions.some((node) => node.classList.contains("message-diff-del"))).toBe(true);
+    expect(screen.getByText("+2")).toHaveClass("diff-block-stat--add");
+    expect(screen.getByText("-0")).toHaveClass("diff-block-stat--del");
+  });
+
+  it("renders opencode edit tools inside the shared changed files cluster", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-changed-files",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-apply-patch-1",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-changed-files",
+            callID: "call-apply-patch-1",
+            tool: "apply_patch",
+            state: {
+              status: "completed",
+              input: {
+                patch: [
+                  "*** Begin Patch",
+                  "*** Update File: /repo/src/app.tsx",
+                  "@@",
+                  "-old",
+                  "+new",
+                  "*** Add File: /repo/src/new.ts",
+                  "+export const created = true;",
+                  "*** End Patch",
+                ].join("\n"),
+              },
+              output: "",
+              title: "apply_patch",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
+
+    expect(screen.getByText("Changed files")).toBeInTheDocument();
+    expect(screen.getByText("src/app.tsx")).toBeInTheDocument();
+    expect(screen.getByText("src/new.ts")).toBeInTheDocument();
   });
 
   it("renders session stop notices with reason text", () => {
@@ -1365,7 +1411,7 @@ describe("MessageFeed", () => {
     expect(screen.getByText(/Reason: Permission request rejected by user/i)).toBeInTheDocument();
   });
 
-  it("shows copy button on message bubble hover and copies visible text", async () => {
+  it("shows copy button on user messages and copies visible text", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
@@ -1375,8 +1421,8 @@ describe("MessageFeed", () => {
     const messages: SessionMessageBundle[] = [
       {
         info: ({
-          id: "msg-assistant-copy",
-          role: "assistant",
+          id: "msg-user-copy",
+          role: "user",
           sessionID: "session-1",
           time: { created: Date.now(), updated: Date.now() },
         } as unknown) as SessionMessageBundle["info"],
@@ -1385,14 +1431,14 @@ describe("MessageFeed", () => {
             id: "part-text-copy-1",
             type: "text",
             sessionID: "session-1",
-            messageID: "msg-assistant-copy",
+            messageID: "msg-user-copy",
             text: "Here is the answer.",
           },
           {
             id: "part-text-copy-2",
             type: "text",
             sessionID: "session-1",
-            messageID: "msg-assistant-copy",
+            messageID: "msg-user-copy",
             text: "And a follow-up.",
           },
         ] as SessionMessageBundle["parts"],
@@ -1414,6 +1460,69 @@ describe("MessageFeed", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /copied/i })).toBeInTheDocument();
     });
+  });
+
+  it("does not show copy button for assistant messages", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-copy-disabled",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "part-assistant-copy-disabled",
+            type: "text",
+            sessionID: "session-1",
+            messageID: "msg-assistant-copy-disabled",
+            text: "Assistant text should not render a copy affordance.",
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
+  });
+
+  it("shows command output in expandable timeline details", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-run-output",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-run-output",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-run-output",
+            callID: "call-run-output",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { cmd: "pwd" },
+              output: "/Users/callumspencer/Repos/macapp/orxacode",
+              title: "pwd",
+              metadata: {},
+              time: { start: now, end: now + 1 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText(/^pwd$/i)).toBeInTheDocument();
+    expect(screen.getByText("/Users/callumspencer/Repos/macapp/orxacode")).toBeInTheDocument();
   });
 
   it("does not show copy button for timeline-only messages", () => {

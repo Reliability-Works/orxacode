@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { setPersistedCodexState } from "./hooks/codex-session-storage";
 import { preferredAgentForMode } from "./lib/app-mode";
 
 const checkDependenciesMock = vi.fn(async () => ({
@@ -106,6 +107,18 @@ beforeEach(() => {
           worktree: { name: "feature-test", branch: "feature-test", directory: "/tmp/feature-test" },
           session: { id: "session-2", title: "Worktree: test", slug: "worktree-test", parentID: undefined, sharing: undefined, revert: [], time: { created: Date.now(), updated: Date.now() } },
         })),
+        getSessionRuntime: vi.fn(async (directory: string, sessionID: string) => ({
+          directory,
+          sessionID,
+          session: null,
+          sessionStatus: undefined,
+          permissions: [],
+          questions: [],
+          commands: [],
+          messages: [],
+          executionLedger: { cursor: 0, records: [] },
+          changeProvenance: { cursor: 0, records: [] },
+        })),
         loadMessages: vi.fn(async () => []),
         loadExecutionLedger: vi.fn(async () => ({ cursor: 0, records: [] })),
         clearExecutionLedger: vi.fn(async () => true),
@@ -174,6 +187,256 @@ describe("App", () => {
     });
 
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
+  });
+
+  it("shows preloaded sessions in the workspace list without selecting the workspace", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    expect(selectProjectMock).toHaveBeenCalledWith("/repo/marketing-websites");
+  });
+
+  it("prefers the busy spinner over unread for inactive Codex sessions that are still streaming", async () => {
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ "/repo/marketing-websites::session-1": "codex" }),
+    );
+    window.localStorage.setItem(
+      "orxa:sessionReadTimestamps:v1",
+      JSON.stringify({ "/repo/marketing-websites::session-1": 1 }),
+    );
+    setPersistedCodexState("/repo/marketing-websites::session-1", {
+      messages: [],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: true,
+      messageIdCounter: 0,
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: 10 },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    expect(document.querySelector(".session-status-indicator.busy")).toBeInTheDocument();
+    expect(document.querySelector(".session-status-indicator.unread")).toBeNull();
+  });
+
+  it("keeps inactive Codex sessions polling in the background", async () => {
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ "/repo/marketing-websites::session-1": "codex" }),
+    );
+    setPersistedCodexState("/repo/marketing-websites::session-1", {
+      messages: [],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: true,
+      messageIdCounter: 0,
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const getThreadRuntimeMock = vi.fn(async (threadId: string) => ({
+      thread: {
+        id: threadId,
+        preview: "Create a booking site",
+        modelProvider: "openai",
+        createdAt: Date.now(),
+        status: { type: "inProgress" as const },
+      },
+      childThreads: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        codex: {
+          getThreadRuntime: getThreadRuntimeMock,
+        },
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Create a booking site")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getThreadRuntimeMock).toHaveBeenCalledWith("thr-1");
+    });
+  });
+
+  it("removes an archived session from the sidebar instead of falling back to New session", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const activeSession = {
+      id: "session-1",
+      slug: "booking-site",
+      title: "Build Spa Booking Site",
+      time: { created: Date.now(), updated: Date.now() },
+    };
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [activeSession],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const refreshProjectMock = vi.fn(async () => ({
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const archiveSessionMock = vi.fn(async () => ({ ...activeSession, time: { ...activeSession.time, archived: Date.now() } }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          archiveSession: archiveSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    const sessionButton = await screen.findByText("Build Spa Booking Site");
+    fireEvent.contextMenu(sessionButton);
+    fireEvent.click(await screen.findByText("Archive Session"));
+
+    await waitFor(() => {
+      expect(archiveSessionMock).toHaveBeenCalledWith("/repo/dreamweaver", "session-1");
+      expect(screen.queryByText("Build Spa Booking Site")).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("New session")).not.toBeInTheDocument();
   });
 
   it("chooses preferred agents", () => {

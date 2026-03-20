@@ -102,6 +102,22 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
     return codexService.listThreads(opts);
   });
 
+  ipcMain.handle(IPC.codexGetThreadRuntime, async (_event, threadId: unknown) => {
+    return codexService.getThreadRuntime(assertString(threadId, "threadId"));
+  });
+
+  ipcMain.handle(IPC.codexArchiveThreadTree, async (_event, threadId: unknown) => {
+    return codexService.archiveThreadTree(assertString(threadId, "threadId"));
+  });
+
+  ipcMain.handle(IPC.codexSetThreadName, async (_event, threadId: unknown, name: unknown) => {
+    return codexService.setThreadName(assertString(threadId, "threadId"), assertString(name, "name"));
+  });
+
+  ipcMain.handle(IPC.codexGenerateRunMetadata, async (_event, cwd: unknown, prompt: unknown) => {
+    return codexService.generateRunMetadata(assertString(cwd, "cwd"), assertString(prompt, "prompt"));
+  });
+
   ipcMain.handle(
     IPC.codexStartTurn,
     async (_event, threadId: unknown, prompt: unknown, cwd?: unknown, model?: unknown, effort?: unknown, collaborationMode?: unknown) => {
@@ -135,5 +151,10 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
     // turnId is optional — the backend accepts an empty string for a thread-level interrupt
     const resolvedTurnId = typeof turnId === "string" ? turnId : "";
     return codexService.interruptTurn(assertString(threadId, "threadId"), resolvedTurnId);
+  });
+
+  ipcMain.handle(IPC.codexInterruptThreadTree, async (_event, threadId: unknown, turnId: unknown) => {
+    const resolvedTurnId = typeof turnId === "string" ? turnId : "";
+    return codexService.interruptThreadTree(assertString(threadId, "threadId"), resolvedTurnId);
   });
 }

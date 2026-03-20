@@ -45,6 +45,7 @@ const bridge: OrxaBridge = {
     archiveSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeArchiveSession, directory, sessionID),
     createWorktreeSession: (directory, sessionID, name) =>
       ipcRenderer.invoke(IPC.opencodeCreateWorktreeSession, directory, sessionID, name),
+    getSessionRuntime: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
     loadMessages: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
     loadExecutionLedger: (directory, sessionID, cursor) =>
       ipcRenderer.invoke(IPC.opencodeLoadExecutionLedger, directory, sessionID, cursor),
@@ -66,6 +67,7 @@ const bridge: OrxaBridge = {
     listProviders: (directory) => ipcRenderer.invoke(IPC.opencodeListProviders, directory),
     pickImage: () => ipcRenderer.invoke(IPC.opencodePickImage),
     gitDiff: (directory) => ipcRenderer.invoke(IPC.opencodeGitDiff, directory),
+    gitStatus: (directory) => ipcRenderer.invoke(IPC.opencodeGitStatus, directory),
     gitLog: (directory) => ipcRenderer.invoke(IPC.opencodeGitLog, directory),
     gitIssues: (directory) => ipcRenderer.invoke(IPC.opencodeGitIssues, directory),
     gitPrs: (directory) => ipcRenderer.invoke(IPC.opencodeGitPrs, directory),
@@ -166,11 +168,16 @@ const bridge: OrxaBridge = {
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
     startThread: (options) => ipcRenderer.invoke(IPC.codexStartThread, options),
     listThreads: (options) => ipcRenderer.invoke(IPC.codexListThreads, options),
+    getThreadRuntime: (threadId) => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
+    archiveThreadTree: (threadId) => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
+    setThreadName: (threadId, name) => ipcRenderer.invoke(IPC.codexSetThreadName, threadId, name),
+    generateRunMetadata: (cwd, prompt) => ipcRenderer.invoke(IPC.codexGenerateRunMetadata, cwd, prompt),
     startTurn: (threadId, prompt, cwd, model, effort, collaborationMode) => ipcRenderer.invoke(IPC.codexStartTurn, threadId, prompt, cwd, model, effort, collaborationMode),
     approve: (requestId, decision) => ipcRenderer.invoke(IPC.codexApprove, requestId, decision),
     deny: (requestId) => ipcRenderer.invoke(IPC.codexDeny, requestId),
     respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.codexRespondToUserInput, requestId, response),
     interruptTurn: (threadId, turnId) => ipcRenderer.invoke(IPC.codexInterruptTurn, threadId, turnId),
+    interruptThreadTree: (threadId, turnId) => ipcRenderer.invoke(IPC.codexInterruptThreadTree, threadId, turnId),
   },
   events: {
     subscribe: (listener) => eventHub.subscribe(listener),

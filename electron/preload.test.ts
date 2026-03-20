@@ -43,6 +43,12 @@ async function loadBridge() {
       pruneArtifactsNow: (workspace?: string) => Promise<unknown>;
       exportArtifactBundle: (input: unknown) => Promise<unknown>;
     };
+    codex: {
+      archiveThreadTree: (threadId: string) => Promise<unknown>;
+      setThreadName: (threadId: string, name: string) => Promise<unknown>;
+      generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>;
+      interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown>;
+    };
     browser: {
       getState: () => Promise<unknown>;
       setVisible: (visible: boolean) => Promise<unknown>;
@@ -141,5 +147,22 @@ describe("preload browser bridge", () => {
     const exportInput = { workspace: "/tmp/workspace", limit: 20 };
     await bridge.opencode.exportArtifactBundle(exportInput);
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.opencodeArtifactsExportBundle, exportInput);
+  });
+
+  it("wires Codex title methods to the expected IPC channels", async () => {
+    const bridge = await loadBridge();
+    electronMocks.invoke.mockResolvedValue(undefined);
+
+    await bridge.codex.archiveThreadTree("thread-1");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexArchiveThreadTree, "thread-1");
+
+    await bridge.codex.setThreadName("thread-1", "New Name");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexSetThreadName, "thread-1", "New Name");
+
+    await bridge.codex.generateRunMetadata("/repo", "Fix the sidebar");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexGenerateRunMetadata, "/repo", "Fix the sidebar");
+
+    await bridge.codex.interruptThreadTree("thread-1", "turn-1");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexInterruptThreadTree, "thread-1", "turn-1");
   });
 });

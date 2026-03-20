@@ -821,6 +821,13 @@
   cursor: not-allowed;
 }
 
+.settings-inline-note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
 .settings-textarea-label {
   display: grid;
   gap: 8px;

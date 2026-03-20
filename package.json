@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.11",
+  "version": "0.1.0-beta.12",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
@@ -82,6 +82,7 @@
   "dependencies": {
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
+    "@tanstack/react-virtual": "^3.13.23",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "electron-store": "^11.0.2",
@@ -97,7 +98,8 @@
     "simple-icons": "^16.9.0",
     "ws": "^8.19.0",
     "xterm": "^5.3.0",
-    "xterm-addon-fit": "^0.8.0"
+    "xterm-addon-fit": "^0.8.0",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

@@ -1,5 +1,11 @@
 export type GitDiffSection = "unstaged" | "staged";
 export type GitFileStatus = "modified" | "added" | "deleted" | "renamed";
+export type GitStatusFile = {
+  key: string;
+  path: string;
+  oldPath?: string;
+  status: GitFileStatus;
+};
 
 type ParsedDiffChunk = {
   section: GitDiffSection;
@@ -110,6 +116,99 @@ export function inferStatusTag(status: GitFileStatus) {
     return "R";
   }
   return "M";
+}
+
+function normalizeStatusPath(pathValue: string) {
+  const trimmed = pathValue.trim();
+  if (trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function inferStatusFromPorcelainCode(code: string): GitFileStatus {
+  if (code === "A" || code === "?") {
+    return "added";
+  }
+  if (code === "D") {
+    return "deleted";
+  }
+  if (code === "R") {
+    return "renamed";
+  }
+  return "modified";
+}
+
+export function parseGitStatusOutput(output: string): { files: GitStatusFile[]; message?: string } {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return { files: [] };
+  }
+  if (trimmed === "Not a git repository.") {
+    return { files: [], message: trimmed };
+  }
+
+  const files: GitStatusFile[] = [];
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line) {
+      continue;
+    }
+
+    if (line.startsWith("?? ")) {
+      const path = normalizeStatusPath(line.slice(3));
+      if (!path) {
+        continue;
+      }
+      files.push({
+        key: path,
+        path,
+        status: "added",
+      });
+      continue;
+    }
+
+    if (line.length < 4) {
+      continue;
+    }
+
+    const xy = line.slice(0, 2);
+    const pathPart = line.slice(3).trim();
+    if (!pathPart) {
+      continue;
+    }
+
+    const significantCode = (xy[0] && xy[0] !== " " ? xy[0] : xy[1]) || "M";
+    const status = inferStatusFromPorcelainCode(significantCode);
+
+    if ((status === "renamed" || significantCode === "C") && pathPart.includes(" -> ")) {
+      const [oldPathRaw, newPathRaw] = pathPart.split(/\s+->\s+/, 2);
+      const oldPath = normalizeStatusPath(oldPathRaw ?? "");
+      const path = normalizeStatusPath(newPathRaw ?? "");
+      if (!path) {
+        continue;
+      }
+      files.push({
+        key: oldPath ? `${oldPath}->${path}` : path,
+        path,
+        oldPath: oldPath || undefined,
+        status: significantCode === "C" ? "added" : "renamed",
+      });
+      continue;
+    }
+
+    const path = normalizeStatusPath(pathPart);
+    if (!path) {
+      continue;
+    }
+    files.push({
+      key: path,
+      path,
+      status,
+    });
+  }
+
+  return { files };
 }
 
 export function parseGitDiffOutput(output: string): { files: GitDiffFile[]; message?: string } {

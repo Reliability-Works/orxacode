@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
 import { getPersistedCodexState, setPersistedCodexState } from "./codex-session-storage";
@@ -14,9 +14,325 @@ import {
   cleanCommandText,
   commandToExploreEntry,
   fileReadToExploreEntry,
+  isReadOnlyCommand,
   webSearchToExploreEntry,
   mcpToolCallToExploreEntry,
 } from "../lib/explore-utils";
+import { parseGitDiffOutput, parseGitStatusOutput, type GitDiffFile, type GitStatusFile } from "../lib/git-diff";
+import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function asString(value: unknown) {
+  return typeof value === "string" ? value : value ? String(value) : "";
+}
+
+function normalizeSubagentKind(value: string) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]/g, "_");
+  if (normalized.startsWith("subagent_")) {
+    return normalized.slice("subagent_".length);
+  }
+  if (normalized.startsWith("sub_agent_")) {
+    return normalized.slice("sub_agent_".length);
+  }
+  return normalized;
+}
+
+function normalizeSubagentDisplayRole(value: string | null | undefined) {
+  const normalized = normalizeSubagentKind(value ?? "");
+  if (!normalized || normalized === "vscode" || normalized === "editor" || normalized === "codex") {
+    return undefined;
+  }
+  return normalized.replace(/_/g, " ");
+}
+
+function getSubagentKind(source: unknown): string | null {
+  if (typeof source === "string") {
+    const normalized = normalizeSubagentKind(source);
+    return normalized || null;
+  }
+
+  const record = asRecord(source);
+  if (!record) {
+    return null;
+  }
+
+  const subAgentRaw = record.subAgent ?? record.sub_agent ?? record.subagent;
+  if (typeof subAgentRaw === "string") {
+    const normalized = normalizeSubagentKind(subAgentRaw);
+    return normalized || null;
+  }
+
+  const subAgentRecord = asRecord(subAgentRaw);
+  if (!subAgentRecord) {
+    return null;
+  }
+
+  const explicitKind = asString(
+    subAgentRecord.kind ??
+      subAgentRecord.type ??
+      subAgentRecord.name ??
+      subAgentRecord.id,
+  );
+  if (explicitKind) {
+    const normalized = normalizeSubagentKind(explicitKind);
+    return normalized || null;
+  }
+
+  const candidateKeys = Object.keys(subAgentRecord).filter(
+    (key) =>
+      key !== "thread_spawn" &&
+      key !== "threadSpawn" &&
+      key !== "nickname" &&
+      key !== "agentNickname" &&
+      key !== "agent_nickname" &&
+      key !== "role" &&
+      key !== "agentRole" &&
+      key !== "agent_role" &&
+      key !== "parentThreadId" &&
+      key !== "parent_thread_id" &&
+      key !== "depth",
+  );
+  if (candidateKeys.length !== 1) {
+    return null;
+  }
+  const normalized = normalizeSubagentKind(candidateKeys[0] ?? "");
+  return normalized || null;
+}
+
+function extractSubagentMeta(source: unknown) {
+  const sourceRecord = asRecord(source);
+  const subAgentRecord = asRecord(sourceRecord?.subAgent ?? sourceRecord?.sub_agent ?? sourceRecord?.subagent);
+  if (!subAgentRecord) {
+    const kind = getSubagentKind(source);
+    if (!kind) {
+      return null;
+    }
+    return {
+      kind,
+      nickname: undefined,
+      role: normalizeSubagentDisplayRole(kind) ?? "worker",
+    };
+  }
+  const kind = getSubagentKind(source);
+  const nickname =
+    asString(subAgentRecord?.nickname ?? subAgentRecord?.agentNickname ?? subAgentRecord?.agent_nickname).trim() ||
+    undefined;
+  const explicitRole = normalizeSubagentDisplayRole(
+    asString(subAgentRecord?.role ?? subAgentRecord?.agentRole ?? subAgentRecord?.agent_role).trim() || null,
+  );
+  const role = explicitRole ?? (kind ? normalizeSubagentDisplayRole(kind) : undefined) ?? "worker";
+
+  return { kind, nickname, role };
+}
+
+function readTurnId(params: Record<string, unknown>) {
+  return (
+    asString(params.turnId ?? params.turn_id).trim() ||
+    asString(asRecord(params.turn)?.id).trim() ||
+    null
+  );
+}
+
+function readThreadId(params: Record<string, unknown>) {
+  return (
+    asString(params.threadId ?? params.thread_id).trim() ||
+    asString(asRecord(params.thread)?.id).trim() ||
+    null
+  );
+}
+
+function normalizeCommandText(value: unknown) {
+  if (Array.isArray(value)) {
+    const first = asString(value[0]).trim();
+    const second = asString(value[1]).trim();
+    const third = asString(value[2]).trim();
+    if (/(?:^|\/)(?:zsh|bash|sh)$/.test(first) && (second === "-lc" || second === "-c") && third) {
+      return third;
+    }
+    return value
+      .map((entry) => asString(entry).trim())
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+  return asString(value).trim();
+}
+
+function normalizeWorkspaceRelativePath(rawPath: string, workspaceDirectory: string) {
+  const normalizedPath = rawPath.trim().replace(/\\/g, "/");
+  const normalizedWorkspace = workspaceDirectory.trim().replace(/\\/g, "/").replace(/\/+$/g, "");
+  if (!normalizedPath || !normalizedWorkspace) {
+    return normalizedPath;
+  }
+  if (normalizedPath === normalizedWorkspace) {
+    return ".";
+  }
+  if (normalizedPath.startsWith(`${normalizedWorkspace}/`)) {
+    return normalizedPath.slice(normalizedWorkspace.length + 1);
+  }
+  return normalizedPath;
+}
+
+const HIDDEN_SUBAGENT_KINDS = new Set(["memory_consolidation"]);
+
+function getParentThreadIdFromSource(source: unknown): string | null {
+  const sourceRecord = asRecord(source);
+  if (!sourceRecord) {
+    return null;
+  }
+  const subAgent = asRecord(sourceRecord.subAgent ?? sourceRecord.sub_agent ?? sourceRecord.subagent);
+  if (!subAgent) {
+    return null;
+  }
+  const threadSpawn = asRecord(subAgent.thread_spawn ?? subAgent.threadSpawn);
+  if (!threadSpawn) {
+    return null;
+  }
+  return (
+    asString(threadSpawn.parent_thread_id ?? threadSpawn.parentThreadId).trim() ||
+    null
+  );
+}
+
+function getParentThreadIdFromThread(thread: Record<string, unknown>): string | null {
+  return (
+    getParentThreadIdFromSource(thread.source) ||
+    asString(
+      thread.parentThreadId ??
+      thread.parent_thread_id ??
+      thread.parentId ??
+      thread.parent_id ??
+      thread.senderThreadId ??
+      thread.sender_thread_id,
+    ).trim() ||
+    null
+  );
+}
+
+function getNotificationThreadId(
+  method: string,
+  params: Record<string, unknown>,
+  itemThreadIds: Map<string, string>,
+  turnThreadIds: Map<string, string>,
+): string | null {
+  const itemRecord = asRecord(params.item);
+  const turnRecord = asRecord(params.turn);
+  const threadRecord = asRecord(params.thread);
+  const itemId = asString(params.itemId ?? itemRecord?.id).trim();
+  const turnId = asString(params.turnId ?? turnRecord?.id).trim();
+  const directThreadId =
+    asString(params.threadId ?? params.thread_id).trim() ||
+    asString(threadRecord?.id).trim() ||
+    asString(turnRecord?.threadId ?? turnRecord?.thread_id).trim() ||
+    asString(itemRecord?.threadId ?? itemRecord?.thread_id).trim();
+
+  if (directThreadId) {
+    return directThreadId;
+  }
+  if (itemId && itemThreadIds.has(itemId)) {
+    return itemThreadIds.get(itemId) ?? null;
+  }
+  if (turnId && turnThreadIds.has(turnId)) {
+    return turnThreadIds.get(turnId) ?? null;
+  }
+  if (method === "thread/name/updated") {
+    return asString(params.threadId ?? params.thread_id ?? threadRecord?.id).trim() || null;
+  }
+  return null;
+}
+
+function isHiddenSubagentSource(source: unknown) {
+  const kind = getSubagentKind(source);
+  if (!kind) {
+    return false;
+  }
+  return HIDDEN_SUBAGENT_KINDS.has(kind);
+}
+
+function normalizeThreadStatusType(status: unknown) {
+  if (!status || typeof status !== "object" || Array.isArray(status)) {
+    return "";
+  }
+  const record = status as Record<string, unknown>;
+  const typeRaw = record.type ?? record.statusType ?? record.status_type;
+  if (typeof typeRaw !== "string") {
+    return "";
+  }
+  return typeRaw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]/g, "");
+}
+
+function getResumedActiveTurnId(thread: Record<string, unknown>): string | null {
+  const explicitTurnId =
+    asString(thread.activeTurnId ?? thread.active_turn_id).trim() ||
+    asString(asRecord(thread.activeTurn ?? thread.active_turn ?? thread.currentTurn ?? thread.current_turn)?.id).trim();
+  if (explicitTurnId) {
+    return explicitTurnId;
+  }
+  const turns = Array.isArray(thread.turns) ? thread.turns : [];
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = asRecord(turns[index]);
+    if (!turn) {
+      continue;
+    }
+    const status = asString(turn.status ?? turn.turnStatus ?? turn.turn_status)
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]/g, "");
+    if (
+      status === "inprogress" ||
+      status === "running" ||
+      status === "processing" ||
+      status === "pending" ||
+      status === "started" ||
+      status === "queued" ||
+      status === "waiting" ||
+      status === "blocked" ||
+      status === "needsinput" ||
+      status === "requiresaction" ||
+      status === "awaitinginput" ||
+      status === "waitingforinput"
+    ) {
+      return asString(turn.id ?? turn.turnId ?? turn.turn_id).trim() || null;
+    }
+  }
+  return null;
+}
+
+function toSubagentStatus(thread: Record<string, unknown>): Pick<SubagentInfo, "status" | "statusText"> {
+  const statusType = normalizeThreadStatusType(thread.status);
+  const activeTurnId = getResumedActiveTurnId(thread);
+  if (
+    statusType.includes("await") ||
+    statusType.includes("input") ||
+    statusType.includes("question") ||
+    statusType.includes("response")
+  ) {
+    return { status: "awaiting_instruction", statusText: "awaiting input" };
+  }
+  if (activeTurnId) {
+    return { status: "thinking", statusText: "is thinking" };
+  }
+  if (
+    statusType === "completed" ||
+    statusType === "done" ||
+    statusType === "finished"
+  ) {
+    return { status: "completed", statusText: "completed" };
+  }
+  return { status: "idle", statusText: "idle" };
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +375,7 @@ export function agentColorForId(threadId: string): string {
 
 export type CodexMessageItem =
   | { id: string; kind: "message"; role: "user" | "assistant"; content: string; timestamp: number }
+  | { id: string; kind: "status"; label: string; timestamp: number }
   | {
       id: string;
       kind: "tool";
@@ -80,6 +397,7 @@ export type CodexMessageItem =
       kind: "diff";
       path: string;
       type: string;
+      status: "running" | "completed" | "error";
       diff?: string;
       insertions?: number;
       deletions?: number;
@@ -118,29 +436,290 @@ export interface CodexSessionState {
   planItems: TodoItem[];
 }
 
+type GitDiffSnapshotEntry = {
+  path: string;
+  oldPath?: string;
+  type: string;
+  insertions: number;
+  deletions: number;
+  diff: string;
+};
+
+type CommandDiffBaseline = {
+  snapshot: Map<string, GitDiffSnapshotEntry>;
+  statusSnapshot: Map<string, GitStatusFile>;
+  dirtyContents: Map<string, string | null>;
+};
+
+const COMMAND_DIFF_CONTENT_BASELINE_LIMIT = 24;
+const COMMAND_DIFF_POLL_INTERVAL_MS = 850;
+
+type FileChangeDescriptor = {
+  path: string;
+  type: string;
+  diff?: string;
+  insertions?: number;
+  deletions?: number;
+};
+
+type GitSnapshotLookup = {
+  diffByPath: Map<string, GitDiffSnapshotEntry>;
+  statusByPath: Map<string, GitStatusFile>;
+};
+
+function toGitSnapshotEntry(file: GitDiffFile): GitDiffSnapshotEntry {
+  return {
+    path: file.path,
+    oldPath: file.oldPath,
+    type: file.status,
+    insertions: file.added,
+    deletions: file.removed,
+    diff: file.diffLines.join("\n"),
+  };
+}
+
+function captureGitDiffSnapshot(files: GitDiffFile[]) {
+  return new Map(files.map((file) => [file.key, toGitSnapshotEntry(file)]));
+}
+
+function captureGitStatusSnapshot(files: GitStatusFile[]) {
+  return new Map(files.map((file) => [file.key, file]));
+}
+
+function isSameGitDiffSnapshotEntry(left: GitDiffSnapshotEntry | undefined, right: GitDiffSnapshotEntry) {
+  if (!left) {
+    return false;
+  }
+  return (
+    left.path === right.path &&
+    left.type === right.type &&
+    left.insertions === right.insertions &&
+    left.deletions === right.deletions &&
+    left.diff === right.diff
+  );
+}
+
+function isSameGitStatusSnapshotEntry(left: GitStatusFile | undefined, right: GitStatusFile) {
+  if (!left) {
+    return false;
+  }
+  return (
+    left.path === right.path &&
+    left.oldPath === right.oldPath &&
+    left.status === right.status
+  );
+}
+
+function splitLinesPreserveFinalNewline(value: string | null) {
+  if (value == null) {
+    return [];
+  }
+  const normalized = value.replace(/\r\n/g, "\n");
+  if (!normalized) {
+    return [];
+  }
+  return normalized.endsWith("\n")
+    ? normalized.slice(0, -1).split("\n")
+    : normalized.split("\n");
+}
+
+function buildSyntheticCommandDiff(path: string, beforeContent: string | null, afterContent: string | null) {
+  const beforeLines = splitLinesPreserveFinalNewline(beforeContent);
+  const afterLines = splitLinesPreserveFinalNewline(afterContent);
+
+  let prefix = 0;
+  while (
+    prefix < beforeLines.length &&
+    prefix < afterLines.length &&
+    beforeLines[prefix] === afterLines[prefix]
+  ) {
+    prefix += 1;
+  }
+
+  let beforeSuffix = beforeLines.length - 1;
+  let afterSuffix = afterLines.length - 1;
+  while (
+    beforeSuffix >= prefix &&
+    afterSuffix >= prefix &&
+    beforeLines[beforeSuffix] === afterLines[afterSuffix]
+  ) {
+    beforeSuffix -= 1;
+    afterSuffix -= 1;
+  }
+
+  const removedLines = beforeLines.slice(prefix, beforeSuffix + 1);
+  const addedLines = afterLines.slice(prefix, afterSuffix + 1);
+  const type =
+    beforeContent == null ? "added" : afterContent == null ? "deleted" : "modified";
+
+  if (removedLines.length === 0 && addedLines.length === 0) {
+    return {
+      type,
+      diff: "",
+      insertions: 0,
+      deletions: 0,
+    };
+  }
+
+  const oldStart = removedLines.length === 0 ? prefix : prefix + 1;
+  const newStart = addedLines.length === 0 ? prefix : prefix + 1;
+  const diffLines = [
+    `diff --git a/${path} b/${path}`,
+    `--- ${beforeContent == null ? "/dev/null" : `a/${path}`}`,
+    `+++ ${afterContent == null ? "/dev/null" : `b/${path}`}`,
+    `@@ -${oldStart},${removedLines.length} +${newStart},${addedLines.length} @@`,
+    ...removedLines.map((line) => `-${line}`),
+    ...addedLines.map((line) => `+${line}`),
+  ];
+
+  return {
+    type,
+    diff: diffLines.join("\n"),
+    insertions: addedLines.length,
+    deletions: removedLines.length,
+  };
+}
+
+function looksLikeUnifiedDiff(value: string | undefined) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    trimmed.startsWith("diff --git ") ||
+    trimmed.includes("\n@@ ") ||
+    trimmed.startsWith("@@ ") ||
+    trimmed.includes("\n--- ") ||
+    trimmed.includes("\n+++ ") ||
+    trimmed.startsWith("--- ") ||
+    trimmed.startsWith("+++ ")
+  );
+}
+
+function normalizeFileChangeType(value: unknown) {
+  const normalized = asString(value).trim().toLowerCase();
+  if (normalized === "add" || normalized === "added" || normalized === "create" || normalized === "created") {
+    return "added";
+  }
+  if (normalized === "delete" || normalized === "deleted" || normalized === "remove" || normalized === "removed") {
+    return "deleted";
+  }
+  if (normalized === "rename" || normalized === "renamed" || normalized === "move" || normalized === "moved") {
+    return "renamed";
+  }
+  return "modified";
+}
+
+function parseFileChangeSummary(output: string | undefined) {
+  if (!output) {
+    return [];
+  }
+  const descriptors: FileChangeDescriptor[] = [];
+  for (const rawLine of output.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    const match = line.match(/^([AMDR])\s+(.+)$/);
+    if (!match) {
+      continue;
+    }
+    const code = match[1] ?? "M";
+    const path = match[2]?.trim();
+    if (!path) {
+      continue;
+    }
+    descriptors.push({
+      path,
+      type: code === "A" ? "added" : code === "D" ? "deleted" : code === "R" ? "renamed" : "modified",
+    });
+  }
+  return descriptors;
+}
+
+function extractFileChangeDescriptors(item: {
+  path?: string;
+  changeType?: string;
+  insertions?: number;
+  deletions?: number;
+  changes?: unknown;
+  aggregatedOutput?: string;
+}, existingDiff?: string): FileChangeDescriptor[] {
+  const rawChanges = Array.isArray(item.changes) ? item.changes : [];
+  const fromChanges = rawChanges
+    .map((change) => {
+      const record = asRecord(change);
+      const path = asString(record?.path).trim();
+      if (!path) {
+        return null;
+      }
+      const diff = asString(record?.diff).trim();
+      const insertions = typeof record?.insertions === "number" ? record.insertions : undefined;
+      const deletions = typeof record?.deletions === "number" ? record.deletions : undefined;
+      return {
+        path,
+        type: normalizeFileChangeType(record?.kind ?? record?.type ?? item.changeType),
+        diff: looksLikeUnifiedDiff(diff) ? diff : undefined,
+        insertions,
+        deletions,
+      } satisfies FileChangeDescriptor;
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+  if (fromChanges.length > 0) {
+    return fromChanges;
+  }
+
+  const fallbackPath = asString(item.path).trim();
+  if (fallbackPath) {
+    return [{
+      path: fallbackPath,
+      type: normalizeFileChangeType(item.changeType),
+      diff: looksLikeUnifiedDiff(existingDiff) ? existingDiff : undefined,
+      insertions: item.insertions,
+      deletions: item.deletions,
+    }];
+  }
+
+  return parseFileChangeSummary(item.aggregatedOutput);
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useCodexSession(directory: string, codexOptions?: { codexPath?: string; codexArgs?: string }) {
-  const persisted = getPersistedCodexState(directory);
-  const [connectionStatus, setConnectionStatus] = useState<CodexState["status"]>("disconnected");
-  const [serverInfo, setServerInfo] = useState<CodexState["serverInfo"]>();
-  const [thread, setThread] = useState<CodexThread | null>(persisted.thread);
-  const [messages, setMessages] = useState<CodexMessageItem[]>(persisted.messages);
-  const [pendingApproval, setPendingApproval] = useState<CodexApprovalRequest | null>(null);
-  const [pendingUserInput, setPendingUserInput] = useState<CodexUserInputRequest | null>(null);
-  const [isStreaming, setIsStreaming] = useState(persisted.isStreaming);
-  const [lastError, setLastError] = useState<string>();
-  const [threadName, setThreadName] = useState<string>();
-  const [planItems, setPlanItems] = useState<TodoItem[]>([]);
-  // Track dismissed plan item IDs so accepted/dismissed plans don't re-appear
-  const [dismissedPlanIds, setDismissedPlanIds] = useState<Set<string>>(new Set());
-
-  // Subagent thread detection & tracking
+export function useCodexSession(
+  directory: string,
+  sessionKey: string,
+  codexOptions?: { codexPath?: string; codexArgs?: string },
+) {
+  const persisted = getPersistedCodexState(sessionKey);
   const subagentThreadIds = useRef(new Set<string>());
-  const [subagents, setSubagents] = useState<SubagentInfo[]>([]);
-  const [activeSubagentThreadId, setActiveSubagentThreadId] = useState<string | null>(null);
+  const codexRuntime = useUnifiedRuntimeStore((state) => state.codexSessions[sessionKey] ?? null);
+  const initCodexSession = useUnifiedRuntimeStore((state) => state.initCodexSession);
+  const setCodexConnectionState = useUnifiedRuntimeStore((state) => state.setCodexConnectionState);
+  const setCodexThread = useUnifiedRuntimeStore((state) => state.setCodexThread);
+  const replaceCodexMessages = useUnifiedRuntimeStore((state) => state.replaceCodexMessages);
+  const updateCodexMessages = useUnifiedRuntimeStore((state) => state.updateCodexMessages);
+  const setCodexPendingApproval = useUnifiedRuntimeStore((state) => state.setCodexPendingApproval);
+  const setCodexPendingUserInput = useUnifiedRuntimeStore((state) => state.setCodexPendingUserInput);
+  const setCodexStreaming = useUnifiedRuntimeStore((state) => state.setCodexStreaming);
+  const setCodexThreadName = useUnifiedRuntimeStore((state) => state.setCodexThreadName);
+  const setCodexPlanItems = useUnifiedRuntimeStore((state) => state.setCodexPlanItems);
+  const setCodexDismissedPlanIds = useUnifiedRuntimeStore((state) => state.setCodexDismissedPlanIds);
+  const setCodexSubagents = useUnifiedRuntimeStore((state) => state.setCodexSubagents);
+  const setCodexActiveSubagentThreadId = useUnifiedRuntimeStore((state) => state.setCodexActiveSubagentThreadId);
+  const setCodexRuntimeSnapshot = useUnifiedRuntimeStore((state) => state.setCodexRuntimeSnapshot);
+
+  const connectionStatus = codexRuntime?.connectionStatus ?? "disconnected";
+  const serverInfo = codexRuntime?.serverInfo;
+  const thread = codexRuntime?.thread ?? persisted.thread;
+  const messages = codexRuntime?.messages ?? persisted.messages;
+  const pendingApproval = codexRuntime?.pendingApproval ?? null;
+  const pendingUserInput = codexRuntime?.pendingUserInput ?? null;
+  const isStreaming = codexRuntime?.isStreaming ?? persisted.isStreaming;
+  const lastError = codexRuntime?.lastError;
+  const threadName = codexRuntime?.threadName;
+  const planItems = codexRuntime?.planItems ?? [];
+  const dismissedPlanIds = useMemo(() => new Set(codexRuntime?.dismissedPlanIds ?? []), [codexRuntime?.dismissedPlanIds]);
+  const subagents = codexRuntime?.subagents ?? [];
+  const activeSubagentThreadId = codexRuntime?.activeSubagentThreadId ?? null;
 
   // Track the current assistant message being streamed
   const streamingItemIdRef = useRef<string | null>(null);
@@ -157,95 +736,135 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   const currentReasoningIdRef = useRef<string | null>(null);
   // Track active turn for interrupt
   const activeTurnIdRef = useRef<string | null>(null);
+  const pendingInterruptRef = useRef(false);
+  const interruptRequestedRef = useRef(false);
+  const latestPlanUpdateIdRef = useRef<string | null>(null);
+  const itemThreadIdsRef = useRef(new Map<string, string>());
+  const turnThreadIdsRef = useRef(new Map<string, string>());
+  const commandDiffSnapshotsRef = useRef(new Map<string, Promise<CommandDiffBaseline | null>>());
+  const commandDiffPollTimersRef = useRef(new Map<string, number>());
 
-  // Persist state changes back to module-level storage (sync on every change + unmount)
-  const messagesRef = useRef(messages);
-  const threadRef = useRef(thread);
-  const isStreamingRef = useRef(isStreaming);
-  messagesRef.current = messages;
-  threadRef.current = thread;
-  isStreamingRef.current = isStreaming;
+  const getCurrentCodexRuntime = useCallback(
+    () => useUnifiedRuntimeStore.getState().codexSessions[sessionKey] ?? null,
+    [sessionKey],
+  );
+
+  const updateMessages = useCallback(
+    (updater: (previous: CodexMessageItem[]) => CodexMessageItem[], priority: "normal" | "deferred" = "normal") => {
+      if (priority === "deferred") {
+        startTransition(() => {
+          updateCodexMessages(sessionKey, updater);
+        });
+        return;
+      }
+      updateCodexMessages(sessionKey, updater);
+    },
+    [sessionKey, updateCodexMessages],
+  );
+
+  const setMessagesState = useCallback(
+    (next: CodexMessageItem[] | ((previous: CodexMessageItem[]) => CodexMessageItem[])) => {
+      if (typeof next === "function") {
+        updateCodexMessages(sessionKey, next);
+        return;
+      }
+      replaceCodexMessages(sessionKey, next);
+    },
+    [replaceCodexMessages, sessionKey, updateCodexMessages],
+  );
+
+  const setThreadState = useCallback((next: CodexThread | null) => {
+    setCodexThread(sessionKey, next);
+  }, [sessionKey, setCodexThread]);
+
+  const setPendingApprovalState = useCallback((next: CodexApprovalRequest | null) => {
+    setCodexPendingApproval(sessionKey, next);
+  }, [sessionKey, setCodexPendingApproval]);
+
+  const setPendingUserInputState = useCallback((next: CodexUserInputRequest | null) => {
+    setCodexPendingUserInput(sessionKey, next);
+  }, [sessionKey, setCodexPendingUserInput]);
+
+  const setStreamingState = useCallback((next: boolean) => {
+    setCodexStreaming(sessionKey, next);
+  }, [sessionKey, setCodexStreaming]);
+
+  const setThreadNameState = useCallback((next: string | undefined) => {
+    setCodexThreadName(sessionKey, next);
+  }, [sessionKey, setCodexThreadName]);
+
+  const setPlanItemsState = useCallback((next: TodoItem[]) => {
+    setCodexPlanItems(sessionKey, next);
+  }, [sessionKey, setCodexPlanItems]);
+
+  const setDismissedPlanIdsState = useCallback((next: Set<string> | ((previous: Set<string>) => Set<string>)) => {
+    const previous = new Set(useUnifiedRuntimeStore.getState().codexSessions[sessionKey]?.dismissedPlanIds ?? []);
+    const resolved = typeof next === "function" ? next(previous) : next;
+    setCodexDismissedPlanIds(sessionKey, [...resolved]);
+  }, [sessionKey, setCodexDismissedPlanIds]);
+
+  const setSubagentsState = useCallback((next: SubagentInfo[] | ((previous: SubagentInfo[]) => SubagentInfo[])) => {
+    const previous = useUnifiedRuntimeStore.getState().codexSessions[sessionKey]?.subagents ?? [];
+    const resolved = typeof next === "function" ? next(previous) : next;
+    setCodexSubagents(sessionKey, resolved);
+  }, [sessionKey, setCodexSubagents]);
+
+  const setActiveSubagentThreadIdState = useCallback((next: string | null | ((previous: string | null) => string | null)) => {
+    const previous = useUnifiedRuntimeStore.getState().codexSessions[sessionKey]?.activeSubagentThreadId ?? null;
+    const resolved = typeof next === "function" ? next(previous) : next;
+    setCodexActiveSubagentThreadId(sessionKey, resolved);
+  }, [sessionKey, setCodexActiveSubagentThreadId]);
+
+  const setConnectionState = useCallback(
+    (status: CodexState["status"], nextServerInfo?: CodexState["serverInfo"], nextLastError?: string) => {
+      setCodexConnectionState(sessionKey, status, nextServerInfo, nextLastError);
+    },
+    [sessionKey, setCodexConnectionState],
+  );
+
+  const recordLastError = useCallback(
+    (error: unknown, statusOverride?: CodexState["status"]) => {
+      const currentRuntime = useUnifiedRuntimeStore.getState().codexSessions[sessionKey];
+      setCodexConnectionState(
+        sessionKey,
+        statusOverride ?? currentRuntime?.connectionStatus ?? "error",
+        currentRuntime?.serverInfo,
+        error instanceof Error ? error.message : String(error),
+      );
+    },
+    [sessionKey, setCodexConnectionState],
+  );
 
   useEffect(() => {
-    setPersistedCodexState(directory, {
+    initCodexSession(sessionKey, directory);
+  }, [directory, initCodexSession, sessionKey]);
+
+  useEffect(() => {
+    setPersistedCodexState(sessionKey, {
       messages,
       thread,
       isStreaming,
       messageIdCounter: messageIdCounter.current,
     });
-  }, [directory, messages, thread, isStreaming]);
+  }, [isStreaming, messages, sessionKey, thread]);
 
   // Ensure persistence on unmount (refs capture latest values)
   useEffect(() => {
+    const pollTimers = commandDiffPollTimersRef.current;
     return () => {
-      setPersistedCodexState(directory, {
-        messages: messagesRef.current,
-        thread: threadRef.current,
-        isStreaming: isStreamingRef.current,
+      for (const timerId of pollTimers.values()) {
+        window.clearTimeout(timerId);
+      }
+      pollTimers.clear();
+      const runtime = getCurrentCodexRuntime();
+      setPersistedCodexState(sessionKey, {
+        messages: runtime?.messages ?? [],
+        thread: runtime?.thread ?? null,
+        isStreaming: runtime?.isStreaming ?? false,
         messageIdCounter: messageIdCounter.current,
       });
     };
-  }, [directory]);
-
-  // ------------------------------------------------------------------
-  // Event subscription
-  // Uses a mounted ref to avoid setState on unmounted components.
-  // The handleNotification callback writes to persisted store via
-  // setMessages which syncs to the store in the persist effect.
-  // ------------------------------------------------------------------
-  const isMounted = useRef(true);
-  useEffect(() => {
-    isMounted.current = true;
-    // On remount, re-sync from persisted state (events may have arrived while unmounted)
-    const p = getPersistedCodexState(directory);
-    setMessages(p.messages);
-    setThread(p.thread);
-    setIsStreaming(p.isStreaming);
-    messageIdCounter.current = p.messageIdCounter;
-
-    if (!window.orxa?.events) return;
-
-    // Keep processing events even when component is unmounted so sessions
-    // continue running in the background. React setState calls on unmounted
-    // components are no-ops in React 18+ and don't cause memory leaks.
-    window.orxa.events.subscribe((event) => {
-
-      if (event.type === "codex.state") {
-        const state = event.payload as CodexState;
-        setConnectionStatus(state.status);
-        setServerInfo(state.serverInfo);
-        if (state.lastError) setLastError(state.lastError);
-      }
-
-      if (event.type === "codex.approval") {
-        const approval = event.payload as CodexApprovalRequest;
-        // Only accept approvals for the active thread
-        if (!approval.threadId || !threadRef.current || approval.threadId === threadRef.current.id) {
-          setPendingApproval(approval);
-        }
-      }
-
-      if (event.type === "codex.userInput") {
-        const input = event.payload as CodexUserInputRequest;
-        if (!input.threadId || !threadRef.current || input.threadId === threadRef.current.id) {
-          setPendingUserInput(input);
-        }
-      }
-
-      if (event.type === "codex.notification") {
-        const notification = event.payload as CodexNotification;
-        handleNotificationRef.current(notification);
-      }
-    });
-
-    return () => {
-      // Don't unsubscribe — keep processing events in background so sessions
-      // continue running when user navigates away. The subscription will be
-      // cleaned up when a new one is created on remount.
-      isMounted.current = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [getCurrentCodexRuntime, sessionKey]);
 
   // ------------------------------------------------------------------
   // Helper: find and update a message by its internal msg ID
@@ -254,26 +873,311 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     (codexItemId: string, field: "content" | "output" | "diff" | "summary", delta: string) => {
       const msgId = codexItemToMsgId.current.get(codexItemId);
       if (!msgId) return;
-      setMessages((prev) => appendDeltaToMappedItem(prev, msgId, field, delta));
+      updateMessages((prev) => appendDeltaToMappedItem(prev, msgId, field, delta), "deferred");
     },
-    [],
+    [updateMessages],
   );
+
+  const readProjectFileContent = useCallback(async (relativePath: string) => {
+    if (!window.orxa?.opencode) {
+      return null;
+    }
+    try {
+      const document = await window.orxa.opencode.readProjectFile(directory, relativePath);
+      return document.binary ? null : document.content;
+    } catch {
+      return null;
+    }
+  }, [directory]);
+
+  const captureCommandDiffSnapshot = useCallback(async () => {
+    if (!window.orxa?.opencode) {
+      return null;
+    }
+    try {
+      const [diffOutput, statusOutput] = await Promise.all([
+        window.orxa.opencode.gitDiff(directory),
+        window.orxa.opencode.gitStatus?.(directory) ?? Promise.resolve(""),
+      ]);
+      const snapshot = captureGitDiffSnapshot(parseGitDiffOutput(diffOutput).files);
+      const statusSnapshot = captureGitStatusSnapshot(parseGitStatusOutput(statusOutput).files);
+      const dirtyContents = new Map<string, string | null>();
+      const dirtyPaths = [...new Set([
+        ...[...snapshot.values()].map((entry) => entry.path),
+        ...[...statusSnapshot.values()].map((entry) => entry.path),
+      ])];
+      await Promise.all(
+        dirtyPaths.slice(0, COMMAND_DIFF_CONTENT_BASELINE_LIMIT).map(async (path) => {
+          dirtyContents.set(path, await readProjectFileContent(path));
+        }),
+      );
+      return { snapshot, statusSnapshot, dirtyContents };
+    } catch {
+      return null;
+    }
+  }, [directory, readProjectFileContent]);
+
+  const attributeCommandFileChanges = useCallback(
+    async (
+      codexItemId: string,
+      anchorMessageId?: string,
+      options?: { status?: "running" | "completed"; clearBaseline?: boolean },
+    ) => {
+      if (!window.orxa?.opencode) {
+        commandDiffSnapshotsRef.current.delete(codexItemId);
+        return;
+      }
+      const baselinePromise = commandDiffSnapshotsRef.current.get(codexItemId);
+      const baseline = baselinePromise ? await baselinePromise.catch(() => null) : null;
+      if (!baseline) {
+        if (options?.clearBaseline) {
+          commandDiffSnapshotsRef.current.delete(codexItemId);
+        }
+        return;
+      }
+
+      try {
+        const [diffOutput, statusOutput] = await Promise.all([
+          window.orxa.opencode.gitDiff(directory),
+          window.orxa.opencode.gitStatus?.(directory) ?? Promise.resolve(""),
+        ]);
+        const current = captureGitDiffSnapshot(parseGitDiffOutput(diffOutput).files);
+        const currentStatus = captureGitStatusSnapshot(parseGitStatusOutput(statusOutput).files);
+        const changedEntries = [...new Set([...current.keys(), ...currentStatus.keys()])]
+          .map((key) => ({
+            key,
+            diffEntry: current.get(key),
+            statusEntry: currentStatus.get(key),
+          }))
+          .filter(({ key, diffEntry, statusEntry }) => {
+            if (statusEntry && !isSameGitStatusSnapshotEntry(baseline.statusSnapshot.get(key), statusEntry)) {
+              return true;
+            }
+            if (diffEntry && !isSameGitDiffSnapshotEntry(baseline.snapshot.get(key), diffEntry)) {
+              return true;
+            }
+            return false;
+          });
+        if (changedEntries.length === 0) {
+          updateMessages((prev) => prev.filter((message) => !message.id.startsWith(`${codexItemId}:git-diff:`)), "deferred");
+          if (options?.clearBaseline) {
+            commandDiffSnapshotsRef.current.delete(codexItemId);
+          }
+          return;
+        }
+        const attributedEntries = await Promise.all(
+          changedEntries.map(async ({ key, diffEntry, statusEntry }) => {
+            const resolvedPath = statusEntry?.path ?? diffEntry?.path ?? key;
+            const beforeContent = baseline.dirtyContents.get(resolvedPath);
+            if (beforeContent !== undefined) {
+              const afterContent = statusEntry?.status === "deleted" ? null : await readProjectFileContent(resolvedPath);
+              const isolated = buildSyntheticCommandDiff(resolvedPath, beforeContent, afterContent);
+              return {
+                path: resolvedPath,
+                type: isolated.type,
+                diff: isolated.diff || undefined,
+                insertions: isolated.insertions,
+                deletions: isolated.deletions,
+              };
+            }
+            if (diffEntry) {
+              return {
+                path: diffEntry.path,
+                type: diffEntry.type,
+                diff: diffEntry.diff || undefined,
+                insertions: diffEntry.insertions,
+                deletions: diffEntry.deletions,
+              };
+            }
+            const afterContent = statusEntry?.status === "deleted" ? null : await readProjectFileContent(resolvedPath);
+            const isolated = buildSyntheticCommandDiff(resolvedPath, null, afterContent);
+            return {
+              path: resolvedPath,
+              type: statusEntry?.status ?? isolated.type,
+              diff: isolated.diff || undefined,
+              insertions: isolated.insertions,
+              deletions: isolated.deletions,
+            };
+          }),
+        );
+        updateMessages((prev) => {
+          const status = options?.status ?? "completed";
+          const attributed = attributedEntries.map((entry, index) => ({
+            id: `${codexItemId}:git-diff:${entry.path}:${index}`,
+            kind: "diff" as const,
+            path: normalizeWorkspaceRelativePath(entry.path, directory),
+            type: entry.type,
+            status,
+            diff: entry.diff,
+            insertions: entry.insertions,
+            deletions: entry.deletions,
+            timestamp: Date.now(),
+          }));
+          const withoutPrevious = prev.filter((message) => !message.id.startsWith(`${codexItemId}:git-diff:`));
+          if (!anchorMessageId) {
+            return [...withoutPrevious, ...attributed];
+          }
+          const anchorIndex = withoutPrevious.findIndex((message) => message.id === anchorMessageId);
+          if (anchorIndex < 0) {
+            return [...withoutPrevious, ...attributed];
+          }
+          const next = [...withoutPrevious];
+          next.splice(anchorIndex + 1, 0, ...attributed);
+          return next;
+        }, "deferred");
+      } catch {
+        // Best-effort only.
+      } finally {
+        if (options?.clearBaseline) {
+          commandDiffSnapshotsRef.current.delete(codexItemId);
+        }
+      }
+    },
+    [directory, readProjectFileContent, updateMessages],
+  );
+
+  const enrichFileChangeDescriptors = useCallback(
+    async (descriptors: FileChangeDescriptor[]) => {
+      if (!window.orxa?.opencode || descriptors.length === 0) {
+        return descriptors;
+      }
+
+      const needsEnrichment = descriptors.some((descriptor) =>
+        !looksLikeUnifiedDiff(descriptor.diff) ||
+        descriptor.insertions === undefined ||
+        descriptor.deletions === undefined,
+      );
+      if (!needsEnrichment) {
+        return descriptors;
+      }
+
+      try {
+        const [diffOutput, statusOutput] = await Promise.all([
+          window.orxa.opencode.gitDiff(directory),
+          window.orxa.opencode.gitStatus?.(directory) ?? Promise.resolve(""),
+        ]);
+        const diffSnapshot = captureGitDiffSnapshot(parseGitDiffOutput(diffOutput).files);
+        const statusSnapshot = captureGitStatusSnapshot(parseGitStatusOutput(statusOutput).files);
+        const lookup: GitSnapshotLookup = {
+          diffByPath: new Map<string, GitDiffSnapshotEntry>(),
+          statusByPath: new Map<string, GitStatusFile>(),
+        };
+
+        for (const entry of diffSnapshot.values()) {
+          const normalizedPath = normalizeWorkspaceRelativePath(entry.path, directory);
+          lookup.diffByPath.set(normalizedPath, entry);
+          if (entry.oldPath) {
+            lookup.diffByPath.set(normalizeWorkspaceRelativePath(entry.oldPath, directory), entry);
+          }
+        }
+
+        for (const entry of statusSnapshot.values()) {
+          const normalizedPath = normalizeWorkspaceRelativePath(entry.path, directory);
+          lookup.statusByPath.set(normalizedPath, entry);
+          if (entry.oldPath) {
+            lookup.statusByPath.set(normalizeWorkspaceRelativePath(entry.oldPath, directory), entry);
+          }
+        }
+
+        return Promise.all(descriptors.map(async (descriptor) => {
+          if (
+            looksLikeUnifiedDiff(descriptor.diff) &&
+            descriptor.insertions !== undefined &&
+            descriptor.deletions !== undefined
+          ) {
+            return descriptor;
+          }
+
+          const normalizedPath = normalizeWorkspaceRelativePath(descriptor.path, directory);
+          const diffEntry = lookup.diffByPath.get(normalizedPath);
+          if (diffEntry) {
+            return {
+              ...descriptor,
+              type: descriptor.type || diffEntry.type,
+              diff: looksLikeUnifiedDiff(descriptor.diff) ? descriptor.diff : diffEntry.diff || undefined,
+              insertions: descriptor.insertions ?? diffEntry.insertions,
+              deletions: descriptor.deletions ?? diffEntry.deletions,
+            };
+          }
+
+          const statusEntry = lookup.statusByPath.get(normalizedPath);
+          if (!statusEntry) {
+            return descriptor;
+          }
+
+          if (statusEntry.status === "added") {
+            const afterContent = await readProjectFileContent(normalizedPath);
+            const synthetic = buildSyntheticCommandDiff(normalizedPath, null, afterContent);
+            return {
+              ...descriptor,
+              type: descriptor.type || synthetic.type,
+              diff: looksLikeUnifiedDiff(descriptor.diff) ? descriptor.diff : synthetic.diff || undefined,
+              insertions: descriptor.insertions ?? synthetic.insertions,
+              deletions: descriptor.deletions ?? synthetic.deletions,
+            };
+          }
+
+          return {
+            ...descriptor,
+            type: descriptor.type || statusEntry.status,
+          };
+        }));
+      } catch {
+        return descriptors;
+      }
+    },
+    [directory, readProjectFileContent],
+  );
+
+  const stopCommandDiffPolling = useCallback((codexItemId: string) => {
+    const timerId = commandDiffPollTimersRef.current.get(codexItemId);
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId);
+      commandDiffPollTimersRef.current.delete(codexItemId);
+    }
+  }, []);
+
+  const startCommandDiffPolling = useCallback((codexItemId: string, anchorMessageId?: string) => {
+    stopCommandDiffPolling(codexItemId);
+    const tick = () => {
+      void attributeCommandFileChanges(codexItemId, anchorMessageId, { status: "running" })
+        .finally(() => {
+          if (!commandDiffPollTimersRef.current.has(codexItemId)) {
+            return;
+          }
+          const nextTimer = window.setTimeout(tick, COMMAND_DIFF_POLL_INTERVAL_MS);
+          commandDiffPollTimersRef.current.set(codexItemId, nextTimer);
+        });
+    };
+    const firstTimer = window.setTimeout(tick, COMMAND_DIFF_POLL_INTERVAL_MS);
+    commandDiffPollTimersRef.current.set(codexItemId, firstTimer);
+  }, [attributeCommandFileChanges, stopCommandDiffPolling]);
 
   // ------------------------------------------------------------------
   // Notification handler
   // ------------------------------------------------------------------
-  const handleNotificationRef = useRef<(notification: CodexNotification) => void>(() => {});
   const handleNotification = useCallback((notification: CodexNotification) => {
     const { method, params } = notification;
 
     switch (method) {
       case "turn/started": {
-        setIsStreaming(true);
+        const turnId = readTurnId(params);
+        if (pendingInterruptRef.current || interruptRequestedRef.current) {
+          pendingInterruptRef.current = false;
+          activeTurnIdRef.current = turnId;
+          const currentThreadId = getCurrentCodexRuntime()?.thread?.id;
+          if (currentThreadId && turnId && window.orxa?.codex) {
+            void window.orxa.codex.interruptThreadTree(currentThreadId, turnId).catch((error) => {
+              recordLastError(error);
+            });
+          }
+          return;
+        }
+        setStreamingState(true);
         streamingItemIdRef.current = null;
         activeExploreGroupIdRef.current = null;
         // Track turn ID for interrupt
-        const turn = params.turn as { id?: string } | undefined;
-        activeTurnIdRef.current = turn?.id ?? null;
+        activeTurnIdRef.current = turnId;
         // Reset reasoning ref for new turn (previous reasoning stays in chat as expandable)
         currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
@@ -281,7 +1185,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const thinkingId = nextMessageID("codex-reasoning", messageIdCounter);
         thinkingItemIdRef.current = thinkingId;
         currentReasoningIdRef.current = thinkingId;
-        setMessages((prev) => [
+        setMessagesState((prev) => [
           ...prev,
           { id: thinkingId, kind: "reasoning", content: "", summary: "", timestamp: Date.now() },
         ]);
@@ -289,7 +1193,9 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       }
 
       case "turn/completed": {
-        setIsStreaming(false);
+        pendingInterruptRef.current = false;
+        interruptRequestedRef.current = false;
+        setStreamingState(false);
         streamingItemIdRef.current = null;
         activeTurnIdRef.current = null;
         // Keep reasoning if it has content (expandable); remove if empty placeholder
@@ -297,7 +1203,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         currentReasoningIdRef.current = null;
         thinkingItemIdRef.current = null;
         activeExploreGroupIdRef.current = null;
-        setMessages((prev) => {
+        setMessagesState((prev) => {
           let result = prev;
           // Remove reasoning only if it has no content (empty placeholder)
           if (tId) {
@@ -324,16 +1230,25 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       case "turn/plan/updated": {
         const plan = params.plan as unknown;
         const explanation = params.explanation as unknown;
+        let items: TodoItem[] = [];
 
         if (Array.isArray(plan) && plan.length > 0) {
-          const items = parseStructuredPlan(plan);
-          setPlanItems(items);
+          items = parseStructuredPlan(plan);
         } else if (typeof plan === "string" && plan.trim()) {
-          const items = parseMarkdownPlan(plan);
-          if (items.length > 0) setPlanItems(items);
+          items = parseMarkdownPlan(plan);
         } else if (typeof explanation === "string" && explanation.trim()) {
-          const items = parseMarkdownPlan(explanation);
-          if (items.length > 0) setPlanItems(items);
+          items = parseMarkdownPlan(explanation);
+        }
+
+        if (items.length > 0) {
+          setPlanItemsState(items);
+          setMessagesState((prev) => {
+            const existingId = latestPlanUpdateIdRef.current;
+            const nextId = existingId ?? nextMessageID("codex-plan-update", messageIdCounter);
+            latestPlanUpdateIdRef.current = nextId;
+            const withoutExisting = existingId ? prev.filter((message) => message.id !== existingId) : prev;
+            return [...withoutExisting, { id: nextId, kind: "status", label: "Updated task list", timestamp: Date.now() }];
+          });
         }
 
         // Also try to extract from the last assistant message if plan items are still empty
@@ -345,21 +1260,22 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       case "thread/started": {
         const threadMeta = params.thread as {
           id?: string;
-          source?: { subAgent?: { nickname?: string; role?: string; task?: string } };
+          source?: unknown;
           kind?: string;
         } | undefined;
-        if (threadMeta?.id && threadMeta?.source?.subAgent) {
+        const sourceMeta = extractSubagentMeta(threadMeta?.source);
+        const parentThreadId = getParentThreadIdFromSource(threadMeta?.source);
+        if (threadMeta?.id && sourceMeta && parentThreadId && getCurrentCodexRuntime()?.thread?.id === parentThreadId) {
           subagentThreadIds.current.add(threadMeta.id);
-          const sa = threadMeta.source.subAgent;
-          setSubagents((prev) => {
+          setSubagentsState((prev) => {
             // Don't duplicate
             if (prev.some((a) => a.threadId === threadMeta.id)) return prev;
             return [
               ...prev,
               {
                 threadId: threadMeta.id!,
-                nickname: sa.nickname ?? `Agent-${prev.length + 1}`,
-                role: sa.role ?? "worker",
+                nickname: sourceMeta.nickname ?? `Agent-${prev.length + 1}`,
+                role: sourceMeta.role ?? "worker",
                 status: "thinking",
                 statusText: "is thinking",
                 spawnedAt: Date.now(),
@@ -374,7 +1290,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       case "thread/name/updated": {
         const name = params.threadName as string | undefined;
         if (name) {
-          setThreadName(name);
+          setThreadNameState(name);
         }
         break;
       }
@@ -388,32 +1304,32 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           query?: string;
           toolName?: string;
           name?: string;
+          command?: string;
+          changeType?: string;
         };
+
+        if (interruptRequestedRef.current) {
+          break;
+        }
+
+        if (
+          item.type === "agentMessage" ||
+          item.type === "commandExecution" ||
+          item.type === "fileChange" ||
+          item.type === "plan" ||
+          item.type === "reasoning"
+        ) {
+          setStreamingState(true);
+        }
 
         if (item.type === "agentMessage") {
           streamingItemIdRef.current = item.id;
           const msgId = nextMessageID("codex-assistant", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
           activeExploreGroupIdRef.current = null;
-          const rId = currentReasoningIdRef.current;
-          currentReasoningIdRef.current = null;
-          thinkingItemIdRef.current = null;
-          // Single setState: close all exploring groups + handle reasoning + add message
-          setMessages((prev) => {
-            // Keep reasoning if it has content; remove only empty placeholders
-            let result: typeof prev;
-            if (rId) {
-              const rItem = prev.find((m) => m.id === rId);
-              if (rItem && rItem.kind === "reasoning" && !rItem.content && !rItem.summary) {
-                result = prev.filter((m) => m.id !== rId);
-              } else {
-                result = [...prev];
-              }
-            } else {
-              result = [...prev];
-            }
-            // Close ALL exploring groups (not just the active one)
-            result = result.map((m) =>
+          // Close all exploration groups but keep the single per-turn reasoning row alive.
+          setMessagesState((prev) => {
+            const result = prev.map((m) =>
               m.kind === "explore" && m.status === "exploring"
                 ? { ...m, status: "explored" as const }
                 : m,
@@ -421,42 +1337,6 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             result.push({ id: msgId, kind: "message", role: "assistant", content: "", timestamp: Date.now() });
             return result;
           });
-        }
-
-        if (item.type === "commandExecution") {
-          const placeholder: ExploreEntry = { id: item.id, kind: "run", label: "Running command...", status: "running" };
-          setMessages((prev) => {
-            const activeGroupId = activeExploreGroupIdRef.current;
-            if (activeGroupId) {
-              const gIdx = prev.findIndex((m) => m.id === activeGroupId);
-              if (gIdx >= 0 && prev[gIdx].kind === "explore") {
-                codexItemToExploreGroupId.current.set(item.id, activeGroupId);
-                const next = [...prev];
-                next[gIdx] = { ...(prev[gIdx] as typeof prev[number] & { kind: "explore" }), entries: [...(prev[gIdx] as typeof prev[number] & { kind: "explore" }).entries, placeholder] };
-                return next;
-              }
-            }
-            const groupId = nextMessageID("codex-explore", messageIdCounter);
-            activeExploreGroupIdRef.current = groupId;
-            codexItemToExploreGroupId.current.set(item.id, groupId);
-            return [...prev, { id: groupId, kind: "explore" as const, status: "exploring" as const, entries: [placeholder], timestamp: Date.now() }];
-          });
-        }
-
-        if (item.type === "fileChange") {
-          const msgId = nextMessageID("codex-diff", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "diff",
-              path: item.path ?? "",
-              type: "modified",
-              diff: "",
-              timestamp: Date.now(),
-            },
-          ]);
         }
 
         if (item.type === "reasoning") {
@@ -468,16 +1348,91 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             const msgId = nextMessageID("codex-reasoning", messageIdCounter);
             codexItemToMsgId.current.set(item.id, msgId);
             currentReasoningIdRef.current = msgId;
-            setMessages((prev) => [
+            setMessagesState((prev) => [
               ...prev,
               { id: msgId, kind: "reasoning", content: "", summary: "", timestamp: Date.now() },
             ]);
           }
         }
 
+        if (item.type === "commandExecution") {
+          const rawCommand = normalizeCommandText(item.command);
+          if (rawCommand && !isReadOnlyCommand(rawCommand)) {
+            commandDiffSnapshotsRef.current.set(item.id, captureCommandDiffSnapshot());
+            startCommandDiffPolling(item.id);
+          }
+          const exploreEntry = rawCommand ? commandToExploreEntry(item.id, rawCommand, "running") : null;
+          if (exploreEntry) {
+            updateMessages((prev) => {
+              const activeGroupId = activeExploreGroupIdRef.current;
+              if (activeGroupId) {
+                const groupIndex = prev.findIndex((message) => message.id === activeGroupId);
+                if (groupIndex >= 0 && prev[groupIndex]?.kind === "explore") {
+                  codexItemToExploreGroupId.current.set(item.id, activeGroupId);
+                  const next = [...prev];
+                  next[groupIndex] = {
+                    ...(prev[groupIndex] as typeof prev[number] & { kind: "explore" }),
+                    entries: [
+                      ...(prev[groupIndex] as typeof prev[number] & { kind: "explore" }).entries,
+                      exploreEntry,
+                    ],
+                  };
+                  return next;
+                }
+              }
+              const groupId = nextMessageID("codex-explore", messageIdCounter);
+              activeExploreGroupIdRef.current = groupId;
+              codexItemToExploreGroupId.current.set(item.id, groupId);
+              return [
+                ...prev,
+                {
+                  id: groupId,
+                  kind: "explore" as const,
+                  status: "exploring" as const,
+                  entries: [exploreEntry],
+                  timestamp: Date.now(),
+                },
+              ];
+            });
+          } else {
+            const msgId = nextMessageID("codex-cmd", messageIdCounter);
+            codexItemToMsgId.current.set(item.id, msgId);
+            updateMessages((prev) => [
+              ...prev,
+              {
+                id: msgId,
+                kind: "tool",
+                toolType: "commandExecution",
+                title: rawCommand ? `$ ${rawCommand.slice(0, 60)}` : "Running command...",
+                command: rawCommand || undefined,
+                output: "",
+                status: "running",
+                timestamp: Date.now(),
+              },
+            ]);
+          }
+        }
+
+        if (item.type === "fileChange") {
+          const msgId = nextMessageID("codex-diff", messageIdCounter);
+          codexItemToMsgId.current.set(item.id, msgId);
+          updateMessages((prev) => [
+            ...prev,
+            {
+              id: msgId,
+              kind: "diff",
+              path: item.path ?? "",
+              type: item.changeType ?? "modified",
+              status: "running",
+              diff: "",
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+
         if (item.type === "fileRead") {
           const entry = fileReadToExploreEntry(item.id, item.path ?? "file", "running");
-          setMessages((prev) => {
+          updateMessages((prev) => {
             const activeGroupId = activeExploreGroupIdRef.current;
             if (activeGroupId) {
               const gIdx = prev.findIndex((m) => m.id === activeGroupId);
@@ -497,7 +1452,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
         if (item.type === "webSearch") {
           const entry = webSearchToExploreEntry(item.id, (item.query as string) ?? "search", "running");
-          setMessages((prev) => {
+          updateMessages((prev) => {
             const activeGroupId = activeExploreGroupIdRef.current;
             if (activeGroupId) {
               const gIdx = prev.findIndex((m) => m.id === activeGroupId);
@@ -519,7 +1474,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
         if (item.type === "mcpToolCall") {
           const entry = mcpToolCallToExploreEntry(item.id, item.toolName ?? item.name ?? "mcp tool", "running");
-          setMessages((prev) => {
+          updateMessages((prev) => {
             const activeGroupId = activeExploreGroupIdRef.current;
             if (activeGroupId) {
               const gIdx = prev.findIndex((m) => m.id === activeGroupId);
@@ -540,7 +1495,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         if (item.type === "plan") {
           const msgId = nextMessageID("codex-plan", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
+          updateMessages((prev) => [
             ...prev,
             {
               id: msgId,
@@ -557,7 +1512,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         if (item.type === "contextCompaction") {
           const msgId = nextMessageID("codex-compaction", messageIdCounter);
           codexItemToMsgId.current.set(item.id, msgId);
-          setMessages((prev) => [
+          updateMessages((prev) => [
             ...prev,
             { id: msgId, kind: "compaction", timestamp: Date.now() },
           ]);
@@ -572,28 +1527,11 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             collabReceivers?: Array<{ threadId: string; nickname?: string; role?: string }>;
             collabStatuses?: Array<{ threadId: string; nickname?: string; role?: string; status: string }>;
           };
-          const msgId = nextMessageID("codex-task", messageIdCounter);
-          codexItemToMsgId.current.set(item.id, msgId);
           const receivers = collabItem.collabReceivers ?? (collabItem.collabReceiver ? [collabItem.collabReceiver] : undefined);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: msgId,
-              kind: "tool",
-              toolType: "task",
-              title: collabItem.title ?? collabItem.name ?? collabItem.toolName ?? "Task",
-              output: "",
-              status: "running",
-              timestamp: Date.now(),
-              collabSender: collabItem.collabSender,
-              collabReceivers: receivers,
-              collabStatuses: collabItem.collabStatuses,
-            },
-          ]);
 
           // Update subagent statuses from collab metadata
           if (collabItem.collabStatuses) {
-            setSubagents((prev) => {
+            setSubagentsState((prev) => {
               let next = prev;
               for (const cs of collabItem.collabStatuses!) {
                 const idx = next.findIndex((a) => a.threadId === cs.threadId);
@@ -630,7 +1568,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             for (const r of receivers) {
               if (r.threadId && !subagentThreadIds.current.has(r.threadId)) {
                 subagentThreadIds.current.add(r.threadId);
-                setSubagents((prev) => {
+                setSubagentsState((prev) => {
                   if (prev.some((a) => a.threadId === r.threadId)) return prev;
                   return [...prev, {
                     threadId: r.threadId,
@@ -654,12 +1592,16 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta) {
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
           if (codexItemId) {
             // Use ID-based append so interleaved tool items don't cause truncation
             appendToItemField(codexItemId, "content", delta);
           } else {
             // Fallback to position-based append when no item ID is available
-            setMessages((prev) => appendAssistantDeltaToLastMessage(prev, delta));
+            updateMessages((prev) => appendAssistantDeltaToLastMessage(prev, delta), "deferred");
           }
         }
         break;
@@ -669,6 +1611,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta && codexItemId) {
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
           appendToItemField(codexItemId, "output", delta);
         }
         break;
@@ -678,7 +1624,17 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta && codexItemId) {
-          appendToItemField(codexItemId, "diff", delta);
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
+          const msgId = codexItemToMsgId.current.get(codexItemId);
+          const existingDiff = msgId
+            ? (getCurrentCodexRuntime()?.messages ?? []).find((message) => message.id === msgId && message.kind === "diff")
+            : undefined;
+          if (looksLikeUnifiedDiff(delta) || (existingDiff?.kind === "diff" && Boolean(existingDiff.diff))) {
+            appendToItemField(codexItemId, "diff", delta);
+          }
         }
         break;
       }
@@ -687,6 +1643,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta && codexItemId) {
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
           appendToItemField(codexItemId, "content", delta);
         }
         break;
@@ -696,6 +1656,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta && codexItemId) {
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
           appendToItemField(codexItemId, "summary", delta);
         }
         break;
@@ -705,6 +1669,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         const delta = params.delta as string;
         const codexItemId = params.itemId as string;
         if (delta && codexItemId) {
+          if (interruptRequestedRef.current) {
+            break;
+          }
+          setStreamingState(true);
           appendToItemField(codexItemId, "output", delta);
         }
         break;
@@ -722,6 +1690,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           deletions?: number;
           changeType?: string;
           durationMs?: number;
+          changes?: unknown;
         };
 
         // Check if we already have a running item for this codex id (created in item/started)
@@ -729,7 +1698,8 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
         if (item.type === "commandExecution") {
           const exploreGroupId = codexItemToExploreGroupId.current.get(item.id);
-          const rawCommand = item.command ?? "";
+          const rawCommand = normalizeCommandText(item.command);
+          const anchorMessageId = existingMsgId;
           const readOnly = rawCommand.length > 0 ? (commandToExploreEntry("_check", rawCommand, "completed") !== null) : false;
 
           if (exploreGroupId) {
@@ -739,7 +1709,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               const finalStatus: ExploreEntry["status"] = (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error";
               const cleaned = rawCommand.length > 0 ? cleanCommandText(rawCommand) : "Command";
               const cleanedLabel = cleaned.length > 80 ? `${cleaned.slice(0, 77)}...` : cleaned;
-              setMessages((prev) => {
+              setMessagesState((prev) => {
                 const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
                 if (gIdx < 0) return prev;
                 const group = prev[gIdx];
@@ -754,7 +1724,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               });
             } else {
               // Non-read-only: remove from explore group and add a ToolCallCard instead
-              setMessages((prev) => {
+              setMessagesState((prev) => {
                 const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
                 let base = prev;
                 if (gIdx >= 0) {
@@ -778,7 +1748,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
                     kind: "tool" as const,
                     toolType: "commandExecution",
                     title: rawCommand ? `$ ${rawCommand.slice(0, 60)}` : "Command",
-                    command: item.command,
+                    command: rawCommand || undefined,
                     output: item.aggregatedOutput,
                     status: (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error",
                     exitCode: item.exitCode,
@@ -790,7 +1760,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             }
           } else if (existingMsgId) {
             // Update existing tool card (placed at item/started without explore group)
-            setMessages((prev) => {
+            setMessagesState((prev) => {
               const idx = prev.findIndex((m) => m.id === existingMsgId);
               if (idx < 0) return prev;
               const existing = prev[idx];
@@ -798,8 +1768,8 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               const next = [...prev];
               next[idx] = {
                 ...existing,
-                title: item.command ? `$ ${item.command.slice(0, 60)}` : existing.title,
-                command: item.command ?? existing.command,
+                title: rawCommand ? `$ ${rawCommand.slice(0, 60)}` : existing.title,
+                command: rawCommand || existing.command,
                 output: item.aggregatedOutput ?? existing.output,
                 status: item.exitCode === 0 || item.exitCode === undefined ? "completed" : "error",
                 exitCode: item.exitCode,
@@ -809,11 +1779,11 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
             });
           } else {
             // Fallback: no started event — add as explore or tool based on command
-            const fallbackEntry = item.command
-              ? commandToExploreEntry(`fallback-${Date.now()}`, item.command, (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error")
+            const fallbackEntry = rawCommand
+              ? commandToExploreEntry(`fallback-${Date.now()}`, rawCommand, (item.exitCode === 0 || item.exitCode === undefined) ? "completed" : "error")
               : null;
             if (fallbackEntry) {
-              setMessages((prev) => {
+              setMessagesState((prev) => {
                 const last = prev[prev.length - 1];
                 if (last && last.kind === "explore") {
                   const next = [...prev];
@@ -828,14 +1798,14 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               });
             } else {
               const msgId = nextMessageID("codex-cmd", messageIdCounter);
-              setMessages((prev) => [
+              setMessagesState((prev) => [
                 ...prev,
                 {
                   id: msgId,
                   kind: "tool",
                   toolType: "commandExecution",
-                  title: item.command ? `$ ${item.command.slice(0, 60)}` : "Command",
-                  command: item.command,
+                  title: rawCommand ? `$ ${rawCommand.slice(0, 60)}` : "Command",
+                  command: rawCommand || undefined,
                   output: item.aggregatedOutput,
                   status: item.exitCode === 0 || item.exitCode === undefined ? "completed" : "error",
                   exitCode: item.exitCode,
@@ -844,40 +1814,92 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               ]);
             }
           }
+          if (rawCommand && !isReadOnlyCommand(rawCommand)) {
+            stopCommandDiffPolling(item.id);
+            window.setTimeout(() => {
+              void attributeCommandFileChanges(item.id, anchorMessageId, {
+                status: "completed",
+                clearBaseline: true,
+              });
+            }, 40);
+          }
         }
 
-        if (item.type === "fileChange" && item.path) {
-          if (existingMsgId) {
-            setMessages((prev) => {
-              const idx = prev.findIndex((m) => m.id === existingMsgId);
-              if (idx < 0) return prev;
-              const existing = prev[idx];
-              if (existing.kind !== "diff") return prev;
-              const next = [...prev];
-              next[idx] = {
-                ...existing,
-                path: item.path!,
-                type: item.changeType ?? existing.type,
-                insertions: item.insertions ?? existing.insertions,
-                deletions: item.deletions ?? existing.deletions,
-              };
-              return next;
-            });
-          } else {
-            const msgId = nextMessageID("codex-diff", messageIdCounter);
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: msgId,
-                kind: "diff",
+        if (item.type === "fileChange") {
+          const existingDiffItem =
+            existingMsgId
+              ? (getCurrentCodexRuntime()?.messages ?? []).find((message) => message.id === existingMsgId && message.kind === "diff")
+              : undefined;
+          const rawDescriptors = extractFileChangeDescriptors(item, existingDiffItem?.kind === "diff" ? existingDiffItem.diff : undefined);
+          const fallbackDescriptors = rawDescriptors.length > 0
+            ? rawDescriptors
+            : [{
                 path: item.path!,
                 type: item.changeType ?? "modified",
+                diff: undefined,
                 insertions: item.insertions,
                 deletions: item.deletions,
+              } satisfies FileChangeDescriptor];
+
+          void enrichFileChangeDescriptors(fallbackDescriptors).then((descriptors) => {
+            if (existingMsgId && descriptors.length <= 1) {
+              const descriptor = descriptors[0];
+              setMessagesState((prev) => {
+                const idx = prev.findIndex((m) => m.id === existingMsgId);
+                if (idx < 0) return prev;
+                const existing = prev[idx];
+                if (existing.kind !== "diff") return prev;
+                const next = [...prev];
+                next[idx] = {
+                  ...existing,
+                  path: normalizeWorkspaceRelativePath(descriptor?.path ?? item.path!, directory),
+                  type: descriptor?.type ?? item.changeType ?? existing.type,
+                  status: item.exitCode === 0 || item.exitCode === undefined ? "completed" : "error",
+                  diff: descriptor?.diff ?? existing.diff,
+                  insertions: descriptor?.insertions ?? item.insertions ?? existing.insertions,
+                  deletions: descriptor?.deletions ?? item.deletions ?? existing.deletions,
+                };
+                return next;
+              });
+              return;
+            }
+
+            if (existingMsgId && descriptors.length > 1) {
+              setMessagesState((prev) => {
+                const idx = prev.findIndex((m) => m.id === existingMsgId);
+                if (idx < 0) return prev;
+                const next = [...prev];
+                next.splice(idx, 1, ...descriptors.map((descriptor, descriptorIndex) => ({
+                  id: `${item.id}:change:${descriptor.path}:${descriptorIndex}`,
+                  kind: "diff" as const,
+                  path: normalizeWorkspaceRelativePath(descriptor.path, directory),
+                  type: descriptor.type,
+                  status: item.exitCode === 0 || item.exitCode === undefined ? "completed" as const : "error" as const,
+                  diff: descriptor.diff,
+                  insertions: descriptor.insertions,
+                  deletions: descriptor.deletions,
+                  timestamp: Date.now(),
+                })));
+                return next;
+              });
+              return;
+            }
+
+            setMessagesState((prev) => [
+              ...prev,
+              ...descriptors.map((descriptor, descriptorIndex) => ({
+                id: `${item.id}:change:${descriptor.path}:${descriptorIndex}`,
+                kind: "diff" as const,
+                path: normalizeWorkspaceRelativePath(descriptor.path, directory),
+                type: descriptor.type,
+                status: item.exitCode === 0 || item.exitCode === undefined ? "completed" as const : "error" as const,
+                diff: descriptor.diff,
+                insertions: descriptor.insertions,
+                deletions: descriptor.deletions,
                 timestamp: Date.now(),
-              },
+              })),
             ]);
-          }
+          });
         }
 
         // Update status on completed context/tool items (now inside explore groups)
@@ -888,7 +1910,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         ) {
           const exploreGroupId = codexItemToExploreGroupId.current.get(item.id);
           if (exploreGroupId) {
-            setMessages((prev) => {
+            setMessagesState((prev) => {
               const gIdx = prev.findIndex((m) => m.id === exploreGroupId);
               if (gIdx < 0) return prev;
               const group = prev[gIdx];
@@ -906,17 +1928,6 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
               return next;
             });
             codexItemToExploreGroupId.current.delete(item.id);
-          } else if (existingMsgId) {
-            // Legacy fallback: update old-style context item if somehow present
-            setMessages((prev) => {
-              const idx = prev.findIndex((m) => m.id === existingMsgId);
-              if (idx < 0) return prev;
-              const existing = prev[idx];
-              if (existing.kind !== "context") return prev;
-              const next = [...prev];
-              next[idx] = { ...existing, status: "completed" };
-              return next;
-            });
           }
         }
 
@@ -926,7 +1937,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           item.type === "collabAgentToolCall"
         ) {
           if (existingMsgId) {
-            setMessages((prev) => {
+            setMessagesState((prev) => {
               const idx = prev.findIndex((m) => m.id === existingMsgId);
               if (idx < 0) return prev;
               const existing = prev[idx];
@@ -949,8 +1960,15 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
 
       case "thread/status/changed": {
         const status = params.status as { type: string } | undefined;
-        if (status?.type === "idle") {
-          setIsStreaming(false);
+        const statusThreadId = readThreadId(params) ?? undefined;
+        if (
+          status?.type === "idle" &&
+          statusThreadId &&
+          getCurrentCodexRuntime()?.thread?.id === statusThreadId &&
+          !activeTurnIdRef.current
+        ) {
+          interruptRequestedRef.current = false;
+          setStreamingState(false);
         }
         break;
       }
@@ -959,8 +1977,257 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         // Unhandled notification — no-op
         break;
     }
-  }, [appendToItemField]);
-  handleNotificationRef.current = handleNotification;
+  }, [
+    appendToItemField,
+    attributeCommandFileChanges,
+    captureCommandDiffSnapshot,
+    directory,
+    enrichFileChangeDescriptors,
+    getCurrentCodexRuntime,
+    recordLastError,
+    setMessagesState,
+    setPlanItemsState,
+    setStreamingState,
+    startCommandDiffPolling,
+    setSubagentsState,
+    setThreadNameState,
+    stopCommandDiffPolling,
+    updateMessages,
+  ]);
+
+  // ------------------------------------------------------------------
+  // Event subscription
+  // Uses a mounted ref to avoid setState on unmounted components.
+  // The notification handler writes to persisted state via normal setState paths.
+  // ------------------------------------------------------------------
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    const persistedState = getPersistedCodexState(sessionKey);
+    setMessagesState(persistedState.messages);
+    setThreadState(persistedState.thread);
+    setStreamingState(persistedState.isStreaming);
+    setPendingApprovalState(null);
+    setPendingUserInputState(null);
+    setSubagentsState([]);
+    setActiveSubagentThreadIdState(null);
+    setPlanItemsState([]);
+    setThreadNameState(undefined);
+    subagentThreadIds.current.clear();
+    activeTurnIdRef.current = null;
+    interruptRequestedRef.current = false;
+    currentReasoningIdRef.current = null;
+    thinkingItemIdRef.current = null;
+    activeExploreGroupIdRef.current = null;
+    latestPlanUpdateIdRef.current = null;
+    messageIdCounter.current = persistedState.messageIdCounter;
+    pendingInterruptRef.current = false;
+    commandDiffSnapshotsRef.current.clear();
+    itemThreadIdsRef.current.clear();
+    turnThreadIdsRef.current.clear();
+
+    if (!window.orxa?.events) {
+      return;
+    }
+
+    const unsubscribe = window.orxa.events.subscribe((event) => {
+      if (!isMounted.current) {
+        return;
+      }
+
+      if (event.type === "codex.state") {
+        const state = event.payload as CodexState;
+        setConnectionState(state.status, state.serverInfo, state.lastError);
+      }
+
+      if (event.type === "codex.approval") {
+        const approval = event.payload as CodexApprovalRequest;
+        const currentThreadId = getCurrentCodexRuntime()?.thread?.id;
+        if (!approval.threadId || !currentThreadId || approval.threadId === currentThreadId) {
+          setPendingApprovalState(approval);
+        }
+      }
+
+      if (event.type === "codex.userInput") {
+        const input = event.payload as CodexUserInputRequest;
+        const currentThreadId = getCurrentCodexRuntime()?.thread?.id;
+        if (!input.threadId || !currentThreadId || input.threadId === currentThreadId) {
+          setPendingUserInputState(input);
+        }
+      }
+
+      if (event.type === "codex.notification") {
+        const notification = event.payload as CodexNotification;
+        const notificationParams =
+          notification.params && typeof notification.params === "object" && !Array.isArray(notification.params)
+            ? (notification.params as Record<string, unknown>)
+            : {};
+
+        const notificationThreadId = getNotificationThreadId(
+          notification.method,
+          notificationParams,
+          itemThreadIdsRef.current,
+          turnThreadIdsRef.current,
+        );
+        const activeThreadId = getCurrentCodexRuntime()?.thread?.id ?? null;
+        const couldBelongToActiveThreadWithoutExplicitId =
+          !!activeThreadId &&
+          !notificationThreadId &&
+          (notification.method.startsWith("turn/") ||
+            notification.method.startsWith("item/") ||
+            notification.method === "thread/status/changed");
+        const isKnownTrackedThread =
+          !!notificationThreadId &&
+          (notificationThreadId === activeThreadId || subagentThreadIds.current.has(notificationThreadId));
+        const isChildThreadStartForActiveParent =
+          notification.method === "thread/started" &&
+          getParentThreadIdFromSource(asRecord(notificationParams.thread)?.source) === activeThreadId;
+
+        if (!isKnownTrackedThread && !isChildThreadStartForActiveParent && !couldBelongToActiveThreadWithoutExplicitId) {
+          return;
+        }
+
+        const itemId = asString(notificationParams.itemId ?? asRecord(notificationParams.item)?.id).trim();
+        const turnId = asString(notificationParams.turnId ?? asRecord(notificationParams.turn)?.id).trim();
+        if ((notification.method === "item/started" || notification.method === "item/completed") && itemId && notificationThreadId) {
+          itemThreadIdsRef.current.set(itemId, notificationThreadId);
+          if (notification.method === "item/completed") {
+            itemThreadIdsRef.current.delete(itemId);
+          }
+        }
+        if ((notification.method === "turn/started" || notification.method === "turn/completed") && turnId && notificationThreadId) {
+          turnThreadIdsRef.current.set(turnId, notificationThreadId);
+          if (notification.method === "turn/completed") {
+            turnThreadIdsRef.current.delete(turnId);
+          }
+        }
+        if (
+          notificationThreadId &&
+          (notification.method === "thread/archived" || notification.method === "thread/closed")
+        ) {
+          subagentThreadIds.current.delete(notificationThreadId);
+          setActiveSubagentThreadIdState((current) => (current === notificationThreadId ? null : current));
+          setSubagentsState((previous) => previous.filter((agent) => agent.threadId !== notificationThreadId));
+        }
+
+        handleNotification(notification);
+      }
+    });
+
+    return () => {
+      isMounted.current = false;
+      unsubscribe();
+    };
+  }, [
+    getCurrentCodexRuntime,
+    handleNotification,
+    setConnectionState,
+    sessionKey,
+    setActiveSubagentThreadIdState,
+    setMessagesState,
+    setPendingApprovalState,
+    setPendingUserInputState,
+    setPlanItemsState,
+    setStreamingState,
+    setSubagentsState,
+    setThreadNameState,
+    setThreadState,
+  ]);
+
+  const syncCodexThreadRuntime = useCallback(async () => {
+    const currentThreadId = getCurrentCodexRuntime()?.thread?.id;
+    if (!window.orxa?.codex || !currentThreadId) {
+      return;
+    }
+
+    try {
+      const runtime = await window.orxa.codex.getThreadRuntime(currentThreadId);
+      const currentThread = runtime.thread ?? null;
+      const currentThreadRecord = currentThread ? (currentThread as unknown as Record<string, unknown>) : null;
+
+      if (currentThreadRecord) {
+        const resumedTurnId = getResumedActiveTurnId(currentThreadRecord);
+        if (resumedTurnId) {
+          activeTurnIdRef.current = resumedTurnId;
+          if (pendingInterruptRef.current || interruptRequestedRef.current) {
+            pendingInterruptRef.current = false;
+            void window.orxa.codex.interruptThreadTree(currentThreadId, resumedTurnId).catch((error) => {
+              recordLastError(error);
+            });
+            return;
+          }
+          setStreamingState(true);
+        } else if (!pendingInterruptRef.current && normalizeThreadStatusType(currentThreadRecord.status) === "idle") {
+          activeTurnIdRef.current = null;
+          interruptRequestedRef.current = false;
+          setStreamingState(false);
+        }
+      }
+
+      const parentThreadId = currentThreadId;
+      const childThreads = (runtime.childThreads ?? [])
+        .map((candidate) => candidate as unknown as Record<string, unknown>)
+        .filter((candidate) => {
+          const threadId = asString(candidate.id).trim();
+          if (!threadId || threadId === parentThreadId || isHiddenSubagentSource(candidate.source)) {
+            return false;
+          }
+          return getParentThreadIdFromThread(candidate) === parentThreadId;
+        });
+
+      setCodexRuntimeSnapshot(sessionKey, {
+        thread: currentThread ?? null,
+        childThreads: childThreads as unknown as CodexThread[],
+      });
+
+      setSubagentsState((previous) => {
+        if (childThreads.length === 0) {
+          subagentThreadIds.current.clear();
+          return [];
+        }
+        const childThreadIds = new Set(
+          childThreads
+            .map((candidate) => asString(candidate.id).trim())
+            .filter(Boolean),
+        );
+        subagentThreadIds.current = childThreadIds;
+        const previousById = new Map(previous.map((agent) => [agent.threadId, agent]));
+        return childThreads.map((candidate, index) => {
+          const threadId = asString(candidate.id).trim();
+          const existing = previousById.get(threadId);
+          const meta = extractSubagentMeta(candidate.source);
+          const status = toSubagentStatus(candidate);
+          const preview = asString(candidate.preview ?? candidate.name).trim();
+          const fallbackName = preview || `Agent-${index + 1}`;
+          return {
+            threadId,
+            nickname: existing?.nickname ?? meta?.nickname ?? fallbackName,
+            role: existing?.role ?? meta?.role ?? "worker",
+            status: status.status,
+            statusText: status.statusText,
+            spawnedAt: existing?.spawnedAt ?? Date.now(),
+          };
+        });
+      });
+    } catch {
+      // Polling Codex thread runtime is best-effort only.
+    }
+  }, [getCurrentCodexRuntime, recordLastError, sessionKey, setCodexRuntimeSnapshot, setStreamingState, setSubagentsState]);
+
+  useEffect(() => {
+    if (!thread?.id || (!isStreaming && subagents.length === 0 && !pendingInterruptRef.current)) {
+      return;
+    }
+
+    void syncCodexThreadRuntime();
+    const timer = window.setInterval(() => {
+      void syncCodexThreadRuntime();
+    }, 1500);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isStreaming, subagents.length, syncCodexThreadRuntime, thread?.id]);
 
   // Derive subagent messages reactively from current messages
   const subagentMessages = useMemo(() => {
@@ -980,19 +2247,16 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   // ------------------------------------------------------------------
   const connect = useCallback(async () => {
     if (!window.orxa?.codex) {
-      setLastError("Codex bridge not available");
+      setConnectionState("error", serverInfo, "Codex bridge not available");
       return;
     }
     try {
       const state = await window.orxa.codex.start(directory, codexOptions);
-      setConnectionStatus(state.status);
-      setServerInfo(state.serverInfo);
-      if (state.lastError) setLastError(state.lastError);
+      setConnectionState(state.status, state.serverInfo, state.lastError);
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : String(err));
-      setConnectionStatus("error");
+      recordLastError(err, "error");
     }
-  }, [directory, codexOptions]);
+  }, [codexOptions, directory, recordLastError, serverInfo, setConnectionState]);
 
   const disconnect = useCallback(async () => {
     if (!window.orxa?.codex) return;
@@ -1001,11 +2265,11 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     } catch {
       // ignore
     }
-    setConnectionStatus("disconnected");
-    setThread(null);
-    setMessages([]);
-    setIsStreaming(false);
-  }, []);
+    setConnectionState("disconnected");
+    setThreadState(null);
+    setMessagesState([]);
+    setStreamingState(false);
+  }, [setConnectionState, setMessagesState, setStreamingState, setThreadState]);
 
   const startThread = useCallback(
     async (options?: { model?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => {
@@ -1018,9 +2282,9 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
           approvalPolicy: options?.approvalPolicy,
           sandbox: options?.sandbox,
         });
-        setThread(t);
-        setMessages([]);
-        setIsStreaming(false);
+        setThreadState(t);
+        setMessagesState([]);
+        setStreamingState(false);
         resetStreamingBookkeeping({
           streamingItemIdRef,
           thinkingItemIdRef,
@@ -1030,16 +2294,30 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
         codexItemToExploreGroupId.current.clear();
         activeExploreGroupIdRef.current = null;
         currentReasoningIdRef.current = null;
-        setPlanItems([]);
-        setThreadName(undefined);
-        setSubagents([]);
-        setActiveSubagentThreadId(null);
+        latestPlanUpdateIdRef.current = null;
+        setPlanItemsState([]);
+        setThreadNameState(undefined);
+        setSubagentsState([]);
+        setActiveSubagentThreadIdState(null);
         subagentThreadIds.current.clear();
+        pendingInterruptRef.current = false;
+        interruptRequestedRef.current = false;
+        commandDiffSnapshotsRef.current.clear();
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : String(err));
+        recordLastError(err);
       }
     },
-    [directory],
+    [
+      directory,
+      recordLastError,
+      setActiveSubagentThreadIdState,
+      setMessagesState,
+      setPlanItemsState,
+      setStreamingState,
+      setSubagentsState,
+      setThreadNameState,
+      setThreadState,
+    ],
   );
 
   const sendMessage = useCallback(
@@ -1047,7 +2325,7 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       if (!window.orxa?.codex || !thread) return;
 
       const userMsgId = `codex-user-${messageIdCounter.current++}`;
-      setMessages((prev) => [
+      setMessagesState((prev) => [
         ...prev,
         { id: userMsgId, kind: "message", role: "user", content: prompt, timestamp: Date.now() },
       ]);
@@ -1055,10 +2333,10 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       try {
         await window.orxa.codex.startTurn(thread.id, prompt, directory, options?.model, options?.effort, options?.collaborationMode);
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : String(err));
+        recordLastError(err);
       }
     },
-    [thread, directory],
+    [directory, recordLastError, setMessagesState, thread],
   );
 
   const approveAction = useCallback(
@@ -1066,23 +2344,23 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       if (!window.orxa?.codex || !pendingApproval) return;
       try {
         await window.orxa.codex.approve(pendingApproval.id, decision);
-        setPendingApproval(null);
+        setPendingApprovalState(null);
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : String(err));
+        recordLastError(err);
       }
     },
-    [pendingApproval],
+    [pendingApproval, recordLastError, setPendingApprovalState],
   );
 
   const denyAction = useCallback(async () => {
     if (!window.orxa?.codex || !pendingApproval) return;
     try {
       await window.orxa.codex.deny(pendingApproval.id);
-      setPendingApproval(null);
+      setPendingApprovalState(null);
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : String(err));
+      recordLastError(err);
     }
-  }, [pendingApproval]);
+  }, [pendingApproval, recordLastError, setPendingApprovalState]);
 
   // Respond to user input request
   const respondToUserInput = useCallback(
@@ -1090,12 +2368,12 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
       if (!window.orxa?.codex || !pendingUserInput) return;
       try {
         await window.orxa.codex.respondToUserInput(pendingUserInput.id, response);
-        setPendingUserInput(null);
+        setPendingUserInputState(null);
       } catch (err) {
-        setLastError(err instanceof Error ? err.message : String(err));
+        recordLastError(err);
       }
     },
-    [pendingUserInput],
+    [pendingUserInput, recordLastError, setPendingUserInputState],
   );
 
   const rejectUserInput = useCallback(async () => {
@@ -1103,42 +2381,45 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
     try {
       // Respond with empty string to indicate rejection
       await window.orxa.codex.respondToUserInput(pendingUserInput.id, "");
-      setPendingUserInput(null);
+      setPendingUserInputState(null);
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : String(err));
+      recordLastError(err);
     }
-  }, [pendingUserInput]);
+  }, [pendingUserInput, recordLastError, setPendingUserInputState]);
 
   // Interrupt the current turn
   const interruptTurn = useCallback(async () => {
     if (!window.orxa?.codex || !thread) return;
     // Capture turn ID before clearing it
     const turnId = activeTurnIdRef.current;
+    interruptRequestedRef.current = true;
+    if (!turnId) {
+      pendingInterruptRef.current = true;
+    }
     // Optimistically update UI immediately so stop feels responsive
-    setIsStreaming(false);
+    setStreamingState(false);
     activeTurnIdRef.current = null;
     // Remove thinking indicator if present
     const tId = thinkingItemIdRef.current;
     thinkingItemIdRef.current = null;
     if (tId) {
-      setMessages((prev) => prev.filter((m) => m.id !== tId));
+      updateMessages((prev) => prev.filter((m) => m.id !== tId));
     }
     try {
-      // Pass turn ID if available; pass empty string if not (backend accepts it as thread-level interrupt)
-      await window.orxa.codex.interruptTurn(thread.id, turnId ?? "");
+      await window.orxa.codex.interruptThreadTree(thread.id, turnId ?? "pending");
     } catch (err) {
-      setLastError(err instanceof Error ? err.message : String(err));
+      recordLastError(err);
     }
-  }, [thread]);
+  }, [recordLastError, setStreamingState, thread, updateMessages]);
 
   // Plan acceptance: switch to default mode and send implementation prompt
   // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
   const acceptPlan = useCallback(async (planItemId?: string) => {
     if (planItemId) {
-      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+      setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
     await sendMessage("Implement this plan.", { model: undefined });
-  }, [sendMessage]);
+  }, [sendMessage, setDismissedPlanIdsState]);
 
   // Check if a thread is a subagent thread
   const isSubagentThread = useCallback((threadId: string) => {
@@ -1149,26 +2430,26 @@ export function useCodexSession(directory: string, codexOptions?: { codexPath?: 
   // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
   const submitPlanChanges = useCallback(async (changes: string, planItemId?: string) => {
     if (planItemId) {
-      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+      setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
     await sendMessage(`Update the plan with these changes:\n\n${changes}`, { model: undefined });
-  }, [sendMessage]);
+  }, [sendMessage, setDismissedPlanIdsState]);
 
   // Dismiss plan without accepting or modifying
   const dismissPlan = useCallback((planItemId?: string) => {
     if (planItemId) {
-      setDismissedPlanIds((prev) => new Set([...prev, planItemId]));
+      setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
-  }, []);
+  }, [setDismissedPlanIdsState]);
 
   // Subagent thread navigation
   const openSubagentThread = useCallback((threadId: string) => {
-    setActiveSubagentThreadId(threadId);
-  }, []);
+    setActiveSubagentThreadIdState(threadId);
+  }, [setActiveSubagentThreadIdState]);
 
   const closeSubagentThread = useCallback(() => {
-    setActiveSubagentThreadId(null);
-  }, []);
+    setActiveSubagentThreadIdState(null);
+  }, [setActiveSubagentThreadIdState]);
 
   return {
     connectionStatus,

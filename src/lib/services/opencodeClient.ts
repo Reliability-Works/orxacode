@@ -16,6 +16,7 @@ import type {
   SessionMessageBundle,
   SessionPermissionMode,
   SessionProvenanceSnapshot,
+  SessionRuntimeSnapshot,
   WorkspaceArtifactSummary,
   WorkspaceContextFile,
   WorkspaceContextWriteInput,
@@ -153,6 +154,10 @@ export const opencodeClient = {
     return withRetry("loadMessages", () => getBridge().loadMessages(directory, sessionID), { retries: 2 });
   },
 
+  async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
+    return withRetry("getSessionRuntime", () => getBridge().getSessionRuntime(directory, sessionID), { retries: 1 });
+  },
+
   async loadExecutionLedger(directory: string, sessionID: string, cursor = 0): Promise<ExecutionLedgerSnapshot> {
     return withRetry("loadExecutionLedger", () => getBridge().loadExecutionLedger(directory, sessionID, cursor), { retries: 1 });
   },
@@ -244,6 +249,10 @@ export const opencodeClient = {
 
   async gitDiff(directory: string): Promise<string> {
     return withRetry("gitDiff", () => getBridge().gitDiff(directory), { retries: 1 });
+  },
+
+  async gitStatus(directory: string): Promise<string> {
+    return withRetry("gitStatus", () => getBridge().gitStatus(directory), { retries: 1 });
   },
 
   async gitLog(directory: string): Promise<string> {

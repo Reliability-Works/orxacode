@@ -60,6 +60,19 @@ export type WorktreeSessionResult = {
   session: Session;
 };
 
+export type SessionRuntimeSnapshot = {
+  directory: string;
+  sessionID: string;
+  session: Session | null;
+  sessionStatus?: SessionStatus;
+  permissions: PermissionRequest[];
+  questions: QuestionRequest[];
+  commands: Command[];
+  messages: SessionMessageBundle[];
+  executionLedger: ExecutionLedgerSnapshot;
+  changeProvenance: SessionProvenanceSnapshot;
+};
+
 export type PromptRequest = {
   directory: string;
   sessionID: string;

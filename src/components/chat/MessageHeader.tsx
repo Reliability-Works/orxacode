@@ -30,9 +30,6 @@ export function MessageHeader({ role, label, timestamp, agent, model, durationMs
 
   return (
     <header className={`message-header message-header--${role}`}>
-      {role === "assistant" ? (
-        <span className="message-agent-icon" aria-hidden="true">{">"}</span>
-      ) : null}
       <span className="message-role">{displayLabel}</span>
       {timeString ? <span className="message-time">{timeString}</span> : null}
       {meta ? <span className="message-header-meta">{meta}</span> : null}

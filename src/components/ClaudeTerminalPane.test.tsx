@@ -44,8 +44,8 @@ const mockOnExit = vi.fn();
 function buildOrxaTerminal() {
   return {
     list: vi.fn(async () => []),
-    create: vi.fn(async () => ({ id: "pty-claude-1" })),
-    connect: vi.fn(async () => ({})),
+    create: vi.fn(async () => ({ id: "pty-claude-1", directory: "/workspace/project" })),
+    connect: vi.fn(async () => ({ ptyID: "pty-claude-1", directory: "/workspace/project", connected: true })),
     write: vi.fn(async () => true),
     resize: vi.fn(async () => true),
     close: vi.fn(async () => true),
@@ -62,6 +62,11 @@ describe("ClaudeTerminalPane", () => {
   beforeEach(() => {
     mockOnExit.mockReset();
     localStorage.clear();
+    (
+      globalThis as typeof globalThis & {
+        __resetClaudeTerminalPaneStateForTests?: () => void;
+      }
+    ).__resetClaudeTerminalPaneStateForTests?.();
   });
 
   afterEach(() => {
@@ -76,7 +81,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     expect(screen.getByText("Claude Code Permissions")).toBeInTheDocument();
     expect(screen.getByText("Standard Mode")).toBeInTheDocument();
@@ -89,7 +94,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     expect(screen.getByText("claude code")).toBeInTheDocument();
   });
@@ -100,7 +105,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/my-project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/my-project" sessionStorageKey="/workspace/my-project::claude-session" onExit={mockOnExit} />);
 
     expect(screen.getByText("/workspace/my-project")).toBeInTheDocument();
   });
@@ -111,7 +116,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     fireEvent.click(screen.getByText("Standard Mode"));
 
@@ -127,7 +132,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     fireEvent.click(screen.getByText("Full Access Mode"));
 
@@ -141,7 +146,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     fireEvent.click(screen.getByText("Remember this choice for this workspace"));
     fireEvent.click(screen.getByText("Standard Mode"));
@@ -157,15 +162,32 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     // Should skip directly to terminal view
     expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /split/i })).toBeInTheDocument();
   });
 
+  it("keeps the selected mode for the same session without requiring remember choice", () => {
+    window.orxa = {
+      terminal: buildOrxaTerminal(),
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    const view = render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
+    fireEvent.click(screen.getByText("Standard Mode"));
+
+    expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
+
+    view.unmount();
+
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
+    expect(screen.queryByText("Claude Code Permissions")).not.toBeInTheDocument();
+  });
+
   it("shows unavailable message when claude terminal API is not available", () => {
-    // Ensure window.orxa.claudeTerminal is absent
+    // Ensure window.orxa.terminal is absent
     window.orxa = {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
@@ -173,7 +195,7 @@ describe("ClaudeTerminalPane", () => {
     // Need to pick a mode first for the unavailable check to trigger
     localStorage.setItem("claude-permission-mode:/workspace/project", "standard");
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     expect(screen.getByText(/terminal api is not available/i)).toBeInTheDocument();
   });
@@ -185,7 +207,7 @@ describe("ClaudeTerminalPane", () => {
 
     localStorage.setItem("claude-permission-mode:/workspace/project", "standard");
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
 
     expect(screen.getByRole("button", { name: /exit/i })).toBeInTheDocument();
   });
@@ -198,7 +220,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     // Should show the panel tab bar with at least one tab
@@ -212,7 +234,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     const addBtn = screen.getByRole("button", { name: /new tab/i });
@@ -229,7 +251,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     // Add a second tab
@@ -253,7 +275,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     const splitBtn = screen.getByRole("button", { name: /split/i });
@@ -269,7 +291,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     const splitBtn = screen.getByRole("button", { name: /split/i });
@@ -289,7 +311,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     const splitBtn = screen.getByRole("button", { name: /split/i });
@@ -309,7 +331,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     // Split first
@@ -328,7 +350,7 @@ describe("ClaudeTerminalPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<ClaudeTerminalPane directory="/workspace/project" onExit={mockOnExit} />);
+    render(<ClaudeTerminalPane directory="/workspace/project" sessionStorageKey="/workspace/project::claude-session" onExit={mockOnExit} />);
     fireEvent.click(screen.getByText("Standard Mode"));
 
     // Split

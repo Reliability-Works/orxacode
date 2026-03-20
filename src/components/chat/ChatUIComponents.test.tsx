@@ -249,13 +249,13 @@ describe("MessagePartRenderer", () => {
 // ─── MessageHeader ────────────────────────────────────────────────
 
 describe("MessageHeader", () => {
-  it("renders assistant role with > icon", () => {
+  it("renders assistant role without the legacy agent icon", () => {
     render(<MessageHeader role="assistant" />);
-    expect(screen.getByText(">")).toBeInTheDocument();
+    expect(screen.queryByText(">")).not.toBeInTheDocument();
     expect(screen.getByText("Assistant")).toBeInTheDocument();
   });
 
-  it("renders user role without > icon", () => {
+  it("renders user role without agent icon", () => {
     render(<MessageHeader role="user" />);
     expect(screen.queryByText(">")).not.toBeInTheDocument();
     expect(screen.getByText("User")).toBeInTheDocument();

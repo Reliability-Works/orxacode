@@ -31,9 +31,8 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     sessions: [],
     activeSessionID: undefined,
     setAllSessionsModalOpen: vi.fn(),
-    getSessionStatusType: vi.fn(() => "idle"),
-    getSessionType: vi.fn(() => undefined),
     getSessionTitle: vi.fn((_, __, fallbackTitle) => fallbackTitle),
+    getSessionIndicator: vi.fn(() => "none" as const),
     selectProject: vi.fn(),
     createSession: vi.fn(),
     openSession: vi.fn(),
@@ -89,5 +88,82 @@ describe("WorkspaceSidebar update CTA", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Debug logs" }));
     expect(onOpenDebugLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows awaiting and unread indicators for session rows", () => {
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-awaiting",
+            slug: "session-awaiting",
+            title: "Needs input",
+            time: { updated: 2 },
+          }, {
+            id: "session-unread",
+            slug: "session-unread",
+            title: "Unread output",
+            time: { updated: 3 },
+          }],
+          getSessionIndicator: vi.fn((sessionID) => {
+            if (sessionID === "session-awaiting") return "awaiting";
+            if (sessionID === "session-unread") return "unread";
+            return "none";
+          }) as WorkspaceSidebarProps["getSessionIndicator"],
+        })}
+      />,
+    );
+
+    expect(document.querySelector(".session-status-indicator.awaiting")?.textContent).toBe("!");
+    expect(document.querySelector(".session-status-indicator.unread")).toBeInTheDocument();
+  });
+
+  it("opens the workspace landing view when clicking the active workspace header from a session", () => {
+    const selectProject = vi.fn();
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          activeSessionID: "session-1",
+          selectProject,
+          sessions: [{
+            id: "session-1",
+            slug: "session-1",
+            title: "Current session",
+            time: { updated: 1 },
+          }],
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "project" }));
+    expect(selectProject).toHaveBeenCalledWith("/workspace/project");
+  });
+
+  it("routes session clicks through openSession with the target workspace", () => {
+    const openSession = vi.fn();
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/other",
+          cachedSessionsByProject: {
+            "/workspace/project": [{
+              id: "session-2",
+              slug: "session-2",
+              title: "Open me",
+              time: { updated: 2 },
+            }],
+          },
+          openSession,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open me" }));
+    expect(openSession).toHaveBeenCalledWith("/workspace/project", "session-2");
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ToolCallCard } from "./ToolCallCard";
 import { CommandOutput } from "./CommandOutput";
 import { DiffBlock } from "./DiffBlock";
+import { ThinkingRow } from "./ThinkingRow";
 import { ThinkingShimmer } from "./ThinkingShimmer";
 import { ToolGroup } from "./ToolGroup";
 
@@ -67,6 +68,11 @@ describe("CommandOutput", () => {
     expect(screen.getByText("hi")).toBeInTheDocument();
   });
 
+  it("does not render an empty output block when the command produced no output", () => {
+    render(<CommandOutput command="true" output="" />);
+    expect(document.querySelector(".command-output-body")).toBeNull();
+  });
+
   it("renders exit code when provided", () => {
     render(<CommandOutput command="false" output="" exitCode={1} />);
     expect(screen.getByText("[1]")).toBeInTheDocument();
@@ -88,12 +94,26 @@ describe("CommandOutput", () => {
     render(<CommandOutput command="ls" output="" />);
     expect(screen.getByText("$")).toBeInTheDocument();
   });
+
+  it("tails long output instead of rendering the full stream", () => {
+    const output = Array.from({ length: 250 }, (_, index) => `line ${index + 1}`).join("\n");
+    render(<CommandOutput command="cat huge.log" output={output} />);
+
+    expect(screen.getByText("tail 200")).toBeInTheDocument();
+    expect(screen.queryByText("line 1")).not.toBeInTheDocument();
+    expect(document.querySelector(".command-output-body")).toHaveTextContent("line 250");
+  });
 });
 
 describe("DiffBlock", () => {
   it("renders file path", () => {
     render(<DiffBlock path="src/utils.ts" type="modified" />);
     expect(screen.getByText("src/utils.ts")).toBeInTheDocument();
+  });
+
+  it("renders the edited verb in the collapsed header", () => {
+    render(<DiffBlock path="src/utils.ts" type="modified" />);
+    expect(screen.getByText("Edited")).toBeInTheDocument();
   });
 
   it("renders insertions stat", () => {
@@ -106,21 +126,55 @@ describe("DiffBlock", () => {
     expect(screen.getByText("-3")).toBeInTheDocument();
   });
 
-  it("renders type label", () => {
-    render(<DiffBlock path="src/new.ts" type="added" />);
-    expect(screen.getByText("added")).toBeInTheDocument();
-  });
-
   it("shows diff content when expanded", () => {
     const diff = "+const x = 1;\n-const x = 0;";
     render(<DiffBlock path="src/x.ts" type="modified" diff={diff} />);
-    // Short diff starts expanded
+    expect(screen.queryByText("+const x = 1;")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("Edited file")).toBeInTheDocument();
     expect(screen.getByText("+const x = 1;")).toBeInTheDocument();
+  });
+
+  it("derives diff stats from diff content when counts are not provided", () => {
+    const diff = [
+      "diff --git a/src/x.ts b/src/x.ts",
+      "--- a/src/x.ts",
+      "+++ b/src/x.ts",
+      "@@ -1 +1,2 @@",
+      "-old",
+      "+new",
+      "+another",
+    ].join("\n");
+    render(<DiffBlock path="src/x.ts" type="modified" diff={diff} />);
+    expect(screen.getByText("+2")).toBeInTheDocument();
+    expect(screen.getByText("-1")).toBeInTheDocument();
+  });
+
+  it("hides unified diff metadata lines from the expanded diff body", () => {
+    const diff = [
+      "diff --git a/src/x.ts b/src/x.ts",
+      "--- a/src/x.ts",
+      "+++ b/src/x.ts",
+      "@@ -1 +1 @@",
+      "-old",
+      "+new",
+    ].join("\n");
+    render(<DiffBlock path="src/x.ts" type="modified" diff={diff} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.queryByText("@@ -1 +1 @@")).not.toBeInTheDocument();
+    expect(screen.queryByText("diff --git a/src/x.ts b/src/x.ts")).not.toBeInTheDocument();
+    expect(screen.getByText("-old")).toBeInTheDocument();
+    expect(screen.getByText("+new")).toBeInTheDocument();
   });
 
   it("does not render chevron when no diff content", () => {
     render(<DiffBlock path="src/empty.ts" type="modified" />);
     expect(document.querySelector(".diff-block-chevron")).toBeNull();
+  });
+
+  it("falls back safely when a persisted diff row is missing a path", () => {
+    render(<DiffBlock path={undefined} type="modified" />);
+    expect(screen.getByText("(unknown file)")).toBeInTheDocument();
   });
 });
 
@@ -138,6 +192,14 @@ describe("ThinkingShimmer", () => {
   it("has aria-label matching the label prop", () => {
     render(<ThinkingShimmer label="Working" />);
     expect(screen.getByLabelText("Working")).toBeInTheDocument();
+  });
+});
+
+describe("ThinkingRow", () => {
+  it("does not repeat a static Thinking summary beside the shimmer", () => {
+    render(<ThinkingRow summary="Thinking" content="" />);
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    expect(screen.queryByText(/^Thinking$/)).toBeNull();
   });
 });
 

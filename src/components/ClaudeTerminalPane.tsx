@@ -3,6 +3,7 @@ import { Bot, ChevronDown, Columns, Plus, Rows, Shield, ShieldOff, X } from "luc
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
+import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 const TERMINAL_THEME = {
   background: "#000000",
@@ -29,6 +30,7 @@ const TERMINAL_THEME = {
 };
 
 type PermissionMode = "pending" | "standard" | "full";
+const sessionPermissionModes = new Map<string, PermissionMode>();
 
 function getStorageKey(directory: string): string {
   return `claude-permission-mode:${directory}`;
@@ -54,23 +56,128 @@ function storePermissionMode(directory: string, mode: "standard" | "full"): void
 
 // ── Persistence layer ──
 // Module-level maps that survive React unmount/remount cycles.
-// Keyed by `directory:mode:tabId` to uniquely identify a claude terminal session.
+// Keyed by `sessionStorageKey:mode:tabId` to uniquely identify a claude terminal session.
 
 type PersistedSession = {
   processId: string;
+  storageKey: string;
   directory: string;
   mode: string;
   outputChunks: string[];
   exited: boolean;
   exitCode: number | null;
-  unsubscribe: (() => void) | null;
+  backgroundUnsubscribe: (() => void) | null;
+  listeners: Set<(event: { type: "output"; chunk: string } | { type: "closed"; exitCode: number | null }) => void>;
 };
 
 const persistedSessions = new Map<string, PersistedSession>();
+const pendingSessionCreates = new Map<string, Promise<PersistedSession>>();
 
-function sessionKey(directory: string, mode: string, tabId?: string): string {
-  if (tabId) return `${directory}::${mode}::${tabId}`;
-  return `${directory}::${mode}`;
+function resetClaudeTerminalPaneStateForTests() {
+  sessionPermissionModes.clear();
+  pendingSessionCreates.clear();
+  persistedSessions.forEach((session) => {
+    session.backgroundUnsubscribe?.();
+  });
+  persistedSessions.clear();
+}
+
+if (typeof globalThis !== "undefined") {
+  (
+    globalThis as typeof globalThis & {
+      __resetClaudeTerminalPaneStateForTests?: () => void;
+    }
+  ).__resetClaudeTerminalPaneStateForTests = resetClaudeTerminalPaneStateForTests;
+}
+
+function sessionKey(sessionStorageKey: string, mode: string, tabId?: string): string {
+  if (tabId) return `${sessionStorageKey}::${mode}::${tabId}`;
+  return `${sessionStorageKey}::${mode}`;
+}
+
+async function getOrCreateClaudeSession(
+  storageKey: string,
+  directory: string,
+  mode: "standard" | "full",
+  cols: number,
+  rows: number,
+) {
+  const existing = persistedSessions.get(storageKey);
+  if (existing && !existing.exited) {
+    return existing;
+  }
+  if (existing?.backgroundUnsubscribe) {
+    existing.backgroundUnsubscribe();
+  }
+  if (existing) {
+    persistedSessions.delete(storageKey);
+  }
+
+  const pending = pendingSessionCreates.get(storageKey);
+  if (pending) {
+    return pending;
+  }
+  if (!window.orxa?.terminal) {
+    throw new Error("Claude terminal bridge not available");
+  }
+
+  const createPromise = window.orxa.terminal
+    .create(directory, directory, "claude code")
+    .then(async (result) => {
+      await window.orxa?.terminal?.connect(directory, result.id);
+      await window.orxa?.terminal?.resize(directory, result.id, cols, rows);
+      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
+      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
+      await window.orxa?.terminal?.write(directory, result.id, `exec ${envPrefix} ${claudeCmd}\n`);
+
+      const session: PersistedSession = {
+        processId: result.id,
+        storageKey,
+        directory,
+        mode,
+        outputChunks: [],
+        exited: false,
+        exitCode: null,
+        backgroundUnsubscribe: null,
+        listeners: new Set(),
+      };
+
+      if (window.orxa?.events) {
+        session.backgroundUnsubscribe = window.orxa.events.subscribe((event) => {
+          if (
+            event.type === "pty.output" &&
+            event.payload.ptyID === session.processId &&
+            event.payload.directory === directory
+          ) {
+            const chunk = event.payload.chunk as string;
+            session.outputChunks.push(chunk);
+            session.listeners.forEach((listener) => listener({ type: "output", chunk }));
+          }
+          if (
+            event.type === "pty.closed" &&
+            event.payload.ptyID === session.processId &&
+            event.payload.directory === directory
+          ) {
+            session.exited = true;
+            session.exitCode = null;
+            session.listeners.forEach((listener) =>
+              listener({ type: "closed", exitCode: null }),
+            );
+          }
+        });
+      }
+
+      persistedSessions.set(storageKey, session);
+      pendingSessionCreates.delete(storageKey);
+      return session;
+    })
+    .catch((error) => {
+      pendingSessionCreates.delete(storageKey);
+      throw error;
+    });
+
+  pendingSessionCreates.set(storageKey, createPromise);
+  return createPromise;
 }
 
 // ── Tab types ──
@@ -91,6 +198,7 @@ function createTab(): ClaudeTab {
 
 interface Props {
   directory: string;
+  sessionStorageKey: string;
   onExit: () => void;
   onFirstInteraction?: () => void;
 }
@@ -100,12 +208,21 @@ interface Props {
 
 interface ClaudePanelInstanceProps {
   directory: string;
+  sessionStorageKey: string;
   mode: "standard" | "full";
   onClose?: () => void;
   onAllTabsClosed?: () => void;
+  onTerminalOutput?: () => void;
 }
 
-function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: ClaudePanelInstanceProps) {
+function ClaudePanelInstance({
+  directory,
+  sessionStorageKey,
+  mode,
+  onClose,
+  onAllTabsClosed,
+  onTerminalOutput,
+}: ClaudePanelInstanceProps) {
   const [initialTab] = useState<ClaudeTab>(createTab);
   const [panelTabs, setPanelTabs] = useState<ClaudeTab[]>(() => [initialTab]);
   const [panelActiveTabId, setPanelActiveTabId] = useState<string>(initialTab.id);
@@ -117,13 +234,14 @@ function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: Clau
   }
 
   function handleCloseTab(tabId: string) {
-    const key = sessionKey(directory, mode, tabId);
+    const key = sessionKey(sessionStorageKey, mode, tabId);
     const existing = persistedSessions.get(key);
     if (existing) {
-      if (existing.unsubscribe) existing.unsubscribe();
+      if (existing.backgroundUnsubscribe) existing.backgroundUnsubscribe();
       if (!existing.exited && window.orxa?.terminal) {
-        void window.orxa.terminal.close(directory, existing.processId);
+        void window.orxa.terminal.close(existing.directory, existing.processId);
       }
+      pendingSessionCreates.delete(key);
       persistedSessions.delete(key);
     }
 
@@ -187,8 +305,10 @@ function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: Clau
       <ClaudeTerminalInstance
         key={panelActiveTabId}
         directory={directory}
+        sessionStorageKey={sessionStorageKey}
         mode={mode}
         tabId={panelActiveTabId}
+        onOutput={onTerminalOutput}
       />
     </div>
   );
@@ -199,12 +319,16 @@ function ClaudePanelInstance({ directory, mode, onClose, onAllTabsClosed }: Clau
 
 function ClaudeTerminalInstance({
   directory,
+  sessionStorageKey,
   mode,
   tabId,
+  onOutput,
 }: {
   directory: string;
+  sessionStorageKey: string;
   mode: "standard" | "full";
   tabId: string;
+  onOutput?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -223,7 +347,6 @@ function ClaudeTerminalInstance({
 
     if (!window.orxa?.terminal) return;
 
-    // Dispose any previous xterm instance (but NOT the underlying process)
     runCleanups();
     if (terminalRef.current) {
       terminalRef.current.dispose();
@@ -248,125 +371,34 @@ function ClaudeTerminalInstance({
     fitAddonRef.current = fit;
 
     const cleanups: Array<() => void> = [];
-
-    const key = sessionKey(directory, mode, tabId);
-    const existing = persistedSessions.get(key);
-
-    if (existing && !existing.exited) {
-      processIdRef.current = existing.processId;
-
-      for (const chunk of existing.outputChunks) {
-        terminal.write(chunk);
+    const key = sessionKey(sessionStorageKey, mode, tabId);
+    let detached = false;
+    void getOrCreateClaudeSession(key, directory, mode, terminal.cols, terminal.rows).then((session) => {
+      if (detached) {
+        return;
       }
-
-      if (existing.unsubscribe) {
-        existing.unsubscribe();
-        existing.unsubscribe = null;
-      }
-
-      if (window.orxa?.events) {
-        const unsubscribe = window.orxa.events.subscribe((event) => {
-          if (
-            event.type === "pty.output" &&
-            event.payload.ptyID === existing.processId &&
-            event.payload.directory === directory
-          ) {
-            const chunk = event.payload.chunk as string;
-            existing.outputChunks.push(chunk);
-            terminal.write(chunk);
-          }
-          if (
-            event.type === "pty.closed" &&
-            event.payload.ptyID === existing.processId &&
-            event.payload.directory === directory
-          ) {
-            existing.exited = true;
-            terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-          }
-        });
-        existing.unsubscribe = unsubscribe;
-        cleanups.push(() => {
-          // On unmount, DON'T unsubscribe — keep collecting output in the background.
-        });
-      }
-    } else {
-      if (existing) {
-        if (existing.unsubscribe) existing.unsubscribe();
-        persistedSessions.delete(key);
-      }
-
-      const envPrefix = "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY";
-      const claudeCmd = mode === "full" ? "claude --dangerously-skip-permissions" : "claude";
-      const command = `exec ${envPrefix} ${claudeCmd}\n`;
-
-      void window.orxa.terminal.create(directory, directory, "claude code").then((pty) => {
-        processIdRef.current = pty.id;
-
-        const session: PersistedSession = {
-          processId: pty.id,
-          directory,
-          mode,
-          outputChunks: [],
-          exited: false,
-          exitCode: null,
-          unsubscribe: null,
-        };
-
-        void window.orxa.terminal.connect(directory, pty.id).then(() => {
-          void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
-
-          let claudeStarted = false;
-          let pendingChunks: string[] = [];
-
-          const unsubscribe = window.orxa.events.subscribe((event) => {
-            if (
-              event.type === "pty.output" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              const chunk = event.payload.chunk as string;
-              session.outputChunks.push(chunk);
-
-              if (!claudeStarted) {
-                pendingChunks.push(chunk);
-                const allOutput = pendingChunks.join("");
-                if (allOutput.includes("Claude Code") || allOutput.includes("Welcome")) {
-                  claudeStarted = true;
-                  terminal.clear();
-                  terminal.reset();
-                  const claudeIdx = allOutput.indexOf("\u2500");
-                  if (claudeIdx >= 0) {
-                    terminal.write(allOutput.slice(claudeIdx));
-                  } else {
-                    terminal.write(allOutput);
-                  }
-                  pendingChunks = [];
-                }
-              } else {
-                if (terminalRef.current === terminal) {
-                  terminal.write(chunk);
-                }
-              }
-            }
-            if (
-              event.type === "pty.closed" &&
-              event.payload.ptyID === pty.id &&
-              event.payload.directory === directory
-            ) {
-              session.exited = true;
-              if (terminalRef.current === terminal) {
-                terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
-              }
-            }
-          });
-          session.unsubscribe = unsubscribe;
-
-          void window.orxa.terminal.write(directory, pty.id, command);
-        });
-
-        persistedSessions.set(key, session);
+      processIdRef.current = session.processId;
+      session.outputChunks.forEach((chunk) => terminal.write(chunk));
+      const listener = (event: { type: "output"; chunk: string } | { type: "closed"; exitCode: number | null }) => {
+        if (terminalRef.current !== terminal) {
+          return;
+        }
+        if (event.type === "output") {
+          terminal.write(event.chunk);
+          onOutput?.();
+          return;
+        }
+        terminal.writeln("\r\n\u001b[33m[claude session ended]\u001b[0m");
+      };
+      session.listeners.add(listener);
+      cleanups.push(() => {
+        session.listeners.delete(listener);
       });
-    }
+      void window.orxa?.terminal?.resize(directory, session.processId, terminal.cols, terminal.rows);
+    });
+    cleanups.push(() => {
+      detached = true;
+    });
 
     const disposeInput = terminal.onData((data) => {
       const pid = processIdRef.current;
@@ -389,7 +421,7 @@ function ClaudeTerminalInstance({
     cleanupRef.current = cleanups;
 
     requestAnimationFrame(() => terminal.focus());
-  }, [directory, mode, tabId]);
+  }, [directory, mode, onOutput, sessionStorageKey, tabId]);
 
   useEffect(() => {
     launchTerminal();
@@ -408,9 +440,19 @@ function ClaudeTerminalInstance({
   return <div className="claude-terminal-body" ref={containerRef} />;
 }
 
-export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Props) {
+export function ClaudeTerminalPane({
+  directory,
+  sessionStorageKey,
+  onExit,
+  onFirstInteraction,
+}: Props) {
   const [unavailable, setUnavailable] = useState(false);
   const [rememberChoice, setRememberChoice] = useState(false);
+  const busyResetTimerRef = useRef<number | null>(null);
+  const initClaudeSession = useUnifiedRuntimeStore((state) => state.initClaudeSession);
+  const setClaudeBusy = useUnifiedRuntimeStore((state) => state.setClaudeBusy);
+  const setClaudeAwaiting = useUnifiedRuntimeStore((state) => state.setClaudeAwaiting);
+  const setClaudeActivityAt = useUnifiedRuntimeStore((state) => state.setClaudeActivityAt);
 
   const storedMode = getStoredPermissionMode(directory);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(storedMode ?? "pending");
@@ -421,11 +463,47 @@ export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Pr
   // Key used to remount the second panel when a new split is created
   const [splitPanelKey, setSplitPanelKey] = useState(0);
 
+  const clearBusyResetTimer = useCallback(() => {
+    if (busyResetTimerRef.current !== null) {
+      window.clearTimeout(busyResetTimerRef.current);
+      busyResetTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTerminalOutput = useCallback(() => {
+    if (permissionMode === "pending") {
+      return;
+    }
+    setClaudeActivityAt(sessionStorageKey, Date.now());
+    setClaudeBusy(sessionStorageKey, true);
+    clearBusyResetTimer();
+    busyResetTimerRef.current = window.setTimeout(() => {
+      busyResetTimerRef.current = null;
+      setClaudeBusy(sessionStorageKey, false);
+    }, 2200);
+  }, [clearBusyResetTimer, permissionMode, sessionStorageKey, setClaudeActivityAt, setClaudeBusy]);
+
+  useEffect(() => {
+    const storedSessionMode = sessionPermissionModes.get(sessionStorageKey);
+    if (storedSessionMode === "standard" || storedSessionMode === "full") {
+      setPermissionMode(storedSessionMode);
+      return;
+    }
+    const storedWorkspaceMode = getStoredPermissionMode(directory);
+    if (storedWorkspaceMode === "standard" || storedWorkspaceMode === "full") {
+      setPermissionMode(storedWorkspaceMode);
+      return;
+    }
+    setPermissionMode("pending");
+  }, [directory, sessionStorageKey]);
+
+  useEffect(() => {
+    initClaudeSession(sessionStorageKey, directory);
+  }, [directory, initClaudeSession, sessionStorageKey]);
+
   // Detect unavailable on first render when mode is resolved
   useEffect(() => {
-    if (permissionMode !== "pending" && !window.orxa?.terminal) {
-      setUnavailable(true);
-    }
+    setUnavailable(permissionMode !== "pending" && !window.orxa?.terminal);
     // If a stored mode was loaded (skipping permission modal), mark session as used
     if (permissionMode !== "pending") {
       onFirstInteraction?.();
@@ -433,7 +511,23 @@ export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Pr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [permissionMode]);
 
+  useEffect(() => {
+    const awaiting = permissionMode === "pending";
+    setClaudeAwaiting(sessionStorageKey, awaiting);
+    if (awaiting) {
+      clearBusyResetTimer();
+      setClaudeBusy(sessionStorageKey, false);
+    }
+  }, [clearBusyResetTimer, permissionMode, sessionStorageKey, setClaudeAwaiting, setClaudeBusy]);
+
+  useEffect(() => () => {
+    clearBusyResetTimer();
+    setClaudeAwaiting(sessionStorageKey, false);
+    setClaudeBusy(sessionStorageKey, false);
+  }, [clearBusyResetTimer, sessionStorageKey, setClaudeAwaiting, setClaudeBusy]);
+
   function handlePermissionChoice(mode: "standard" | "full") {
+    sessionPermissionModes.set(sessionStorageKey, mode);
     if (rememberChoice) {
       storePermissionMode(directory, mode);
     }
@@ -581,8 +675,10 @@ export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Pr
       >
         <ClaudePanelInstance
           directory={directory}
+          sessionStorageKey={sessionStorageKey}
           mode={permissionMode}
           onAllTabsClosed={onExit}
+          onTerminalOutput={handleTerminalOutput}
         />
         {splitMode !== "none" && (
           <>
@@ -590,12 +686,87 @@ export function ClaudeTerminalPane({ directory, onExit, onFirstInteraction }: Pr
             <ClaudePanelInstance
               key={splitPanelKey}
               directory={directory}
+              sessionStorageKey={sessionStorageKey}
               mode={permissionMode}
               onClose={handleUnsplit}
+              onTerminalOutput={handleTerminalOutput}
             />
           </>
         )}
       </div>
     </div>
   );
+}
+
+export function ClaudeBackgroundSessionManager({
+  directory,
+  sessionStorageKey,
+}: {
+  directory: string;
+  sessionStorageKey: string;
+}) {
+  const busyResetTimerRef = useRef<number | null>(null);
+  const initClaudeSession = useUnifiedRuntimeStore((state) => state.initClaudeSession);
+  const setClaudeBusy = useUnifiedRuntimeStore((state) => state.setClaudeBusy);
+  const setClaudeAwaiting = useUnifiedRuntimeStore((state) => state.setClaudeAwaiting);
+  const setClaudeActivityAt = useUnifiedRuntimeStore((state) => state.setClaudeActivityAt);
+
+  const clearBusyResetTimer = useCallback(() => {
+    if (busyResetTimerRef.current !== null) {
+      window.clearTimeout(busyResetTimerRef.current);
+      busyResetTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    initClaudeSession(sessionStorageKey, directory);
+    setClaudeAwaiting(sessionStorageKey, false);
+  }, [directory, initClaudeSession, sessionStorageKey, setClaudeAwaiting]);
+
+  useEffect(() => {
+    const sessions = [...persistedSessions.values()].filter(
+      (session) => !session.exited && session.storageKey.startsWith(`${sessionStorageKey}::`),
+    );
+    if (sessions.length === 0) {
+      return;
+    }
+
+    const listener = (event: { type: "output"; chunk: string } | { type: "closed"; exitCode: number | null }) => {
+      if (event.type === "output") {
+        setClaudeActivityAt(sessionStorageKey, Date.now());
+        setClaudeBusy(sessionStorageKey, true);
+        clearBusyResetTimer();
+        busyResetTimerRef.current = window.setTimeout(() => {
+          busyResetTimerRef.current = null;
+          setClaudeBusy(sessionStorageKey, false);
+        }, 2200);
+        return;
+      }
+
+      const anyOpenSessions = [...persistedSessions.values()].some(
+        (session) => !session.exited && session.storageKey.startsWith(`${sessionStorageKey}::`),
+      );
+      if (!anyOpenSessions) {
+        clearBusyResetTimer();
+        setClaudeBusy(sessionStorageKey, false);
+      }
+    };
+
+    sessions.forEach((session) => {
+      session.listeners.add(listener);
+    });
+
+    return () => {
+      sessions.forEach((session) => {
+        session.listeners.delete(listener);
+      });
+    };
+  }, [clearBusyResetTimer, sessionStorageKey, setClaudeActivityAt, setClaudeBusy]);
+
+  useEffect(() => () => {
+    clearBusyResetTimer();
+    setClaudeBusy(sessionStorageKey, false);
+  }, [clearBusyResetTimer, sessionStorageKey, setClaudeBusy]);
+
+  return null;
 }

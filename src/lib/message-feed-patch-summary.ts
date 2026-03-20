@@ -4,6 +4,22 @@ type PatchFileStat = {
   deletions: number;
 };
 
+export type ChangedFileDetail = {
+  path: string;
+  type: "modified" | "added" | "deleted";
+  insertions?: number;
+  deletions?: number;
+  diff?: string;
+};
+
+type MutablePatchFileDetail = {
+  rawPath: string;
+  type: "modified" | "added" | "deleted";
+  lines: string[];
+  additions: number;
+  deletions: number;
+};
+
 type WriteFileSummary = {
   verb: "Created" | "Edited";
   summary: string;
@@ -38,6 +54,10 @@ function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | n
 
 function formatTarget(target: string, workspaceDirectory?: string | null, maxLength = 58) {
   return compactText(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
+}
+
+function normalizeTarget(target: string, workspaceDirectory?: string | null) {
+  return toWorkspaceRelativePath(target, workspaceDirectory);
 }
 
 function extractStringByKeys(input: unknown, keys: string[]): string | null {
@@ -105,7 +125,7 @@ function parsePatchFileStats(patchText: string, workspaceDirectory?: string | nu
       .trim()
       .replace(/^a\//, "")
       .replace(/^b\//, "");
-    return formatTarget(cleaned, workspaceDirectory, 96);
+    return normalizeTarget(cleaned, workspaceDirectory);
   };
 
   const startFile = (rawPath: string) => {
@@ -156,12 +176,94 @@ function parsePatchFileStats(patchText: string, workspaceDirectory?: string | nu
   return [...stats.values()];
 }
 
+function parsePatchFileDetails(patchText: string, workspaceDirectory?: string | null): ChangedFileDetail[] {
+  const lines = patchText.split(/\r?\n/);
+  const details: ChangedFileDetail[] = [];
+  let current: MutablePatchFileDetail | null = null;
+
+  const flush = () => {
+    if (!current) {
+      return;
+    }
+    const path = normalizeTarget(current.rawPath, workspaceDirectory);
+    if (!path) {
+      current = null;
+      return;
+    }
+    const diff = current.lines.join("\n").trim();
+    details.push({
+      path,
+      type: current.type,
+      insertions: current.additions,
+      deletions: current.deletions,
+      diff: diff.length > 0 ? diff : undefined,
+    });
+    current = null;
+  };
+
+  const start = (rawPath: string, type: "modified" | "added" | "deleted", firstLine?: string) => {
+    flush();
+    current = {
+      rawPath,
+      type,
+      lines: firstLine ? [firstLine] : [],
+      additions: 0,
+      deletions: 0,
+    };
+  };
+
+  for (const line of lines) {
+    const applyPatchMatch = line.match(/^\*\*\*\s+(Update|Add|Delete)\s+File:\s+(.+)$/i);
+    if (applyPatchMatch?.[2]) {
+      const action = (applyPatchMatch[1] ?? "Update").toLowerCase();
+      start(
+        applyPatchMatch[2],
+        action === "add" ? "added" : action === "delete" ? "deleted" : "modified",
+        line,
+      );
+      continue;
+    }
+
+    const gitDiffMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (gitDiffMatch?.[2]) {
+      start(gitDiffMatch[2], "modified", line);
+      continue;
+    }
+
+    const active = current as MutablePatchFileDetail | null;
+    if (!active) {
+      continue;
+    }
+
+    active.lines.push(line);
+
+    if (line.startsWith("+++ /dev/null")) {
+      active.type = "deleted";
+      continue;
+    }
+    if (line.startsWith("--- /dev/null")) {
+      active.type = "added";
+      continue;
+    }
+    if (line.startsWith("+") && !line.startsWith("+++")) {
+      active.additions += 1;
+      continue;
+    }
+    if (line.startsWith("-") && !line.startsWith("---")) {
+      active.deletions += 1;
+    }
+  }
+
+  flush();
+  return details;
+}
+
 function summarizePatchFileStats(stats: PatchFileStat[]) {
   if (stats.length === 0) {
     return null;
   }
   const [first] = stats;
-  const base = `${first.filePath} +${first.additions} | -${first.deletions}`;
+  const base = `${compactText(first.filePath, 96)} +${first.additions} | -${first.deletions}`;
   if (stats.length === 1) {
     return base;
   }
@@ -198,7 +300,7 @@ function collectMetadataFileDiffStats(
       .map((key) => record[key])
       .find((item) => typeof item === "number");
     return {
-      filePath: formatTarget(rawFile, workspaceDirectory, 96),
+      filePath: normalizeTarget(rawFile, workspaceDirectory),
       additions: typeof additionsRaw === "number" ? Math.max(0, Math.round(additionsRaw)) : 0,
       deletions: typeof deletionsRaw === "number" ? Math.max(0, Math.round(deletionsRaw)) : 0,
     };
@@ -224,6 +326,19 @@ function collectMetadataFileDiffStats(
   return found;
 }
 
+function collectMetadataFileDiffDetails(
+  value: unknown,
+  workspaceDirectory: string | null | undefined,
+  depth = 0,
+): ChangedFileDetail[] {
+  return collectMetadataFileDiffStats(value, workspaceDirectory, depth).map((stat) => ({
+    path: stat.filePath,
+    type: "modified",
+    insertions: stat.additions,
+    deletions: stat.deletions,
+  }));
+}
+
 export function extractMetaFileDiffSummary(metadata: unknown, workspaceDirectory?: string | null) {
   const stats = collectMetadataFileDiffStats(metadata, workspaceDirectory);
   if (stats.length === 0) {
@@ -240,6 +355,24 @@ export function extractMetaFileDiffSummary(metadata: unknown, workspaceDirectory
     existing.deletions += stat.deletions;
   }
   return summarizePatchFileStats([...merged.values()]);
+}
+
+export function extractMetaFileDiffDetails(metadata: unknown, workspaceDirectory?: string | null) {
+  const entries = collectMetadataFileDiffDetails(metadata, workspaceDirectory);
+  if (entries.length === 0) {
+    return [];
+  }
+  const merged = new Map<string, ChangedFileDetail>();
+  for (const entry of entries) {
+    const existing = merged.get(entry.path);
+    if (!existing) {
+      merged.set(entry.path, { ...entry });
+      continue;
+    }
+    existing.insertions = (existing.insertions ?? 0) + (entry.insertions ?? 0);
+    existing.deletions = (existing.deletions ?? 0) + (entry.deletions ?? 0);
+  }
+  return [...merged.values()];
 }
 
 export function extractWriteFileSummary(
@@ -278,4 +411,65 @@ export function extractPatchSummary(input: unknown, output: unknown, workspaceDi
     return null;
   }
   return summarizePatchFileStats(parsePatchFileStats(patchText, workspaceDirectory));
+}
+
+export function extractPatchFileDetails(input: unknown, output: unknown, workspaceDirectory?: string | null) {
+  const patchText = extractPatchText(input, output);
+  if (!patchText) {
+    return [];
+  }
+  return parsePatchFileDetails(patchText, workspaceDirectory);
+}
+
+export function extractWriteFileDetail(
+  input: unknown,
+  metadata: unknown,
+  workspaceDirectory?: string | null,
+): ChangedFileDetail | null {
+  const inputRecord = toObjectRecord(input);
+  const metadataRecord = toObjectRecord(metadata);
+  const filepath =
+    (metadataRecord && typeof metadataRecord.filepath === "string" ? metadataRecord.filepath : undefined) ??
+    (inputRecord && typeof inputRecord.filePath === "string" ? inputRecord.filePath : undefined) ??
+    (inputRecord && typeof inputRecord.path === "string" ? inputRecord.path : undefined);
+  if (!filepath) {
+    return null;
+  }
+  const exists = metadataRecord && typeof metadataRecord.exists === "boolean" ? metadataRecord.exists : undefined;
+  const content = inputRecord && typeof inputRecord.content === "string" ? inputRecord.content : "";
+  const path = normalizeTarget(filepath, workspaceDirectory);
+  if (!path) {
+    return null;
+  }
+  if (exists === false) {
+    return {
+      path,
+      type: "added",
+      insertions: countContentLines(content),
+      deletions: 0,
+    };
+  }
+  return {
+    path,
+    type: "modified",
+  };
+}
+
+export function mergeChangedFileDetails(...sources: ChangedFileDetail[][]) {
+  const merged = new Map<string, ChangedFileDetail>();
+  for (const source of sources) {
+    for (const entry of source) {
+      const key = entry.path;
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, { ...entry });
+        continue;
+      }
+      existing.type = existing.type === "modified" ? entry.type : existing.type;
+      existing.insertions = entry.insertions ?? existing.insertions;
+      existing.deletions = entry.deletions ?? existing.deletions;
+      existing.diff = existing.diff ?? entry.diff;
+    }
+  }
+  return [...merged.values()];
 }

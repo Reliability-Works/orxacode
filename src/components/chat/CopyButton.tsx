@@ -4,9 +4,10 @@ import { ChatCheckIcon, ChatClipboardIcon } from "./chat-icons";
 interface CopyButtonProps {
   text: string;
   className?: string;
+  label?: string;
 }
 
-export function CopyButton({ text, className }: CopyButtonProps) {
+export function CopyButton({ text, className, label = "Copy" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleClick = async () => {
@@ -25,8 +26,8 @@ export function CopyButton({ text, className }: CopyButtonProps) {
       type="button"
       className={`copy-button${className ? ` ${className}` : ""}`}
       onClick={handleClick}
-      aria-label={copied ? "Copied" : "Copy"}
-      title={copied ? "Copied" : "Copy"}
+      aria-label={copied ? "Copied" : label}
+      title={copied ? "Copied" : label}
     >
       {copied ? <ChatCheckIcon /> : <ChatClipboardIcon />}
     </button>

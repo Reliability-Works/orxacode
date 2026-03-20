@@ -36,6 +36,13 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
   });
   const startupRanRef = useRef(false);
   const startupCompletedRef = useRef(false);
+  const stepsRef = useRef(steps);
+  const onStepErrorRef = useRef(onStepError);
+  const totalStepsRef = useRef(totalSteps);
+
+  stepsRef.current = steps;
+  onStepErrorRef.current = onStepError;
+  totalStepsRef.current = totalSteps;
 
   useEffect(() => {
     if (startupRanRef.current) {
@@ -45,7 +52,7 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
     startupCompletedRef.current = false;
     let cancelled = false;
     let completed = 0;
-    const total = totalSteps;
+    const total = totalStepsRef.current;
 
     const updateStartup = (message: string, phase: AppShellStartupState["phase"] = "running") => {
       if (cancelled) {
@@ -77,7 +84,7 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
             .catch((error) => reject(error));
         });
       } catch (error) {
-        onStepError(error);
+        onStepErrorRef.current(error);
       } finally {
         if (timeoutID !== undefined) {
           window.clearTimeout(timeoutID);
@@ -88,7 +95,11 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
 
     void (async () => {
       try {
-        for (const step of steps) {
+        for (let index = 0; index < stepsRef.current.length; index += 1) {
+          const step = stepsRef.current[index];
+          if (!step) {
+            continue;
+          }
           await runStep(step);
         }
       } finally {
@@ -103,7 +114,7 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
         startupRanRef.current = false;
       }
     };
-  }, [onStepError, stepTimeoutMs, steps, totalSteps]);
+  }, [stepTimeoutMs]);
 
   const startupProgressPercent = useMemo(() => {
     if (startupState.total <= 0) {

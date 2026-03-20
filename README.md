@@ -2,7 +2,7 @@
 
 A universal AI coding desktop app. Use OpenCode, Codex, or Claude Code — or all three — in one workspace.
 
-![Orxa Code](assets/readme/session.png)
+![Orxa Code](assets/readme/start_session.png)
 
 ## Download
 
@@ -18,7 +18,7 @@ You need **at least one** of the following AI backends installed:
 |---------|---------|-------------|
 | [OpenCode](https://github.com/anomalyco/opencode) | `npm install -g opencode-ai` | Full agent sessions with tool use, file editing, terminal, memory |
 | [Codex](https://github.com/openai/codex) | `npm install -g @openai/codex` | Agent sessions with plan mode, collaboration modes, subagents |
-| [Claude Code](https://github.com/anthropics/claude-code) | `npm install -g @anthropic-ai/claude-code` | Terminal-based Claude sessions with permission controls |
+| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh | bash` | Terminal-based Claude sessions with permission controls |
 
 On startup, the app checks which backends are available and enables session types accordingly.
 
@@ -28,10 +28,15 @@ On startup, the app checks which backends are available and enables session type
 - **Unified chat UI** — all providers render through the same message components with tool cards, diffs, command output, and streaming indicators
 - **Dock system** — plan progress, agent questions, permission requests, and message queue appear above the composer
 - **Message queue** — type while the agent is busy; messages queue and send when the agent finishes
-- **Plan mode** (Codex) — agents propose plans for review before implementing; accept, modify, or reject
-- **Subagent support** (Codex) — collaboration modes and multi-agent delegation
+- **Plan mode** agents propose plans for review before implementing; accept, modify, or reject
+- **Subagent support** — collaboration modes and multi-agent delegation
 - **Multi-tab terminal** (Claude) — split view, permission gating, live output
+
+![Codex session](assets/readme/codex_session.png)
+
 - **Canvas mode** — tiled workspace with terminal, browser, file editor, and markdown tiles
+
+![Canvas mode](assets/readme/canvas_mode.png)
 - **Integrated browser** — multi-tab Chromium with agent automation and persistent profile
 - **Memory system** — local-first memory graph with workspace-scoped retrieval
 - **Git integration** — diff viewer, commit flow, branch management in the right sidebar

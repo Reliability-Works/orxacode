@@ -50,7 +50,7 @@ export type GlobalModalsHostProps = {
   sessions: Session[];
   getSessionStatusType: (sessionID: string, directory?: string) => string;
   activeSessionID?: string;
-  openSession: (sessionID: string) => void;
+  openSession: (directory: string, sessionID: string) => void | Promise<void>;
   jobRunViewer: JobRunRecord | null;
   closeJobRunViewer: () => void;
   projects: ProjectListItem[];
@@ -332,7 +332,10 @@ export function GlobalModalsHost({
                     type="button"
                     className={`session-modal-row ${isActive ? "active" : ""}`.trim()}
                     onClick={() => {
-                      openSession(session.id);
+                      if (!activeProjectDir) {
+                        return;
+                      }
+                      void openSession(activeProjectDir, session.id);
                       setAllSessionsModalOpen(false);
                     }}
                     title={session.title || session.slug}

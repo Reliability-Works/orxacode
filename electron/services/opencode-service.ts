@@ -13,6 +13,7 @@ import {
   type QuestionAnswer,
   type Pty,
   type Session,
+  type SessionStatus,
   type Worktree,
 } from "@opencode-ai/sdk/v2/client";
 import WebSocket from "ws";
@@ -58,6 +59,7 @@ import type {
   SkillEntry,
   ServerDiagnostics,
   SessionProvenanceSnapshot,
+  SessionRuntimeSnapshot,
   SessionPermissionMode,
   ProjectFileDocument,
   ProjectFileEntry,
@@ -782,6 +784,41 @@ export class OpencodeService {
     return this.unwrap(response);
   }
 
+  async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const client = this.client(normalizedDirectory);
+    const [session, sessionStatusMap, permissions, questions, commands, messages, executionLedger, changeProvenance] = await Promise.all([
+      this.unwrap(client.session.get({ directory: normalizedDirectory, sessionID })).catch(() => null),
+      this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
+      this.loadMessages(normalizedDirectory, sessionID).catch(() => []),
+      this.loadExecutionLedger(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
+      this.loadChangeProvenance(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
+    ]);
+
+    const filterBySession = <T extends { sessionID?: string; sessionId?: string; session_id?: string }>(items: T[]) =>
+      items.filter((item) => {
+        const sessionValue = item.sessionID ?? item.sessionId ?? item.session_id;
+        return typeof sessionValue !== "string" || sessionValue === sessionID;
+      });
+    const sessionStatusRecord = sessionStatusMap as Record<string, SessionStatus>;
+
+    return {
+      directory: normalizedDirectory,
+      sessionID,
+      session,
+      sessionStatus: sessionStatusRecord[sessionID],
+      permissions: filterBySession(permissions),
+      questions: filterBySession(questions),
+      commands,
+      messages,
+      executionLedger,
+      changeProvenance,
+    };
+  }
+
   async loadExecutionLedger(directory: string, sessionID: string, cursor = 0): Promise<ExecutionLedgerSnapshot> {
     await this.syncSessionExecutionArtifacts(directory, sessionID);
     return this.ledgerStore.loadSnapshot(directory, sessionID, cursor);
@@ -1081,6 +1118,20 @@ export class OpencodeService {
       runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
       renderUntrackedDiff: (repoRoot, relativePath) => this.renderUntrackedDiff(repoRoot, relativePath),
     });
+  }
+
+  async gitStatus(directory: string) {
+    const cwd = path.resolve(directory);
+    const repoRoot = await this.resolveGitRepoRoot(cwd);
+    if (!repoRoot) {
+      return "Not a git repository.";
+    }
+    const output = await this.runCommandWithOutput(
+      "git",
+      ["-C", repoRoot, "status", "--porcelain=v1", "--untracked-files=all", "--renames"],
+      cwd,
+    ).catch((error) => `Unable to load git status: ${sanitizeError(error)}`);
+    return output.trim().length > 0 ? output.trimEnd() : "";
   }
 
   async gitLog(directory: string) {
