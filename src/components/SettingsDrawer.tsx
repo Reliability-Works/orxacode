@@ -5,10 +5,6 @@ import type {
   CodexDoctorResult,
   CodexModelEntry,
   CodexUpdateResult,
-  MemoryBackfillStatus,
-  MemorySettings,
-  MemorySettingsUpdateInput,
-  MemoryTemplate,
   OpenCodeAgentFile,
   RawConfigDocument,
   RuntimeProfile,
@@ -24,7 +20,6 @@ import {
   BrowserSection,
   ConfigSection,
   GitSettingsSection,
-  MemorySection,
   PersonalizationSection,
   PreferencesSection,
   ServerSection,
@@ -62,12 +57,6 @@ type Props = {
   onGetUpdatePreferences: () => Promise<UpdatePreferences>;
   onSetUpdatePreferences: (input: Partial<UpdatePreferences>) => Promise<UpdatePreferences>;
   onCheckForUpdates: () => Promise<{ ok: boolean; status: "started" | "skipped" | "error"; message?: string }>;
-  onGetMemorySettings: (directory?: string) => Promise<MemorySettings>;
-  onUpdateMemorySettings: (input: MemorySettingsUpdateInput) => Promise<MemorySettings>;
-  onListMemoryTemplates: () => Promise<MemoryTemplate[]>;
-  onApplyMemoryTemplate: (templateID: string, directory?: string, scope?: "global" | "workspace") => Promise<MemorySettings>;
-  onBackfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
-  onClearWorkspaceMemory: (directory: string) => Promise<boolean>;
   allModelOptions: ModelOption[];
   profiles: RuntimeProfile[];
   runtime: RuntimeState;
@@ -83,7 +72,6 @@ type SettingsSection =
   | "config"
   | "provider-models"
   | "opencode-agents"
-  | "memory"
   | "personalization"
   | "git"
   | "app"
@@ -141,12 +129,6 @@ export function SettingsDrawer({
   onGetUpdatePreferences,
   onSetUpdatePreferences,
   onCheckForUpdates,
-  onGetMemorySettings,
-  onUpdateMemorySettings,
-  onListMemoryTemplates,
-  onApplyMemoryTemplate,
-  onBackfillMemory,
-  onClearWorkspaceMemory,
   allModelOptions,
   profiles,
   runtime,
@@ -197,11 +179,6 @@ export function SettingsDrawer({
       return null;
     }
   });
-  const [memorySettings, setMemorySettings] = useState<MemorySettings | null>(null);
-  const [memoryTemplates, setMemoryTemplates] = useState<MemoryTemplate[]>([]);
-  const [memoryLoading, setMemoryLoading] = useState(false);
-  const [memoryBackfillStatus, setMemoryBackfillStatus] = useState<MemoryBackfillStatus | null>(null);
-
   const [ocAgents, setOcAgents] = useState<OpenCodeAgentFile[]>([]);
   const [selectedOcAgent, setSelectedOcAgent] = useState<string | undefined>();
   const [ocAgentDraft, setOcAgentDraft] = useState("");
@@ -256,22 +233,17 @@ export function SettingsDrawer({
       return;
     }
     const load = async () => {
-      const [raw, globalAgents, diagnostics, updaterPrefs, nextMemorySettings, templates] = await Promise.all([
+      const [raw, globalAgents, diagnostics, updaterPrefs] = await Promise.all([
         onReadRaw(effectiveScope, directory),
         onReadGlobalAgentsMd(),
         onGetServerDiagnostics(),
         onGetUpdatePreferences(),
-        onGetMemorySettings(directory),
-        onListMemoryTemplates(),
       ]);
       setRawDoc(raw);
       setRawText(raw.content);
       setGlobalAgentsDoc(globalAgents);
       setGlobalAgentsText(globalAgents.content);
       setUpdatePreferences(updaterPrefs);
-      setMemorySettings(nextMemorySettings);
-      setMemoryTemplates(templates);
-      setMemoryBackfillStatus(null);
       setServerDiagnostics(diagnostics);
       setFeedback(null);
     };
@@ -286,8 +258,6 @@ export function SettingsDrawer({
     onReadGlobalAgentsMd,
     onGetServerDiagnostics,
     onGetUpdatePreferences,
-    onGetMemorySettings,
-    onListMemoryTemplates,
   ]);
 
   const loadOcAgents = useCallback(async () => {
@@ -486,26 +456,6 @@ export function SettingsDrawer({
 
     if (section === "browser") {
       return <BrowserSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
-    }
-
-    if (section === "memory") {
-      return (
-        <MemorySection
-          memorySettings={memorySettings}
-          directory={directory}
-          memoryLoading={memoryLoading}
-          setMemoryLoading={setMemoryLoading}
-          onUpdateMemorySettings={onUpdateMemorySettings}
-          setMemorySettings={setMemorySettings}
-          setFeedback={setFeedback}
-          memoryTemplates={memoryTemplates}
-          onApplyMemoryTemplate={onApplyMemoryTemplate}
-          onBackfillMemory={onBackfillMemory}
-          setMemoryBackfillStatus={setMemoryBackfillStatus}
-          memoryBackfillStatus={memoryBackfillStatus}
-          onClearWorkspaceMemory={onClearWorkspaceMemory}
-        />
-      );
     }
 
     if (section === "server") {
@@ -707,10 +657,6 @@ export function SettingsDrawer({
                     <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
                       {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                       Git
-                    </button>
-                    <button type="button" className={section === "memory" ? "active" : ""} onClick={() => setSection("memory")}>
-                      {section === "memory" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                      Memory
                     </button>
                     <button type="button" className={section === "browser" ? "active" : ""} onClick={() => setSection("browser")}>
                       {section === "browser" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}

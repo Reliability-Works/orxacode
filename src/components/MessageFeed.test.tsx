@@ -112,7 +112,7 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
 
-    expect(screen.getByText("Editing src/App.tsx...")).toBeInTheDocument();
+    expect(screen.queryByText("Editing src/App.tsx...")).not.toBeInTheDocument();
   });
 
   it("shows assistant text and hides internal metadata/tool payloads", () => {
@@ -1098,9 +1098,10 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} showAssistantPlaceholder workspaceDirectory="/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa" />);
 
-    expect(screen.getByText("Edited")).toBeInTheDocument();
+    expect(screen.getByText(/apply_patch <<'PATCH'/i)).toBeInTheDocument();
+    expect(screen.getByText("Changed files")).toBeInTheDocument();
     expect(screen.getByText("src/App.tsx")).toBeInTheDocument();
-    expect(screen.getByText(/Command: apply_patch <<'PATCH'/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Command: apply_patch <<'PATCH'/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Updated$/i)).not.toBeInTheDocument();
   });
 
@@ -1137,8 +1138,49 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} />);
 
-    expect(screen.getByText(/Ran npm run typecheck/i)).toBeInTheDocument();
-    expect(screen.getByText(/Command: npm run typecheck/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Ran npm run typecheck$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Command: npm run typecheck/i)).not.toBeInTheDocument();
+  });
+
+  it("does not render synthetic writing rows for active opencode file edits", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-write-active",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-write-active",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-write-active",
+            callID: "call-write-active",
+            tool: "write",
+            state: {
+              status: "running",
+              input: {
+                filePath: "/repo/barbershop/package.json",
+                content: "{}",
+              },
+              title: "write",
+              metadata: {
+                filepath: "/repo/barbershop/package.json",
+              },
+              time: { start: now },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(<MessageFeed messages={messages} workspaceDirectory="/repo" showAssistantPlaceholder />);
+
+    expect(screen.queryByText(/Writing barbershop\/package\.json/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
   });
 
   it("shows created file summary for write tool without fake command rows", () => {
@@ -1219,7 +1261,8 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    expect(screen.getByText(/^Failed package\.json$/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Write failed package\.json$/i).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /write failed package\.json/i }));
     expect(screen.getByText(/File not found: \/repo\/package\.json/i)).toBeInTheDocument();
   });
 
@@ -1293,7 +1336,7 @@ describe("MessageFeed", () => {
     ];
 
     render(<MessageFeed messages={messages} workspaceDirectory="/repo" />);
-    expect(screen.getByText("website/app/private-ai-agents.tsx")).toBeInTheDocument();
+    expect(screen.getByText(/^Ran touch \/repo\/website\/app\/private-ai-agents\.tsx$/i)).toBeInTheDocument();
   });
 
   it("does not render low-signal completed action rows without command context", () => {
@@ -1359,6 +1402,49 @@ describe("MessageFeed", () => {
     ];
     const view = render(<MessageFeed messages={messages} showAssistantPlaceholder />);
     expect(within(view.container).queryByText(/^Working\.\.\.$/i)).not.toBeInTheDocument();
+  });
+
+  it("does not echo active opencode file actions inside the thinking footer", () => {
+    const now = Date.now();
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-assistant-active-write-footer",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: now, updated: now },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "tool-write-active-footer",
+            type: "tool",
+            sessionID: "session-1",
+            messageID: "msg-assistant-active-write-footer",
+            callID: "call-write-active-footer",
+            tool: "write",
+            state: {
+              status: "running",
+              input: {
+                filePath: "/repo/barbershop/package.json",
+                content: "{\n  \"name\": \"barbershop\"\n}\n",
+              },
+              output: "",
+              title: "barbershop/package.json",
+              metadata: {
+                filepath: "/repo/barbershop/package.json",
+                exists: false,
+              },
+              time: { start: now },
+            },
+          },
+        ] as unknown as SessionMessageBundle["parts"],
+      },
+    ];
+
+    const view = render(<MessageFeed messages={messages} workspaceDirectory="/repo" showAssistantPlaceholder />);
+
+    expect(screen.queryByText("barbershop/package.json")).not.toBeInTheDocument();
+    expect(view.container.querySelector(".thinking-summary")?.textContent ?? "").not.toMatch(/Writing/i);
   });
 
   it("renders loaded skill label without synthetic command line", () => {
@@ -1799,6 +1885,54 @@ describe("MessageFeed", () => {
     render(<MessageFeed messages={messages} assistantLabel="Assistant" />);
 
     expect(screen.getByText("Assistant")).toBeInTheDocument();
+  });
+
+  it("renders expandable thinking details when the presentation includes reasoning content", () => {
+    const messages: SessionMessageBundle[] = [
+      {
+        info: ({
+          id: "msg-thinking-footer",
+          role: "assistant",
+          sessionID: "session-1",
+          time: { created: Date.now(), updated: Date.now() },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: "msg-thinking-footer-part",
+            type: "step-finish",
+            sessionID: "session-1",
+            messageID: "msg-thinking-footer",
+            reason: "tool-calls",
+            snapshot: "snap-1",
+            cost: 0,
+            tokens: {
+              input: 10,
+              output: 2,
+              reasoning: 0,
+              cache: { read: 4, write: 0 },
+            },
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+
+    render(
+      <MessageFeed
+        messages={messages}
+        showAssistantPlaceholder
+        presentation={{
+          provider: "opencode",
+          rows: [],
+          latestActivity: { id: "thinking-1", label: "Planning the next edits" },
+          latestActivityContent: "I have created the directory and I am preparing package.json next.",
+          placeholderTimestamp: Date.now(),
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("Planning the next edits")).toBeNull();
+    fireEvent.click(screen.getByText("Thinking..."));
+    expect(screen.getByText(/I have created the directory and I am preparing package\.json next\./i)).toBeInTheDocument();
   });
 
   it("auto-scrolls to bottom when user is at bottom and new messages arrive", async () => {

@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import type { Event as OpencodeEvent, Session } from "@opencode-ai/sdk/v2/client";
 import type { ProjectBootstrap, SessionMessageBundle, SessionPermissionMode } from "@shared/ipc";
 import type { TerminalTab } from "../components/TerminalPanel";
 import { makeUnifiedSessionKey } from "../state/unified-runtime";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import { filterComposerTerminalPtys, isClaudeOwnedPty } from "../lib/terminal-ownership";
+import {
+  applyOpencodeProjectEvent,
+  applyOpencodeSessionEvent,
+  normalizeMessageBundles,
+} from "../lib/opencode-event-reducer";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
-const RESPONSE_POLL_BASE_DELAY_MS = 1500;
-const RESPONSE_POLL_MAX_DELAY_MS = 5_400;
 const EMPTY_MESSAGE_BUNDLES: SessionMessageBundle[] = [];
 
-type SidebarMode = "projects" | "jobs" | "skills" | "memory";
+type SidebarMode = "projects" | "jobs" | "skills";
 
 type ContextMenuState =
   | {
@@ -36,6 +40,7 @@ type UseWorkspaceStateOptions = {
   setTerminalTabs: (tabs: TerminalTab[]) => void;
   setActiveTerminalId: (id: string | undefined) => void;
   setTerminalOpen: (open: boolean) => void;
+  scheduleGitRefresh?: (delayMs?: number) => void;
 };
 
 type CreateSessionPromptOptions = {
@@ -46,13 +51,18 @@ type CreateSessionPromptOptions = {
   availableAgentNames: Set<string>;
 };
 
+type SelectProjectOptions = {
+  showLanding?: boolean;
+  sessionID?: string;
+};
+
 function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
   const cleaned = prompt
     .replace(/\s+/g, " ")
     .replace(/[^\p{L}\p{N}\s\-_:,.!?/]/gu, "")
     .trim();
   if (!cleaned) {
-    return "New session";
+    return "OpenCode Session";
   }
   return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
 }
@@ -65,68 +75,6 @@ function clampContextMenuPosition(x: number, y: number) {
     x: Math.max(padding, Math.min(x, window.innerWidth - menuWidth - padding)),
     y: Math.max(padding, Math.min(y, window.innerHeight - menuHeight - padding)),
   };
-}
-
-function mergeMessageParts(previous: SessionMessageBundle["parts"], next: SessionMessageBundle["parts"]) {
-  // Use ID-based merging to preserve part ordering even when tool items
-  // interleave between text deltas during streaming. Parts with valid IDs
-  // are deduplicated (newer wins). Parts without IDs are deduplicated by
-  // content hash to avoid duplicating fallback entries.
-  const merged = new Map<string, SessionMessageBundle["parts"][number]>();
-  const seenFallbackKeys = new Set<string>();
-  const ordered: string[] = [];
-
-  for (const part of [...previous, ...next]) {
-    if (typeof part.id === "string" && part.id.length > 0) {
-      if (!merged.has(part.id)) {
-        ordered.push(part.id);
-      }
-      merged.set(part.id, part);
-    } else {
-      // Fallback: derive a key from type + first 100 chars of content to avoid duplicates
-      const content = typeof (part as { content?: unknown }).content === "string"
-        ? ((part as { content?: string }).content ?? "").slice(0, 100)
-        : "";
-      const key = `_fb_${part.type}_${content}`;
-      if (!seenFallbackKeys.has(key)) {
-        seenFallbackKeys.add(key);
-        ordered.push(key);
-      }
-      merged.set(key, part);
-    }
-  }
-
-  return ordered.map((key) => merged.get(key)!);
-}
-
-function messageUpdatedAt(info: SessionMessageBundle["info"]) {
-  const timeRecord = info.time as Record<string, unknown>;
-  const updated = typeof timeRecord.updated === "number" ? timeRecord.updated : undefined;
-  const created = typeof timeRecord.created === "number" ? timeRecord.created : 0;
-  return updated ?? created;
-}
-
-export function normalizeMessageBundles(items: SessionMessageBundle[]) {
-  if (items.length <= 1) {
-    return items;
-  }
-  const byId = new Map<string, SessionMessageBundle>();
-  for (const item of items) {
-    const existing = byId.get(item.info.id);
-    if (!existing) {
-      byId.set(item.info.id, item);
-      continue;
-    }
-    const itemUpdatedAt = messageUpdatedAt(item.info);
-    const existingUpdatedAt = messageUpdatedAt(existing.info);
-    const nextInfo = itemUpdatedAt >= existingUpdatedAt ? item.info : existing.info;
-    byId.set(item.info.id, {
-      ...item,
-      info: nextInfo,
-      parts: mergeMessageParts(existing.parts, item.parts),
-    });
-  }
-  return [...byId.values()].sort((a, b) => a.info.time.created - b.info.time.created);
 }
 
 async function loadOpencodeRuntimeSnapshot(directory: string, sessionID: string) {
@@ -169,10 +117,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     activeProjectDir ? (state.projectDataByDirectory[activeProjectDir] ?? null) : null,
   );
   const setProjectDataForDirectory = useUnifiedRuntimeStore((state) => state.setProjectData);
-  const removeProjectData = useUnifiedRuntimeStore((state) => state.removeProjectData);
+  const removeOpencodeSession = useUnifiedRuntimeStore((state) => state.removeOpencodeSession);
   const setWorkspaceMeta = useUnifiedRuntimeStore((state) => state.setWorkspaceMeta);
   const setOpencodeMessages = useUnifiedRuntimeStore((state) => state.setOpencodeMessages);
   const setOpencodeRuntimeSnapshot = useUnifiedRuntimeStore((state) => state.setOpencodeRuntimeSnapshot);
+  const setOpencodeTodoItems = useUnifiedRuntimeStore((state) => state.setOpencodeTodoItems);
   const collapsedProjects = useUnifiedRuntimeStore((state) => state.collapsedProjects);
   const replaceCollapsedProjects = useUnifiedRuntimeStore((state) => state.replaceCollapsedProjects);
   const messages = useUnifiedRuntimeStore((state) => {
@@ -196,13 +145,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const setProjectData = useCallback((next: ProjectBootstrap | null) => {
     if (next) {
       setProjectDataForDirectory(next.directory, next);
-      return;
     }
-    const currentDirectory = getRuntimeState().activeWorkspaceDirectory;
-    if (currentDirectory) {
-      removeProjectData(currentDirectory);
-    }
-  }, [getRuntimeState, removeProjectData, setProjectDataForDirectory]);
+  }, [setProjectDataForDirectory]);
 
   const setActiveSessionID = useCallback((sessionID: string | undefined) => {
     setActiveSession(sessionID, sessionID ? "opencode" : undefined);
@@ -252,18 +196,121 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
 
   // Delete any empty (no messages sent) session that is being navigated away from.
   // Fire-and-forget — the sidebar refresh after navigation will pick up the deletion.
-  const cleanupEmptySession = useCallback((sessionID: string | undefined) => {
+  const cleanupEmptySession = useCallback(async (sessionID: string | undefined) => {
     if (!sessionID) return;
     const directory = emptySessionIds.current.get(sessionID);
     if (!directory) return;
     emptySessionIds.current.delete(sessionID);
-    void window.orxa.opencode.deleteSession(directory, sessionID).catch(() => undefined);
-  }, []);
+    const state = getRuntimeState();
+    const cachedProject = state.projectDataByDirectory[directory];
+    if (cachedProject?.sessions.some((session) => session.id === sessionID)) {
+      const nextSessionStatus = { ...cachedProject.sessionStatus };
+      delete nextSessionStatus[sessionID];
+      const nextProject = {
+        ...cachedProject,
+        sessions: cachedProject.sessions.filter((session) => session.id !== sessionID),
+        sessionStatus: nextSessionStatus,
+      };
+      setProjectDataForDirectory(directory, nextProject);
+      if (state.activeWorkspaceDirectory === directory) {
+        setProjectData(nextProject);
+      }
+    }
+    removeOpencodeSession(directory, sessionID);
+    if (state.activeWorkspaceDirectory === directory && state.activeSessionID === sessionID) {
+      setActiveSessionID(undefined);
+      setMessages([]);
+    }
+    if (useUnifiedRuntimeStore.getState().pendingSessionId === sessionID) {
+      setPendingSessionId(undefined);
+    }
+    await window.orxa.opencode.deleteSession(directory, sessionID).catch(() => undefined);
+  }, [getRuntimeState, removeOpencodeSession, setActiveSessionID, setMessages, setPendingSessionId, setProjectData, setProjectDataForDirectory]);
 
   // Call when a message is sent in a session — removes it from the empty set
   const markSessionUsed = useCallback((sessionID: string) => {
     emptySessionIds.current.delete(sessionID);
   }, []);
+
+  const commitProjectData = useCallback((directory: string, project: ProjectBootstrap) => {
+    setProjectDataForDirectory(directory, project);
+    const runtimeState = getRuntimeState();
+    if (runtimeState.activeWorkspaceDirectory === directory) {
+      setProjectData(project);
+    }
+    const lastUpdated = project.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
+    setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated });
+  }, [getRuntimeState, setProjectData, setProjectDataForDirectory, setWorkspaceMeta]);
+
+  const applyOpencodeStreamEvent = useCallback((directory: string, event: OpencodeEvent) => {
+    const state = getRuntimeState();
+    const existingProject = state.projectDataByDirectory[directory];
+    const nextProject = applyOpencodeProjectEvent(existingProject ?? null, event);
+    if (nextProject) {
+      const normalizedSessions = [...nextProject.sessions].sort((left: Session, right: Session) => right.time.updated - left.time.updated);
+      commitProjectData(directory, {
+        ...nextProject,
+        sessions: normalizedSessions,
+      });
+    }
+
+    const eventSessionID = (() => {
+      const properties = event.properties as Record<string, unknown> | undefined;
+      if (!properties) {
+        return undefined;
+      }
+      if (typeof properties.sessionID === "string") {
+        return properties.sessionID;
+      }
+      const info = properties.info;
+      if (info && typeof info === "object" && typeof (info as { sessionID?: unknown }).sessionID === "string") {
+        return (info as { sessionID: string }).sessionID;
+      }
+      const part = properties.part;
+      if (part && typeof part === "object" && typeof (part as { sessionID?: unknown }).sessionID === "string") {
+        return (part as { sessionID: string }).sessionID;
+      }
+      return undefined;
+    })();
+
+    if (!eventSessionID) {
+      return;
+    }
+
+    const opencodeSessionKey = makeUnifiedSessionKey("opencode", directory, eventSessionID);
+    const currentRuntime = useUnifiedRuntimeStore.getState().opencodeSessions[opencodeSessionKey];
+    const applied = applyOpencodeSessionEvent({
+      directory,
+      sessionID: eventSessionID,
+      snapshot: currentRuntime?.runtimeSnapshot ?? null,
+      messages: currentRuntime?.messages ?? [],
+      event,
+    });
+
+    if (applied.todoItems) {
+      const mapped = applied.todoItems.map((item, index) => ({
+        id: `todo-${index}`,
+        content: item.content ?? "",
+        status: item.status === "completed"
+          ? "completed" as const
+          : item.status === "in_progress"
+            ? "in_progress" as const
+            : item.status === "cancelled"
+              ? "cancelled" as const
+              : "pending" as const,
+      }));
+      setOpencodeTodoItems(directory, eventSessionID, mapped);
+    }
+
+    if (!applied.changed || !applied.snapshot) {
+      return;
+    }
+
+    setOpencodeRuntimeSnapshot(directory, eventSessionID, {
+      ...applied.snapshot,
+      messages: normalizeMessageBundles(applied.messages),
+    });
+  }, [commitProjectData, getRuntimeState, setOpencodeRuntimeSnapshot, setOpencodeTodoItems]);
 
   const refreshProject = useCallback(
     async (directory: string, skipMessageLoad = false) => {
@@ -328,14 +375,16 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   );
 
   const selectProject = useCallback(
-    async (directory: string) => {
+    async (directory: string, options?: SelectProjectOptions) => {
+      const showLanding = options?.showLanding ?? true;
+      const nextSessionID = showLanding ? undefined : options?.sessionID;
       try {
-        cleanupEmptySession(getRuntimeState().activeSessionID);
+        await cleanupEmptySession(getRuntimeState().activeSessionID);
         setStatusLine(`Loading workspace ${directory}`);
         const cached = getRuntimeState().projectDataByDirectory[directory];
         setProjectData(cached ?? null);
         setMessages([]);
-        setActiveSessionID(undefined);
+        setActiveSessionID(nextSessionID);
         setTerminalOpen(false);
         setTerminalTabs([]);
         setActiveTerminalId(undefined);
@@ -351,18 +400,18 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         const visiblePtys = filterComposerTerminalPtys(data.ptys);
         setTerminalTabs(visiblePtys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
         setActiveTerminalId(visiblePtys[0]?.id);
-        // Don't auto-select a session — show the workspace landing screen instead
-        setActiveSessionID(undefined);
+        setActiveSessionID(nextSessionID);
         setStatusLine(`Loaded ${directory}`);
       } catch (error) {
+        setPendingSessionId(undefined);
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setMessages, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
+    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setMessages, setPendingSessionId, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
   );
 
-  const openWorkspaceDashboard = useCallback(() => {
-    cleanupEmptySession(getRuntimeState().activeSessionID);
+  const openWorkspaceDashboard = useCallback(async () => {
+    await cleanupEmptySession(getRuntimeState().activeSessionID);
     setSidebarMode("projects");
     setActiveProjectDir(undefined);
     setProjectData(null);
@@ -375,13 +424,13 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
 
   const refreshMessages = useCallback(async () => {
     if (!activeProjectDir || !activeSessionID) {
-      return;
+      return undefined;
     }
 
     try {
       const sessionAtStart = activeSessionID;
       if (getRuntimeState().activeSessionID !== sessionAtStart) {
-        return;
+        return undefined;
       }
       const runtime = await loadOpencodeRuntimeSnapshot(activeProjectDir, sessionAtStart);
         const normalized = normalizeMessageBundles(runtime.messages);
@@ -396,13 +445,15 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
             messages: normalized,
           });
         }
+      return runtime;
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
+      return undefined;
     }
   }, [activeProjectDir, activeSessionID, buildRuntimeProjectSlice, getRuntimeState, setOpencodeRuntimeSnapshot, setStatusLine]);
 
   const selectSession = useCallback(
-    (sessionID: string, directoryOverride?: string) => {
+    async (sessionID: string, directoryOverride?: string) => {
       const targetDirectory = directoryOverride ?? getRuntimeState().activeWorkspaceDirectory;
       if (!targetDirectory) {
         return;
@@ -410,7 +461,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       // Clean up the session we're leaving if it was empty
       const currentSessionID = getRuntimeState().activeSessionID;
       if (currentSessionID && currentSessionID !== sessionID) {
-        cleanupEmptySession(currentSessionID);
+        await cleanupEmptySession(currentSessionID);
       }
       setActiveProjectDir(targetDirectory);
       setActiveSessionID(sessionID);
@@ -442,58 +493,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   }, []);
 
   const startResponsePolling = useCallback(
-    (directory: string, sessionID: string) => {
+    (...args: [string, string]) => {
+      void args;
       stopResponsePolling();
-      const startedAt = Date.now();
-      let nextDelayMs = RESPONSE_POLL_BASE_DELAY_MS;
-      let unchangedPolls = 0;
-      let previousStatus = getRuntimeState().projectDataByDirectory[directory]?.sessionStatus[sessionID]?.type;
-      let previousUpdatedAt =
-        getRuntimeState().projectDataByDirectory[directory]?.sessions.find((session) => session.id === sessionID)?.time.updated ?? 0;
-      const tick = () => {
-        if (getRuntimeState().activeWorkspaceDirectory !== directory) {
-          stopResponsePolling();
-          return;
-        }
-
-        void refreshProject(directory, true)
-          .then((next) => {
-            const latestStatus = next.sessionStatus[sessionID]?.type;
-            const latestUpdatedAt = next.sessions.find((session) => session.id === sessionID)?.time.updated ?? 0;
-            const changed = latestStatus !== previousStatus || latestUpdatedAt !== previousUpdatedAt;
-            previousStatus = latestStatus;
-            previousUpdatedAt = latestUpdatedAt;
-            if (changed || latestStatus === "idle") {
-              void refreshMessages();
-              unchangedPolls = 0;
-              nextDelayMs = RESPONSE_POLL_BASE_DELAY_MS;
-            } else {
-              unchangedPolls += 1;
-              nextDelayMs = Math.min(RESPONSE_POLL_MAX_DELAY_MS, RESPONSE_POLL_BASE_DELAY_MS + unchangedPolls * 450);
-            }
-            const status = next.sessionStatus[sessionID];
-            const done = status?.type === "idle";
-            const timedOut = Date.now() - startedAt > 120_000;
-            if (done || timedOut) {
-              stopResponsePolling();
-              return;
-            }
-            responsePollTimer.current = window.setTimeout(tick, nextDelayMs);
-          })
-          .catch(() => {
-            const timedOut = Date.now() - startedAt > 30_000;
-            if (timedOut) {
-              stopResponsePolling();
-              return;
-            }
-            nextDelayMs = Math.min(RESPONSE_POLL_MAX_DELAY_MS, nextDelayMs + 700);
-            responsePollTimer.current = window.setTimeout(tick, nextDelayMs);
-          });
-      };
-
-      responsePollTimer.current = window.setTimeout(tick, RESPONSE_POLL_BASE_DELAY_MS);
     },
-    [getRuntimeState, refreshMessages, refreshProject, stopResponsePolling],
+    [stopResponsePolling],
   );
 
   const createSession = useCallback(
@@ -504,17 +508,18 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       }
 
       const firstPrompt = initialPrompt?.trim() ?? "";
-      const title = firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : "New session";
+      const title = firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : "OpenCode Session";
 
       // Clean up previous empty session before creating a new one
-      cleanupEmptySession(getRuntimeState().activeSessionID);
+      await cleanupEmptySession(getRuntimeState().activeSessionID);
 
       setMessages([]);
       stopResponsePolling();
 
       try {
         if (activeProjectDir !== targetDirectory) {
-          await selectProject(targetDirectory);
+          setPendingSessionId(`creating:${targetDirectory}`);
+          await selectProject(targetDirectory, { showLanding: false });
         }
         const createdSession = await window.orxa.opencode.createSession(
           targetDirectory,
@@ -522,6 +527,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           promptOptions?.permissionMode ?? "ask-write",
         );
         const nextSessionID = createdSession.id;
+        setPendingSessionId(undefined);
         setActiveSessionID(nextSessionID);
         setActiveProjectDir(targetDirectory);
         setMessages([]);
@@ -557,23 +563,6 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
               });
             })
             .catch(() => undefined);
-          window.setTimeout(() => {
-            void loadOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID)
-              .then((runtime) => {
-                const normalized = normalizeMessageBundles(runtime.messages);
-                const runtimeProject = buildRuntimeProjectSlice(targetDirectory, runtime);
-                setOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID, {
-                  ...runtime,
-                  sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[resolvedSessionID],
-                  permissions: runtimeProject.permissions,
-                  questions: runtimeProject.questions,
-                  commands: runtimeProject.commands,
-                  messages: normalized,
-                });
-              })
-              .catch(() => undefined);
-          }, 180);
-          startResponsePolling(targetDirectory, resolvedSessionID);
           setStatusLine("Session started");
         } else {
           if (resolvedSessionID) {
@@ -585,11 +574,12 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         }
         return resolvedSessionID;
       } catch (error) {
+        setPendingSessionId(undefined);
         setStatusLine(error instanceof Error ? error.message : String(error));
         return undefined;
       }
     },
-    [activeProjectDir, buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, refreshProject, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setOpencodeRuntimeSnapshot, setPendingSessionId, setStatusLine, startResponsePolling, stopResponsePolling],
+    [activeProjectDir, buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, refreshProject, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setOpencodeRuntimeSnapshot, setPendingSessionId, setStatusLine, stopResponsePolling],
   );
 
   const queueRefresh = useCallback(
@@ -745,6 +735,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     refreshMessages,
     selectSession,
     createSession,
+    applyOpencodeStreamEvent,
     queueRefresh,
     startResponsePolling,
     stopResponsePolling,

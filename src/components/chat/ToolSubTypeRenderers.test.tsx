@@ -44,7 +44,7 @@ describe("BashTool", () => {
         exitCode={0}
       />,
     );
-    // Card auto-expands; verify the pre body contains clean text (no ESC bytes)
+    fireEvent.click(screen.getByRole("button"));
     const pre = document.querySelector(".command-output-body");
     expect(pre).toBeTruthy();
     expect(pre?.textContent).not.toContain("\x1b");
@@ -55,7 +55,7 @@ describe("BashTool", () => {
     render(
       <BashTool command="false" output="err" exitCode={1} status="completed" />,
     );
-    // Card auto-expands for completed status with content
+    fireEvent.click(screen.getByRole("button"));
     expect(screen.getByText("[1]")).toBeInTheDocument();
   });
 

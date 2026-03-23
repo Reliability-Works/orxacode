@@ -6,7 +6,7 @@ import type { AppShellUpdateStatusMessage } from "../hooks/useAppShellUpdateFlow
 import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
 
-type SidebarMode = "projects" | "jobs" | "skills" | "memory";
+type SidebarMode = "projects" | "jobs" | "skills";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 type SessionSidebarIndicator = "busy" | "awaiting" | "unread" | "none";
 
@@ -45,6 +45,7 @@ export type WorkspaceSidebarProps = {
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
   cachedSessionsByProject?: Record<string, SessionListItem[]>;
+  hiddenSessionIDsByProject?: Record<string, string[]>;
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionTitle: (sessionID: string, directory?: string, fallbackTitle?: string) => string | undefined;
@@ -55,6 +56,7 @@ export type WorkspaceSidebarProps = {
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
+  onOpenMemoryModal: () => void;
   onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -85,6 +87,7 @@ export function WorkspaceSidebar({
   setCollapsedProjects,
   sessions,
   cachedSessionsByProject,
+  hiddenSessionIDsByProject,
   activeSessionID,
   setAllSessionsModalOpen,
   getSessionTitle,
@@ -95,6 +98,7 @@ export function WorkspaceSidebar({
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
+  onOpenMemoryModal,
   onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
@@ -147,8 +151,7 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className={sidebarMode === "memory" ? "active" : ""}
-            onClick={() => setSidebarMode("memory")}
+            onClick={onOpenMemoryModal}
           >
             <Brain size={16} aria-hidden="true" />
             Memory
@@ -262,17 +265,19 @@ export function WorkspaceSidebar({
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
               const isExpanded = !collapsedProjects[project.worktree];
+              const hiddenSessionIDs = new Set(hiddenSessionIDsByProject?.[project.worktree] ?? []);
               // Use active sessions for active project, cached sessions for others
               const projectSessions = isActiveProject
                 ? sessions
                 : (cachedSessionsByProject?.[project.worktree] ?? []);
-              const visibleSessions = isExpanded ? projectSessions : [];
+              const visibleProjectSessions = projectSessions.filter((session) => !hiddenSessionIDs.has(session.id));
+              const visibleSessions = isExpanded ? visibleProjectSessions : [];
               const displayedSessions = (() => {
-                const first = visibleSessions.slice(0, 4);
+                const first = visibleProjectSessions.slice(0, 4);
                 if (!activeSessionID || first.some((session) => session.id === activeSessionID)) {
                   return first;
                 }
-                const active = visibleSessions.find((session) => session.id === activeSessionID);
+                const active = visibleProjectSessions.find((session) => session.id === activeSessionID);
                 if (!active) {
                   return first;
                 }

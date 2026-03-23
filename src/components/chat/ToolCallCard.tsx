@@ -4,6 +4,7 @@ export type ToolCallStatus = "pending" | "running" | "completed" | "error";
 
 interface ToolCallCardProps {
   title: string;
+  expandedTitle?: string;
   subtitle?: string;
   status: ToolCallStatus;
   command?: string;

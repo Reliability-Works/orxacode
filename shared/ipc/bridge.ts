@@ -9,16 +9,10 @@ import type {
   ArtifactRetentionPolicy,
   ArtifactRetentionUpdateInput,
   ArtifactSessionSummary,
-  MemoryBackfillStatus,
-  MemoryGraphQuery,
-  MemoryGraphSnapshot,
-  MemorySettings,
-  MemorySettingsUpdateInput,
-  MemoryTemplate,
   WorkspaceArtifactSummary,
   WorkspaceContextFile,
   WorkspaceContextWriteInput,
-} from "./memory-artifacts";
+} from "./artifacts";
 import type {
   AgentsDocument,
   ChangeProvenanceRecord,
@@ -166,13 +160,6 @@ export interface OrxaBridge {
     readWorkspaceContext: (workspace: string, id: string) => Promise<WorkspaceContextFile>;
     writeWorkspaceContext: (input: WorkspaceContextWriteInput) => Promise<WorkspaceContextFile>;
     deleteWorkspaceContext: (workspace: string, id: string) => Promise<boolean>;
-    getMemorySettings: (directory?: string) => Promise<MemorySettings>;
-    updateMemorySettings: (input: MemorySettingsUpdateInput) => Promise<MemorySettings>;
-    listMemoryTemplates: () => Promise<MemoryTemplate[]>;
-    applyMemoryTemplate: (templateID: string, directory?: string, scope?: "global" | "workspace") => Promise<MemorySettings>;
-    getMemoryGraph: (input?: MemoryGraphQuery) => Promise<MemoryGraphSnapshot>;
-    backfillMemory: (directory?: string) => Promise<MemoryBackfillStatus>;
-    clearWorkspaceMemory: (directory: string) => Promise<boolean>;
     getServerDiagnostics: () => Promise<ServerDiagnostics>;
     repairRuntime: () => Promise<ServerDiagnostics>;
   };
@@ -226,10 +213,12 @@ export interface OrxaBridge {
     startThread: (options?: { model?: string; cwd?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => Promise<CodexThread>;
     listThreads: (options?: { cursor?: string | null; limit?: number; archived?: boolean }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>;
     getThreadRuntime: (threadId: string) => Promise<CodexThreadRuntime>;
+    resumeThread: (threadId: string) => Promise<Record<string, unknown>>;
     archiveThreadTree: (threadId: string) => Promise<void>;
     setThreadName: (threadId: string, name: string) => Promise<void>;
     generateRunMetadata: (cwd: string, prompt: string) => Promise<CodexRunMetadata>;
     startTurn: (threadId: string, prompt: string, cwd?: string, model?: string, effort?: string, collaborationMode?: string) => Promise<void>;
+    steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;
     deny: (requestId: number) => Promise<void>;
     respondToUserInput: (requestId: number, response: string) => Promise<void>;

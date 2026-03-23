@@ -16,11 +16,11 @@ Windows (`nsis`, `zip`) and Linux (`AppImage`) build support remains in the repo
 
 You need **at least one** of the following AI backends installed:
 
-| Backend | Install | What it does |
-|---------|---------|-------------|
-| [OpenCode](https://github.com/anomalyco/opencode) | `npm install -g opencode-ai` | Full agent sessions with tool use, file editing, terminal, memory |
-| [Codex](https://github.com/openai/codex) | `npm install -g @openai/codex` | Agent sessions with plan mode, collaboration modes, subagents |
-| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash` | Terminal-based Claude sessions with permission controls |
+| Backend                                                     | Install                                           | What it does                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------- |
+| [OpenCode](https://github.com/anomalyco/opencode)           | `npm install -g opencode-ai`                      | Full agent sessions with tool use, file editing, terminal, memory |
+| [Codex](https://github.com/openai/codex)                    | `npm install -g @openai/codex`                    | Agent sessions with plan mode, collaboration modes, subagents     |
+| [Claude Code](https://code.claude.com/docs/en/setup)        | `curl -fsSL https://claude.ai/install.sh \| bash` | Terminal-based Claude sessions with permission controls           |
 
 On startup, the app checks which backends are available and enables session types accordingly.
 

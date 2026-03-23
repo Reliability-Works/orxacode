@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { normalizeMessageBundles } from "../hooks/useWorkspaceState";
+import { normalizeMessageBundles } from "../lib/opencode-event-reducer";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 type Props = {

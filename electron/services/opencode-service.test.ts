@@ -1,9 +1,19 @@
 /** @vitest-environment node */
 
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
-import { buildManagedServerEnv, OpencodeService, resolveManagedServerLaunchPort, sanitizeManagedRuntimeConfig } from "./opencode-service";
+import {
+  buildManagedRuntimeConfigOverride,
+  buildManagedServerEnv,
+  compareOpencodeVersions,
+  OpencodeService,
+  pickLatestManagedOpencodeBinary,
+  resolveManagedServerLaunchPort,
+} from "./opencode-service";
 import { createSessionMessageBundle, createTextPart } from "../../src/test/session-message-bundle-factory";
 
 vi.mock("electron", () => ({
@@ -81,14 +91,12 @@ describe("hasRecentMatchingUserPrompt", () => {
   });
 });
 
-describe("OpencodeService memory prompt integration", () => {
+describe("OpencodeService prompt payloads", () => {
   function createSendPromptHarness() {
     const service = Object.create(OpencodeService.prototype) as unknown as {
       sendPrompt: (input: { directory: string; sessionID: string; text: string }) => Promise<boolean>;
       promptFence: Map<string, number>;
-      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
-      memoryStore: { buildPromptContext: (directory: string, text: string) => Promise<string> };
-      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+      client: () => { session: { promptAsync: (payload: unknown) => Promise<void> } };
       ensureWorkspaceDirectory: (directory: string) => string;
     };
     service.promptFence = new Map<string, number>();
@@ -96,19 +104,13 @@ describe("OpencodeService memory prompt integration", () => {
     return service;
   }
 
-  it("injects memory context into prompt system field", async () => {
+  it("keeps the prompt system field explicit-only", async () => {
     const service = createSendPromptHarness();
     const promptMock = vi.fn(async (payload: unknown) => {
       void payload;
       return undefined;
     });
-    const buildContextMock = vi.fn(async () => "Workspace memory guidance:\nUse pnpm.");
-    const scheduleMock = vi.fn(async () => undefined);
-    service.client = () => ({ session: { prompt: promptMock } });
-    service.memoryStore = {
-      buildPromptContext: buildContextMock,
-    };
-    service.scheduleSessionMemoryIngest = scheduleMock;
+    service.client = () => ({ session: { promptAsync: promptMock } });
 
     await service.sendPrompt({
       directory: "/repo-memory",
@@ -117,26 +119,19 @@ describe("OpencodeService memory prompt integration", () => {
     });
 
     const payload = promptMock.mock.calls[0]?.[0] as { system?: string } | undefined;
-    expect(buildContextMock).toHaveBeenCalledWith("/repo-memory", "Run tests");
-    expect(payload?.system).toContain("Workspace memory guidance");
+    expect(payload?.system).toBeUndefined();
   });
 
-  it("omits system field when no memory context exists", async () => {
+  it("omits system field when no explicit system prompt exists", async () => {
     const service = createSendPromptHarness() as unknown as {
       sendPrompt: (input: { directory: string; sessionID: string; text: string }) => Promise<boolean>;
-      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
-      memoryStore: { buildPromptContext: () => Promise<string> };
-      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+      client: () => { session: { promptAsync: (payload: unknown) => Promise<void> } };
     };
     const promptMock = vi.fn(async (payload: unknown) => {
       void payload;
       return undefined;
     });
-    service.client = () => ({ session: { prompt: promptMock } });
-    service.memoryStore = {
-      buildPromptContext: async () => "",
-    };
-    service.scheduleSessionMemoryIngest = async () => undefined;
+    service.client = () => ({ session: { promptAsync: promptMock } });
 
     await service.sendPrompt({
       directory: "/repo-standard",
@@ -151,19 +146,13 @@ describe("OpencodeService memory prompt integration", () => {
   it("forwards explicit tool policy overrides in prompt payload", async () => {
     const service = createSendPromptHarness() as unknown as {
       sendPrompt: (input: { directory: string; sessionID: string; text: string; tools?: Record<string, boolean> }) => Promise<boolean>;
-      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
-      memoryStore: { buildPromptContext: () => Promise<string> };
-      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+      client: () => { session: { promptAsync: (payload: unknown) => Promise<void> } };
     };
     const promptMock = vi.fn(async (payload: unknown) => {
       void payload;
       return undefined;
     });
-    service.client = () => ({ session: { prompt: promptMock } });
-    service.memoryStore = {
-      buildPromptContext: async () => "",
-    };
-    service.scheduleSessionMemoryIngest = async () => undefined;
+    service.client = () => ({ session: { promptAsync: promptMock } });
 
     await service.sendPrompt({
       directory: "/repo-standard",
@@ -176,23 +165,16 @@ describe("OpencodeService memory prompt integration", () => {
     expect(payload?.tools).toEqual({ "*": false, web_search: false });
   });
 
-  it("skips memory-context lookup for machine-origin prompts", async () => {
+  it("still omits system field for machine-origin prompts", async () => {
     const service = createSendPromptHarness() as unknown as {
       sendPrompt: (input: { directory: string; sessionID: string; text: string; promptSource?: "machine" | "user" }) => Promise<boolean>;
-      client: () => { session: { prompt: (payload: unknown) => Promise<void> } };
-      memoryStore: { buildPromptContext: () => Promise<string> };
-      scheduleSessionMemoryIngest: (directory: string, sessionID: string, reason: string) => Promise<void>;
+      client: () => { session: { promptAsync: (payload: unknown) => Promise<void> } };
     };
     const promptMock = vi.fn(async (payload: unknown) => {
       void payload;
       return undefined;
     });
-    const buildContextMock = vi.fn(async () => "Workspace memory guidance");
-    service.client = () => ({ session: { prompt: promptMock } });
-    service.memoryStore = {
-      buildPromptContext: buildContextMock,
-    };
-    service.scheduleSessionMemoryIngest = async () => undefined;
+    service.client = () => ({ session: { promptAsync: promptMock } });
 
     await service.sendPrompt({
       directory: "/repo-standard",
@@ -201,7 +183,6 @@ describe("OpencodeService memory prompt integration", () => {
       promptSource: "machine",
     });
 
-    expect(buildContextMock).not.toHaveBeenCalled();
     const payload = promptMock.mock.calls[0]?.[0] as { system?: string } | undefined;
     expect(payload?.system).toBeUndefined();
   });
@@ -289,6 +270,39 @@ describe("OpencodeService provider filtering", () => {
 });
 
 describe("OpencodeService git flows", () => {
+  it("renders nested git repositories via their inner diff instead of as +0/-0 directories", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "orxa-opencode-nested-"));
+    const nestedDir = path.join(root, "nested-app");
+    await mkdir(path.join(nestedDir, ".git"), { recursive: true });
+    await writeFile(path.join(nestedDir, "package.json"), '{"name":"nested-app"}\n', "utf8");
+
+    const service = Object.create(OpencodeService.prototype) as unknown as {
+      renderUntrackedDiff: (repoRoot: string, relativePath: string) => Promise<string>;
+      gitDiff: (directory: string) => Promise<string>;
+    };
+    service.gitDiff = vi.fn(async (directory: string) => {
+      expect(directory).toBe(nestedDir);
+      return [
+        "## Unstaged",
+        "",
+        "diff --git a/package.json b/package.json",
+        "--- a/package.json",
+        "+++ b/package.json",
+        "@@ -1 +1,2 @@",
+        '-{"name":"nested-app"}',
+        '+{"name":"nested-app","private":true}',
+      ].join("\n");
+    });
+
+    try {
+      const rendered = await service.renderUntrackedDiff(root, "nested-app/");
+      expect(rendered).toContain("diff --git a/package.json b/package.json");
+      expect(rendered).not.toContain("Binary files /dev/null and b/nested-app/ differ");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("includes untracked file line counts in commit summary", async () => {
     const service = Object.create(OpencodeService.prototype) as {
       gitCommitSummary: (directory: string, includeUnstaged: boolean) => Promise<{
@@ -818,6 +832,54 @@ describe("OpencodeService runtime dependency detection", () => {
 });
 
 describe("OpencodeService managed local runtime startup", () => {
+  it("selects the newest locally available OpenCode binary on macOS", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      resolveBinary: (customPath?: string) => Promise<string>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.runCommandWithOutput = vi.fn(async (command: string) => {
+      if (command === "/Applications/OpenCode.app/Contents/MacOS/opencode-cli") {
+        return "1.2.27\n";
+      }
+      if (command === "opencode") {
+        return "1.2.26\n";
+      }
+      throw new Error(`Unexpected binary: ${command}`);
+    });
+
+    const result = await service.resolveBinary(undefined);
+
+    if (process.platform === "darwin") {
+      expect(result).toBe("/Applications/OpenCode.app/Contents/MacOS/opencode-cli");
+      expect(service.runCommandWithOutput).toHaveBeenCalledWith("/Applications/OpenCode.app/Contents/MacOS/opencode-cli", ["--version"], expect.any(String));
+      expect(service.runCommandWithOutput).toHaveBeenCalledWith("opencode", ["--version"], expect.any(String));
+    } else {
+      expect(result).toBe("opencode");
+    }
+  });
+
+  it("keeps the global opencode CLI when it matches or exceeds other local versions", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      resolveBinary: (customPath?: string) => Promise<string>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.runCommandWithOutput = vi.fn(async (command: string) => {
+      if (command === "/Applications/OpenCode.app/Contents/MacOS/opencode-cli") {
+        return "1.2.27\n";
+      }
+      if (command === "opencode") {
+        return "1.2.27\n";
+      }
+      throw new Error(`Unexpected binary: ${command}`);
+    });
+
+    const result = await service.resolveBinary(undefined);
+
+    expect(result).toBe("opencode");
+  });
+
   it("starts the managed local runtime instead of attaching to an arbitrary existing server", async () => {
     const service = Object.create(OpencodeService.prototype) as {
       initializeFromStoredProfile: () => Promise<{ status: string }>;
@@ -865,44 +927,220 @@ describe("OpencodeService managed local runtime startup", () => {
     }
   });
 
-  it("strips repo-local npm lifecycle variables from the managed server environment", () => {
+  it("strips repo-local runtime and package-manager variables from the managed server environment", () => {
     const env = buildManagedServerEnv({
       PATH: "/usr/bin",
       HOME: "/Users/test",
       INIT_CWD: "/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa",
+      NODE_ENV: "development",
+      NODE_PATH: "/Users/callumspencer/Repos/macapp/orxacode/node_modules",
+      OLDPWD: "/Users/callumspencer",
+      OPENCODE_TEST_HOME: "/tmp/test-home",
       PNPM_SCRIPT_SRC_DIR: "/Volumes/ExtSSD/Repos/macapp/OpencodeOrxa",
+      PWD: "/Users/callumspencer/Repos/macapp/orxacode",
       VITE_DEV_SERVER_URL: "http://localhost:5173",
+      npm_config_user_agent: "pnpm/10.29.3",
       npm_package_name: "opencode-orxa",
       npm_lifecycle_event: "dev",
+      pnpm_config_verify_deps_before_run: "false",
     });
 
     expect(env.PATH).toBe("/usr/bin");
     expect(env.HOME).toBe("/Users/test");
     expect(env.INIT_CWD).toBeUndefined();
+    expect(env.NODE_ENV).toBeUndefined();
+    expect(env.NODE_PATH).toBeUndefined();
+    expect(env.OLDPWD).toBeUndefined();
+    expect(env.OPENCODE_TEST_HOME).toBeUndefined();
     expect(env.PNPM_SCRIPT_SRC_DIR).toBeUndefined();
+    expect(env.PWD).toBeUndefined();
     expect(env.VITE_DEV_SERVER_URL).toBeUndefined();
+    expect(env.npm_config_user_agent).toBeUndefined();
     expect(env.npm_package_name).toBeUndefined();
     expect(env.npm_lifecycle_event).toBeUndefined();
+    expect(env.pnpm_config_verify_deps_before_run).toBeUndefined();
   });
 
-  it("removes plugin configuration from the managed runtime config snapshot", () => {
-    const raw = JSON.stringify({
-      plugin: ["opencode-supermemory", "opencode-sync-plugin"],
-      provider: {
-        "zai-coding-plan": {
-          name: "Z.AI Coding Plan",
-        },
+  it("does not rely on OPENCODE_TEST_HOME for the managed runtime environment", () => {
+    const service = Object.create(OpencodeService.prototype);
+    const env = (
+      service as unknown as {
+        buildManagedRuntimeEnv: (baseEnv: NodeJS.ProcessEnv) => NodeJS.ProcessEnv;
+      }
+    ).buildManagedRuntimeEnv(
+      {
+        HOME: "/Users/test",
+        OPENCODE_TEST_HOME: "/tmp/should-not-leak",
+        XDG_DATA_HOME: "/tmp/managed/data",
       },
-    }, null, 2);
-
-    expect(sanitizeManagedRuntimeConfig(raw)).toBe(
-      `${JSON.stringify({
-        provider: {
-          "zai-coding-plan": {
-            name: "Z.AI Coding Plan",
-          },
-        },
-      }, null, 2)}\n`,
     );
+
+    expect(env.OPENCODE_TEST_HOME).toBeUndefined();
+    expect(env.XDG_DATA_HOME).toBeUndefined();
+    expect(env.OPENCODE_CONFIG_DIR).toBe("/Users/test/.config/opencode");
+    expect(env.OPENCODE_CONFIG_CONTENT).toBe(JSON.stringify({ plugin: [] }));
+  });
+
+  it("uses a minimal managed runtime config override", () => {
+    expect(buildManagedRuntimeConfigOverride()).toBe(JSON.stringify({ plugin: [] }));
+  });
+
+  it("compares OpenCode versions numerically", () => {
+    expect(compareOpencodeVersions("1.2.27", "1.2.26")).toBe(1);
+    expect(compareOpencodeVersions("1.2.26", "1.2.27")).toBe(-1);
+    expect(compareOpencodeVersions("1.2.27", "1.2.27")).toBe(0);
+    expect(compareOpencodeVersions("1.10.0", "1.2.99")).toBe(1);
+  });
+
+  it("selects the latest managed binary from pure launch inputs", () => {
+    expect(
+      pickLatestManagedOpencodeBinary({
+        platform: "darwin",
+        candidates: [
+          { path: "opencode", version: "1.2.26" },
+          { path: "/Applications/OpenCode.app/Contents/MacOS/opencode-cli", version: "1.2.27" },
+        ],
+      }),
+    ).toBe("/Applications/OpenCode.app/Contents/MacOS/opencode-cli");
+    expect(
+      pickLatestManagedOpencodeBinary({
+        platform: "darwin",
+        candidates: [
+          { path: "opencode", version: "1.2.27" },
+          { path: "/Applications/OpenCode.app/Contents/MacOS/opencode-cli", version: "1.2.27" },
+        ],
+      }),
+    ).toBe("opencode");
+    expect(
+      pickLatestManagedOpencodeBinary({
+        platform: "linux",
+        candidates: [
+          { path: "opencode", version: "1.2.26" },
+          { path: "/Applications/OpenCode.app/Contents/MacOS/opencode-cli", version: "1.2.27" },
+        ],
+      }),
+    ).toBe("opencode");
+  });
+
+  it("keeps using the launched managed server URL during attach instead of the profile's stale port", async () => {
+    const setState = vi.fn();
+    const startGlobalStream = vi.fn();
+    const service = Object.create(OpencodeService.prototype) as {
+      attach: (profileID: string) => Promise<{ status: string }>;
+      profileStore: {
+        list: () => Array<{ id: string; host: string; port: number; https: boolean }>;
+        setActiveProfileId: (profileID: string) => void;
+      };
+      basicAuthHeader: (profile: unknown) => Promise<string | undefined>;
+      setState: typeof setState;
+      client: () => { global: { health: () => Promise<{ data: unknown }> } };
+      runtimeState: () => { status: string };
+      startGlobalStream: typeof startGlobalStream;
+      managedProcess?: unknown;
+      managedBaseUrl?: string;
+      activeProfile?: { id: string; host: string; port: number; https: boolean };
+      authHeader?: string;
+    };
+
+    service.profileStore = {
+      list: () => [{ id: "local-profile", host: "127.0.0.1", port: 4096, https: false }],
+      setActiveProfileId: () => undefined,
+    };
+    service.basicAuthHeader = async () => undefined;
+    service.setState = setState;
+    service.client = () => ({
+      global: {
+        health: async () => ({ data: { ok: true } }),
+      },
+    });
+    service.runtimeState = () => ({ status: "connected" });
+    service.startGlobalStream = startGlobalStream;
+    service.managedProcess = { pid: 12345 };
+    service.managedBaseUrl = "http://127.0.0.1:55555";
+
+    const result = await service.attach("local-profile");
+
+    expect(setState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "connecting",
+        baseUrl: "http://127.0.0.1:55555",
+        managedServer: true,
+      }),
+    );
+    expect(setState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: "connected",
+        baseUrl: "http://127.0.0.1:55555",
+        managedServer: true,
+      }),
+    );
+    expect(startGlobalStream).toHaveBeenCalled();
+    expect(result.status).toBe("connected");
+  });
+});
+
+describe("OpencodeService session runtime snapshots", () => {
+  it("returns current messages without blocking on artifact sync", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      getSessionRuntime: (directory: string, sessionID: string) => Promise<{
+        messages: unknown[];
+        sessionDiff: unknown[];
+        executionLedger: { cursor: number; records: unknown[] };
+        changeProvenance: { cursor: number; records: unknown[] };
+      }>;
+      ensureWorkspaceDirectory: (directory: string) => string;
+      client: (directory: string) => {
+        session: {
+          get: () => Promise<{ data: { id: string } }>;
+          status: () => Promise<{ data: Record<string, { type: string }> }>;
+          diff: () => Promise<{ data: unknown[] }>;
+        };
+        permission: { list: () => Promise<{ data: unknown[] }> };
+        question: { list: () => Promise<{ data: unknown[] }> };
+        command: { list: () => Promise<{ data: unknown[] }> };
+      };
+      loadMessages: (directory: string, sessionID: string) => Promise<unknown[]>;
+      ledgerStore: {
+        loadSnapshot: (directory: string, sessionID: string, cursor: number) => Promise<{ cursor: number; records: unknown[] }>;
+      };
+      provenanceIndex: {
+        loadSnapshot: (directory: string, sessionID: string, cursor: number) => Promise<{ cursor: number; records: unknown[] }>;
+      };
+      syncSessionExecutionArtifacts: (directory: string, sessionID: string) => Promise<void>;
+    };
+
+    service.ensureWorkspaceDirectory = (directory) => directory;
+    service.client = () => ({
+      session: {
+        get: async () => ({ data: { id: "session-1" } }),
+        status: async () => ({ data: { "session-1": { type: "busy" } } }),
+        diff: async () => ({ data: [{ file: "package.json", before: "", after: "{}", additions: 1, deletions: 0 }] }),
+      },
+      permission: { list: async () => ({ data: [] }) },
+      question: { list: async () => ({ data: [] }) },
+      command: { list: async () => ({ data: [] }) },
+    });
+    service.loadMessages = async () => [{ id: "message-1" }];
+    service.ledgerStore = {
+      loadSnapshot: async () => ({ cursor: 1, records: [{ id: "ledger-1" }] }),
+    };
+    service.provenanceIndex = {
+      loadSnapshot: async () => ({ cursor: 1, records: [{ eventID: "prov-1" }] }),
+    };
+    service.syncSessionExecutionArtifacts = vi.fn(() => new Promise<void>(() => undefined));
+
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("getSessionRuntime timed out")), 100);
+    });
+
+    const runtime = await Promise.race([
+      service.getSessionRuntime("/repo", "session-1"),
+      timeout,
+    ]);
+
+    expect(runtime.messages).toEqual([{ id: "message-1" }]);
+    expect(runtime.sessionDiff).toEqual([{ file: "package.json", before: "", after: "{}", additions: 1, deletions: 0 }]);
+    expect(runtime.executionLedger.records).toEqual([{ id: "ledger-1" }]);
+    expect(runtime.changeProvenance.records).toEqual([{ eventID: "prov-1" }]);
   });
 });

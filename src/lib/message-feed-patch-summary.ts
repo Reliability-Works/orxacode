@@ -128,14 +128,14 @@ function extractPatchText(input: unknown, output: unknown) {
   if (typeof input === "string" && input.trim()) {
     candidates.push(input);
   }
-  const nestedPatchText = extractStringByKeys(input, ["patch", "content", "text", "diff"]);
+  const nestedPatchText = extractStringByKeys(input, ["patch", "content", "text", "diff", "cmd", "command"]);
   if (nestedPatchText) {
     candidates.push(nestedPatchText);
   }
   if (typeof output === "string" && output.trim()) {
     candidates.push(output);
   }
-  const nestedOutputPatchText = extractStringByKeys(output, ["patch", "content", "text", "diff"]);
+  const nestedOutputPatchText = extractStringByKeys(output, ["patch", "content", "text", "diff", "cmd", "command"]);
   if (nestedOutputPatchText) {
     candidates.push(nestedOutputPatchText);
   }

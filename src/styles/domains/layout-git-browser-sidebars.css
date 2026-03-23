@@ -496,7 +496,7 @@
 }
 
 .project-item.active .project-item-header {
-  background: var(--bg-input);
+  background: transparent;
 }
 
 .project-item:hover .project-add-session,

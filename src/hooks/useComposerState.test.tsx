@@ -124,4 +124,48 @@ describe("useComposerState", () => {
       agent: "builder",
     }));
   });
+
+  it("refreshes project data after auto-renaming an OpenCode session title", async () => {
+    const sendPromptMock = vi.fn(async () => true);
+    const renameSessionMock = vi.fn(async () => true);
+    const refreshProjectMock = vi.fn(async () => undefined);
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          sendPrompt: sendPromptMock,
+          renameSession: renameSessionMock,
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useComposerState("/repo", "session-1", {
+        availableSlashCommands: [],
+        refreshMessages: vi.fn(async () => undefined),
+        refreshProject: refreshProjectMock,
+        sessions: [{ id: "session-1", title: "OpenCode Session" }],
+        selectedAgent: "builder",
+        availableAgentNames: new Set(["builder"]),
+        setStatusLine: vi.fn(),
+        shouldAutoRenameSessionTitle: vi.fn(() => true),
+        deriveSessionTitleFromPrompt: vi.fn(() => "Ship booking flow"),
+        startResponsePolling: vi.fn(),
+        stopResponsePolling: vi.fn(),
+        clearPendingSession: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.setComposer("Ship booking flow");
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt();
+    });
+
+    expect(renameSessionMock).toHaveBeenCalledWith("/repo", "session-1", "Ship booking flow");
+    expect(refreshProjectMock).toHaveBeenCalledWith("/repo");
+    expect(sendPromptMock).toHaveBeenCalled();
+  });
 });

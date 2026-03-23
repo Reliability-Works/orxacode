@@ -28,7 +28,7 @@ describe("message-feed-timeline helpers", () => {
     });
     expect(blocks[2]).toMatchObject({
       type: "exploration",
-      summary: "Explored 1 list",
+      summary: "Explored 1 search",
     });
   });
 
@@ -45,7 +45,7 @@ describe("message-feed-timeline helpers", () => {
     expect(blocks).toHaveLength(3);
     expect(blocks[0]).toMatchObject({
       type: "exploration",
-      summary: "Explored 1 file, 1 list",
+      summary: "Explored 1 file, 1 search",
     });
     expect(blocks[1]).toMatchObject({
       type: "event",

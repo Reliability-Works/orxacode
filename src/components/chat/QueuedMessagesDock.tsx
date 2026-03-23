@@ -1,4 +1,4 @@
-import { Clock, Send, X } from "lucide-react";
+import { Clock, CornerDownRight, Send, X } from "lucide-react";
 import { DockSurface } from "./DockSurface";
 
 export interface QueuedMessage {
@@ -10,7 +10,8 @@ export interface QueuedMessage {
 interface QueuedMessagesDockProps {
   messages: QueuedMessage[];
   sendingId?: string;
-  onSendNow: (id: string) => void;
+  actionKind?: "send" | "steer";
+  onPrimaryAction: (id: string) => void;
   onEdit: (id: string) => void;
   onRemove: (id: string) => void;
 }
@@ -31,7 +32,8 @@ function formatTimestamp(ts: number): string {
 export function QueuedMessagesDock({
   messages,
   sendingId,
-  onSendNow,
+  actionKind = "send",
+  onPrimaryAction,
   onEdit,
   onRemove,
 }: QueuedMessagesDockProps) {
@@ -41,11 +43,15 @@ export function QueuedMessagesDock({
 
   const count = messages.length;
   const label = count === 1 ? "1 followup message queued" : `${count} followup messages queued`;
+  const actionLabel = actionKind === "steer" ? "Steer" : "Send now";
+  const actionBusyLabel = actionKind === "steer" ? "Steering" : "Sending";
+  const actionAriaLabel = actionKind === "steer" ? "Steer message" : "Send now";
 
   return (
     <DockSurface
       title={label}
       icon={<Clock size={12} aria-hidden="true" />}
+      className="dock-surface--compact-width"
     >
       <div className="queued-messages-dock">
         {messages.map((msg) => {
@@ -62,14 +68,14 @@ export function QueuedMessagesDock({
               <div className="queued-message-actions" role="group" aria-label="Message actions">
                 <button
                   type="button"
-                  className="queued-message-action queued-message-action--send"
-                  onClick={() => onSendNow(msg.id)}
+                  className={`queued-message-action queued-message-action--${actionKind}`.trim()}
+                  onClick={() => onPrimaryAction(msg.id)}
                   disabled={isSending || Boolean(sendingId)}
-                  aria-label="Send now"
-                  title="Send now"
+                  aria-label={actionAriaLabel}
+                  title={actionAriaLabel}
                 >
-                  <Send size={11} aria-hidden="true" />
-                  <span>{isSending ? "Sending" : "Send now"}</span>
+                  {actionKind === "steer" ? <CornerDownRight size={11} aria-hidden="true" /> : <Send size={11} aria-hidden="true" />}
+                  <span>{isSending ? actionBusyLabel : actionLabel}</span>
                 </button>
                 <button
                   type="button"

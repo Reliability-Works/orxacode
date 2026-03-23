@@ -57,17 +57,13 @@ function isExplorationKind(kind: TimelineKind) {
 
 function summarizeExploration(entries: TimelineEvent[]) {
   const reads = entries.filter((entry) => entry.kind === "read").length;
-  const searches = entries.filter((entry) => entry.kind === "search").length;
-  const lists = entries.filter((entry) => entry.kind === "list").length;
+  const searches = entries.filter((entry) => entry.kind === "search" || entry.kind === "list").length;
   const parts: string[] = [];
   if (reads > 0) {
     parts.push(pluralize(reads, "file"));
   }
   if (searches > 0) {
     parts.push(pluralize(searches, "search", "searches"));
-  }
-  if (lists > 0) {
-    parts.push(pluralize(lists, "list"));
   }
   if (parts.length === 0) {
     parts.push(pluralize(entries.length, "step"));
@@ -113,17 +109,13 @@ export function buildDelegationEventBlocks(events: InternalEvent[]): DelegationE
       return;
     }
     const reads = activeExploration.filter((entry) => entry.kind === "read").length;
-    const searches = activeExploration.filter((entry) => entry.kind === "search").length;
-    const lists = activeExploration.filter((entry) => entry.kind === "list").length;
+    const searches = activeExploration.filter((entry) => entry.kind === "search" || entry.kind === "list").length;
     const parts: string[] = [];
     if (reads > 0) {
       parts.push(pluralize(reads, "file"));
     }
     if (searches > 0) {
       parts.push(pluralize(searches, "search", "searches"));
-    }
-    if (lists > 0) {
-      parts.push(pluralize(lists, "list"));
     }
     const summary = `Explored ${parts.length > 0 ? parts.join(", ") : pluralize(activeExploration.length, "step")}`;
     blocks.push({

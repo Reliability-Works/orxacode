@@ -116,6 +116,7 @@ beforeEach(() => {
           questions: [],
           commands: [],
           messages: [],
+          sessionDiff: [],
           executionLedger: { cursor: 0, records: [] },
           changeProvenance: { cursor: 0, records: [] },
         })),
@@ -472,6 +473,127 @@ describe("App", () => {
     });
 
     expect(screen.queryByText("New session")).not.toBeInTheDocument();
+  });
+
+  it("deletes an unused Codex session when navigating away", async () => {
+    const now = Date.now();
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [
+        { id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const },
+        { id: "proj-2", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const },
+      ],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const createSessionMock = vi.fn(async () => ({
+      id: "codex-empty",
+      slug: "codex-empty",
+      title: "Codex Session",
+      time: { created: now, updated: now },
+    }));
+    const deleteSessionMock = vi.fn(async () => true);
+    const selectProjectMock = vi.fn(async (directory: string) => {
+      if (directory === "/repo/marketing-websites") {
+        return {
+          directory,
+          path: {},
+          sessions: [],
+          sessionStatus: {},
+          providers: { all: [], connected: [], default: {} },
+          agents: [],
+          config: {},
+          permissions: [],
+          questions: [],
+          commands: [],
+          mcp: {},
+          lsp: [],
+          formatter: [],
+          ptys: [],
+        };
+      }
+      return {
+        directory,
+        path: {},
+        sessions: [],
+        sessionStatus: {},
+        providers: { all: [], connected: [], default: {} },
+        agents: [],
+        config: {},
+        permissions: [],
+        questions: [],
+        commands: [],
+        mcp: {},
+        lsp: [],
+        formatter: [],
+        ptys: [],
+      };
+    });
+    const refreshProjectMock = vi.fn(async (directory: string) => {
+      if (directory === "/repo/marketing-websites") {
+        return {
+          directory,
+          path: {},
+          sessions: [{
+            id: "codex-empty",
+            slug: "codex-empty",
+            title: "Codex Session",
+            time: { created: now, updated: now },
+          }],
+          sessionStatus: { "codex-empty": { type: "idle" as const } },
+          providers: { all: [], connected: [], default: {} },
+          agents: [],
+          config: {},
+          permissions: [],
+          questions: [],
+          commands: [],
+          mcp: {},
+          lsp: [],
+          formatter: [],
+          ptys: [],
+        };
+      }
+      return {
+        directory,
+        path: {},
+        sessions: [],
+        sessionStatus: {},
+        providers: { all: [], connected: [], default: {} },
+        agents: [],
+        config: {},
+        permissions: [],
+        questions: [],
+        commands: [],
+        mcp: {},
+        lsp: [],
+        formatter: [],
+        ptys: [],
+      };
+    });
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          createSession: createSessionMock,
+          deleteSession: deleteSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "marketing-websites" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create session for marketing-websites" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Codex/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "dreamweaver" }));
+
+    await waitFor(() => {
+      expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "codex-empty");
+    });
   });
 
   it("chooses preferred agents", () => {

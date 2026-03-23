@@ -69,6 +69,92 @@ function commandBinary(cmd: string): string {
   return cmd.trim().split(/\s+/)[0] ?? "";
 }
 
+function tokenizeCommand(cmd: string): string[] {
+  const tokens = cmd.match(/"[^"]*"|'[^']*'|\S+/g) ?? [];
+  return tokens.map((token) => token.replace(/^['"]|['"]$/g, ""));
+}
+
+function trimCommandLabel(label: string, maxLength = 80) {
+  return label.length > maxLength ? `${label.slice(0, maxLength - 3)}...` : label;
+}
+
+function describeSearchCommand(cleaned: string) {
+  const tokens = tokenizeCommand(cleaned);
+  const binary = tokens[0]?.toLowerCase() ?? "";
+  if (!binary) {
+    return null;
+  }
+
+  if (binary === "rg" || binary === "grep") {
+    const pattern = tokens.slice(1).find((token) => token && !token.startsWith("-"));
+    if (!pattern) {
+      return null;
+    }
+    return {
+      kind: "search" as const,
+      label: trimCommandLabel(`Searched for ${pattern}`),
+      detail: cleaned,
+    };
+  }
+
+  if (binary === "find") {
+    const patternIndex = tokens.findIndex((token, index) =>
+      index > 0 && (token === "-name" || token === "-iname" || token === "-path" || token === "-ipath"));
+    const pattern = patternIndex >= 0 ? tokens[patternIndex + 1] : undefined;
+    return {
+      kind: "search" as const,
+      label: trimCommandLabel(`Searched${pattern ? ` for ${pattern}` : " workspace"}`),
+      detail: cleaned,
+    };
+  }
+
+  return null;
+}
+
+function describeReadCommand(cleaned: string) {
+  const tokens = tokenizeCommand(cleaned);
+  const binary = tokens[0]?.toLowerCase() ?? "";
+  if (!binary) {
+    return null;
+  }
+
+  if (binary === "cat" || binary === "bat") {
+    const target = tokens.slice(1).find((token) => token && !token.startsWith("-"));
+    if (!target) {
+      return null;
+    }
+    const basename = target.split(/[\\/]/).pop() ?? target;
+    return {
+      kind: "read" as const,
+      label: trimCommandLabel(`Read ${basename}`),
+      detail: target !== basename ? target : undefined,
+    };
+  }
+
+  if (binary === "sed" || binary === "head" || binary === "tail") {
+    const target = [...tokens].reverse().find((token) => token && !token.startsWith("-"));
+    if (!target || target === binary) {
+      return null;
+    }
+    const basename = target.split(/[\\/]/).pop() ?? target;
+    return {
+      kind: "read" as const,
+      label: trimCommandLabel(`Read ${basename}`),
+      detail: target !== basename ? target : undefined,
+    };
+  }
+
+  if (binary === "ls" || binary === "tree" || binary === "fd") {
+    return {
+      kind: "search" as const,
+      label: trimCommandLabel("Scanned workspace"),
+      detail: cleaned,
+    };
+  }
+
+  return null;
+}
+
 /**
  * Return true if the command is a read-only exploration command.
  * Uses a deny-list approach: everything is exploration UNLESS
@@ -103,7 +189,15 @@ export function commandToExploreEntry(
 ): ExploreEntry | null {
   if (!isReadOnlyCommand(rawCommand)) return null;
   const cleaned = cleanCommandText(rawCommand);
-  const label = cleaned.length > 80 ? `${cleaned.slice(0, 77)}...` : cleaned;
+  const searchEntry = describeSearchCommand(cleaned);
+  if (searchEntry) {
+    return { id, status, ...searchEntry };
+  }
+  const readEntry = describeReadCommand(cleaned);
+  if (readEntry) {
+    return { id, status, ...readEntry };
+  }
+  const label = trimCommandLabel(cleaned);
   return { id, kind: "run", label, status };
 }
 
@@ -157,7 +251,7 @@ export function buildExploreLabel(
   status: "exploring" | "explored",
 ): string {
   const readCount = entries.filter((e) => e.kind === "read").length;
-  const searchCount = entries.filter((e) => e.kind === "search").length;
+  const searchCount = entries.filter((e) => e.kind === "search" || e.kind === "list").length;
   const runCount = entries.filter((e) => e.kind === "run").length;
   const mcpCount = entries.filter((e) => e.kind === "mcp").length;
 

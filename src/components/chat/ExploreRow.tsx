@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ExploreEntry, ExploreEntryKind } from "../../lib/explore-utils";
 import { buildExploreLabel } from "../../lib/explore-utils";
-import { ChatFileIcon, ChatSearchIcon, ChatFolderIcon } from "./chat-icons";
+import { ChatFileIcon, ChatSearchIcon } from "./chat-icons";
 
 export interface ExploreRowItem {
   id: string;
@@ -16,7 +16,7 @@ interface ExploreRowProps {
 
 function EntryIcon({ kind }: { kind: ExploreEntryKind }) {
   if (kind === "search") return <ChatSearchIcon className="explore-entry-icon" />;
-  if (kind === "list") return <ChatFolderIcon className="explore-entry-icon" />;
+  if (kind === "list") return <ChatSearchIcon className="explore-entry-icon" />;
   // read, run, mcp — default to file icon
   return <ChatFileIcon className="explore-entry-icon" />;
 }
@@ -31,9 +31,13 @@ function EntryStatusDot({ status }: { status: ExploreEntry["status"] }) {
 }
 
 export function ExploreRow({ item }: ExploreRowProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(item.status === "exploring");
   const isExploring = item.status === "exploring";
   const label = buildExploreLabel(item.entries, item.status);
+
+  useEffect(() => {
+    setExpanded(item.status === "exploring");
+  }, [item.id, item.status]);
 
   return (
     <div className="explore-group">

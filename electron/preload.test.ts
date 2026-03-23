@@ -44,9 +44,11 @@ async function loadBridge() {
       exportArtifactBundle: (input: unknown) => Promise<unknown>;
     };
     codex: {
+      resumeThread: (threadId: string) => Promise<unknown>;
       archiveThreadTree: (threadId: string) => Promise<unknown>;
       setThreadName: (threadId: string, name: string) => Promise<unknown>;
       generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>;
+      steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>;
       interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown>;
     };
     browser: {
@@ -156,11 +158,17 @@ describe("preload browser bridge", () => {
     await bridge.codex.archiveThreadTree("thread-1");
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexArchiveThreadTree, "thread-1");
 
+    await bridge.codex.resumeThread("thread-1");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexResumeThread, "thread-1");
+
     await bridge.codex.setThreadName("thread-1", "New Name");
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexSetThreadName, "thread-1", "New Name");
 
     await bridge.codex.generateRunMetadata("/repo", "Fix the sidebar");
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexGenerateRunMetadata, "/repo", "Fix the sidebar");
+
+    await bridge.codex.steerTurn("thread-1", "turn-1", "continue with this");
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexSteerTurn, "thread-1", "turn-1", "continue with this");
 
     await bridge.codex.interruptThreadTree("thread-1", "turn-1");
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexInterruptThreadTree, "thread-1", "turn-1");

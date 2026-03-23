@@ -10,36 +10,83 @@ interface DiffBlockProps {
   onOpenPath?: (path: string) => void;
 }
 
+function parseHunkStart(line: string) {
+  const match = line.match(/^@@\s+-([0-9]+)(?:,([0-9]+))?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@/);
+  if (!match) {
+    return null;
+  }
+  return {
+    oldLine: Number(match[1]),
+    newLine: Number(match[3]),
+  };
+}
+
+function isMetadataLine(line: string) {
+  return (
+    line.startsWith("diff --git ") ||
+    line.startsWith("--- ") ||
+    line.startsWith("+++ ") ||
+    line.startsWith("*** Begin Patch") ||
+    line.startsWith("*** End Patch") ||
+    line.startsWith("*** Update File:") ||
+    line.startsWith("*** Add File:") ||
+    line.startsWith("*** Delete File:")
+  );
+}
+
 function renderDiffLines(diff: string) {
+  let oldLineNumber: number | null = null;
+  let newLineNumber: number | null = null;
+
   return diff
     .split("\n")
-    .filter((line) => {
-      if (!line) {
-        return true;
+    .flatMap((line, index) => {
+      if (isMetadataLine(line)) {
+        return [];
       }
-      return !(
-        line.startsWith("diff --git ") ||
-        line.startsWith("--- ") ||
-        line.startsWith("+++ ") ||
-        line.startsWith("@@ ") ||
-        line.startsWith("*** Begin Patch") ||
-        line.startsWith("*** End Patch") ||
-        line.startsWith("*** Update File:") ||
-        line.startsWith("*** Add File:") ||
-        line.startsWith("*** Delete File:")
+
+      const hunkStart = parseHunkStart(line);
+      if (hunkStart) {
+        oldLineNumber = hunkStart.oldLine;
+        newLineNumber = hunkStart.newLine;
+        return [];
+      }
+
+      let className = "diff-block-line";
+      let oldLabel = "";
+      let newLabel = "";
+
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        className += " diff-line-add";
+        newLabel = newLineNumber === null ? "" : String(newLineNumber);
+        if (newLineNumber !== null) {
+          newLineNumber += 1;
+        }
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        className += " diff-line-del";
+        oldLabel = oldLineNumber === null ? "" : String(oldLineNumber);
+        if (oldLineNumber !== null) {
+          oldLineNumber += 1;
+        }
+      } else if (line.length > 0) {
+        oldLabel = oldLineNumber === null ? "" : String(oldLineNumber);
+        newLabel = newLineNumber === null ? "" : String(newLineNumber);
+        if (oldLineNumber !== null) {
+          oldLineNumber += 1;
+        }
+        if (newLineNumber !== null) {
+          newLineNumber += 1;
+        }
+      }
+
+      return (
+        <div key={`${index}:${oldLabel}:${newLabel}:${line}`} className={className}>
+          <span className="diff-block-line-number diff-block-line-number--old" aria-hidden="true">{oldLabel}</span>
+          <span className="diff-block-line-number diff-block-line-number--new" aria-hidden="true">{newLabel}</span>
+          <span className="diff-block-line-content">{line}</span>
+        </div>
       );
-    })
-    .map((line, i) => {
-    let cls = "diff-block-line";
-    if (line.startsWith("+") && !line.startsWith("+++")) cls += " diff-line-add";
-    else if (line.startsWith("-") && !line.startsWith("---")) cls += " diff-line-del";
-    else if (line.startsWith("@@")) cls += " diff-line-hunk";
-    return (
-      <div key={i} className={cls}>
-        {line}
-      </div>
-    );
-  });
+    });
 }
 
 function deriveDiffStats(diff: string | undefined, insertions?: number, deletions?: number) {
@@ -94,7 +141,6 @@ export const DiffBlock = memo(function DiffBlock({ path, diff, insertions, delet
 
   const hasContent = !!diff;
   const verb = diffVerb(type);
-  const expandedTitle = `${verb} file`;
   const stats = useMemo(() => deriveDiffStats(diff, insertions, deletions), [deletions, diff, insertions]);
   const renderedDiffLines = useMemo(() => (diff ? renderDiffLines(diff) : null), [diff]);
 
@@ -107,8 +153,8 @@ export const DiffBlock = memo(function DiffBlock({ path, diff, insertions, delet
         aria-expanded={expanded}
         disabled={!hasContent}
       >
-        <span className="diff-block-verb">{expanded ? expandedTitle : verb}</span>
-        {!expanded ? (onOpenPath ? (
+        <span className="diff-block-verb">{verb}</span>
+        {onOpenPath ? (
           <span
             role="button"
             tabIndex={0}
@@ -130,13 +176,9 @@ export const DiffBlock = memo(function DiffBlock({ path, diff, insertions, delet
           </span>
         ) : (
           <span className="diff-block-path">{displayName}</span>
-        )) : null}
-        {!expanded ? (
-          <>
-            {stats.insertions !== undefined ? <span className="diff-block-stat diff-block-stat--add">+{stats.insertions}</span> : null}
-            {stats.deletions !== undefined ? <span className="diff-block-stat diff-block-stat--del">-{stats.deletions}</span> : null}
-          </>
-        ) : null}
+        )}
+        {stats.insertions !== undefined ? <span className="diff-block-stat diff-block-stat--add">+{stats.insertions}</span> : null}
+        {stats.deletions !== undefined ? <span className="diff-block-stat diff-block-stat--del">-{stats.deletions}</span> : null}
         {hasContent ? (
           <span className="diff-block-chevron" aria-hidden="true">
             {expanded ? "▾" : "›"}

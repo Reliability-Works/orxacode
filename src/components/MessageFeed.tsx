@@ -50,7 +50,7 @@ export function MessageFeed({
     () => presentation ?? projectOpencodeSessionPresentation({ messages, assistantLabel, workspaceDirectory }),
     [assistantLabel, messages, presentation, workspaceDirectory],
   );
-  const { rows: renderedRows, latestActivity, placeholderTimestamp } = computedPresentation;
+  const { rows: renderedRows, latestActivity, latestActivityContent, placeholderTimestamp } = computedPresentation;
   const feedRows = useMemo<UnifiedTimelineRenderRow[]>(
     () => [
       ...renderedRows,
@@ -112,7 +112,7 @@ export function MessageFeed({
             <div className="message-parts">
               <section className="message-part thinking-panel">
                 <div className="message-thinking">
-                  <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content="" />
+                  <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
                 </div>
               </section>
             </div>

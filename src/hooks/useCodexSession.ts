@@ -167,6 +167,60 @@ function normalizeCommandText(value: unknown) {
   return asString(value).trim();
 }
 
+function normalizeThreadId(value: unknown) {
+  return asString(value).trim();
+}
+
+function normalizeThreadIdsFromAgentRefs(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      const record = asRecord(entry);
+      const nestedThread = asRecord(record?.thread);
+      return normalizeThreadId(
+        record?.threadId ??
+          record?.thread_id ??
+          record?.id ??
+          nestedThread?.id ??
+          nestedThread?.threadId ??
+          nestedThread?.thread_id,
+      );
+    })
+    .filter(Boolean);
+}
+
+function normalizeThreadIdsFromAgentStatuses(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      const record = asRecord(entry);
+      const nestedThread = asRecord(record?.thread);
+      return normalizeThreadId(
+        record?.threadId ??
+          record?.thread_id ??
+          record?.id ??
+          nestedThread?.id ??
+          nestedThread?.threadId ??
+          nestedThread?.thread_id,
+      );
+    })
+    .filter(Boolean);
+}
+
+function normalizeThreadIdsFromStatusMap(value: unknown) {
+  const record = asRecord(value);
+  if (!record) {
+    return [];
+  }
+  return Object.keys(record)
+    .map((key) => normalizeThreadId(key))
+    .filter(Boolean);
+}
+
 function normalizeWorkspaceRelativePath(rawPath: string, workspaceDirectory: string) {
   const normalizedPath = rawPath.trim().replace(/\\/g, "/");
   const normalizedWorkspace = workspaceDirectory.trim().replace(/\\/g, "/").replace(/\/+$/g, "");
@@ -332,6 +386,32 @@ function toSubagentStatus(thread: Record<string, unknown>): Pick<SubagentInfo, "
     return { status: "completed", statusText: "completed" };
   }
   return { status: "idle", statusText: "idle" };
+}
+
+function subagentInfoFromThread(
+  thread: Record<string, unknown>,
+  index: number,
+  existing?: SubagentInfo,
+): SubagentInfo | null {
+  const threadId = asString(thread.id).trim();
+  if (!threadId) {
+    return null;
+  }
+  const meta = extractSubagentMeta(thread.source);
+  const status = toSubagentStatus(thread);
+  const preview = asString(thread.preview ?? thread.name).trim();
+  if (!existing && !meta && !preview) {
+    return null;
+  }
+  const fallbackName = preview || `Agent-${index + 1}`;
+  return {
+    threadId,
+    nickname: existing?.nickname ?? meta?.nickname ?? fallbackName,
+    role: existing?.role ?? meta?.role ?? "worker",
+    status: status.status,
+    statusText: status.statusText,
+    spawnedAt: existing?.spawnedAt ?? Date.now(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,6 +1233,102 @@ export function useCodexSession(
     commandDiffPollTimersRef.current.set(codexItemId, firstTimer);
   }, [attributeCommandFileChanges, stopCommandDiffPolling]);
 
+  const mergeSubagentsFromCollabHints = useCallback((rawItem: unknown) => {
+    const item = asRecord(rawItem);
+    if (!item) {
+      return;
+    }
+
+    const receiverRecords = [
+      ...((Array.isArray(item.collabReceivers) ? item.collabReceivers : []) as unknown[]),
+      ...((Array.isArray(item.collabStatuses) ? item.collabStatuses : []) as unknown[]),
+      ...((Array.isArray(item.receiverAgents) ? item.receiverAgents : []) as unknown[]),
+      ...((Array.isArray(item.receiver_agents) ? item.receiver_agents : []) as unknown[]),
+      ...((Array.isArray(item.agentStatuses) ? item.agentStatuses : []) as unknown[]),
+      ...((Array.isArray(item.agent_statuses) ? item.agent_statuses : []) as unknown[]),
+      ...((item.collabReceiver ? [item.collabReceiver] : []) as unknown[]),
+      ...((item.receiverAgent ? [item.receiverAgent] : []) as unknown[]),
+      ...((item.receiver_agent ? [item.receiver_agent] : []) as unknown[]),
+    ];
+
+    const explicitThreadIds = Array.from(
+      new Set([
+        ...normalizeThreadIdsFromAgentRefs(receiverRecords),
+        ...normalizeThreadIdsFromAgentStatuses(receiverRecords),
+        ...normalizeThreadIdsFromStatusMap(item.statuses),
+        ...normalizeThreadIdsFromStatusMap(item.agentStatus ?? item.agentsStates ?? item.agents_states),
+        ...[
+          item.receiverThreadId,
+          item.receiver_thread_id,
+          item.newThreadId,
+          item.new_thread_id,
+          ...(Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds : []),
+          ...(Array.isArray(item.receiver_thread_ids) ? item.receiver_thread_ids : []),
+        ].map((value) => normalizeThreadId(value)).filter(Boolean),
+      ]),
+    );
+
+    if (explicitThreadIds.length === 0) {
+      return;
+    }
+
+    const receiverById = new Map<string, Record<string, unknown>>();
+    receiverRecords.forEach((entry) => {
+      const record = asRecord(entry);
+      if (!record) {
+        return;
+      }
+      const threadId = normalizeThreadId(
+        record.threadId ?? record.thread_id ?? record.id ?? asRecord(record.thread)?.id,
+      );
+      if (threadId && !receiverById.has(threadId)) {
+        receiverById.set(threadId, record);
+      }
+    });
+
+    setSubagentsState((prev) => {
+      const next = [...prev];
+      explicitThreadIds.forEach((threadId, index) => {
+        subagentThreadIds.current.add(threadId);
+        const receiver = receiverById.get(threadId);
+        const nickname = asString(
+          receiver?.nickname ??
+            receiver?.agentNickname ??
+            receiver?.agent_nickname ??
+            receiver?.name,
+        ).trim();
+        const role = asString(
+          receiver?.role ??
+            receiver?.agentRole ??
+            receiver?.agent_role ??
+            receiver?.agentType ??
+            receiver?.agent_type,
+        ).trim();
+        const statusText = asString(receiver?.status).trim();
+        const idx = next.findIndex((agent) => agent.threadId === threadId);
+        if (idx >= 0) {
+          next[idx] = {
+            ...next[idx],
+            nickname: nickname || next[idx].nickname,
+            role: role || next[idx].role,
+            status: statusText.includes("await") ? "awaiting_instruction" : next[idx].status,
+            statusText: statusText || next[idx].statusText,
+          };
+          return;
+        }
+        next.push({
+          threadId,
+          nickname: nickname || `Agent-${prev.length + index + 1}`,
+          role: role || "worker",
+          status: statusText.includes("await") ? "awaiting_instruction" : "thinking",
+          statusText: statusText || "is thinking",
+          spawnedAt: Date.now(),
+        });
+      });
+      return next;
+    });
+  }, [setSubagentsState]);
+
   // ------------------------------------------------------------------
   // Notification handler
   // ------------------------------------------------------------------
@@ -1167,7 +1343,7 @@ export function useCodexSession(
           activeTurnIdRef.current = turnId;
           const currentThreadId = getCurrentCodexRuntime()?.thread?.id;
           if (currentThreadId && turnId && window.orxa?.codex) {
-            void window.orxa.codex.interruptThreadTree(currentThreadId, turnId).catch((error) => {
+            void window.orxa.codex.interruptTurn(currentThreadId, turnId).catch((error) => {
               recordLastError(error);
             });
           }
@@ -1265,7 +1441,11 @@ export function useCodexSession(
         } | undefined;
         const sourceMeta = extractSubagentMeta(threadMeta?.source);
         const parentThreadId = getParentThreadIdFromSource(threadMeta?.source);
-        if (threadMeta?.id && sourceMeta && parentThreadId && getCurrentCodexRuntime()?.thread?.id === parentThreadId) {
+        const currentThreadId = getCurrentCodexRuntime()?.thread?.id ?? null;
+        const belongsToActiveParent = parentThreadId
+          ? currentThreadId === parentThreadId
+          : Boolean(currentThreadId && activeTurnIdRef.current);
+        if (threadMeta?.id && sourceMeta && belongsToActiveParent) {
           subagentThreadIds.current.add(threadMeta.id);
           setSubagentsState((prev) => {
             // Don't duplicate
@@ -1516,6 +1696,14 @@ export function useCodexSession(
             ...prev,
             { id: msgId, kind: "compaction", timestamp: Date.now() },
           ]);
+        }
+
+        if (
+          item.type === "collabToolCall" ||
+          item.type === "collabAgentToolCall" ||
+          (item.type === "mcpToolCall" && asString((item as Record<string, unknown>).tool).trim() === "spawn_agent")
+        ) {
+          mergeSubagentsFromCollabHints(item);
         }
 
         if (item.type === "collabToolCall" || item.type === "collabAgentToolCall") {
@@ -1932,6 +2120,14 @@ export function useCodexSession(
         }
 
         if (
+          item.type === "collabToolCall" ||
+          item.type === "collabAgentToolCall" ||
+          (item.type === "mcpToolCall" && asString((item as Record<string, unknown>).tool).trim() === "spawn_agent")
+        ) {
+          mergeSubagentsFromCollabHints(item);
+        }
+
+        if (
           item.type === "plan" ||
           item.type === "collabToolCall" ||
           item.type === "collabAgentToolCall"
@@ -1984,6 +2180,7 @@ export function useCodexSession(
     directory,
     enrichFileChangeDescriptors,
     getCurrentCodexRuntime,
+    mergeSubagentsFromCollabHints,
     recordLastError,
     setMessagesState,
     setPlanItemsState,
@@ -2079,11 +2276,26 @@ export function useCodexSession(
         const isKnownTrackedThread =
           !!notificationThreadId &&
           (notificationThreadId === activeThreadId || subagentThreadIds.current.has(notificationThreadId));
+        const isTrackedSubagentThread =
+          !!notificationThreadId &&
+          !!activeThreadId &&
+          notificationThreadId !== activeThreadId &&
+          subagentThreadIds.current.has(notificationThreadId);
         const isChildThreadStartForActiveParent =
           notification.method === "thread/started" &&
           getParentThreadIdFromSource(asRecord(notificationParams.thread)?.source) === activeThreadId;
+        const isProvisionalSubagentStartForActiveTurn =
+          notification.method === "thread/started" &&
+          !!activeThreadId &&
+          !!activeTurnIdRef.current &&
+          !!extractSubagentMeta(asRecord(notificationParams.thread)?.source);
 
-        if (!isKnownTrackedThread && !isChildThreadStartForActiveParent && !couldBelongToActiveThreadWithoutExplicitId) {
+        if (
+          !isKnownTrackedThread &&
+          !isChildThreadStartForActiveParent &&
+          !isProvisionalSubagentStartForActiveTurn &&
+          !couldBelongToActiveThreadWithoutExplicitId
+        ) {
           return;
         }
 
@@ -2108,6 +2320,10 @@ export function useCodexSession(
           subagentThreadIds.current.delete(notificationThreadId);
           setActiveSubagentThreadIdState((current) => (current === notificationThreadId ? null : current));
           setSubagentsState((previous) => previous.filter((agent) => agent.threadId !== notificationThreadId));
+        }
+
+        if (isTrackedSubagentThread) {
+          return;
         }
 
         handleNotification(notification);
@@ -2151,7 +2367,7 @@ export function useCodexSession(
           activeTurnIdRef.current = resumedTurnId;
           if (pendingInterruptRef.current || interruptRequestedRef.current) {
             pendingInterruptRef.current = false;
-            void window.orxa.codex.interruptThreadTree(currentThreadId, resumedTurnId).catch((error) => {
+            void window.orxa.codex.interruptTurn(currentThreadId, resumedTurnId).catch((error) => {
               recordLastError(error);
             });
             return;
@@ -2165,15 +2381,49 @@ export function useCodexSession(
       }
 
       const parentThreadId = currentThreadId;
-      const childThreads = (runtime.childThreads ?? [])
+      const runtimeChildThreads = (runtime.childThreads ?? [])
         .map((candidate) => candidate as unknown as Record<string, unknown>)
         .filter((candidate) => {
           const threadId = asString(candidate.id).trim();
           if (!threadId || threadId === parentThreadId || isHiddenSubagentSource(candidate.source)) {
             return false;
           }
-          return getParentThreadIdFromThread(candidate) === parentThreadId;
+          return true;
         });
+
+      let childThreads = runtimeChildThreads;
+      if (
+        window.orxa.codex.listThreads &&
+        (runtimeChildThreads.length === 0 || runtimeChildThreads.length < subagentThreadIds.current.size)
+      ) {
+        try {
+          const listedChildThreads: Record<string, unknown>[] = [];
+          let cursor: string | null | undefined;
+          do {
+            const page = await window.orxa.codex.listThreads({ cursor, limit: 100, archived: false });
+            listedChildThreads.push(
+              ...(page.threads ?? [])
+                .map((candidate) => candidate as unknown as Record<string, unknown>)
+                .filter((candidate) => {
+                  const threadId = asString(candidate.id).trim();
+                  if (!threadId || threadId === parentThreadId || isHiddenSubagentSource(candidate.source)) {
+                    return false;
+                  }
+                  return (
+                    getParentThreadIdFromThread(candidate) === parentThreadId ||
+                    subagentThreadIds.current.has(threadId)
+                  );
+                }),
+            );
+            cursor = page.nextCursor;
+          } while (cursor);
+          if (listedChildThreads.length >= childThreads.length) {
+            childThreads = listedChildThreads;
+          }
+        } catch {
+          // Thread list hydration is best-effort only.
+        }
+      }
 
       setCodexRuntimeSnapshot(sessionKey, {
         thread: currentThread ?? null,
@@ -2182,32 +2432,26 @@ export function useCodexSession(
 
       setSubagentsState((previous) => {
         if (childThreads.length === 0) {
-          subagentThreadIds.current.clear();
-          return [];
+          return previous;
         }
-        const childThreadIds = new Set(
-          childThreads
-            .map((candidate) => asString(candidate.id).trim())
-            .filter(Boolean),
-        );
-        subagentThreadIds.current = childThreadIds;
         const previousById = new Map(previous.map((agent) => [agent.threadId, agent]));
-        return childThreads.map((candidate, index) => {
-          const threadId = asString(candidate.id).trim();
-          const existing = previousById.get(threadId);
-          const meta = extractSubagentMeta(candidate.source);
-          const status = toSubagentStatus(candidate);
-          const preview = asString(candidate.preview ?? candidate.name).trim();
-          const fallbackName = preview || `Agent-${index + 1}`;
-          return {
-            threadId,
-            nickname: existing?.nickname ?? meta?.nickname ?? fallbackName,
-            role: existing?.role ?? meta?.role ?? "worker",
-            status: status.status,
-            statusText: status.statusText,
-            spawnedAt: existing?.spawnedAt ?? Date.now(),
-          };
-        });
+        const merged = childThreads
+          .map((candidate, index) => subagentInfoFromThread(candidate, index, previousById.get(asString(candidate.id).trim())))
+          .filter((candidate): candidate is SubagentInfo => candidate !== null);
+        const knownIds = new Set(merged.map((agent) => agent.threadId));
+        const shouldPreserveUnseen =
+          Boolean(activeTurnIdRef.current) ||
+          normalizeThreadStatusType(currentThreadRecord?.status) === "active";
+        if (shouldPreserveUnseen) {
+          previous.forEach((agent) => {
+            if (!knownIds.has(agent.threadId)) {
+              merged.push(agent);
+              knownIds.add(agent.threadId);
+            }
+          });
+        }
+        subagentThreadIds.current = knownIds;
+        return merged;
       });
     } catch {
       // Polling Codex thread runtime is best-effort only.
@@ -2215,7 +2459,7 @@ export function useCodexSession(
   }, [getCurrentCodexRuntime, recordLastError, sessionKey, setCodexRuntimeSnapshot, setStreamingState, setSubagentsState]);
 
   useEffect(() => {
-    if (!thread?.id || (!isStreaming && subagents.length === 0 && !pendingInterruptRef.current)) {
+    if (!thread?.id) {
       return;
     }
 
@@ -2227,7 +2471,7 @@ export function useCodexSession(
     return () => {
       window.clearInterval(timer);
     };
-  }, [isStreaming, subagents.length, syncCodexThreadRuntime, thread?.id]);
+  }, [isStreaming, pendingApproval, pendingUserInput, subagents.length, syncCodexThreadRuntime, thread?.id]);
 
   // Derive subagent messages reactively from current messages
   const subagentMessages = useMemo(() => {
@@ -2339,6 +2583,30 @@ export function useCodexSession(
     [directory, recordLastError, setMessagesState, thread],
   );
 
+  const steerMessage = useCallback(
+    async (prompt: string) => {
+      if (!window.orxa?.codex || !thread) return false;
+      const trimmed = prompt.trim();
+      const turnId = activeTurnIdRef.current?.trim() ?? "";
+      if (!trimmed || !turnId) {
+        return false;
+      }
+      const userMsgId = `codex-user-${messageIdCounter.current++}`;
+      setMessagesState((prev) => [
+        ...prev,
+        { id: userMsgId, kind: "message", role: "user", content: trimmed, timestamp: Date.now() },
+      ]);
+      try {
+        await window.orxa.codex.steerTurn(thread.id, turnId, trimmed);
+        return true;
+      } catch (err) {
+        recordLastError(err);
+        return false;
+      }
+    },
+    [recordLastError, setMessagesState, thread],
+  );
+
   const approveAction = useCallback(
     async (decision: string) => {
       if (!window.orxa?.codex || !pendingApproval) return;
@@ -2411,7 +2679,7 @@ export function useCodexSession(
       }),
     );
     try {
-      await window.orxa.codex.interruptThreadTree(thread.id, turnId ?? "pending");
+      await window.orxa.codex.interruptTurn(thread.id, turnId ?? "pending");
     } catch (err) {
       recordLastError(err);
     }
@@ -2475,6 +2743,7 @@ export function useCodexSession(
     disconnect,
     startThread,
     sendMessage,
+    steerMessage,
     approveAction,
     denyAction,
     respondToUserInput,

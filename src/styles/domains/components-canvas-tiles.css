@@ -20,6 +20,8 @@
   opacity: 0;
   transform: translateY(18px);
   pointer-events: none;
+  border-top: 0;
+  height: 0;
 }
 
 .terminal-resize-handle {

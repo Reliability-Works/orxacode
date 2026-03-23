@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { cp, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -9,7 +9,6 @@ import {
   type Agent,
   createOpencodeClient,
   type Config,
-  type Event,
   type OpencodeClient,
   type ProviderListResponse,
   type QuestionAnswer,
@@ -42,12 +41,6 @@ import type {
   OpenCodeAgentFile,
   OpenDirectoryResult,
   OpenDirectoryTarget,
-  MemoryBackfillStatus,
-  MemoryGraphQuery,
-  MemoryGraphSnapshot,
-  MemorySettings,
-  MemorySettingsUpdateInput,
-  MemoryTemplate,
   OrxaEvent,
   ProjectListItem,
   ProjectBootstrap,
@@ -78,7 +71,6 @@ import { ProjectStore } from "./project-store";
 import { ProfileStore } from "./profile-store";
 import { ProvenanceIndex } from "./provenance-index";
 import { hasRecentMatchingUserPrompt } from "./prompt-dedupe";
-import { MemoryStore } from "./memory-store";
 import { ArtifactStore } from "./artifact-store";
 import { WorkspaceContextStore } from "./workspace-context-store";
 import { buildOpenTargetAttempts } from "./open-target-attempts";
@@ -272,66 +264,100 @@ function listProviderEnvKeys(provider: unknown) {
   return provider.env.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
 }
 
-const MANAGED_SERVER_ENV_BLOCKLIST = new Set([
-  "INIT_CWD",
-  "PNPM_SCRIPT_SRC_DIR",
-  "VITE_DEV_SERVER_URL",
+const MANAGED_SERVER_ENV_ALLOWLIST = new Set([
+  "BUN_INSTALL",
+  "COMMAND_MODE",
+  "DISABLE_AUTO_UPDATE",
+  "GPG_TTY",
+  "HOME",
+  "HOMEBREW_CELLAR",
+  "HOMEBREW_PREFIX",
+  "HOMEBREW_REPOSITORY",
+  "INFOPATH",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LESS",
+  "LOGNAME",
+  "LSCOLORS",
+  "LS_COLORS",
+  "NO_COLOR",
+  "NVM_BIN",
+  "NVM_DIR",
+  "NVM_INC",
+  "PAGER",
+  "PATH",
+  "PNPM_HOME",
+  "SHELL",
+  "SSH_AUTH_SOCK",
+  "TERM",
+  "TMPDIR",
+  "USER",
+  "__CF_USER_TEXT_ENCODING",
+  "XPC_FLAGS",
+  "XPC_SERVICE_NAME",
 ]);
 
-const MANAGED_SERVER_ENV_BLOCKLIST_PREFIXES = [
-  "npm_lifecycle_",
-  "npm_package_",
-];
+const MAC_DESKTOP_OPENCODE_BINARY = "/Applications/OpenCode.app/Contents/MacOS/opencode-cli";
+
+function shouldPassManagedCredentialEnv(key: string) {
+  return /^[A-Z0-9_]+$/.test(key) && /(?:_KEY|_TOKEN|_SECRET|_PASSWORD)$/.test(key);
+}
 
 export function buildManagedServerEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const nextEnv: NodeJS.ProcessEnv = { ...baseEnv };
-  for (const key of Object.keys(nextEnv)) {
-    if (MANAGED_SERVER_ENV_BLOCKLIST.has(key) || MANAGED_SERVER_ENV_BLOCKLIST_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-      delete nextEnv[key];
+  const nextEnv: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (!value) {
+      continue;
+    }
+    if (MANAGED_SERVER_ENV_ALLOWLIST.has(key) || shouldPassManagedCredentialEnv(key)) {
+      nextEnv[key] = value;
     }
   }
   return nextEnv;
 }
 
-type ManagedRuntimePaths = {
-  root: string;
-  dataHome: string;
-  configHome: string;
-  stateHome: string;
-  cacheHome: string;
-  authPath: string;
-  configDir: string;
-};
-
-const MANAGED_RUNTIME_CONFIG_DIRS = ["agent", "agents"] as const;
-
-function managedRuntimePaths(profileID: string): ManagedRuntimePaths {
-  const root = path.join(homedir(), ".orxa-code", "managed-opencode", profileID);
-  const dataHome = path.join(root, "data");
-  const configHome = path.join(root, "config");
-  const stateHome = path.join(root, "state");
-  const cacheHome = path.join(root, "cache");
-  return {
-    root,
-    dataHome,
-    configHome,
-    stateHome,
-    cacheHome,
-    authPath: path.join(dataHome, "opencode", "auth.json"),
-    configDir: path.join(configHome, "opencode"),
-  };
+export function buildManagedRuntimeConfigOverride() {
+  return JSON.stringify({ plugin: [] });
 }
 
-export function sanitizeManagedRuntimeConfig(rawContent: string) {
-  const parseErrors: Parameters<typeof parseJsonc>[1] = [];
-  const parsed = parseJsonc(rawContent, parseErrors, { allowTrailingComma: true });
-  if (parseErrors.length > 0 || !isRecord(parsed)) {
-    return "{}\n";
+export function compareOpencodeVersions(left: string, right: string) {
+  const parse = (value: string) =>
+    value
+      .trim()
+      .split(/[^0-9]+/)
+      .filter((part) => part.length > 0)
+      .map((part) => Number.parseInt(part, 10));
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftValue = leftParts[index] ?? 0;
+    const rightValue = rightParts[index] ?? 0;
+    if (leftValue > rightValue) {
+      return 1;
+    }
+    if (leftValue < rightValue) {
+      return -1;
+    }
   }
+  return 0;
+}
 
-  const next = { ...parsed };
-  delete next.plugin;
-  return `${JSON.stringify(next, null, 2)}\n`;
+export function pickLatestManagedOpencodeBinary(input: {
+  platform: NodeJS.Platform;
+  candidates: Array<{ path: string; version: string }>;
+}) {
+  if (input.candidates.length === 0) {
+    return "opencode";
+  }
+  if (input.platform !== "darwin") {
+    return input.candidates[0]?.path ?? "opencode";
+  }
+  const ranked = input.candidates
+    .filter((candidate) => candidate.version.trim().length > 0)
+    .sort((left, right) => compareOpencodeVersions(right.version, left.version));
+  return ranked[0]?.path ?? input.candidates[0]?.path ?? "opencode";
 }
 
 async function canListenOnPort(host: string, port: number) {
@@ -407,18 +433,66 @@ function classifyTool(
   return { kind: "run", summary: "Ran command", paths: allPaths };
 }
 
+async function filterRecordablePaths(directory: string, paths: string[]) {
+  const seen = new Set<string>();
+  const filtered: string[] = [];
+  for (const filePath of paths) {
+    const normalized = filePath.replace(/\\/g, "/").trim();
+    if (!normalized || normalized === "." || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    try {
+      const info = await stat(path.resolve(directory, normalized));
+      if (info.isDirectory()) {
+        continue;
+      }
+    } catch {
+      // Keep non-existent paths; newly created files may not exist yet when the record is produced.
+    }
+    filtered.push(normalized);
+  }
+  return filtered;
+}
+
+function summarizeOperation(
+  operation: "edit" | "create" | "delete",
+  paths: string[],
+  fallback: string,
+) {
+  if (paths.length === 0) {
+    return fallback;
+  }
+  if (paths.length === 1) {
+    if (operation === "create") {
+      return `Created ${paths[0]}`;
+    }
+    if (operation === "delete") {
+      return `Deleted ${paths[0]}`;
+    }
+    return `Edited ${paths[0]}`;
+  }
+  if (operation === "create") {
+    return `Created ${paths.length} files`;
+  }
+  if (operation === "delete") {
+    return `Deleted ${paths.length} files`;
+  }
+  return `Edited ${paths.length} files`;
+}
+
 export class OpencodeService {
   private profileStore = new ProfileStore();
   private projectStore = new ProjectStore();
   private passwordStore = new PasswordStore();
   private ledgerStore = new ExecutionLedgerStore();
   private provenanceIndex = new ProvenanceIndex();
-  private memoryStore = new MemoryStore();
   private artifactStore = new ArtifactStore();
   private workspaceContextStore = new WorkspaceContextStore();
   private commandHelpers = new OpencodeCommandHelpers();
 
   private managedProcess: ChildProcess | undefined;
+  private managedBaseUrl: string | undefined;
   private state: RuntimeState = {
     status: "disconnected",
     managedServer: false,
@@ -432,16 +506,6 @@ export class OpencodeService {
   private sessionSyncFingerprint = new Map<string, string>();
   private sessionSyncInFlight = new Map<string, Promise<void>>();
   private promptFence = new Map<string, number>();
-  private memoryIngestInFlight = new Map<string, Promise<void>>();
-  private memoryIngestAt = new Map<string, number>();
-  private memoryBackfill: MemoryBackfillStatus = {
-    running: false,
-    progress: 0,
-    scannedSessions: 0,
-    totalSessions: 0,
-    inserted: 0,
-    updated: 0,
-  };
 
   onEvent?: (event: OrxaEvent) => void;
 
@@ -502,11 +566,12 @@ export class OpencodeService {
     this.profileStore.setActiveProfileId(profileID);
     this.activeProfile = profile;
     this.authHeader = await this.basicAuthHeader(profile);
+    const connectionBaseUrl = this.managedBaseUrl && this.managedProcess ? this.managedBaseUrl : this.baseUrl(profile);
     this.setState({
       status: "connecting",
       activeProfileId: profileID,
       managedServer: !!this.managedProcess,
-      baseUrl: this.baseUrl(profile),
+      baseUrl: connectionBaseUrl,
       lastError: undefined,
     });
 
@@ -517,7 +582,7 @@ export class OpencodeService {
       status: "connected",
       activeProfileId: profileID,
       managedServer: !!this.managedProcess,
-      baseUrl: this.baseUrl(profile),
+      baseUrl: connectionBaseUrl,
       lastError: undefined,
     });
 
@@ -535,6 +600,13 @@ export class OpencodeService {
       return this.attach(profileID);
     }
 
+    if (profile.host !== profile.startHost || profile.port !== profile.startPort || profile.https) {
+      profile.host = profile.startHost;
+      profile.port = profile.startPort;
+      profile.https = false;
+      this.profileStore.save(profile);
+    }
+
     await this.stopLocal();
     this.setState({
       status: "starting",
@@ -546,7 +618,6 @@ export class OpencodeService {
 
     const binary = await this.resolveBinary(profile.cliPath);
     const launchPort = await resolveManagedServerLaunchPort(profile.startHost, profile.startPort);
-    const runtimePaths = await this.prepareManagedRuntimeHome(profile.id);
     const args = [
       "serve",
       `--hostname=${profile.startHost}`,
@@ -556,10 +627,11 @@ export class OpencodeService {
 
     const child = spawn(binary, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: this.buildManagedRuntimeEnv(process.env, runtimePaths),
+      env: this.buildManagedRuntimeEnv(process.env),
     });
 
     this.managedProcess = child;
+    this.managedBaseUrl = undefined;
 
     const launchedUrl = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -599,61 +671,22 @@ export class OpencodeService {
       lastError: undefined,
     });
 
-    const launchedEndpoint = new URL(launchedUrl);
-    profile.host = launchedEndpoint.hostname || profile.startHost;
-    profile.port = launchedEndpoint.port ? Number.parseInt(launchedEndpoint.port, 10) : launchPort || profile.startPort;
-    profile.https = launchedEndpoint.protocol === "https:";
-    this.profileStore.save(profile);
+    this.managedBaseUrl = launchedUrl;
+    this.activeProfile = profile;
 
     return this.attach(profileID);
   }
 
-  private buildManagedRuntimeEnv(baseEnv: NodeJS.ProcessEnv, runtimePaths: ManagedRuntimePaths) {
+  private buildManagedRuntimeEnv(baseEnv: NodeJS.ProcessEnv) {
     const env = buildManagedServerEnv(baseEnv);
-    delete env.OPENCODE_CONFIG_DIR;
-    delete env.OPENCODE_CONFIG_CONTENT;
+    delete env.XDG_DATA_HOME;
+    delete env.XDG_CONFIG_HOME;
+    delete env.XDG_STATE_HOME;
+    delete env.XDG_CACHE_HOME;
     env.OPENCODE_DISABLE_DEFAULT_PLUGINS = "true";
-    env.OPENCODE_TEST_HOME = runtimePaths.root;
-    env.XDG_DATA_HOME = runtimePaths.dataHome;
-    env.XDG_CONFIG_HOME = runtimePaths.configHome;
-    env.XDG_STATE_HOME = runtimePaths.stateHome;
-    env.XDG_CACHE_HOME = runtimePaths.cacheHome;
+    env.OPENCODE_CONFIG_DIR = path.join(env.HOME ?? homedir(), ".config", "opencode");
+    env.OPENCODE_CONFIG_CONTENT = buildManagedRuntimeConfigOverride();
     return env;
-  }
-
-  private async prepareManagedRuntimeHome(profileID: string) {
-    const runtimePaths = managedRuntimePaths(profileID);
-    await rm(runtimePaths.root, { recursive: true, force: true });
-    await mkdir(path.dirname(runtimePaths.authPath), { recursive: true });
-    await mkdir(runtimePaths.configDir, { recursive: true });
-    await mkdir(runtimePaths.stateHome, { recursive: true });
-    await mkdir(runtimePaths.cacheHome, { recursive: true });
-
-    const authSource = path.join(homedir(), ".local", "share", "opencode", "auth.json");
-    if (existsSync(authSource)) {
-      await copyFile(authSource, runtimePaths.authPath);
-    }
-
-    const globalConfigRoot = path.join(homedir(), ".config", "opencode");
-    const globalConfigPath = this.findConfigFile(globalConfigRoot);
-    if (existsSync(globalConfigPath)) {
-      const rawConfig = await readFile(globalConfigPath, "utf8");
-      const sanitizedConfig = sanitizeManagedRuntimeConfig(rawConfig);
-      await writeFile(path.join(runtimePaths.configDir, "opencode.json"), sanitizedConfig, "utf8");
-    }
-
-    for (const directoryName of MANAGED_RUNTIME_CONFIG_DIRS) {
-      const source = path.join(globalConfigRoot, directoryName);
-      if (!existsSync(source) || !statSync(source).isDirectory()) {
-        continue;
-      }
-      await cp(source, path.join(runtimePaths.configDir, directoryName), {
-        force: true,
-        recursive: true,
-      });
-    }
-
-    return runtimePaths;
   }
 
   async stopLocal() {
@@ -664,6 +697,7 @@ export class OpencodeService {
       this.managedProcess.kill();
       this.managedProcess = undefined;
     }
+    this.managedBaseUrl = undefined;
 
     for (const socket of this.ptySockets.values()) {
       socket.close();
@@ -674,7 +708,7 @@ export class OpencodeService {
       status: "disconnected",
       activeProfileId: this.state.activeProfileId,
       managedServer: false,
-      baseUrl: this.state.baseUrl,
+      baseUrl: undefined,
       lastError: undefined,
     });
 
@@ -945,15 +979,17 @@ export class OpencodeService {
   async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
     const client = this.client(normalizedDirectory);
-    const [session, sessionStatusMap, permissions, questions, commands, messages, executionLedger, changeProvenance] = await Promise.all([
+    void this.syncSessionExecutionArtifacts(normalizedDirectory, sessionID).catch(() => undefined);
+    const [session, sessionStatusMap, permissions, questions, commands, messages, sessionDiff, executionLedger, changeProvenance] = await Promise.all([
       this.unwrap(client.session.get({ directory: normalizedDirectory, sessionID })).catch(() => null),
       this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
       this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
       this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
       this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
       this.loadMessages(normalizedDirectory, sessionID).catch(() => []),
-      this.loadExecutionLedger(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
-      this.loadChangeProvenance(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
+      this.unwrap(client.session.diff({ directory: normalizedDirectory, sessionID })).catch(() => []),
+      this.ledgerStore.loadSnapshot(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
+      this.provenanceIndex.loadSnapshot(normalizedDirectory, sessionID, 0).catch(() => ({ cursor: 0, records: [] })),
     ]);
 
     const filterBySession = <T extends { sessionID?: string; sessionId?: string; session_id?: string }>(items: T[]) =>
@@ -972,6 +1008,7 @@ export class OpencodeService {
       questions: filterBySession(questions),
       commands,
       messages,
+      sessionDiff,
       executionLedger,
       changeProvenance,
     };
@@ -1067,141 +1104,6 @@ export class OpencodeService {
     return this.workspaceContextStore.delete(path.resolve(workspace), id);
   }
 
-  async getMemorySettings(directory?: string): Promise<MemorySettings> {
-    const normalized = directory ? path.resolve(directory) : undefined;
-    return this.memoryStore.getSettings(normalized);
-  }
-
-  async updateMemorySettings(input: MemorySettingsUpdateInput): Promise<MemorySettings> {
-    const normalized: MemorySettingsUpdateInput = {
-      ...input,
-      directory: input.directory ? path.resolve(input.directory) : undefined,
-    };
-    return this.memoryStore.updateSettings(normalized);
-  }
-
-  async listMemoryTemplates(): Promise<MemoryTemplate[]> {
-    return this.memoryStore.getTemplates();
-  }
-
-  async applyMemoryTemplate(templateID: string, directory?: string, scope?: "global" | "workspace"): Promise<MemorySettings> {
-    const normalized = directory ? path.resolve(directory) : undefined;
-    return this.memoryStore.applyTemplate(templateID, normalized, scope);
-  }
-
-  async getMemoryGraph(input?: MemoryGraphQuery): Promise<MemoryGraphSnapshot> {
-    const normalized: MemoryGraphQuery | undefined = input
-      ? {
-          ...input,
-          workspace: input.workspace ? path.resolve(input.workspace) : undefined,
-        }
-      : undefined;
-    return this.memoryStore.getGraph(normalized);
-  }
-
-  async clearWorkspaceMemory(directory: string): Promise<boolean> {
-    return this.memoryStore.clearWorkspace(path.resolve(directory));
-  }
-
-  private emitMemoryBackfill(status: MemoryBackfillStatus) {
-    this.memoryBackfill = status;
-    this.emit({
-      type: "memory.backfill",
-      payload: status,
-    });
-  }
-
-  async backfillMemory(directory?: string): Promise<MemoryBackfillStatus> {
-    if (this.memoryBackfill.running) {
-      return this.memoryBackfill;
-    }
-
-    const workspaces = directory
-      ? [path.resolve(directory)]
-      : this.listStoredProjects().map((item) => path.resolve(item.worktree));
-    const workspaceAllowlist = [...new Set(workspaces.map((item) => path.resolve(item)))];
-
-    const initial: MemoryBackfillStatus = {
-      running: true,
-      progress: 0,
-      scannedSessions: 0,
-      totalSessions: 0,
-      inserted: 0,
-      updated: 0,
-      startedAt: Date.now(),
-      message: "Starting memory backfill",
-    };
-    this.emitMemoryBackfill(initial);
-
-    try {
-      const queue: Array<{ workspace: string; sessionID: string; updatedAt: number }> = [];
-      for (const workspace of workspaces) {
-        const sessions = await this.unwrap(this.client(workspace).session.list({ directory: workspace, limit: 180 })).catch(() => []);
-        for (const session of sessions) {
-          queue.push({
-            workspace,
-            sessionID: session.id,
-            updatedAt: session.time.updated,
-          });
-        }
-      }
-
-      const totalSessions = queue.length;
-      this.emitMemoryBackfill({
-        ...initial,
-        totalSessions,
-        message: totalSessions === 0 ? "No sessions found for backfill" : "Backfilling session history",
-      });
-
-      let scannedSessions = 0;
-      let inserted = 0;
-      let updated = 0;
-      for (const item of queue.sort((a, b) => a.updatedAt - b.updatedAt)) {
-        const bundles = await this.loadMessages(item.workspace, item.sessionID).catch(() => []);
-        const ingest = await this.memoryStore.ingestSessionMessages(item.workspace, item.sessionID, bundles, {
-          workspaceAllowlist,
-        });
-        inserted += ingest.inserted;
-        updated += ingest.updated;
-        scannedSessions += 1;
-        await this.memoryStore.setIngestCursor(item.workspace, String(item.updatedAt));
-        this.emitMemoryBackfill({
-          running: true,
-          progress: totalSessions > 0 ? scannedSessions / totalSessions : 1,
-          scannedSessions,
-          totalSessions,
-          inserted,
-          updated,
-          startedAt: initial.startedAt,
-          message: `Backfilled ${scannedSessions} / ${totalSessions} sessions`,
-        });
-      }
-
-      const done: MemoryBackfillStatus = {
-        running: false,
-        progress: 1,
-        scannedSessions,
-        totalSessions,
-        inserted,
-        updated,
-        startedAt: initial.startedAt,
-        completedAt: Date.now(),
-        message: "Memory backfill completed",
-      };
-      this.emitMemoryBackfill(done);
-      return done;
-    } catch (error) {
-      const failed: MemoryBackfillStatus = {
-        ...this.memoryBackfill,
-        running: false,
-        completedAt: Date.now(),
-        message: `Memory backfill failed: ${sanitizeError(error)}`,
-      };
-      this.emitMemoryBackfill(failed);
-      return failed;
-    }
-  }
-
   async sendPrompt(input: PromptRequest) {
     const normalizedDirectory = this.ensureWorkspaceDirectory(input.directory);
     const promptSentAt = Date.now();
@@ -1213,11 +1115,7 @@ export class OpencodeService {
     this.promptFence.set(dedupeKey, promptSentAt);
     const parts = buildPromptParts(input);
 
-    const promptSource = input.promptSource ?? "user";
-    const memoryContext = promptSource === "machine"
-      ? ""
-      : await this.memoryStore.buildPromptContext(normalizedDirectory, input.text).catch(() => "");
-    const systemPrompt = composeSystemPrompt([input.system, memoryContext]);
+    const systemPrompt = composeSystemPrompt([input.system]);
 
     const request = {
       directory: normalizedDirectory,
@@ -1231,7 +1129,7 @@ export class OpencodeService {
     };
 
     try {
-      await this.client(normalizedDirectory).session.prompt(request);
+      await this.client(normalizedDirectory).session.promptAsync(request);
     } catch (error) {
       if (!isTransientPromptError(error)) {
         throw error;
@@ -1239,19 +1137,18 @@ export class OpencodeService {
       const pollStartedAt = Date.now();
       while (Date.now() - pollStartedAt < 2_400) {
         const recentMessages = await this.loadMessages(normalizedDirectory, input.sessionID).catch(() => undefined);
-        if (recentMessages && hasRecentMatchingUserPrompt(recentMessages, input.text, promptSentAt)) {
+      if (recentMessages && hasRecentMatchingUserPrompt(recentMessages, input.text, promptSentAt)) {
           return true;
         }
         await delay(280);
       }
       await delay(320);
-      await this.client(normalizedDirectory).session.prompt(request);
+      await this.client(normalizedDirectory).session.promptAsync(request);
     } finally {
       setTimeout(() => {
         this.promptFence.delete(dedupeKey);
       }, 15_000);
     }
-    void this.scheduleSessionMemoryIngest(normalizedDirectory, input.sessionID, "prompt.sent");
     return true;
   }
 
@@ -1270,7 +1167,7 @@ export class OpencodeService {
     return true;
   }
 
-  async gitDiff(directory: string) {
+  async gitDiff(directory: string): Promise<string> {
     return gitDiffWorkflow(directory, {
       resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
       runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
@@ -1833,6 +1730,10 @@ export class OpencodeService {
             }
             const toolName = typeof part.tool === "string" ? part.tool : "tool";
             const classified = classifyTool(toolName, state.input, directory);
+            const recordablePaths = classified.operation
+              ? await filterRecordablePaths(directory, classified.paths)
+              : classified.paths;
+            const operation = classified.operation && recordablePaths.length > 0 ? classified.operation : undefined;
             const recordID = `${bundle.info.id}:${part.id}:tool:${classified.kind}`;
             executionRecords.push({
               id: recordID,
@@ -1840,24 +1741,23 @@ export class OpencodeService {
               sessionID,
               timestamp,
               kind: classified.kind,
-              summary: classified.summary,
+              summary: operation
+                ? summarizeOperation(operation, recordablePaths, classified.summary)
+                : classified.summary,
               actor,
               tool: toolName,
-              operation: classified.operation,
+              operation,
               turnID: bundle.info.id,
               delegationID,
               eventID: part.id,
-              paths: classified.paths,
+              paths: recordablePaths,
             });
 
-            if (classified.operation) {
-              for (const filePath of classified.paths) {
-                if (!filePath || filePath === ".") {
-                  continue;
-                }
+            if (operation) {
+              for (const filePath of recordablePaths) {
                 provenanceRecords.push({
                   filePath,
-                  operation: classified.operation,
+                  operation,
                   actorType: actor.type,
                   actorName: actor.name,
                   tool: toolName,
@@ -1876,7 +1776,13 @@ export class OpencodeService {
             const files = Array.isArray(part.files)
               ? part.files.filter((item): item is string => typeof item === "string")
               : [];
-            const normalizedPaths = files.map((item) => toWorkspaceRelativePath(directory, item));
+            const normalizedPaths = await filterRecordablePaths(
+              directory,
+              files.map((item) => toWorkspaceRelativePath(directory, item)),
+            );
+            if (normalizedPaths.length === 0) {
+              continue;
+            }
             const recordID = `${bundle.info.id}:${part.id}:patch`;
             executionRecords.push({
               id: recordID,
@@ -1884,7 +1790,7 @@ export class OpencodeService {
               sessionID,
               timestamp,
               kind: "edit",
-              summary: normalizedPaths.length > 0 ? `Edited ${normalizedPaths.length} files` : "Edited files",
+              summary: summarizeOperation("edit", normalizedPaths, "Edited files"),
               actor,
               operation: "edit",
               turnID: bundle.info.id,
@@ -2085,83 +1991,6 @@ export class OpencodeService {
     return [...descendants, sessionID];
   }
 
-  private extractSessionIDFromStreamEvent(event: Event) {
-    const asRecord = event as unknown as { properties?: Record<string, unknown> };
-    const properties = asRecord.properties;
-    if (!properties || typeof properties !== "object") {
-      return undefined;
-    }
-    if (typeof properties.sessionID === "string") {
-      return properties.sessionID;
-    }
-    const info = properties.info;
-    if (info && typeof info === "object") {
-      const infoRecord = info as Record<string, unknown>;
-      if (typeof infoRecord.sessionID === "string") {
-        return infoRecord.sessionID;
-      }
-    }
-    const part = properties.part;
-    if (part && typeof part === "object") {
-      const partRecord = part as Record<string, unknown>;
-      if (typeof partRecord.sessionID === "string") {
-        return partRecord.sessionID;
-      }
-    }
-    const message = properties.message;
-    if (message && typeof message === "object") {
-      const messageRecord = message as Record<string, unknown>;
-      if (typeof messageRecord.sessionID === "string") {
-        return messageRecord.sessionID;
-      }
-    }
-    return undefined;
-  }
-
-  private shouldIngestMemoryForEventType(type: string) {
-    return (
-      type === "session.idle" ||
-      type === "session.status" ||
-      type === "message.created" ||
-      type === "message.updated" ||
-      type === "message.part.created" ||
-      type === "message.part.updated" ||
-      type === "message.part.added"
-    );
-  }
-
-  private async scheduleSessionMemoryIngest(directoryInput: string, sessionID: string, reason: string) {
-    const directory = path.resolve(directoryInput);
-    const key = `${directory}::${sessionID}`;
-    const inFlight = this.memoryIngestInFlight.get(key);
-    if (inFlight) {
-      return inFlight;
-    }
-    const lastAt = this.memoryIngestAt.get(key) ?? 0;
-    const nowAt = Date.now();
-    if (reason !== "session.idle" && nowAt - lastAt < 1_800) {
-      return;
-    }
-    const run = (async () => {
-      try {
-        const bundles = await this.loadMessages(directory, sessionID).catch(() => []);
-        const workspaceAllowlist = this.listStoredProjects().map((item) => path.resolve(item.worktree));
-        await this.memoryStore.ingestSessionMessages(directory, sessionID, bundles, {
-          workspaceAllowlist,
-        });
-        this.memoryIngestAt.set(key, Date.now());
-      } catch {
-        // Best-effort memory ingestion should never break session operations.
-      }
-    })();
-    this.memoryIngestInFlight.set(key, run);
-    try {
-      await run;
-    } finally {
-      this.memoryIngestInFlight.delete(key);
-    }
-  }
-
   private setState(next: RuntimeState) {
     this.state = next;
     this.emit({
@@ -2182,63 +2011,16 @@ export class OpencodeService {
     this.onEvent?.(event);
   }
 
-  private summarizeStreamEvent(event: Event) {
-    if (event.type === "session.error") {
-      const properties = (event as { properties?: { sessionID?: string; error?: Record<string, unknown> } }).properties;
-      const errorRecord = properties?.error && typeof properties.error === "object"
-        ? properties.error
-        : undefined;
-      return {
-        type: String(event.type),
-        properties: {
-          sessionID: properties?.sessionID,
-          error: errorRecord
-            ? {
-                ...errorRecord,
-                message: typeof errorRecord.message === "string" ? errorRecord.message : undefined,
-                code: typeof errorRecord.code === "string" ? errorRecord.code : undefined,
-                name: typeof errorRecord.name === "string" ? errorRecord.name : undefined,
-                cause: errorRecord.cause,
-              }
-            : undefined,
-        },
-      };
-    }
-
-    if (event.type === "session.status") {
-      const properties = (
-        event as { properties?: { sessionID?: string; status?: { type?: string; message?: string; attempt?: number } } }
-      ).properties;
-      return {
-        type: String(event.type),
-        properties: {
-          sessionID: properties?.sessionID,
-          status: properties?.status
-            ? {
-                type: properties.status.type,
-                message: properties.status.message,
-                attempt: properties.status.attempt,
-              }
-            : undefined,
-        },
-      };
-    }
-
-    if (event.type === "session.idle") {
-      const properties = (event as { properties?: { sessionID?: string } }).properties;
-      return {
-        type: String(event.type),
-        properties: {
-          sessionID: properties?.sessionID,
-        },
-      };
-    }
-    return { type: String(event.type) };
-  }
-
   private baseUrl(profile: RuntimeProfile) {
     const protocol = profile.https ? "https" : "http";
     return `${protocol}://${profile.host}:${profile.port}`;
+  }
+
+  private resolvedBaseUrl() {
+    if (this.managedBaseUrl && this.managedProcess) {
+      return this.managedBaseUrl;
+    }
+    return this.baseUrl(this.requireProfile());
   }
 
   private baseWsUrl() {
@@ -2279,8 +2061,8 @@ export class OpencodeService {
   }
 
   private client(directory?: string, signal?: AbortSignal): OpencodeClient {
-    const profile = this.requireProfile();
-    const baseUrl = this.baseUrl(profile);
+    this.requireProfile();
+    const baseUrl = this.resolvedBaseUrl();
 
     const headers: Record<string, string> = {};
     if (this.authHeader) {
@@ -2302,8 +2084,20 @@ export class OpencodeService {
     if (customPath && customPath.length > 0) {
       return customPath;
     }
-
-    return "opencode";
+    const candidates = ["opencode"];
+    if (process.platform === "darwin" && existsSync(MAC_DESKTOP_OPENCODE_BINARY)) {
+      candidates.push(MAC_DESKTOP_OPENCODE_BINARY);
+    }
+    const resolvedCandidates = await Promise.all(
+      candidates.map(async (candidate) => ({
+        path: candidate,
+        version: await this.runCommandWithOutput(candidate, ["--version"], homedir()).then((value) => value.trim()).catch(() => ""),
+      })),
+    );
+    return pickLatestManagedOpencodeBinary({
+      platform: process.platform,
+      candidates: resolvedCandidates.filter((candidate) => candidate.version.length > 0),
+    });
   }
 
   private unwrap<T>(promise: Promise<{ data?: T }> | { data?: T }): Promise<T>;
@@ -2423,7 +2217,7 @@ export class OpencodeService {
               type: "opencode.global",
               payload: {
                 directory,
-                event: this.summarizeStreamEvent(event),
+                event,
               },
             });
           }
@@ -2454,17 +2248,11 @@ export class OpencodeService {
               break;
             }
 
-            const eventType = String(event.type);
-            const eventSessionID = this.extractSessionIDFromStreamEvent(event);
-            if (eventSessionID && this.shouldIngestMemoryForEventType(eventType)) {
-              void this.scheduleSessionMemoryIngest(directory, eventSessionID, eventType);
-            }
-
             this.emit({
               type: "opencode.project",
               payload: {
                 directory,
-                event: this.summarizeStreamEvent(event),
+                event,
               },
             });
           }
@@ -2662,11 +2450,22 @@ export class OpencodeService {
     return this.commandHelpers.runCommandWithOutput(command, args, cwd);
   }
 
-  private async renderUntrackedDiff(repoRoot: string, relativePath: string) {
+  private async renderUntrackedDiff(repoRoot: string, relativePath: string): Promise<string> {
     const normalizedPath = relativePath.replace(/\\/g, "/");
     const fullPath = path.resolve(repoRoot, relativePath);
     const baseHeader = [`diff --git a/${normalizedPath} b/${normalizedPath}`, "new file mode 100644"];
     try {
+      const fileInfo = await stat(fullPath);
+      if (fileInfo.isDirectory()) {
+        if (existsSync(path.join(fullPath, ".git"))) {
+          const nestedDiff: string = await this.gitDiff(fullPath).catch(() => "");
+          if (nestedDiff.trim().length > 0 && nestedDiff.trim() !== "No local changes.") {
+            return nestedDiff.trimEnd();
+          }
+        }
+        return [...baseHeader, `Binary files /dev/null and b/${normalizedPath} differ`].join("\n");
+      }
+
       const content = await readFile(fullPath);
       if (content.includes(0)) {
         return [...baseHeader, `Binary files /dev/null and b/${normalizedPath} differ`].join("\n");

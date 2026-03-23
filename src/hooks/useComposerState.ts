@@ -23,6 +23,7 @@ export type ModelPayload = {
 };
 
 export type SendPromptInput = {
+  textOverride?: string;
   systemAddendum?: string;
   promptSource?: "user" | "job" | "machine";
   tools?: Record<string, boolean>;
@@ -30,7 +31,7 @@ export type SendPromptInput = {
 
 type UseComposerStateOptions = {
   availableSlashCommands: SlashCommand[];
-  refreshMessages: () => Promise<void>;
+  refreshMessages: () => Promise<unknown>;
   refreshProject: (directory: string) => Promise<unknown>;
   sessions: ComposerSession[];
   selectedAgent?: string;
@@ -218,14 +219,13 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
-    const text = composer.trim();
-    if (!text && composerAttachments.length === 0) {
-      return;
-    }
-
     const promptInput: SendPromptInput = typeof input === "string"
       ? { systemAddendum: input }
       : input ?? {};
+    const text = (promptInput.textOverride ?? composer).trim();
+    if (!text && composerAttachments.length === 0) {
+      return;
+    }
     const normalizedSystemAddendum = promptInput.systemAddendum?.trim() ?? "";
     const promptSource = promptInput.promptSource ?? "user";
     const toolsKey = promptInput.tools
@@ -253,6 +253,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       if (shouldAutoTitle) {
         const generatedTitle = options.deriveSessionTitleFromPrompt(text);
         await window.orxa.opencode.renameSession(activeProjectDir, activeSessionID, generatedTitle);
+        await options.refreshProject(activeProjectDir);
       }
 
       await window.orxa.opencode.sendPrompt({
@@ -275,10 +276,6 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
       void options.refreshMessages();
-      window.setTimeout(() => {
-        void options.refreshMessages();
-      }, 180);
-      options.startResponsePolling(activeProjectDir, activeSessionID);
       if (shouldAutoTitle) {
         void options.refreshProject(activeProjectDir).catch(() => undefined);
       }

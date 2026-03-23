@@ -1,14 +1,12 @@
 import type { BrowserAgentActionResult, BrowserHistoryItem, BrowserState } from "./browser";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexUserInputRequest } from "./codex";
-import type { ContextSelectionTrace, MemoryBackfillStatus, ArtifactRecord } from "./memory-artifacts";
+import type { ContextSelectionTrace, ArtifactRecord } from "./artifacts";
 import type { McpDevToolsServerStatus } from "./mcp-devtools";
 import type { RuntimeState } from "./runtime";
 import type { UpdateReleaseChannel } from "./updates";
+import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2/client";
 
-type StreamEventSummary = {
-  type: string;
-  properties?: Record<string, unknown>;
-};
+type StreamEventSummary = OpencodeEvent;
 
 export type OrxaEvent =
   | {
@@ -85,10 +83,6 @@ export type OrxaEvent =
         message?: string;
         version?: string;
       };
-    }
-  | {
-      type: "memory.backfill";
-      payload: MemoryBackfillStatus;
     }
   | {
       type: "browser.state";
