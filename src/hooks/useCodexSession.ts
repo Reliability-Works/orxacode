@@ -1,7 +1,7 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef } from "react";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
-import { getPersistedCodexState, setPersistedCodexState } from "./codex-session-storage";
+import { getPersistedCodexState } from "./codex-session-storage";
 import {
   appendAssistantDeltaToLastMessage,
   appendDeltaToMappedItem,
@@ -9,6 +9,27 @@ import {
   parseStructuredPlan,
 } from "./codex-session-message-reducers";
 import { nextMessageID, resetStreamingBookkeeping } from "./codex-session-streaming";
+import {
+  extractSubagentMeta,
+  getResumedActiveTurnId,
+  isHiddenSubagentSource,
+  normalizeThreadStatusType,
+  subagentInfoFromThread,
+  type SubagentInfo,
+} from "./codex-subagent-helpers";
+import { hydratePersistedCodexSession, useCodexSessionPersistence } from "./useCodexSessionPersistence";
+import {
+  buildSyntheticCommandDiff,
+  captureGitDiffSnapshot,
+  captureGitStatusSnapshot,
+  extractFileChangeDescriptors,
+  isSameGitDiffSnapshotEntry,
+  isSameGitStatusSnapshotEntry,
+  looksLikeUnifiedDiff,
+  type CommandDiffBaseline,
+  type FileChangeDescriptor,
+  type GitSnapshotLookup,
+} from "./codex-diff-helpers";
 import type { ExploreEntry } from "../lib/explore-utils";
 import {
   cleanCommandText,
@@ -18,8 +39,11 @@ import {
   webSearchToExploreEntry,
   mcpToolCallToExploreEntry,
 } from "../lib/explore-utils";
-import { parseGitDiffOutput, parseGitStatusOutput, type GitDiffFile, type GitStatusFile } from "../lib/git-diff";
+import { parseGitDiffOutput, parseGitStatusOutput } from "../lib/git-diff";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+
+export { agentColor, agentColorForId } from "./codex-subagent-helpers";
+export type { SubagentInfo } from "./codex-subagent-helpers";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -30,108 +54,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : value ? String(value) : "";
-}
-
-function normalizeSubagentKind(value: string) {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]/g, "_");
-  if (normalized.startsWith("subagent_")) {
-    return normalized.slice("subagent_".length);
-  }
-  if (normalized.startsWith("sub_agent_")) {
-    return normalized.slice("sub_agent_".length);
-  }
-  return normalized;
-}
-
-function normalizeSubagentDisplayRole(value: string | null | undefined) {
-  const normalized = normalizeSubagentKind(value ?? "");
-  if (!normalized || normalized === "vscode" || normalized === "editor" || normalized === "codex") {
-    return undefined;
-  }
-  return normalized.replace(/_/g, " ");
-}
-
-function getSubagentKind(source: unknown): string | null {
-  if (typeof source === "string") {
-    const normalized = normalizeSubagentKind(source);
-    return normalized || null;
-  }
-
-  const record = asRecord(source);
-  if (!record) {
-    return null;
-  }
-
-  const subAgentRaw = record.subAgent ?? record.sub_agent ?? record.subagent;
-  if (typeof subAgentRaw === "string") {
-    const normalized = normalizeSubagentKind(subAgentRaw);
-    return normalized || null;
-  }
-
-  const subAgentRecord = asRecord(subAgentRaw);
-  if (!subAgentRecord) {
-    return null;
-  }
-
-  const explicitKind = asString(
-    subAgentRecord.kind ??
-      subAgentRecord.type ??
-      subAgentRecord.name ??
-      subAgentRecord.id,
-  );
-  if (explicitKind) {
-    const normalized = normalizeSubagentKind(explicitKind);
-    return normalized || null;
-  }
-
-  const candidateKeys = Object.keys(subAgentRecord).filter(
-    (key) =>
-      key !== "thread_spawn" &&
-      key !== "threadSpawn" &&
-      key !== "nickname" &&
-      key !== "agentNickname" &&
-      key !== "agent_nickname" &&
-      key !== "role" &&
-      key !== "agentRole" &&
-      key !== "agent_role" &&
-      key !== "parentThreadId" &&
-      key !== "parent_thread_id" &&
-      key !== "depth",
-  );
-  if (candidateKeys.length !== 1) {
-    return null;
-  }
-  const normalized = normalizeSubagentKind(candidateKeys[0] ?? "");
-  return normalized || null;
-}
-
-function extractSubagentMeta(source: unknown) {
-  const sourceRecord = asRecord(source);
-  const subAgentRecord = asRecord(sourceRecord?.subAgent ?? sourceRecord?.sub_agent ?? sourceRecord?.subagent);
-  if (!subAgentRecord) {
-    const kind = getSubagentKind(source);
-    if (!kind) {
-      return null;
-    }
-    return {
-      kind,
-      nickname: undefined,
-      role: normalizeSubagentDisplayRole(kind) ?? "worker",
-    };
-  }
-  const kind = getSubagentKind(source);
-  const nickname =
-    asString(subAgentRecord?.nickname ?? subAgentRecord?.agentNickname ?? subAgentRecord?.agent_nickname).trim() ||
-    undefined;
-  const explicitRole = normalizeSubagentDisplayRole(
-    asString(subAgentRecord?.role ?? subAgentRecord?.agentRole ?? subAgentRecord?.agent_role).trim() || null,
-  );
-  const role = explicitRole ?? (kind ? normalizeSubagentDisplayRole(kind) : undefined) ?? "worker";
-
-  return { kind, nickname, role };
 }
 
 function readTurnId(params: Record<string, unknown>) {
@@ -236,8 +158,6 @@ function normalizeWorkspaceRelativePath(rawPath: string, workspaceDirectory: str
   return normalizedPath;
 }
 
-const HIDDEN_SUBAGENT_KINDS = new Set(["memory_consolidation"]);
-
 function getParentThreadIdFromSource(source: unknown): string | null {
   const sourceRecord = asRecord(source);
   if (!sourceRecord) {
@@ -304,116 +224,6 @@ function getNotificationThreadId(
   return null;
 }
 
-function isHiddenSubagentSource(source: unknown) {
-  const kind = getSubagentKind(source);
-  if (!kind) {
-    return false;
-  }
-  return HIDDEN_SUBAGENT_KINDS.has(kind);
-}
-
-function normalizeThreadStatusType(status: unknown) {
-  if (!status || typeof status !== "object" || Array.isArray(status)) {
-    return "";
-  }
-  const record = status as Record<string, unknown>;
-  const typeRaw = record.type ?? record.statusType ?? record.status_type;
-  if (typeof typeRaw !== "string") {
-    return "";
-  }
-  return typeRaw
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]/g, "");
-}
-
-function getResumedActiveTurnId(thread: Record<string, unknown>): string | null {
-  const explicitTurnId =
-    asString(thread.activeTurnId ?? thread.active_turn_id).trim() ||
-    asString(asRecord(thread.activeTurn ?? thread.active_turn ?? thread.currentTurn ?? thread.current_turn)?.id).trim();
-  if (explicitTurnId) {
-    return explicitTurnId;
-  }
-  const turns = Array.isArray(thread.turns) ? thread.turns : [];
-  for (let index = turns.length - 1; index >= 0; index -= 1) {
-    const turn = asRecord(turns[index]);
-    if (!turn) {
-      continue;
-    }
-    const status = asString(turn.status ?? turn.turnStatus ?? turn.turn_status)
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_-]/g, "");
-    if (
-      status === "inprogress" ||
-      status === "running" ||
-      status === "processing" ||
-      status === "pending" ||
-      status === "started" ||
-      status === "queued" ||
-      status === "waiting" ||
-      status === "blocked" ||
-      status === "needsinput" ||
-      status === "requiresaction" ||
-      status === "awaitinginput" ||
-      status === "waitingforinput"
-    ) {
-      return asString(turn.id ?? turn.turnId ?? turn.turn_id).trim() || null;
-    }
-  }
-  return null;
-}
-
-function toSubagentStatus(thread: Record<string, unknown>): Pick<SubagentInfo, "status" | "statusText"> {
-  const statusType = normalizeThreadStatusType(thread.status);
-  const activeTurnId = getResumedActiveTurnId(thread);
-  if (
-    statusType.includes("await") ||
-    statusType.includes("input") ||
-    statusType.includes("question") ||
-    statusType.includes("response")
-  ) {
-    return { status: "awaiting_instruction", statusText: "awaiting input" };
-  }
-  if (activeTurnId) {
-    return { status: "thinking", statusText: "is thinking" };
-  }
-  if (
-    statusType === "completed" ||
-    statusType === "done" ||
-    statusType === "finished"
-  ) {
-    return { status: "completed", statusText: "completed" };
-  }
-  return { status: "idle", statusText: "idle" };
-}
-
-function subagentInfoFromThread(
-  thread: Record<string, unknown>,
-  index: number,
-  existing?: SubagentInfo,
-): SubagentInfo | null {
-  const threadId = asString(thread.id).trim();
-  if (!threadId) {
-    return null;
-  }
-  const meta = extractSubagentMeta(thread.source);
-  const status = toSubagentStatus(thread);
-  const preview = asString(thread.preview ?? thread.name).trim();
-  if (!existing && !meta && !preview) {
-    return null;
-  }
-  const fallbackName = preview || `Agent-${index + 1}`;
-  return {
-    threadId,
-    nickname: existing?.nickname ?? meta?.nickname ?? fallbackName,
-    role: existing?.role ?? meta?.role ?? "worker",
-    status: status.status,
-    statusText: status.statusText,
-    spawnedAt: existing?.spawnedAt ?? Date.now(),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -426,31 +236,6 @@ export interface CodexMessage {
   role: CodexMessageRole;
   content: string;
   timestamp: number;
-}
-
-/** Tracked subagent info for background agents panel */
-export interface SubagentInfo {
-  threadId: string;
-  nickname: string;
-  role: string;
-  status: "thinking" | "awaiting_instruction" | "completed" | "idle";
-  statusText: string;
-  spawnedAt: number;
-}
-
-/** Agent color palette for distinct agent name colors */
-const AGENT_COLORS = ["#22C55E", "#F97316", "#3B82F6", "#A855F7", "#06B6D4", "#EC4899"] as const;
-export function agentColor(index: number): string {
-  return AGENT_COLORS[index % AGENT_COLORS.length];
-}
-
-/** Stable color derived from a threadId string (consistent across UI surfaces) */
-export function agentColorForId(threadId: string): string {
-  let hash = 0;
-  for (let i = 0; i < threadId.length; i++) {
-    hash = ((hash << 5) - hash + threadId.charCodeAt(i)) | 0;
-  }
-  return AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length];
 }
 
 export type CodexMessageItem =
@@ -516,250 +301,8 @@ export interface CodexSessionState {
   planItems: TodoItem[];
 }
 
-type GitDiffSnapshotEntry = {
-  path: string;
-  oldPath?: string;
-  type: string;
-  insertions: number;
-  deletions: number;
-  diff: string;
-};
-
-type CommandDiffBaseline = {
-  snapshot: Map<string, GitDiffSnapshotEntry>;
-  statusSnapshot: Map<string, GitStatusFile>;
-  dirtyContents: Map<string, string | null>;
-};
-
 const COMMAND_DIFF_CONTENT_BASELINE_LIMIT = 24;
 const COMMAND_DIFF_POLL_INTERVAL_MS = 850;
-
-type FileChangeDescriptor = {
-  path: string;
-  type: string;
-  diff?: string;
-  insertions?: number;
-  deletions?: number;
-};
-
-type GitSnapshotLookup = {
-  diffByPath: Map<string, GitDiffSnapshotEntry>;
-  statusByPath: Map<string, GitStatusFile>;
-};
-
-function toGitSnapshotEntry(file: GitDiffFile): GitDiffSnapshotEntry {
-  return {
-    path: file.path,
-    oldPath: file.oldPath,
-    type: file.status,
-    insertions: file.added,
-    deletions: file.removed,
-    diff: file.diffLines.join("\n"),
-  };
-}
-
-function captureGitDiffSnapshot(files: GitDiffFile[]) {
-  return new Map(files.map((file) => [file.key, toGitSnapshotEntry(file)]));
-}
-
-function captureGitStatusSnapshot(files: GitStatusFile[]) {
-  return new Map(files.map((file) => [file.key, file]));
-}
-
-function isSameGitDiffSnapshotEntry(left: GitDiffSnapshotEntry | undefined, right: GitDiffSnapshotEntry) {
-  if (!left) {
-    return false;
-  }
-  return (
-    left.path === right.path &&
-    left.type === right.type &&
-    left.insertions === right.insertions &&
-    left.deletions === right.deletions &&
-    left.diff === right.diff
-  );
-}
-
-function isSameGitStatusSnapshotEntry(left: GitStatusFile | undefined, right: GitStatusFile) {
-  if (!left) {
-    return false;
-  }
-  return (
-    left.path === right.path &&
-    left.oldPath === right.oldPath &&
-    left.status === right.status
-  );
-}
-
-function splitLinesPreserveFinalNewline(value: string | null) {
-  if (value == null) {
-    return [];
-  }
-  const normalized = value.replace(/\r\n/g, "\n");
-  if (!normalized) {
-    return [];
-  }
-  return normalized.endsWith("\n")
-    ? normalized.slice(0, -1).split("\n")
-    : normalized.split("\n");
-}
-
-function buildSyntheticCommandDiff(path: string, beforeContent: string | null, afterContent: string | null) {
-  const beforeLines = splitLinesPreserveFinalNewline(beforeContent);
-  const afterLines = splitLinesPreserveFinalNewline(afterContent);
-
-  let prefix = 0;
-  while (
-    prefix < beforeLines.length &&
-    prefix < afterLines.length &&
-    beforeLines[prefix] === afterLines[prefix]
-  ) {
-    prefix += 1;
-  }
-
-  let beforeSuffix = beforeLines.length - 1;
-  let afterSuffix = afterLines.length - 1;
-  while (
-    beforeSuffix >= prefix &&
-    afterSuffix >= prefix &&
-    beforeLines[beforeSuffix] === afterLines[afterSuffix]
-  ) {
-    beforeSuffix -= 1;
-    afterSuffix -= 1;
-  }
-
-  const removedLines = beforeLines.slice(prefix, beforeSuffix + 1);
-  const addedLines = afterLines.slice(prefix, afterSuffix + 1);
-  const type =
-    beforeContent == null ? "added" : afterContent == null ? "deleted" : "modified";
-
-  if (removedLines.length === 0 && addedLines.length === 0) {
-    return {
-      type,
-      diff: "",
-      insertions: 0,
-      deletions: 0,
-    };
-  }
-
-  const oldStart = removedLines.length === 0 ? prefix : prefix + 1;
-  const newStart = addedLines.length === 0 ? prefix : prefix + 1;
-  const diffLines = [
-    `diff --git a/${path} b/${path}`,
-    `--- ${beforeContent == null ? "/dev/null" : `a/${path}`}`,
-    `+++ ${afterContent == null ? "/dev/null" : `b/${path}`}`,
-    `@@ -${oldStart},${removedLines.length} +${newStart},${addedLines.length} @@`,
-    ...removedLines.map((line) => `-${line}`),
-    ...addedLines.map((line) => `+${line}`),
-  ];
-
-  return {
-    type,
-    diff: diffLines.join("\n"),
-    insertions: addedLines.length,
-    deletions: removedLines.length,
-  };
-}
-
-function looksLikeUnifiedDiff(value: string | undefined) {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed) {
-    return false;
-  }
-  return (
-    trimmed.startsWith("diff --git ") ||
-    trimmed.includes("\n@@ ") ||
-    trimmed.startsWith("@@ ") ||
-    trimmed.includes("\n--- ") ||
-    trimmed.includes("\n+++ ") ||
-    trimmed.startsWith("--- ") ||
-    trimmed.startsWith("+++ ")
-  );
-}
-
-function normalizeFileChangeType(value: unknown) {
-  const normalized = asString(value).trim().toLowerCase();
-  if (normalized === "add" || normalized === "added" || normalized === "create" || normalized === "created") {
-    return "added";
-  }
-  if (normalized === "delete" || normalized === "deleted" || normalized === "remove" || normalized === "removed") {
-    return "deleted";
-  }
-  if (normalized === "rename" || normalized === "renamed" || normalized === "move" || normalized === "moved") {
-    return "renamed";
-  }
-  return "modified";
-}
-
-function parseFileChangeSummary(output: string | undefined) {
-  if (!output) {
-    return [];
-  }
-  const descriptors: FileChangeDescriptor[] = [];
-  for (const rawLine of output.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    const match = line.match(/^([AMDR])\s+(.+)$/);
-    if (!match) {
-      continue;
-    }
-    const code = match[1] ?? "M";
-    const path = match[2]?.trim();
-    if (!path) {
-      continue;
-    }
-    descriptors.push({
-      path,
-      type: code === "A" ? "added" : code === "D" ? "deleted" : code === "R" ? "renamed" : "modified",
-    });
-  }
-  return descriptors;
-}
-
-function extractFileChangeDescriptors(item: {
-  path?: string;
-  changeType?: string;
-  insertions?: number;
-  deletions?: number;
-  changes?: unknown;
-  aggregatedOutput?: string;
-}, existingDiff?: string): FileChangeDescriptor[] {
-  const rawChanges = Array.isArray(item.changes) ? item.changes : [];
-  const fromChanges = rawChanges
-    .map((change) => {
-      const record = asRecord(change);
-      const path = asString(record?.path).trim();
-      if (!path) {
-        return null;
-      }
-      const diff = asString(record?.diff).trim();
-      const insertions = typeof record?.insertions === "number" ? record.insertions : undefined;
-      const deletions = typeof record?.deletions === "number" ? record.deletions : undefined;
-      return {
-        path,
-        type: normalizeFileChangeType(record?.kind ?? record?.type ?? item.changeType),
-        diff: looksLikeUnifiedDiff(diff) ? diff : undefined,
-        insertions,
-        deletions,
-      } satisfies FileChangeDescriptor;
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
-  if (fromChanges.length > 0) {
-    return fromChanges;
-  }
-
-  const fallbackPath = asString(item.path).trim();
-  if (fallbackPath) {
-    return [{
-      path: fallbackPath,
-      type: normalizeFileChangeType(item.changeType),
-      diff: looksLikeUnifiedDiff(existingDiff) ? existingDiff : undefined,
-      insertions: item.insertions,
-      deletions: item.deletions,
-    }];
-  }
-
-  return parseFileChangeSummary(item.aggregatedOutput);
-}
-
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -915,36 +458,17 @@ export function useCodexSession(
     [sessionKey, setCodexConnectionState],
   );
 
-  useEffect(() => {
-    initCodexSession(sessionKey, directory);
-  }, [directory, initCodexSession, sessionKey]);
-
-  useEffect(() => {
-    setPersistedCodexState(sessionKey, {
-      messages,
-      thread,
-      isStreaming,
-      messageIdCounter: messageIdCounter.current,
-    });
-  }, [isStreaming, messages, sessionKey, thread]);
-
-  // Ensure persistence on unmount (refs capture latest values)
-  useEffect(() => {
-    const pollTimers = commandDiffPollTimersRef.current;
-    return () => {
-      for (const timerId of pollTimers.values()) {
-        window.clearTimeout(timerId);
-      }
-      pollTimers.clear();
-      const runtime = getCurrentCodexRuntime();
-      setPersistedCodexState(sessionKey, {
-        messages: runtime?.messages ?? [],
-        thread: runtime?.thread ?? null,
-        isStreaming: runtime?.isStreaming ?? false,
-        messageIdCounter: messageIdCounter.current,
-      });
-    };
-  }, [getCurrentCodexRuntime, sessionKey]);
+  useCodexSessionPersistence({
+    directory,
+    sessionKey,
+    messages,
+    thread,
+    isStreaming,
+    messageIdCounterRef: messageIdCounter,
+    commandDiffPollTimersRef,
+    initCodexSession,
+    getCurrentCodexRuntime,
+  });
 
   // ------------------------------------------------------------------
   // Helper: find and update a message by its internal msg ID
@@ -1139,8 +663,8 @@ export function useCodexSession(
         const diffSnapshot = captureGitDiffSnapshot(parseGitDiffOutput(diffOutput).files);
         const statusSnapshot = captureGitStatusSnapshot(parseGitStatusOutput(statusOutput).files);
         const lookup: GitSnapshotLookup = {
-          diffByPath: new Map<string, GitDiffSnapshotEntry>(),
-          statusByPath: new Map<string, GitStatusFile>(),
+          diffByPath: new Map(),
+          statusByPath: new Map(),
         };
 
         for (const entry of diffSnapshot.values()) {
@@ -2200,28 +1724,31 @@ export function useCodexSession(
   const isMounted = useRef(true);
   useEffect(() => {
     isMounted.current = true;
-    const persistedState = getPersistedCodexState(sessionKey);
-    setMessagesState(persistedState.messages);
-    setThreadState(persistedState.thread);
-    setStreamingState(persistedState.isStreaming);
-    setPendingApprovalState(null);
-    setPendingUserInputState(null);
-    setSubagentsState([]);
-    setActiveSubagentThreadIdState(null);
-    setPlanItemsState([]);
-    setThreadNameState(undefined);
-    subagentThreadIds.current.clear();
-    activeTurnIdRef.current = null;
-    interruptRequestedRef.current = false;
-    currentReasoningIdRef.current = null;
-    thinkingItemIdRef.current = null;
-    activeExploreGroupIdRef.current = null;
-    latestPlanUpdateIdRef.current = null;
-    messageIdCounter.current = persistedState.messageIdCounter;
-    pendingInterruptRef.current = false;
-    commandDiffSnapshotsRef.current.clear();
-    itemThreadIdsRef.current.clear();
-    turnThreadIdsRef.current.clear();
+    hydratePersistedCodexSession(sessionKey, {
+      setMessagesState,
+      setThreadState,
+      setStreamingState,
+      setPendingApprovalState,
+      setPendingUserInputState,
+      setSubagentsState: (next) => setSubagentsState(next),
+      setActiveSubagentThreadIdState,
+      setPlanItemsState: (next) => setPlanItemsState(next),
+      setThreadNameState,
+      resetRefs: (persistedMessageIdCounter) => {
+        subagentThreadIds.current.clear();
+        activeTurnIdRef.current = null;
+        interruptRequestedRef.current = false;
+        currentReasoningIdRef.current = null;
+        thinkingItemIdRef.current = null;
+        activeExploreGroupIdRef.current = null;
+        latestPlanUpdateIdRef.current = null;
+        messageIdCounter.current = persistedMessageIdCounter;
+        pendingInterruptRef.current = false;
+        commandDiffSnapshotsRef.current.clear();
+        itemThreadIdsRef.current.clear();
+        turnThreadIdsRef.current.clear();
+      },
+    });
 
     if (!window.orxa?.events) {
       return;

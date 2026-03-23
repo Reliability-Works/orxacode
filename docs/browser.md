@@ -1,6 +1,6 @@
 # Browser Integration
 
-Orxa Code includes an embedded Chromium browser in the right sidebar (alongside Git and Files tabs).
+Orxa Code includes an embedded Chromium browser in its own dedicated sidebar.
 
 ## Features
 
@@ -38,7 +38,7 @@ Waiting: `exists`, `visible`, `wait_for`, `wait_for_navigation`, `wait_for_idle`
 - Agent controls by default when Browser Mode is enabled
 - **Take control** switches ownership to the human and pauses agent execution
 - **Hand back to agent** returns control for continued automation
-- The browser pane auto-focuses when agent browser actions begin
+- The browser sidebar auto-focuses when agent browser actions begin
 
 ## Jobs with Browser Mode
 

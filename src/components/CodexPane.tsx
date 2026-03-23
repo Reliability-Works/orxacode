@@ -15,11 +15,11 @@ import {
   buildCodexBackgroundAgents,
   buildCodexBackgroundAgentsFromChildThreads,
   buildCodexBackgroundAgentsFromMessages,
-  extractReviewChangesFiles,
   extractCodexTodoItemsFromMessages,
   filterOutCurrentCodexThreadAgent,
   projectCodexSessionPresentation,
 } from "../lib/session-presentation";
+import { extractReviewChangesFiles } from "../lib/timeline-row-grouping";
 import { selectPendingPermissionDockData, selectPendingPlanDockData, selectPendingQuestionDockData, useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 interface Props {
@@ -619,12 +619,13 @@ export function CodexPane({
     ),
     [codexRuntime?.runtimeSnapshot?.childThreads, messages, subagents],
   );
+  const currentThreadId = thread?.id ?? codexRuntime?.runtimeSnapshot?.thread?.id ?? null;
   const effectiveBackgroundAgents = useMemo(
     () => filterOutCurrentCodexThreadAgent(
       rawBackgroundAgents.filter((agent) => !archivedBackgroundAgentIds.includes(agent.id)),
-      thread?.id ?? null,
+      currentThreadId,
     ),
-    [archivedBackgroundAgentIds, rawBackgroundAgents, thread?.id],
+    [archivedBackgroundAgentIds, currentThreadId, rawBackgroundAgents],
   );
   const effectiveTodoItems = useMemo(
     () => (planItems.length > 0 ? planItems : extractCodexTodoItemsFromMessages(messages)),

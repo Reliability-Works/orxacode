@@ -19,20 +19,31 @@
 4. The app searches common install paths (nvm, Homebrew, Volta) — if installed elsewhere, set the explicit path in settings
 5. Check that no other process is already running `codex app-server`
 
-## Claude Code not launching
+## Claude Code issues
 
-**Symptoms**: Claude session shows blank terminal or "not available" message.
+### Claude Code (Terminal) not launching
+
+**Symptoms**: Claude terminal session shows a blank terminal or "not available" message.
 
 1. Verify Claude Code CLI is installed: `claude --version`
 2. The CLI must be in your PATH — Electron may not inherit shell PATH on macOS
-3. Try setting explicit path in settings if auto-detection fails
-4. Check that `ANTHROPIC_API_KEY` is set or Claude is authenticated
+3. Try setting an explicit path in settings if auto-detection fails
+4. Check that Claude Code is authenticated
+
+### Claude Code (Chat) not starting
+
+**Symptoms**: Claude chat session fails immediately, stays disconnected, or shows auth/runtime errors.
+
+1. Verify Claude Code CLI is installed: `claude --version`
+2. Check authentication status: `claude auth status`
+3. Restart the app after installing or authenticating Claude Code
+4. If Claude chat still fails, try Claude Code (Terminal) to confirm the local CLI itself is healthy
 
 ## Browser not rendering
 
 **Symptoms**: Browser pane appears blank or navigation doesn't work.
 
-1. Switch to the Browser tab in the right sidebar and open a new tab
+1. Open the dedicated Browser sidebar and create or switch to a tab
 2. Resize the app window (refreshes browser bounds sync)
 3. If still blank, restart the app to rebuild WebContentsView attachments
 

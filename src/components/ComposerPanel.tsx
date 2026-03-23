@@ -98,6 +98,7 @@ type ComposerPanelProps = {
   selectedVariant?: string;
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
+  customControls?: ReactNode;
   onLayoutHeightChange?: (height: number) => void;
   /** When true, always use the compact dropdown model selector instead of the full modal picker.
    *  When omitted/false, auto-decides: ≤10 models → dropdown, >10 → modal. */
@@ -226,6 +227,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     selectedVariant,
     setSelectedVariant,
     variantOptions,
+    customControls,
     onLayoutHeightChange,
     simpleModelPicker,
     todoItems,
@@ -809,6 +811,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
             variantOptions={variantOptions}
           />
         )}
+        {customControls}
         <div style={{ flex: 1 }} aria-hidden="true" />
         <div
           className={`composer-compaction-indicator composer-compaction-indicator-inline ${compactionCompacted ? "compacted" : ""}`.trim()}

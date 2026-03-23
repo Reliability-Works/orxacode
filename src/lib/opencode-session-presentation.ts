@@ -27,12 +27,10 @@ import {
   summarizeOrxaBrowserActionText,
 } from "./message-feed-visibility";
 import {
-  groupAdjacentExploreRows,
-  groupAdjacentTimelineExplorationRows,
-  groupAdjacentToolCallRows,
   groupChangedFileRows,
   type UnifiedProjectedSessionPresentation,
 } from "./session-presentation";
+import { groupAdjacentExploreRows, groupAdjacentTimelineExplorationRows, groupAdjacentToolCallRows } from "./timeline-row-grouping";
 
 export type ActivityEvent = {
   id: string;

@@ -1,6 +1,6 @@
 # Session Types
 
-Orxa Code supports four session types, created from the `+` button in the sidebar.
+Orxa Code supports five session types, created from the `+` button in the sidebar or from the workspace landing screen.
 
 ## OpenCode
 
@@ -31,7 +31,20 @@ Agent sessions via the Codex CLI app-server using JSON-RPC over stdio.
 
 **Requires**: Codex CLI installed (`npm install -g @openai/codex`)
 
-## Claude Code
+## Claude Code (Chat)
+
+Structured Claude sessions backed by the Claude Code SDK and CLI, rendered through Orxa Code's shared chat UI.
+
+- Shared message feed with tool cards, diffs, streaming indicators, and command output
+- Claude model selector plus Claude-specific traits
+- Plan mode support for planning-first workflows
+- Permission and question handling through the shared docks above the composer
+- Background agents / subagents surfaced in the existing background-agent dock and detail modal
+- Session persistence across navigation with the same unread/busy state model as Codex and OpenCode
+
+**Requires**: Claude Code CLI installed (`curl -fsSL https://claude.ai/install.sh | bash`)
+
+## Claude Code (Terminal)
 
 Terminal-based Claude sessions running the Claude Code CLI in a PTY.
 
@@ -42,7 +55,7 @@ Terminal-based Claude sessions running the Claude Code CLI in a PTY.
 - Session persistence across navigation
 - Live terminal output streaming
 
-**Requires**: Claude Code CLI installed (`npm install -g @anthropic-ai/claude-code`)
+**Requires**: Claude Code CLI installed (`curl -fsSL https://claude.ai/install.sh | bash`)
 
 ## Canvas
 

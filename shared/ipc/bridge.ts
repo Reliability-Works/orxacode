@@ -43,6 +43,14 @@ import type { BrowserAgentActionRequest, BrowserAgentActionResult, BrowserBounds
 import type { ClaudeTerminalCreateResult, ClaudeTerminalMode, TerminalConnectResult } from "./terminal";
 import type { McpDevToolsServerStatus } from "./mcp-devtools";
 import type { ProviderUsageStats, OpenFileOptions, OpenFileResult, ListeningPort, HttpRequestOptions, HttpRequestResult } from "./app";
+import type {
+  ClaudeChatApprovalDecision,
+  ClaudeChatHealthStatus,
+  ClaudeChatHistoryMessage,
+  ClaudeChatModelEntry,
+  ClaudeChatState,
+  ClaudeChatTurnOptions,
+} from "./claude-chat";
 import type { UpdateCheckResult, UpdatePreferences } from "./updates";
 import type {
   CodexCollaborationMode,
@@ -176,6 +184,18 @@ export interface OrxaBridge {
     write: (processId: string, data: string) => Promise<boolean>;
     resize: (processId: string, cols: number, rows: number) => Promise<boolean>;
     close: (processId: string) => Promise<boolean>;
+  };
+  claudeChat: {
+    health: () => Promise<ClaudeChatHealthStatus>;
+    listModels: () => Promise<ClaudeChatModelEntry[]>;
+    getState: (sessionKey: string) => Promise<ClaudeChatState>;
+    startTurn: (sessionKey: string, directory: string, prompt: string, options?: ClaudeChatTurnOptions) => Promise<void>;
+    interruptTurn: (sessionKey: string) => Promise<void>;
+    approve: (requestId: string, decision: ClaudeChatApprovalDecision) => Promise<void>;
+    respondToUserInput: (requestId: string, response: string) => Promise<void>;
+    getSessionMessages: (sessionId: string, directory?: string) => Promise<ClaudeChatHistoryMessage[]>;
+    archiveSession: (sessionKey: string) => Promise<void>;
+    archiveProviderSession: (sessionId: string, directory?: string) => Promise<void>;
   };
   browser: {
     getState: () => Promise<BrowserState>;

@@ -17,7 +17,8 @@ describe("NewSessionPicker", () => {
     renderPicker();
     expect(screen.getByText("opencode session")).toBeInTheDocument();
     expect(screen.getByText("canvas session")).toBeInTheDocument();
-    expect(screen.getByText("claude session")).toBeInTheDocument();
+    expect(screen.getByText("claude chat session")).toBeInTheDocument();
+    expect(screen.getByText("claude terminal session")).toBeInTheDocument();
     expect(screen.getByText("codex session")).toBeInTheDocument();
   });
 
@@ -25,7 +26,8 @@ describe("NewSessionPicker", () => {
     renderPicker({ isOpen: false });
     expect(screen.queryByText("opencode session")).not.toBeInTheDocument();
     expect(screen.queryByText("canvas session")).not.toBeInTheDocument();
-    expect(screen.queryByText("claude session")).not.toBeInTheDocument();
+    expect(screen.queryByText("claude chat session")).not.toBeInTheDocument();
+    expect(screen.queryByText("claude terminal session")).not.toBeInTheDocument();
     expect(screen.queryByText("codex session")).not.toBeInTheDocument();
   });
 
@@ -41,9 +43,15 @@ describe("NewSessionPicker", () => {
     expect(onPick).toHaveBeenCalledWith("canvas");
   });
 
-  it("clicking claude calls onPick with 'claude'", () => {
+  it("clicking claude chat calls onPick with 'claude-chat'", () => {
     const { onPick } = renderPicker();
-    fireEvent.click(screen.getByText("claude session"));
+    fireEvent.click(screen.getByText("claude chat session"));
+    expect(onPick).toHaveBeenCalledWith("claude-chat");
+  });
+
+  it("clicking claude terminal calls onPick with 'claude'", () => {
+    const { onPick } = renderPicker();
+    fireEvent.click(screen.getByText("claude terminal session"));
     expect(onPick).toHaveBeenCalledWith("claude");
   });
 

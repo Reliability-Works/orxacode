@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.18",
+  "version": "0.1.0-beta.20",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
@@ -74,6 +74,7 @@
     }
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.81",
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "@tanstack/react-virtual": "^3.13.23",

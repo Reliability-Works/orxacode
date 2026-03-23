@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC, type OrxaBridge } from "../shared/ipc";
 import { createIpcEventHub } from "./services/ipc-event-hub";
 
-const eventHub = createIpcEventHub(ipcRenderer, IPC.events);
+const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch]);
 
 const bridge: OrxaBridge = {
   app: {
@@ -126,6 +126,19 @@ const bridge: OrxaBridge = {
     write: (processId, data) => ipcRenderer.invoke(IPC.claudeTerminalWrite, processId, data),
     resize: (processId, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
     close: (processId) => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
+  },
+  claudeChat: {
+    health: () => ipcRenderer.invoke(IPC.claudeChatHealth),
+    listModels: () => ipcRenderer.invoke(IPC.claudeChatListModels),
+    getState: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
+    startTurn: (sessionKey, directory, prompt, options) =>
+      ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
+    interruptTurn: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
+    approve: (requestId, decision) => ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
+    respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
+    getSessionMessages: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+    archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
+    archiveProviderSession: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
   },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),

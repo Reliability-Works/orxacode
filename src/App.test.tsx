@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { EMPTY_WORKSPACE_SESSIONS_KEY } from "./hooks/useWorkspaceState";
 import { setPersistedCodexState } from "./hooks/codex-session-storage";
 import { preferredAgentForMode } from "./lib/app-mode";
+import { useUnifiedRuntimeStore } from "./state/unified-runtime-store";
 
 const checkDependenciesMock = vi.fn(async () => ({
   checkedAt: Date.now(),
@@ -34,6 +36,20 @@ const checkDependenciesMock = vi.fn(async () => ({
 
 beforeEach(() => {
   window.localStorage.clear();
+  useUnifiedRuntimeStore.setState({
+    activeWorkspaceDirectory: undefined,
+    activeSessionID: undefined,
+    pendingSessionId: undefined,
+    activeProvider: undefined,
+    projectDataByDirectory: {},
+    workspaceMetaByDirectory: {},
+    opencodeSessions: {},
+    codexSessions: {},
+    claudeSessions: {},
+    claudeChatSessions: {},
+    sessionReadTimestamps: {},
+    collapsedProjects: {},
+  });
   const subscribe = vi.fn(() => () => undefined);
   checkDependenciesMock.mockResolvedValue({
     checkedAt: Date.now(),
@@ -182,6 +198,18 @@ beforeEach(() => {
         readAgentFile: vi.fn(async () => ({ filename: "test.md", name: "test", mode: "primary", model: "", content: "", path: "" })),
         writeAgentFile: vi.fn(async () => true),
         deleteAgentFile: vi.fn(async () => true),
+      },
+      claudeChat: {
+        health: vi.fn(async () => ({ available: true, authenticated: true, version: "2.0.25" })),
+        listModels: vi.fn(async () => []),
+        getState: vi.fn(async () => ({ sessionKey: "session-1", status: "disconnected" })),
+        startTurn: vi.fn(async () => undefined),
+        interruptTurn: vi.fn(async () => undefined),
+        approve: vi.fn(async () => undefined),
+        respondToUserInput: vi.fn(async () => undefined),
+        getSessionMessages: vi.fn(async () => []),
+        archiveSession: vi.fn(async () => undefined),
+        archiveProviderSession: vi.fn(async () => undefined),
       },
       terminal: {
         list: vi.fn(async () => []),
@@ -472,7 +500,126 @@ describe("App", () => {
       expect(screen.queryByText("Build Spa Booking Site")).not.toBeInTheDocument();
     });
 
+    await waitFor(() => {
+      expect(screen.queryByText("Opening session...")).not.toBeInTheDocument();
+    });
     expect(screen.queryByText("New session")).not.toBeInTheDocument();
+  });
+
+  it("clears Claude chat runtime state when archiving from the App shell", async () => {
+    const sessionKey = "/repo/reliabilityworks::session-claude-chat";
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ [sessionKey]: "claude-chat" }),
+    );
+
+    useUnifiedRuntimeStore.setState({
+      claudeChatSessions: {
+        [sessionKey]: {
+          key: sessionKey,
+          directory: "/repo/reliabilityworks",
+          connectionStatus: "connected",
+          providerThreadId: "claude-thread-1",
+          activeTurnId: "turn-1",
+          messages: [],
+          historyMessages: [],
+          pendingApproval: {
+            id: "approval-1",
+            sessionKey,
+            threadId: "claude-thread-1",
+            turnId: "turn-1",
+            itemId: "item-1",
+            toolName: "Edit",
+            reason: "Allow file edit",
+            availableDecisions: ["accept", "decline"],
+          },
+          pendingUserInput: null,
+          isStreaming: true,
+          subagents: [
+            {
+              id: "agent-1",
+              name: "Scout",
+              role: "explorer",
+              status: "thinking",
+              statusText: "Working",
+              prompt: "Inspect repository",
+            },
+          ],
+          lastError: undefined,
+        },
+      },
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "reliabilityworks", worktree: "/repo/reliabilityworks", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const activeSession = {
+      id: "session-claude-chat",
+      slug: "claude-chat",
+      title: "Claude Code (Chat)",
+      time: { created: Date.now(), updated: Date.now() },
+    };
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/reliabilityworks",
+      path: {},
+      sessions: [activeSession],
+      sessionStatus: { "session-claude-chat": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const refreshProjectMock = vi.fn(async () => ({
+      directory: "/repo/reliabilityworks",
+      path: {},
+      sessions: [],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          archiveSession: vi.fn(async () => ({ ...activeSession, time: { ...activeSession.time, archived: Date.now() } })),
+        },
+        claudeChat: {
+          ...window.orxa!.claudeChat,
+          archiveSession: vi.fn(async () => undefined),
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    const sessionButton = await screen.findByText("Claude Code (Chat)");
+    fireEvent.contextMenu(sessionButton);
+    fireEvent.click(await screen.findByText("Archive Session"));
+
+    await waitFor(() => {
+      expect(useUnifiedRuntimeStore.getState().claudeChatSessions[sessionKey]).toBeUndefined();
+    });
   });
 
   it("deletes an unused Codex session when navigating away", async () => {
@@ -594,6 +741,142 @@ describe("App", () => {
     await waitFor(() => {
       expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "codex-empty");
     });
+
+    fireEvent.click(await screen.findByRole("button", { name: "marketing-websites" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Codex Session")).not.toBeInTheDocument();
+    });
+  });
+
+  it("deletes an unused Claude chat session when navigating away", async () => {
+    const now = Date.now();
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [
+        { id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const },
+        { id: "proj-2", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const },
+      ],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const createSessionMock = vi.fn(async () => ({
+      id: "claude-chat-empty",
+      slug: "claude-chat-empty",
+      title: "Claude Code (Chat)",
+      time: { created: now, updated: now },
+    }));
+    const deleteSessionMock = vi.fn(async () => true);
+    const selectProjectMock = vi.fn(async (directory: string) => ({
+      directory,
+      path: {},
+      sessions: [],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const refreshProjectMock = vi.fn(async (directory: string) => {
+      if (directory === "/repo/marketing-websites") {
+        return {
+          directory,
+          path: {},
+          sessions: [{
+            id: "claude-chat-empty",
+            slug: "claude-chat-empty",
+            title: "Claude Code (Chat)",
+            time: { created: now, updated: now },
+          }],
+          sessionStatus: { "claude-chat-empty": { type: "idle" as const } },
+          providers: { all: [], connected: [], default: {} },
+          agents: [],
+          config: {},
+          permissions: [],
+          questions: [],
+          commands: [],
+          mcp: {},
+          lsp: [],
+          formatter: [],
+          ptys: [],
+        };
+      }
+      return {
+        directory,
+        path: {},
+        sessions: [],
+        sessionStatus: {},
+        providers: { all: [], connected: [], default: {} },
+        agents: [],
+        config: {},
+        permissions: [],
+        questions: [],
+        commands: [],
+        mcp: {},
+        lsp: [],
+        formatter: [],
+        ptys: [],
+      };
+    });
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          createSession: createSessionMock,
+          deleteSession: deleteSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "marketing-websites" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create session for marketing-websites" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Claude Chat/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "dreamweaver" }));
+
+    await waitFor(() => {
+      expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "claude-chat-empty");
+    });
+  });
+
+  it("cleans up persisted empty sessions during startup", async () => {
+    const deleteSessionMock = vi.fn(async () => true);
+
+    window.localStorage.setItem(EMPTY_WORKSPACE_SESSIONS_KEY, JSON.stringify({
+      "session-empty": "/repo/marketing-websites",
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: vi.fn(async () => ({
+            projects: [],
+            runtime: { status: "disconnected" as const, managedServer: false },
+          })),
+          deleteSession: deleteSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "session-empty");
+    });
+    expect(window.localStorage.getItem(EMPTY_WORKSPACE_SESSIONS_KEY)).toBeNull();
   });
 
   it("chooses preferred agents", () => {

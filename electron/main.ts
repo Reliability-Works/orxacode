@@ -3,12 +3,15 @@ import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
 import { execSync, type ChildProcess } from "node:child_process";
 import { app, BrowserWindow, Menu, nativeImage, type MenuItemConstructorOptions } from "electron";
-import { IPC, type OrxaEvent } from "../shared/ipc";
+import type { OrxaEvent } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { CodexService } from "./services/codex-service";
+import { ClaudeChatService } from "./services/claude-chat-service";
 import { trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
+import { createMainWindowEventPublisher } from "./services/main-window-event-publisher";
+import { registerProviderEventBridge } from "./services/provider-event-bridge";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
 import { registerAppHandlers } from "./ipc/app-handlers";
@@ -17,6 +20,7 @@ import { registerRuntimeOpencodeHandlers } from "./ipc/runtime-opencode-handlers
 import { registerArtifactHandlers } from "./ipc/artifact-handlers";
 import { registerTerminalHandlers } from "./ipc/terminal-handlers";
 import { registerBrowserHandlers } from "./ipc/browser-handlers";
+import { registerClaudeChatHandlers } from "./ipc/claude-chat-handlers";
 import { registerCodexHandlers } from "./ipc/codex-handlers";
 import { createAssertBrowserSender } from "./ipc/validators";
 
@@ -47,19 +51,18 @@ const __dirname = path.dirname(__filename);
 
 const service = new OpencodeService();
 const codexService = new CodexService();
+const claudeChatService = new ClaudeChatService();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
 let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
-const PTY_OUTPUT_FLUSH_MS = 16;
 const SMOKE_TEST_FLAG = "--smoke-test";
-const ptyOutputBuffer = new Map<string, { directory: string; ptyID: string; chunks: string[] }>();
-const ptyOutputFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const claudeTerminalState = {
   nextId: 0,
   processes: new Map<string, { proc: ChildProcess; directory: string }>(),
 };
+const eventPublisher = createMainWindowEventPublisher(() => mainWindow);
 
 async function resolveCdpPort(): Promise<number> {
   if (resolvedCdpPort !== null) {
@@ -253,89 +256,21 @@ function registerIpcHandlers() {
     codexService,
   });
 
-  codexService.on("state", (payload: unknown) => {
-    publishEvent({ type: "codex.state", payload } as OrxaEvent);
+  registerClaudeChatHandlers({
+    claudeChatService,
   });
 
-  codexService.on("notification", (payload: unknown) => {
-    publishEvent({ type: "codex.notification", payload } as OrxaEvent);
-    const notification = payload as { method?: string; params?: Record<string, unknown> } | undefined;
-    if (notification?.method === "thread/tokenUsage/updated" && notification.params) {
-      trackCodexTokenUsage(notification.params);
-    }
-    if (notification?.method === "thread/started") {
-      trackCodexThread();
-    }
+  registerProviderEventBridge({
+    codexService,
+    claudeChatService,
+    publishEvent,
+    trackCodexTokenUsage,
+    trackCodexThread,
   });
-
-  codexService.on("approval", (payload: unknown) => {
-    publishEvent({ type: "codex.approval", payload } as OrxaEvent);
-  });
-
-  codexService.on("userInput", (payload: unknown) => {
-    publishEvent({ type: "codex.userInput", payload } as OrxaEvent);
-  });
-}
-
-function flushBufferedPtyOutput(key: string) {
-  const timer = ptyOutputFlushTimers.get(key);
-  if (timer) {
-    clearTimeout(timer);
-    ptyOutputFlushTimers.delete(key);
-  }
-  const pending = ptyOutputBuffer.get(key);
-  if (!pending) {
-    return;
-  }
-  ptyOutputBuffer.delete(key);
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-  mainWindow.webContents.send(IPC.events, {
-    type: "pty.output",
-    payload: {
-      directory: pending.directory,
-      ptyID: pending.ptyID,
-      chunk: pending.chunks.join(""),
-    },
-  } satisfies OrxaEvent);
-}
-
-function flushAllPtyOutput() {
-  const keys = [...ptyOutputBuffer.keys()];
-  for (const key of keys) {
-    flushBufferedPtyOutput(key);
-  }
 }
 
 function publishEvent(event: OrxaEvent) {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return;
-  }
-
-  if (event.type !== "pty.output") {
-    mainWindow.webContents.send(IPC.events, event);
-    return;
-  }
-
-  const key = `${event.payload.directory}::${event.payload.ptyID}`;
-  const existing = ptyOutputBuffer.get(key);
-  if (existing) {
-    existing.chunks.push(event.payload.chunk);
-  } else {
-    ptyOutputBuffer.set(key, {
-      directory: event.payload.directory,
-      ptyID: event.payload.ptyID,
-      chunks: [event.payload.chunk],
-    });
-  }
-
-  if (!ptyOutputFlushTimers.has(key)) {
-    const timer = setTimeout(() => {
-      flushBufferedPtyOutput(key);
-    }, PTY_OUTPUT_FLUSH_MS);
-    ptyOutputFlushTimers.set(key, timer);
-  }
+  eventPublisher.publish(event);
 }
 
 async function boot() {
@@ -389,7 +324,7 @@ async function boot() {
     autoUpdaterController?.cleanup();
     browserController?.dispose();
     browserController = null;
-    flushAllPtyOutput();
+    eventPublisher.flushAll();
     void service.stopLocal();
   });
 }

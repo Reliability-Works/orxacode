@@ -1,4 +1,6 @@
 import type {
+  ClaudeChatApprovalRequest,
+  ClaudeChatUserInputRequest,
   CodexApprovalRequest,
   CodexState,
   CodexThread,
@@ -7,9 +9,11 @@ import type {
   SessionRuntimeSnapshot,
 } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
+import type { ClaudeChatMessageItem } from "../hooks/useClaudeChatSession";
+import type { ClaudeChatSubagentState } from "../hooks/useClaudeChatSession";
 import type { SubagentInfo, CodexMessageItem } from "../hooks/useCodexSession";
 
-export type UnifiedProvider = "opencode" | "codex";
+export type UnifiedProvider = "opencode" | "codex" | "claude-chat";
 
 export type UnifiedSessionStatusType = "none" | "busy" | "awaiting" | "unread" | "plan_ready";
 
@@ -168,6 +172,27 @@ export type UnifiedCodexSessionRuntime = {
   dismissedPlanIds: string[];
   subagents: SubagentInfo[];
   activeSubagentThreadId: string | null;
+};
+
+export type UnifiedClaudeChatSessionRuntime = {
+  key: string;
+  directory: string;
+  connectionStatus: "disconnected" | "connecting" | "connected" | "error";
+  providerThreadId: string | null;
+  activeTurnId: string | null;
+  messages: ClaudeChatMessageItem[];
+  historyMessages: {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    timestamp: number;
+    sessionId: string;
+  }[];
+  pendingApproval: ClaudeChatApprovalRequest | null;
+  pendingUserInput: ClaudeChatUserInputRequest | null;
+  isStreaming: boolean;
+  lastError?: string;
+  subagents: ClaudeChatSubagentState[];
 };
 
 export function makeUnifiedSessionKey(provider: UnifiedProvider, workspaceDirectory: string, externalID: string) {

@@ -1,4 +1,5 @@
 import type { BrowserAgentActionResult, BrowserHistoryItem, BrowserState } from "./browser";
+import type { ClaudeChatApprovalRequest, ClaudeChatNotification, ClaudeChatState, ClaudeChatUserInputRequest } from "./claude-chat";
 import type { CodexApprovalRequest, CodexNotification, CodexState, CodexUserInputRequest } from "./codex";
 import type { ContextSelectionTrace, ArtifactRecord } from "./artifacts";
 import type { McpDevToolsServerStatus } from "./mcp-devtools";
@@ -138,4 +139,20 @@ export type OrxaEvent =
   | {
       type: "codex.userInput";
       payload: CodexUserInputRequest;
+    }
+  | {
+      type: "claude-chat.state";
+      payload: ClaudeChatState;
+    }
+  | {
+      type: "claude-chat.notification";
+      payload: ClaudeChatNotification;
+    }
+  | {
+      type: "claude-chat.approval";
+      payload: ClaudeChatApprovalRequest;
+    }
+  | {
+      type: "claude-chat.userInput";
+      payload: ClaudeChatUserInputRequest;
     };

@@ -1,6 +1,6 @@
 # Chat UI
 
-All session types (OpenCode, Codex, Claude) render through a shared set of React components. This ensures a consistent experience regardless of which AI backend is active.
+Structured chat providers render through a shared set of React components. Today that means OpenCode, Codex, and Claude Code (Chat). Claude Code (Terminal) and Canvas use their own dedicated surfaces.
 
 ## Message Components
 
@@ -38,6 +38,9 @@ Appears after a Codex plan turn completes. Two actions: "Implement this plan" (s
 ### QueuedMessagesDock
 Shows messages typed while the agent is busy. Each item has Send Now / Edit / Remove actions. Messages auto-send when the agent finishes its turn.
 
+### BackgroundAgentsPanel
+Shows delegated work from providers that emit explicit background-agent or child-thread events. Currently used by Codex and Claude Code (Chat). The detail modal can render either the child transcript or the latest task/progress summary when a child transcript is not yet available.
+
 ## Message Queue
 
 When the agent is busy processing:
@@ -46,3 +49,8 @@ When the agent is busy processing:
 - Queued messages appear in the QueuedMessagesDock
 - The stop button remains available to interrupt the current turn
 - A toast confirms "Message queued"
+
+Provider notes:
+- **OpenCode** — queued followups send when the active turn finishes
+- **Codex** — queued followups can steer the active turn when appropriate
+- **Claude Code (Chat)** — uses the shared composer, permissions/questions docks, plan toggle, and background-agent panel

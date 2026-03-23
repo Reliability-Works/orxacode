@@ -266,6 +266,30 @@ describe("BackgroundAgentsPanel", () => {
     expect(screen.queryByText("build")).not.toBeInTheDocument();
   });
 
+  it("allows opening a background agent even before a provider session id is attached", () => {
+    const onOpenAgent = vi.fn();
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "claude-chat",
+            name: "explore",
+            status: "thinking",
+            statusText: "thinking",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={onOpenAgent}
+        onBack={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand background agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open explore" }));
+    expect(onOpenAgent).toHaveBeenCalledWith("agent-1");
+  });
+
   it("calls archive from the drawer row and modal", () => {
     const onArchiveAgent = vi.fn();
     render(
