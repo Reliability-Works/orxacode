@@ -14,24 +14,29 @@ Currently shipping **macOS-only** (`dmg`, `zip`). Windows and Linux builds exist
 
 You need **at least one** of these AI backends installed:
 
-| Backend                                              | Install                                            | What you get                                                  |
-| ---------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------- |
-| [OpenCode](https://github.com/anomalyco/opencode)    | `npm install -g opencode-ai`                       | Full agent sessions — tool use, file editing, terminal access |
-| [Codex](https://github.com/openai/codex)             | `npm install -g @openai/codex`                     | Agent sessions with plan mode, collaboration modes, subagents |
-| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash`  | Terminal-based Claude sessions with permission controls       |
+| Backend                                              | Install                                           | What you get                                                                   |
+| ---------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [OpenCode](https://github.com/anomalyco/opencode)    | `npm install -g opencode-ai`                      | Full agent sessions — tool use, file editing, terminal access                  |
+| [Codex](https://github.com/openai/codex)             | `npm install -g @openai/codex`                    | Agent sessions with plan mode, collaboration modes, subagents                  |
+| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash` | Claude Code (Chat) with shared UI and subagents, plus Claude Code (Terminal)   |
 
-All session types are always available in the picker. If a backend isn't installed, the session will show an error with setup instructions.
+All session types stay available in the picker. If a backend isn't installed, the session shows an error with setup instructions instead of disappearing.
 
 ## Features
 
 ### Chat & agents
 
-- **Multiple providers in one place** — start OpenCode, Codex, or Claude Code sessions from the sidebar and switch between them freely
-- **Consistent UI across providers** — every backend renders through the same message components: tool call cards, inline diffs, command output, streaming indicators
+- **Multiple providers in one place** — start OpenCode, Codex, Claude Code (Chat), or Claude Code (Terminal) sessions from the sidebar and switch between them freely
+- **Consistent UI across structured chat providers** — OpenCode, Codex, and Claude Code (Chat) all render through the same shared message components: tool call cards, inline diffs, command output, streaming indicators
 - **Docks above the composer** — plan progress, agent questions, permission requests, follow-up suggestions, and queued messages all surface as floating panels above the input area
 - **Message queue** — keep typing while the agent works; messages queue up and send automatically when it finishes
-- **Plan mode** — agents propose a plan before doing anything; review, modify, or reject it
-- **Background agents** — delegate tasks to subagents that run independently and report back
+- **Plan mode** — Codex and Claude Code (Chat) can switch into planning before doing any work
+- **Background agents** — Codex and Claude Code (Chat) can delegate tasks to subagents that run independently and report back
+
+### Claude Code modes
+
+- **Claude Code (Chat)** — structured chat UI with Claude models, traits, plan mode, permissions, and background agents in the shared dock
+- **Claude Code (Terminal)** — the raw Claude Code CLI terminal for users who want the native terminal workflow inside Orxa Code
 
 ![Codex session](assets/readme/codex_session.png)
 
@@ -48,7 +53,7 @@ A tiled workspace where you arrange terminals, browsers, file editors, markdown 
 
 ### Integrated browser
 
-A multi-tab Chromium browser built into the right sidebar with agent automation, a persistent browsing profile, and element inspection.
+A multi-tab Chromium browser in its own dedicated sidebar with agent automation, a persistent browsing profile, and element inspection.
 
 - **Browser menu bar** — File, Edit, View, History menus with real actions (new tab, close tab, copy/paste URL, reload, navigation history)
 - **Agent control** — hand browser control to the AI agent or take it back at any time
@@ -90,7 +95,7 @@ Please review these annotated elements and address the notes above.
 Docs live in [`docs/`](docs/):
 
 - [Architecture](docs/architecture.md) — process model, IPC, event flow
-- [Session types](docs/sessions.md) — OpenCode, Codex, Claude, Canvas
+- [Session types](docs/sessions.md) — OpenCode, Codex, Claude Code (Chat), Claude Code (Terminal), Canvas
 - [Chat UI](docs/chat-ui.md) — message components, docks, message queue
 - [Browser integration](docs/browser.md) — agent automation, control handoff, annotations
 - [Settings](docs/settings.md) — per-provider configuration reference

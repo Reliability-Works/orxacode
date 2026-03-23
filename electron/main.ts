@@ -6,6 +6,7 @@ import { app, BrowserWindow, Menu, nativeImage, type MenuItemConstructorOptions 
 import { IPC, type OrxaEvent } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { CodexService } from "./services/codex-service";
+import { ClaudeChatService } from "./services/claude-chat-service";
 import { trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
@@ -17,6 +18,7 @@ import { registerRuntimeOpencodeHandlers } from "./ipc/runtime-opencode-handlers
 import { registerArtifactHandlers } from "./ipc/artifact-handlers";
 import { registerTerminalHandlers } from "./ipc/terminal-handlers";
 import { registerBrowserHandlers } from "./ipc/browser-handlers";
+import { registerClaudeChatHandlers } from "./ipc/claude-chat-handlers";
 import { registerCodexHandlers } from "./ipc/codex-handlers";
 import { createAssertBrowserSender } from "./ipc/validators";
 
@@ -47,6 +49,7 @@ const __dirname = path.dirname(__filename);
 
 const service = new OpencodeService();
 const codexService = new CodexService();
+const claudeChatService = new ClaudeChatService();
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
@@ -253,6 +256,10 @@ function registerIpcHandlers() {
     codexService,
   });
 
+  registerClaudeChatHandlers({
+    claudeChatService,
+  });
+
   codexService.on("state", (payload: unknown) => {
     publishEvent({ type: "codex.state", payload } as OrxaEvent);
   });
@@ -274,6 +281,22 @@ function registerIpcHandlers() {
 
   codexService.on("userInput", (payload: unknown) => {
     publishEvent({ type: "codex.userInput", payload } as OrxaEvent);
+  });
+
+  claudeChatService.on("state", (payload: unknown) => {
+    publishEvent({ type: "claude-chat.state", payload } as OrxaEvent);
+  });
+
+  claudeChatService.on("notification", (payload: unknown) => {
+    publishEvent({ type: "claude-chat.notification", payload } as OrxaEvent);
+  });
+
+  claudeChatService.on("approval", (payload: unknown) => {
+    publishEvent({ type: "claude-chat.approval", payload } as OrxaEvent);
+  });
+
+  claudeChatService.on("userInput", (payload: unknown) => {
+    publishEvent({ type: "claude-chat.userInput", payload } as OrxaEvent);
   });
 }
 

@@ -1,4 +1,4 @@
-export type SessionType = "standalone" | "canvas" | "codex" | "claude";
+export type SessionType = "standalone" | "canvas" | "codex" | "claude" | "claude-chat";
 
 export const CANVAS_WORLD_SIZE = 100_000;
 export const CANVAS_WORLD_ORIGIN = 50_000;

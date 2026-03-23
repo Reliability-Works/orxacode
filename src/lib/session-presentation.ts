@@ -2,6 +2,7 @@ import type { CodexThread, SessionMessageBundle } from "@shared/ipc";
 import type { UnifiedProvider, UnifiedSessionStatus } from "../state/unified-runtime";
 import type { CodexMessageItem } from "../hooks/useCodexSession";
 import type { SubagentInfo } from "../hooks/useCodexSession";
+import type { ClaudeChatSubagentState } from "../hooks/useClaudeChatSession";
 import type { UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
 import type { TodoItem } from "../components/chat/TodoDock";
 
@@ -517,6 +518,19 @@ export function buildCodexBackgroundAgents(subagents: SubagentInfo[]): UnifiedBa
     role: agent.role,
     status: agent.status,
     statusText: agent.statusText,
+  }));
+}
+
+export function buildClaudeChatBackgroundAgents(subagents: ClaudeChatSubagentState[]): UnifiedBackgroundAgentSummary[] {
+  return subagents.map((agent) => ({
+    id: agent.id,
+    sessionID: agent.sessionID,
+    provider: "claude-chat",
+    name: agent.name,
+    role: agent.role,
+    status: agent.status,
+    statusText: agent.statusText,
+    prompt: agent.prompt ? compactText(agent.prompt, 800) : undefined,
   }));
 }
 

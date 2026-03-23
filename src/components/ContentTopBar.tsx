@@ -339,8 +339,10 @@ export function ContentTopBar({
         {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
         {activeSessionType === "canvas" || isActiveSessionCanvasSession ? (
           <span className="topbar-title-session-suffix"> / canvas</span>
+        ) : activeSessionType === "claude-chat" ? (
+          <span className="topbar-title-session-suffix"> / claude chat</span>
         ) : activeSessionType === "claude" ? (
-          <span className="topbar-title-session-suffix"> / claude</span>
+          <span className="topbar-title-session-suffix"> / claude terminal</span>
         ) : activeSessionType === "codex" ? (
           <span className="topbar-title-session-suffix"> / codex</span>
         ) : contentPaneTitle && activeProjectDir ? (

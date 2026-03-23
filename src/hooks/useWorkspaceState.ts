@@ -41,6 +41,7 @@ type UseWorkspaceStateOptions = {
   setActiveTerminalId: (id: string | undefined) => void;
   setTerminalOpen: (open: boolean) => void;
   scheduleGitRefresh?: (delayMs?: number) => void;
+  onCleanupEmptySession?: (directory: string, sessionID: string) => void | Promise<void>;
 };
 
 type CreateSessionPromptOptions = {
@@ -88,6 +89,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     setTerminalTabs,
     setActiveTerminalId,
     setTerminalOpen,
+    onCleanupEmptySession,
   } = options;
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("projects");
@@ -224,8 +226,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     if (useUnifiedRuntimeStore.getState().pendingSessionId === sessionID) {
       setPendingSessionId(undefined);
     }
+    await onCleanupEmptySession?.(directory, sessionID);
     await window.orxa.opencode.deleteSession(directory, sessionID).catch(() => undefined);
-  }, [getRuntimeState, removeOpencodeSession, setActiveSessionID, setMessages, setPendingSessionId, setProjectData, setProjectDataForDirectory]);
+  }, [getRuntimeState, onCleanupEmptySession, removeOpencodeSession, setActiveSessionID, setMessages, setPendingSessionId, setProjectData, setProjectDataForDirectory]);
 
   // Call when a message is sent in a session — removes it from the empty set
   const markSessionUsed = useCallback((sessionID: string) => {

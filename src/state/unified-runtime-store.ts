@@ -3,17 +3,28 @@ import {
   deriveUnifiedSessionStatus,
   makeUnifiedSessionKey,
   type CodexThreadRuntimeSnapshot,
+  type UnifiedClaudeChatSessionRuntime,
   type OpencodeSessionRuntimeSnapshot,
   type UnifiedCodexSessionRuntime,
   type UnifiedOpencodeSessionRuntime,
   type UnifiedProvider,
   type UnifiedSessionStatus,
 } from "./unified-runtime";
-import type { CodexApprovalRequest, CodexState, CodexThread, CodexUserInputRequest, ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
+import type {
+  ClaudeChatApprovalRequest,
+  ClaudeChatUserInputRequest,
+  CodexApprovalRequest,
+  CodexState,
+  CodexThread,
+  CodexUserInputRequest,
+  ProjectBootstrap,
+  SessionMessageBundle,
+} from "@shared/ipc";
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TodoItem } from "../components/chat/TodoDock";
 import type { CodexMessageItem, SubagentInfo } from "../hooks/useCodexSession";
 import {
+  buildClaudeChatBackgroundAgents,
   buildCodexBackgroundAgents,
   buildCodexBackgroundAgentsFromChildThreads,
   buildCodexBackgroundAgentsFromMessages,
@@ -39,6 +50,8 @@ import {
 } from "../lib/session-presentation";
 import { projectCodexSessionPresentation } from "../lib/session-presentation";
 import { projectOpencodeSessionPresentation } from "../lib/opencode-session-presentation";
+import { projectClaudeChatProjectedSessionPresentation } from "../lib/claude-chat-session-presentation";
+import type { ClaudeChatMessageItem, ClaudeChatSubagentState } from "../hooks/useClaudeChatSession";
 
 const SESSION_READ_TIMESTAMPS_KEY = "orxa:sessionReadTimestamps:v2";
 const COLLAPSED_PROJECTS_KEY = "orxa:collapsedProjects:v1";
@@ -96,6 +109,7 @@ type UnifiedRuntimeStoreState = {
   workspaceMetaByDirectory: Record<string, UnifiedWorkspaceMeta>;
   opencodeSessions: Record<string, UnifiedOpencodeSessionRuntime>;
   codexSessions: Record<string, UnifiedCodexSessionRuntime>;
+  claudeChatSessions: Record<string, UnifiedClaudeChatSessionRuntime>;
   claudeSessions: Record<string, UnifiedClaudeSessionRuntime>;
   sessionReadTimestamps: Record<string, number>;
   collapsedProjects: Record<string, boolean>;
@@ -113,6 +127,26 @@ type UnifiedRuntimeStoreState = {
   replaceCollapsedProjects: (next: Record<string, boolean>) => void;
   setSessionReadAt: (sessionKey: string, timestamp: number) => void;
   clearSessionReadAt: (sessionKey: string) => void;
+  initClaudeChatSession: (sessionKey: string, directory: string) => void;
+  setClaudeChatConnectionState: (
+    sessionKey: string,
+    status: UnifiedClaudeChatSessionRuntime["connectionStatus"],
+    providerThreadId?: string | null,
+    activeTurnId?: string | null,
+    lastError?: string,
+  ) => void;
+  setClaudeChatProviderThreadId: (sessionKey: string, providerThreadId: string | null) => void;
+  replaceClaudeChatMessages: (sessionKey: string, messages: ClaudeChatMessageItem[]) => void;
+  updateClaudeChatMessages: (sessionKey: string, updater: (previous: ClaudeChatMessageItem[]) => ClaudeChatMessageItem[]) => void;
+  setClaudeChatHistoryMessages: (sessionKey: string, messages: UnifiedClaudeChatSessionRuntime["historyMessages"]) => void;
+  setClaudeChatPendingApproval: (sessionKey: string, request: ClaudeChatApprovalRequest | null) => void;
+  setClaudeChatPendingUserInput: (sessionKey: string, request: ClaudeChatUserInputRequest | null) => void;
+  setClaudeChatStreaming: (sessionKey: string, isStreaming: boolean) => void;
+  setClaudeChatSubagents: (
+    sessionKey: string,
+    subagents: ClaudeChatSubagentState[] | ((previous: ClaudeChatSubagentState[]) => ClaudeChatSubagentState[]),
+  ) => void;
+  removeClaudeChatSession: (sessionKey: string) => void;
   initClaudeSession: (sessionKey: string, directory: string) => void;
   setClaudeBusy: (sessionKey: string, busy: boolean) => void;
   setClaudeAwaiting: (sessionKey: string, awaiting: boolean) => void;
@@ -216,6 +250,27 @@ function ensureClaudeSession(state: UnifiedRuntimeStoreState, sessionKey: string
   } satisfies UnifiedClaudeSessionRuntime;
 }
 
+function ensureClaudeChatSession(state: UnifiedRuntimeStoreState, sessionKey: string, directory = "") {
+  const existing = state.claudeChatSessions[sessionKey];
+  if (existing) {
+    return existing;
+  }
+  return {
+    key: sessionKey,
+    directory,
+    connectionStatus: "disconnected",
+    providerThreadId: null,
+    activeTurnId: null,
+    messages: [],
+    historyMessages: [],
+    pendingApproval: null,
+    pendingUserInput: null,
+    isStreaming: false,
+    lastError: undefined,
+    subagents: [],
+  } satisfies UnifiedClaudeChatSessionRuntime;
+}
+
 export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => ({
   activeWorkspaceDirectory: undefined,
   activeSessionID: undefined,
@@ -225,6 +280,7 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
   workspaceMetaByDirectory: {},
   opencodeSessions: {},
   codexSessions: {},
+  claudeChatSessions: {},
   claudeSessions: {},
   sessionReadTimestamps: Object.fromEntries(
     Object.entries(readJsonRecord(SESSION_READ_TIMESTAMPS_KEY)).filter(([, value]) => typeof value === "number"),
@@ -345,6 +401,119 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
       delete next[sessionKey];
       debouncePersist(SESSION_READ_TIMESTAMPS_KEY, next);
       return { sessionReadTimestamps: next };
+    }),
+  initClaudeChatSession: (sessionKey, directory) =>
+    set((state) => ({
+      claudeChatSessions: {
+        ...state.claudeChatSessions,
+        [sessionKey]: ensureClaudeChatSession(state, sessionKey, directory),
+      },
+    })),
+  setClaudeChatConnectionState: (sessionKey, status, providerThreadId, activeTurnId, lastError) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: {
+            ...session,
+            connectionStatus: status,
+            providerThreadId: providerThreadId !== undefined ? providerThreadId : session.providerThreadId,
+            activeTurnId: activeTurnId !== undefined ? activeTurnId : session.activeTurnId,
+            lastError: lastError !== undefined ? lastError : session.lastError,
+          },
+        },
+      };
+    }),
+  setClaudeChatProviderThreadId: (sessionKey, providerThreadId) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, providerThreadId },
+        },
+      };
+    }),
+  replaceClaudeChatMessages: (sessionKey, messages) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, messages },
+        },
+      };
+    }),
+  updateClaudeChatMessages: (sessionKey, updater) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, messages: updater(session.messages) },
+        },
+      };
+    }),
+  setClaudeChatHistoryMessages: (sessionKey, messages) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, historyMessages: messages },
+        },
+      };
+    }),
+  setClaudeChatPendingApproval: (sessionKey, request) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, pendingApproval: request },
+        },
+      };
+    }),
+  setClaudeChatPendingUserInput: (sessionKey, request) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, pendingUserInput: request },
+        },
+      };
+    }),
+  setClaudeChatStreaming: (sessionKey, isStreaming) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, isStreaming },
+        },
+      };
+    }),
+  setClaudeChatSubagents: (sessionKey, subagents) =>
+    set((state) => {
+      const session = ensureClaudeChatSession(state, sessionKey);
+      const nextSubagents = typeof subagents === "function" ? subagents(session.subagents) : subagents;
+      return {
+        claudeChatSessions: {
+          ...state.claudeChatSessions,
+          [sessionKey]: { ...session, subagents: nextSubagents },
+        },
+      };
+    }),
+  removeClaudeChatSession: (sessionKey) =>
+    set((state) => {
+      if (!(sessionKey in state.claudeChatSessions)) {
+        return state;
+      }
+      const next = { ...state.claudeChatSessions };
+      delete next[sessionKey];
+      return { claudeChatSessions: next };
     }),
   initClaudeSession: (sessionKey, directory) =>
     set((state) => ({
@@ -576,6 +745,13 @@ export function selectCodexSessionRuntime(sessionKey: string | undefined) {
   return useUnifiedRuntimeStore.getState().codexSessions[sessionKey] ?? null;
 }
 
+export function selectClaudeChatSessionRuntime(sessionKey: string | undefined) {
+  if (!sessionKey) {
+    return null;
+  }
+  return useUnifiedRuntimeStore.getState().claudeChatSessions[sessionKey] ?? null;
+}
+
 export function buildCodexSessionStatus(sessionKey: string, isActive: boolean): UnifiedSessionStatus {
   const state = useUnifiedRuntimeStore.getState();
   const session = state.codexSessions[sessionKey];
@@ -598,6 +774,20 @@ export function buildClaudeSessionStatus(sessionKey: string, isActive: boolean):
     awaiting: Boolean(session?.awaiting),
     planReady: false,
     activityAt: session?.activityAt ?? 0,
+    lastReadAt: state.sessionReadTimestamps[sessionKey],
+    isActive,
+  });
+}
+
+export function buildClaudeChatSessionStatus(sessionKey: string, isActive: boolean): UnifiedSessionStatus {
+  const state = useUnifiedRuntimeStore.getState();
+  const session = state.claudeChatSessions[sessionKey];
+  const activityAt = session?.messages.at(-1)?.timestamp ?? 0;
+  return deriveUnifiedSessionStatus({
+    busy: Boolean(session?.isStreaming || session?.connectionStatus === "connecting"),
+    awaiting: Boolean(session?.pendingApproval || session?.pendingUserInput),
+    planReady: false,
+    activityAt,
     lastReadAt: state.sessionReadTimestamps[sessionKey],
     isActive,
   });
@@ -681,6 +871,8 @@ export function selectSidebarSessionPresentation(input: {
   const status =
     provider === "codex"
       ? buildCodexSessionStatus(sessionKey, isActive)
+      : provider === "claude-chat"
+        ? buildClaudeChatSessionStatus(sessionKey, isActive)
       : provider === "claude"
         ? buildClaudeSessionStatus(sessionKey, isActive)
         : buildOpencodeSessionStatus(directory, sessionID, isActive, sessionKey);
@@ -717,6 +909,16 @@ export function selectActivePendingActionSurface(input: {
     }
     if (session && session.planItems.length > 0 && !session.isStreaming) {
       return { kind: "plan", provider: "codex", awaiting: true, label: "Plan is ready for review" };
+    }
+    return null;
+  }
+  if (provider === "claude-chat" && sessionKey) {
+    const session = state.claudeChatSessions[sessionKey];
+    if (session?.pendingApproval) {
+      return { kind: "permission", provider: "claude-chat", awaiting: true, label: "Claude needs permission to continue" };
+    }
+    if (session?.pendingUserInput) {
+      return { kind: "question", provider: "claude-chat", awaiting: true, label: "Claude is asking a question" };
     }
     return null;
   }
@@ -765,18 +967,22 @@ export function selectActiveBackgroundAgentsPresentation(input: {
   const state = useUnifiedRuntimeStore.getState();
   if (provider === "codex" && sessionKey) {
     const session = state.codexSessions[sessionKey];
+    const currentThreadId = session?.thread?.id ?? session?.runtimeSnapshot?.thread?.id ?? null;
     const runtimeAgents = buildCodexBackgroundAgents(session?.subagents ?? []);
     if (runtimeAgents.length > 0) {
-      return filterOutCurrentCodexThreadAgent(runtimeAgents, session?.thread?.id ?? null);
+      return filterOutCurrentCodexThreadAgent(runtimeAgents, currentThreadId);
     }
     const childThreadAgents = buildCodexBackgroundAgentsFromChildThreads(session?.runtimeSnapshot?.childThreads ?? []);
     if (childThreadAgents.length > 0) {
-      return filterOutCurrentCodexThreadAgent(childThreadAgents, session?.thread?.id ?? null);
+      return filterOutCurrentCodexThreadAgent(childThreadAgents, currentThreadId);
     }
     return filterOutCurrentCodexThreadAgent(
       buildCodexBackgroundAgentsFromMessages(session?.messages ?? []),
-      session?.thread?.id ?? null,
+      currentThreadId,
     );
+  }
+  if (provider === "claude-chat" && sessionKey) {
+    return buildClaudeChatBackgroundAgents(state.claudeChatSessions[sessionKey]?.subagents ?? []);
   }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)];
@@ -806,6 +1012,13 @@ export function selectSessionPresentation(input: {
       latestActivity: null,
       placeholderTimestamp: session.messages.at(-1)?.timestamp ?? 0,
     };
+  }
+  if (provider === "claude-chat" && sessionKey) {
+    const session = state.claudeChatSessions[sessionKey];
+    if (!session) {
+      return null;
+    }
+    return projectClaudeChatProjectedSessionPresentation(session.messages, session.isStreaming);
   }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)];
@@ -857,6 +1070,18 @@ export function selectPendingPermissionDockData(input: {
       command: request.command,
     });
   }
+  if (provider === "claude-chat" && sessionKey) {
+    const request = state.claudeChatSessions[sessionKey]?.pendingApproval;
+    if (!request || permissionMode === "yolo-write") {
+      return null;
+    }
+    return buildPermissionDockData({
+      provider: "claude-chat",
+      requestId: request.id,
+      description: request.reason,
+      command: request.command ? [request.command] : undefined,
+    });
+  }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)]?.runtimeSnapshot;
     const projectData = state.projectDataByDirectory[directory];
@@ -896,6 +1121,24 @@ export function selectPendingQuestionDockData(input: {
         {
           id: request.itemId || "user-input-q",
           text: request.message || "The agent is requesting your input.",
+        },
+      ],
+    });
+  }
+  if (provider === "claude-chat" && sessionKey) {
+    const request = state.claudeChatSessions[sessionKey]?.pendingUserInput;
+    if (!request) {
+      return null;
+    }
+    return buildQuestionDockData({
+      provider: "claude-chat",
+      requestId: request.id,
+      questions: [
+        {
+          id: request.elicitationId ?? request.id,
+          header: request.server,
+          text: request.message,
+          options: request.options,
         },
       ],
     });
@@ -950,6 +1193,8 @@ export function selectActiveComposerPresentation(input: {
   const status =
     provider === "codex" && sessionKey
       ? buildCodexSessionStatus(sessionKey, true)
+      : provider === "claude-chat" && sessionKey
+        ? buildClaudeChatSessionStatus(sessionKey, true)
       : provider === "claude" && sessionKey
         ? buildClaudeSessionStatus(sessionKey, true)
         : provider === "opencode" && directory && sessionID

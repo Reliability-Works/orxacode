@@ -127,6 +127,18 @@ const bridge: OrxaBridge = {
     resize: (processId, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
     close: (processId) => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
   },
+  claudeChat: {
+    health: () => ipcRenderer.invoke(IPC.claudeChatHealth),
+    listModels: () => ipcRenderer.invoke(IPC.claudeChatListModels),
+    getState: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
+    startTurn: (sessionKey, directory, prompt, options) =>
+      ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
+    interruptTurn: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
+    approve: (requestId, decision) => ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
+    respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
+    getSessionMessages: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+    archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
+  },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),
     setVisible: (visible) => ipcRenderer.invoke(IPC.browserSetVisible, visible),

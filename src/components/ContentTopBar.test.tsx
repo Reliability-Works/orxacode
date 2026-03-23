@@ -161,4 +161,11 @@ describe("ContentTopBar open target control", () => {
 
     expect(props.toggleBrowserSidebar).toHaveBeenCalledTimes(1);
   });
+
+  it("shows the claude chat suffix for structured chat sessions", () => {
+    const { props } = buildProps();
+    render(<ContentTopBar {...props} activeSessionType="claude-chat" />);
+
+    expect(screen.getByText("/ claude chat")).toBeInTheDocument();
+  });
 });

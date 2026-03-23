@@ -61,13 +61,27 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
         type="button"
         className="new-session-picker-option"
         role="menuitem"
+        onClick={() => onPick("claude-chat")}
+      >
+        <span className="new-session-picker-icon new-session-picker-icon--claude" aria-hidden="true">
+          <AnthropicLogo size={14} />
+        </span>
+        <span className="new-session-picker-text">
+          <span className="new-session-picker-title">claude chat session</span>
+          <span className="new-session-picker-subtitle">// claude code chat</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        className="new-session-picker-option"
+        role="menuitem"
         onClick={() => onPick("claude")}
       >
         <span className="new-session-picker-icon new-session-picker-icon--claude" aria-hidden="true">
           <AnthropicLogo size={14} />
         </span>
         <span className="new-session-picker-text">
-          <span className="new-session-picker-title">claude session</span>
+          <span className="new-session-picker-title">claude terminal session</span>
           <span className="new-session-picker-subtitle">// claude code cli terminal</span>
         </span>
       </button>

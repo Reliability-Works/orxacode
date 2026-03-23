@@ -1,3 +1,4 @@
+import { ClaudeChatBackgroundSessionManager } from "./ClaudeChatBackgroundSessionManager";
 import { ClaudeBackgroundSessionManager } from "./ClaudeTerminalPane";
 import { CodexBackgroundSessionManager } from "./CodexBackgroundSessionManager";
 import { OpencodeBackgroundSessionManager } from "./OpencodeBackgroundSessionManager";
@@ -17,10 +18,16 @@ type BackgroundClaudeSession = {
   sessionStorageKey: string;
 };
 
+type BackgroundClaudeChatSession = {
+  directory: string;
+  sessionStorageKey: string;
+};
+
 type Props = {
   codexSessions: BackgroundCodexSession[];
   opencodeSessions: BackgroundOpencodeSession[];
   claudeSessions: BackgroundClaudeSession[];
+  claudeChatSessions: BackgroundClaudeChatSession[];
   codexPath?: string;
   codexArgs?: string;
 };
@@ -29,6 +36,7 @@ export function BackgroundSessionSupervisorHost({
   codexSessions,
   opencodeSessions,
   claudeSessions,
+  claudeChatSessions,
   codexPath,
   codexArgs,
 }: Props) {
@@ -53,6 +61,13 @@ export function BackgroundSessionSupervisorHost({
       {claudeSessions.map((session) => (
         <ClaudeBackgroundSessionManager
           key={`claude:${session.sessionStorageKey}`}
+          directory={session.directory}
+          sessionStorageKey={session.sessionStorageKey}
+        />
+      ))}
+      {claudeChatSessions.map((session) => (
+        <ClaudeChatBackgroundSessionManager
+          key={`claude-chat:${session.sessionStorageKey}`}
           directory={session.directory}
           sessionStorageKey={session.sessionStorageKey}
         />

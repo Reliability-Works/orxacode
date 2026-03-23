@@ -38,6 +38,7 @@ import type { Agent, ProviderListResponse, QuestionAnswer } from "@opencode-ai/s
 import { CanvasPane } from "./components/CanvasPane";
 import { BackgroundSessionSupervisorHost } from "./components/BackgroundSessionSupervisorHost";
 import { WorkspaceLanding } from "./components/WorkspaceLanding";
+import { ClaudeChatPane } from "./components/ClaudeChatPane";
 import { ClaudeTerminalPane } from "./components/ClaudeTerminalPane";
 import { CodexPane } from "./components/CodexPane";
 import { ComposerPanel } from "./components/ComposerPanel";
@@ -72,13 +73,16 @@ import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useBrowserAgentBridge } from "./hooks/useBrowserAgentBridge";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
+import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
 import {
+  buildClaudeChatSessionStatus,
   buildClaudeSessionStatus,
   buildCodexSessionStatus,
   buildOpencodeSessionStatus,
   selectActiveBackgroundAgentsPresentation,
   selectActiveComposerPresentation,
+  selectClaudeChatSessionRuntime,
   selectActiveTaskListPresentation,
   selectPendingPermissionDockData,
   selectPendingQuestionDockData,
@@ -625,6 +629,41 @@ export default function App() {
     setActiveTerminalId,
     setTerminalOpen,
     scheduleGitRefresh: (delayMs) => scheduleGitRefreshRef.current?.(delayMs),
+    onCleanupEmptySession: (directory, sessionID) => {
+      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
+      const sessionType = getSessionType(sessionID, directory);
+      if (sessionType === "codex") {
+        clearPersistedCodexState(sessionKey);
+        removeCodexSession(sessionKey);
+      } else if (sessionType === "claude-chat") {
+        clearPersistedClaudeChatState(sessionKey);
+        removeClaudeChatSession(sessionKey);
+      }
+      setSessionTypes((prev) => {
+        if (!(sessionKey in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[sessionKey];
+        return next;
+      });
+      setSessionTitles((prev) => {
+        if (!(sessionKey in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[sessionKey];
+        return next;
+      });
+      setManualSessionTitles((prev) => {
+        if (!(sessionKey in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[sessionKey];
+        return next;
+      });
+    },
   });
 
   const openSession = useCallback(
@@ -662,10 +701,13 @@ export default function App() {
   const codexSessionStateMap = useUnifiedRuntimeStore((state) => state.codexSessions);
   const setOpencodeMessages = useUnifiedRuntimeStore((state) => state.setOpencodeMessages);
   const opencodeSessionStateMap = useUnifiedRuntimeStore((state) => state.opencodeSessions);
+  const claudeChatSessionStateMap = useUnifiedRuntimeStore((state) => state.claudeChatSessions);
   const claudeSessionStateMap = useUnifiedRuntimeStore((state) => state.claudeSessions);
   const projectDataByDirectory = useUnifiedRuntimeStore((state) => state.projectDataByDirectory);
   const setSessionReadAt = useUnifiedRuntimeStore((state) => state.setSessionReadAt);
   const clearSessionReadAt = useUnifiedRuntimeStore((state) => state.clearSessionReadAt);
+  const removeCodexSession = useUnifiedRuntimeStore((state) => state.removeCodexSession);
+  const removeClaudeChatSession = useUnifiedRuntimeStore((state) => state.removeClaudeChatSession);
   const removeClaudeSession = useUnifiedRuntimeStore((state) => state.removeClaudeSession);
   const setProjectDataForDirectory = useUnifiedRuntimeStore((state) => state.setProjectData);
   const initCodexSession = useUnifiedRuntimeStore((state) => state.initCodexSession);
@@ -815,7 +857,7 @@ export default function App() {
     [sessionTypes],
   );
   const claudeSessionCount = useMemo(
-    () => Object.values(sessionTypes).filter((t) => t === "claude").length,
+    () => Object.values(sessionTypes).filter((t) => t === "claude" || t === "claude-chat").length,
     [sessionTypes],
   );
   const getSessionType = useCallback(
@@ -833,7 +875,7 @@ export default function App() {
     [sessionTitles],
   );
   const normalizePresentationProvider = useCallback((sessionType: string | undefined) => {
-    if (sessionType === "codex" || sessionType === "claude") {
+    if (sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat") {
       return sessionType;
     }
     if (sessionType === "opencode" || sessionType === "canvas" || sessionType === "standalone") {
@@ -2022,6 +2064,7 @@ export default function App() {
   }, [projectSearchQuery, projectSortMode, projects, workspaceMetaByDirectory]);
   const getSessionStatusType = useCallback(
     (sessionID: string, directory?: string) => {
+      void claudeChatSessionStateMap;
       void claudeSessionStateMap;
       void codexSessionStateMap;
       void opencodeSessionStateMap;
@@ -2042,7 +2085,7 @@ export default function App() {
         sessionKey,
       }).statusType;
     },
-    [activeProjectDir, activeSessionID, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
+    [activeProjectDir, activeSessionID, claudeChatSessionStateMap, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
   );
 
   const setSessionReadTimestamp = useCallback((directory: string, sessionID: string, nextReadAt: number) => {
@@ -2052,6 +2095,7 @@ export default function App() {
 
   const getSessionIndicator = useCallback(
     (sessionID: string, directory: string, updatedAt: number) => {
+      void claudeChatSessionStateMap;
       void claudeSessionStateMap;
       void codexSessionStateMap;
       void opencodeSessionStateMap;
@@ -2071,7 +2115,7 @@ export default function App() {
         sessionKey,
       }).indicator;
     },
-    [activeProjectDir, activeSessionID, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
+    [activeProjectDir, activeSessionID, claudeChatSessionStateMap, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
   );
 
   useEffect(() => {
@@ -2152,6 +2196,7 @@ export default function App() {
         sessionTypeOrPrompt === "standalone" ||
         sessionTypeOrPrompt === "canvas" ||
         sessionTypeOrPrompt === "claude" ||
+        sessionTypeOrPrompt === "claude-chat" ||
         sessionTypeOrPrompt === "codex";
       const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : "standalone";
       const initialPrompt = isSessionType ? undefined : sessionTypeOrPrompt;
@@ -2176,7 +2221,12 @@ export default function App() {
           // session is still intentionally "real" and should survive navigation.
           markSessionUsed(createdSessionId);
         }
-        const titleMap: Record<string, string> = { claude: "Claude Code", canvas: "Canvas", codex: "Codex Session" };
+        const titleMap: Record<string, string> = {
+          claude: "Claude Code (Terminal)",
+          "claude-chat": "Claude Code (Chat)",
+          canvas: "Canvas",
+          codex: "Codex Session",
+        };
         if (titleMap[sessionType]) {
           setSessionTitles((prev) => ({ ...prev, [scopedSessionKey]: titleMap[sessionType] }));
           setManualSessionTitles((prev) => {
@@ -2528,6 +2578,10 @@ export default function App() {
             await window.orxa.codex.archiveThreadTree(codexThreadId);
           }
           clearPersistedCodexState(sessionKey);
+        } else if (archivedSessionType === "claude-chat") {
+          await window.orxa.claudeChat.archiveSession(sessionKey);
+          clearPersistedClaudeChatState(sessionKey);
+          removeClaudeChatSession(sessionKey);
         } else if (archivedSessionType === "claude") {
           removeClaudeSession(sessionKey);
         }
@@ -2554,6 +2608,7 @@ export default function App() {
         removeSessionFromLocalProjectCache(directory, sessionID);
         const next = await refreshProject(directory);
         if (sessionID === activeSessionID) {
+          clearPendingSession();
           const sorted = [...next.sessions].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
           setActiveSessionID(sorted[0]?.id);
         }
@@ -2562,7 +2617,20 @@ export default function App() {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [activeSessionID, clearSessionReadAt, getSessionType, refreshProject, removeClaudeSession, removeSessionFromLocalProjectCache, setActiveSessionID, setManualSessionTitles, setSessionTitles, setSessionTypes],
+    [
+      activeSessionID,
+      clearPendingSession,
+      clearSessionReadAt,
+      getSessionType,
+      refreshProject,
+      removeClaudeChatSession,
+      removeClaudeSession,
+      removeSessionFromLocalProjectCache,
+      setActiveSessionID,
+      setManualSessionTitles,
+      setSessionTitles,
+      setSessionTypes,
+    ],
   );
 
   const copySessionID = useCallback(async (sessionID: string) => {
@@ -2803,6 +2871,7 @@ export default function App() {
   const activeUnifiedSessionStatus = useMemo(() => {
     void activeClaudeSessionState;
     void codexSessionStateMap;
+    void claudeChatSessionStateMap;
     void claudeSessionStateMap;
     void opencodeSessionStateMap;
     void sessionReadTimestamps;
@@ -2812,6 +2881,9 @@ export default function App() {
     const sessionKey = activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID);
     if (activeSessionType === "codex") {
       return buildCodexSessionStatus(sessionKey, true);
+    }
+    if (activeSessionType === "claude-chat") {
+      return buildClaudeChatSessionStatus(sessionKey, true);
     }
     if (activeSessionType === "claude") {
       return buildClaudeSessionStatus(sessionKey, true);
@@ -2823,6 +2895,7 @@ export default function App() {
     activeSessionID,
     activeSessionKey,
     activeSessionType,
+    claudeChatSessionStateMap,
     claudeSessionStateMap,
     codexSessionStateMap,
     opencodeSessionStateMap,
@@ -2941,6 +3014,37 @@ export default function App() {
     }
     return next;
   }, [activeSessionKey, cachedProjects, getSessionType]);
+  const inactiveClaudeChatSessions = useMemo(() => {
+    const next: Array<{ directory: string; sessionStorageKey: string }> = [];
+    for (const [directory, data] of Object.entries(cachedProjects)) {
+      for (const session of data.sessions) {
+        if (getSessionType(session.id, directory) !== "claude-chat") {
+          continue;
+        }
+        const sessionStorageKey = buildWorkspaceSessionMetadataKey(directory, session.id);
+        if (sessionStorageKey === activeSessionKey) {
+          continue;
+        }
+        const runtime = claudeChatSessionStateMap[sessionStorageKey] ?? selectClaudeChatSessionRuntime(sessionStorageKey);
+        const hasBackgroundRuntime =
+          Boolean(runtime?.providerThreadId) ||
+          Boolean(runtime?.isStreaming) ||
+          Boolean(runtime?.pendingApproval) ||
+          Boolean(runtime?.pendingUserInput) ||
+          (runtime?.messages.length ?? 0) > 0 ||
+          (runtime?.subagents.length ?? 0) > 0;
+        if (!hasBackgroundRuntime) {
+          continue;
+        }
+        const status = buildClaudeChatSessionStatus(sessionStorageKey, false);
+        if (status.type !== "busy" && status.type !== "awaiting") {
+          continue;
+        }
+        next.push({ directory, sessionStorageKey });
+      }
+    }
+    return next;
+  }, [activeSessionKey, cachedProjects, claudeChatSessionStateMap, getSessionType]);
   const activeBackgroundAgents = selectActiveBackgroundAgentsPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
@@ -3932,6 +4036,7 @@ export default function App() {
         codexSessions={inactiveCodexSessions}
         opencodeSessions={inactiveOpencodeSessions}
         claudeSessions={inactiveClaudeSessions}
+        claudeChatSessions={inactiveClaudeChatSessions}
         codexPath={appPreferences.codexPath}
         codexArgs={appPreferences.codexArgs}
       />
@@ -4124,6 +4229,63 @@ export default function App() {
                 )
               ) : activeSessionType === "canvas" ? (
                 <CanvasPane canvasState={canvasState} directory={activeProjectDir} mcpDevToolsState={mcpDevToolsState} />
+              ) : activeSessionType === "claude-chat" ? (
+                <ClaudeChatPane
+                  directory={activeProjectDir}
+                  sessionStorageKey={activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)}
+                  onFirstMessage={() => activeSessionID && markSessionUsed(activeSessionID)}
+                  onTitleChange={(title) => {
+                    if (!activeSessionID || !activeProjectDir) {
+                      return;
+                    }
+                    const scopedSessionKey = buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID);
+                    if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
+                      return;
+                    }
+                    if (manualSessionTitles[scopedSessionKey]) {
+                      return;
+                    }
+                    setSessionTitles((prev) => {
+                      const currentTitle = prev[scopedSessionKey];
+                      if (
+                        currentTitle &&
+                        !looksAutoGeneratedSessionTitle(currentTitle) &&
+                        currentTitle !== title
+                      ) {
+                        return prev;
+                      }
+                      return {
+                        ...prev,
+                        [scopedSessionKey]: title,
+                      };
+                    });
+                  }}
+                  permissionMode={appPreferences.permissionMode}
+                  onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
+                  branchMenuOpen={branchMenuOpen}
+                  setBranchMenuOpen={setBranchMenuOpen}
+                  branchControlWidthCh={branchControlWidthCh}
+                  branchLoading={branchLoading}
+                  branchSwitching={branchSwitching}
+                  hasActiveProject={Boolean(activeProjectDir)}
+                  branchCurrent={branchState?.current}
+                  branchDisplayValue={branchDisplayValue}
+                  branchSearchInputRef={branchSearchInputRef}
+                  branchQuery={branchQuery}
+                  setBranchQuery={setBranchQuery}
+                  branchActionError={branchActionError}
+                  clearBranchActionError={() => setBranchActionError(null)}
+                  checkoutBranch={checkoutBranch}
+                  filteredBranches={filteredBranches}
+                  openBranchCreateModal={openBranchCreateModal}
+                  browserModeEnabled={browserModeEnabled}
+                  setBrowserModeEnabled={(enabled) => {
+                    if (!activeSessionKey) {
+                      return;
+                    }
+                    setBrowserModeBySession((prev) => ({ ...prev, [activeSessionKey]: enabled }));
+                  }}
+                />
               ) : activeSessionType === "claude" ? (
                 <ClaudeTerminalPane
                   directory={activeProjectDir}
