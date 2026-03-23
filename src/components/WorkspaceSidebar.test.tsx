@@ -65,20 +65,20 @@ describe("WorkspaceSidebar update button", () => {
     expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
   });
 
-  it("shows update-found text and downloads when an update is available", () => {
+  it("shows update card and downloads when an update is available", () => {
     const onDownloadAndInstallUpdate = vi.fn();
     render(
       <WorkspaceSidebar
         {...buildProps({
           updateAvailableVersion: "0.1.0-beta.6",
-          updateStatusMessage: { text: "Update found", tone: "success" },
           onDownloadAndInstallUpdate,
         })}
       />,
     );
 
-    expect(screen.getByText("Update found")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Download 0.1.0-beta.6 now" }));
+    expect(screen.getByText("Update available")).toBeInTheDocument();
+    expect(screen.getByText(/v0\.1\.0-beta\.6/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Update available").closest("button")!);
     expect(onDownloadAndInstallUpdate).toHaveBeenCalledTimes(1);
   });
 

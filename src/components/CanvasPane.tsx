@@ -169,6 +169,24 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
     [canvasState],
   );
 
+  const handleDuplicateTile = useCallback(
+    (tile: CanvasTile) => {
+      const offset = 40;
+      canvasState.addTile({
+        id: crypto.randomUUID(),
+        type: tile.type,
+        x: tile.x + offset,
+        y: tile.y + offset,
+        width: tile.width,
+        height: tile.height,
+        minimized: false,
+        maximized: false,
+        meta: { ...tile.meta },
+      });
+    },
+    [canvasState],
+  );
+
   const handleBringToFront = useCallback(
     (id: string) => {
       canvasState.bringToFront(id);
@@ -224,6 +242,10 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       height: maxY - minY,
     }, DEFAULT_CANVAS_ZOOM);
   }, [canvasState.viewport.scrollLeft, canvasState.viewport.scrollTop, centerViewportOnRect, standardTiles, viewportZoom]);
+
+  const handleJumpToTile = useCallback((tile: CanvasTile) => {
+    centerViewportOnRect({ x: tile.x, y: tile.y, width: tile.width, height: tile.height });
+  }, [centerViewportOnRect]);
 
   useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
@@ -299,15 +321,26 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
     applyZoom(viewportZoom / 1.12);
   }, [applyZoom, viewportZoom]);
 
-  const handleViewportWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    if (!(event.ctrlKey || event.metaKey)) {
-      return;
+  // Attach wheel handler as non-passive native event so preventDefault() stops the scroll
+  const applyZoomRef = useRef(applyZoom);
+  const viewportZoomRef = useRef(viewportZoom);
+  useEffect(() => { applyZoomRef.current = applyZoom; }, [applyZoom]);
+  useEffect(() => { viewportZoomRef.current = viewportZoom; }, [viewportZoom]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    function handleWheel(event: WheelEvent) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      const multiplier = Math.exp(-event.deltaY * 0.0015);
+      applyZoomRef.current(viewportZoomRef.current * multiplier, { clientX: event.clientX, clientY: event.clientY });
     }
 
-    event.preventDefault();
-    const multiplier = Math.exp(-event.deltaY * 0.0015);
-    applyZoom(viewportZoom * multiplier, { clientX: event.clientX, clientY: event.clientY });
-  }, [applyZoom, viewportZoom]);
+    viewport.addEventListener("wheel", handleWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", handleWheel);
+  }, []);
 
   const handleViewportMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) {
@@ -409,6 +442,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
     <div className="canvas-pane">
       <CanvasToolbar
         tileCount={canvasState.tiles.length}
+        tiles={canvasState.tiles}
         zoom={viewportZoom}
         snapToGrid={canvasState.snapToGrid}
         theme={canvasState.theme}
@@ -419,13 +453,23 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
         onZoomIn={handleZoomIn}
         onToggleSnap={canvasState.toggleSnap}
         onReset={handleReset}
+        onJumpToTile={handleJumpToTile}
+        onDuplicateTile={handleDuplicateTile}
+        onRemoveTile={handleTileRemove}
       />
       <div
         ref={viewportRef}
         className="canvas-area-viewport"
-        style={{ background: canvasState.theme.background }}
+        style={{
+          background: canvasState.theme.background,
+          ...(canvasState.theme.backgroundImage ? {
+            backgroundImage: `url(${canvasState.theme.backgroundImage})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
+          } : {}),
+        }}
         onScroll={handleViewportScroll}
-        onWheel={handleViewportWheel}
         onMouseDown={handleViewportMouseDown}
         tabIndex={0}
       >
@@ -448,12 +492,13 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
           </div>
         </div>
 
-        {maximizedTiles.length > 0 ? (
-          <div className="canvas-overlay-layer">
-            {maximizedTiles.map((tile) => renderTile(tile, true))}
-          </div>
-        ) : null}
       </div>
+
+      {maximizedTiles.length > 0 ? (
+        <div className="canvas-overlay-layer">
+          {maximizedTiles.map((tile) => renderTile(tile, true))}
+        </div>
+      ) : null}
     </div>
   );
 }

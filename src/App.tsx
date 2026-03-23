@@ -43,12 +43,13 @@ import { CodexPane } from "./components/CodexPane";
 import { ComposerPanel } from "./components/ComposerPanel";
 import type { AgentQuestion } from "./components/chat/QuestionDock";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { BrowserSidebar } from "./components/BrowserSidebar";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
 import { MessageFeed } from "./components/MessageFeed";
 import { UnifiedTimelineRowView } from "./components/chat/UnifiedTimelineRow";
-import { GitSidebar, type BrowserControlOwner } from "./components/GitSidebar";
+import { GitSidebar } from "./components/GitSidebar";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { JobsBoard } from "./components/JobsBoard";
@@ -105,6 +106,7 @@ import {
 import {
   DEFAULT_BROWSER_LANDING_URL,
   EMPTY_BROWSER_RUNTIME_STATE,
+  type BrowserControlOwner,
   buildBrowserAutopilotHint,
   deriveSessionTitleFromPrompt,
   isRecoverableSessionError,
@@ -172,12 +174,12 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   notifyOnTaskComplete: false,
   collaborationModesEnabled: true,
   subagentSystemNotificationsEnabled: true,
-  orxaBrowserEnabled: true,
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
 const OPEN_TARGET_KEY = "orxa:openTarget:v1";
 const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
+const SIDEBAR_BROWSER_WIDTH_KEY = "orxa:browserPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
@@ -677,6 +679,13 @@ export default function App() {
     },
     serialize: (value) => String(Math.round(value)),
   });
+  const [browserPaneWidth, setBrowserPaneWidth] = usePersistedState<number>(SIDEBAR_BROWSER_WIDTH_KEY, 380, {
+    deserialize: (raw) => {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 280 ? parsed : 380;
+    },
+    serialize: (value) => String(Math.round(value)),
+  });
   const [rightPaneWidth, setRightPaneWidth] = usePersistedState<number>(SIDEBAR_RIGHT_WIDTH_KEY, 340, {
     deserialize: (raw) => {
       const parsed = Number(raw);
@@ -715,7 +724,8 @@ export default function App() {
   const [composerLayoutHeight, setComposerLayoutHeight] = useState(DEFAULT_COMPOSER_LAYOUT_HEIGHT);
   const [terminalPanelHeight, setTerminalPanelHeight] = useState(DEFAULT_TERMINAL_PANEL_HEIGHT);
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
-  const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files" | "browser">("git");
+  const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
+  const [browserSidebarOpen, setBrowserSidebarOpen] = useState(false);
   const [browserModeBySession, setBrowserModeBySession] = usePersistedState<Record<string, boolean>>(
     BROWSER_MODE_BY_SESSION_KEY,
     {},
@@ -907,14 +917,13 @@ export default function App() {
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, []);
-  const { hasProjectContext, showProjectsPane, showGitPane, browserPaneVisible } = deriveAppShellWorkspaceLayout({
+  const { hasProjectContext, showProjectsPane, showGitPane } = deriveAppShellWorkspaceLayout({
     activeProjectDir,
     sidebarMode,
     projectsSidebarVisible,
     showOperationsPane: appPreferences.showOperationsPane,
-    rightSidebarTab,
-    anyOverlayInDom,
   });
+  const browserPaneVisible = hasProjectContext && browserSidebarOpen && !anyOverlayInDom;
   const {
     branchState,
     gitPanelTab,
@@ -968,7 +977,7 @@ export default function App() {
   } = useGitPanel(activeProjectDir ?? null);
 
   const resizeStateRef = useRef<null | {
-    side: "left" | "right";
+    side: "left" | "browser" | "right";
     startX: number;
     startWidth: number;
     latestX: number;
@@ -1651,13 +1660,20 @@ export default function App() {
   }, [browserPaneVisible]);
 
   useEffect(() => {
-    if (rightSidebarTab !== "browser") {
+    if (!browserSidebarOpen || !hasProjectContext) {
       return;
     }
     void ensureBrowserTab().catch((error) => {
       setStatusLine(error instanceof Error ? error.message : String(error));
     });
-  }, [ensureBrowserTab, rightSidebarTab]);
+  }, [browserSidebarOpen, ensureBrowserTab, hasProjectContext]);
+
+  useEffect(() => {
+    if (hasProjectContext) {
+      return;
+    }
+    setBrowserSidebarOpen(false);
+  }, [hasProjectContext]);
 
   useEffect(() => {
     if (!settingsOpen) {
@@ -2661,15 +2677,18 @@ export default function App() {
     };
   }, [setBranchMenuOpen]);
 
-  const startSidebarResize = useCallback((side: "left" | "right", event: ReactMouseEvent) => {
+  const startSidebarResize = useCallback((side: "left" | "browser" | "right", event: ReactMouseEvent) => {
     event.preventDefault();
-    const startWidth = side === "left" ? leftPaneWidth : rightPaneWidth;
+    const startWidth = side === "left" ? leftPaneWidth : side === "browser" ? browserPaneWidth : rightPaneWidth;
     document.body.classList.add("is-resizing");
     resizeStateRef.current = { side, startX: event.clientX, startWidth, latestX: event.clientX };
-  }, [leftPaneWidth, rightPaneWidth]);
+  }, [browserPaneWidth, leftPaneWidth, rightPaneWidth]);
 
   const MIN_LEFT_PANE_WIDTH = 280;
   const MAX_LEFT_PANE_WIDTH = 520;
+  const MIN_BROWSER_PANE_WIDTH = 320;
+  const MAX_BROWSER_PANE_WIDTH = 760;
+  const MIN_RIGHT_PANE_WIDTH = 280;
 
   useEffect(() => {
     const onMouseMove = (event: globalThis.MouseEvent) => {
@@ -2693,14 +2712,30 @@ export default function App() {
           el?.style.setProperty("--left-pane-width", `${next}px`);
           document.documentElement.style.setProperty("--left-pane-width", `${next}px`);
           s.currentWidth = next;
+        } else if (s.side === "browser") {
+          const workspaceWidth = el?.offsetWidth ?? window.innerWidth;
+          const leftWidth = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-width") || "300");
+          const leftVisible = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-visible") || "1");
+          const leftActual = leftWidth * leftVisible;
+          const leftResizer = 4 * leftVisible;
+          const rightVisible = showGitPane ? 1 : 0;
+          const rightActual = rightPaneWidth * rightVisible;
+          const rightResizer = 4 * rightVisible;
+          const maxBrowser = Math.floor(workspaceWidth - leftActual - leftResizer - rightActual - rightResizer - workspaceWidth * 0.2 - 4);
+          const next = Math.max(MIN_BROWSER_PANE_WIDTH, Math.min(Math.max(MIN_BROWSER_PANE_WIDTH, Math.min(MAX_BROWSER_PANE_WIDTH, maxBrowser)), s.startWidth - (s.latestX - s.startX)));
+          el?.style.setProperty("--browser-pane-width", `${next}px`);
+          s.currentWidth = next;
         } else {
           const workspaceWidth = el?.offsetWidth ?? window.innerWidth;
           const leftWidth = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-width") || "300");
           const leftVisible = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-visible") || "1");
           const leftActual = leftWidth * leftVisible;
           const leftResizer = 4 * leftVisible;
-          const maxRight = Math.floor(workspaceWidth - leftActual - leftResizer - 4 - workspaceWidth * 0.2);
-          const next = Math.max(280, Math.min(Math.max(280, maxRight), s.startWidth - (s.latestX - s.startX)));
+          const browserVisible = browserSidebarOpen ? 1 : 0;
+          const browserActual = browserPaneWidth * browserVisible;
+          const browserResizer = 4 * browserVisible;
+          const maxRight = Math.floor(workspaceWidth - leftActual - leftResizer - browserActual - browserResizer - workspaceWidth * 0.2 - 4);
+          const next = Math.max(MIN_RIGHT_PANE_WIDTH, Math.min(Math.max(MIN_RIGHT_PANE_WIDTH, maxRight), s.startWidth - (s.latestX - s.startX)));
           el?.style.setProperty("--right-pane-width", `${next}px`);
           s.currentWidth = next;
         }
@@ -2715,6 +2750,8 @@ export default function App() {
       if (state?.currentWidth !== undefined) {
         if (state.side === "left") {
           setLeftPaneWidth(state.currentWidth);
+        } else if (state.side === "browser") {
+          setBrowserPaneWidth(state.currentWidth);
         } else {
           setRightPaneWidth(state.currentWidth);
         }
@@ -2727,7 +2764,7 @@ export default function App() {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [setLeftPaneWidth, setRightPaneWidth]);
+  }, [browserPaneWidth, browserSidebarOpen, rightPaneWidth, setBrowserPaneWidth, setLeftPaneWidth, setRightPaneWidth, showGitPane]);
 
   useEffect(() => {
     setTitleMenuOpen(false);
@@ -3001,7 +3038,7 @@ export default function App() {
     controlOwner: browserControlOwner,
     automationHalted: browserAutomationHalted,
     onActionStart: () => {
-      setRightSidebarTab("browser");
+      setBrowserSidebarOpen(true);
       setBrowserActionRunning(true);
     },
     onStatus: setStatusLine,
@@ -3265,9 +3302,10 @@ export default function App() {
     () =>
       ({
         "--left-pane-visible": showProjectsPane ? 1 : 0,
+        "--browser-pane-visible": hasProjectContext && browserSidebarOpen ? 1 : 0,
         "--right-pane-visible": showGitPane ? 1 : 0,
       }) as CSSProperties,
-    [showGitPane, showProjectsPane],
+    [browserSidebarOpen, hasProjectContext, showGitPane, showProjectsPane],
   );
 
   useLayoutEffect(() => {
@@ -3276,6 +3314,12 @@ export default function App() {
       document.documentElement.style.setProperty("--left-pane-width", `${leftPaneWidth}px`);
     }
   }, [leftPaneWidth]);
+
+  useLayoutEffect(() => {
+    if (!resizeStateRef.current) {
+      workspaceRef.current?.style.setProperty("--browser-pane-width", `${browserPaneWidth}px`);
+    }
+  }, [browserPaneWidth]);
 
   useLayoutEffect(() => {
     if (!resizeStateRef.current) {
@@ -3915,6 +3959,8 @@ export default function App() {
               showOperationsPane: visible,
             }))
           }
+          browserSidebarOpen={browserSidebarOpen}
+          toggleBrowserSidebar={() => setBrowserSidebarOpen((current) => !current)}
           gitDiffStats={gitDiffStats}
           contentPaneTitle={contentPaneTitle}
           activeProjectDir={activeProjectDir ?? null}
@@ -4142,6 +4188,8 @@ export default function App() {
                   filteredBranches={filteredBranches}
                   openBranchCreateModal={openBranchCreateModal}
                   onOpenFileReference={(reference) => void openReferencedFile(reference)}
+                  browserModeEnabled={browserModeEnabled}
+                  setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
                 />
               ) : (
                 <>
@@ -4178,7 +4226,7 @@ export default function App() {
                     togglePlanMode={togglePlanMode}
                     browserModeEnabled={browserModeEnabled}
                     setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
-                    hideBrowserToggle={!(appPreferences.orxaBrowserEnabled ?? true)}
+                    hideBrowserToggle={false}
                     hidePlanToggle
                     agentOptions={effectiveComposerAgentOptions}
                     selectedAgent={selectedAgent}
@@ -4308,6 +4356,40 @@ export default function App() {
         {hasProjectContext ? (
           <button
             type="button"
+            className={`sidebar-resizer sidebar-resizer-browser ${browserSidebarOpen ? "" : "is-collapsed"}`.trim()}
+            aria-label="Resize browser sidebar"
+            onMouseDown={(event) => startSidebarResize("browser", event)}
+            disabled={!browserSidebarOpen}
+          />
+        ) : null}
+        {hasProjectContext ? (
+          <div className={`workspace-browser-pane ${browserSidebarOpen ? "open" : "collapsed"}`.trim()}>
+            {browserSidebarOpen ? (
+              <BrowserSidebar
+                browserState={effectiveBrowserState}
+                onBrowserOpenTab={browserOpenTab}
+                onBrowserCloseTab={browserCloseTab}
+                onBrowserNavigate={browserNavigate}
+                onBrowserGoBack={browserGoBack}
+                onBrowserGoForward={browserGoForward}
+                onBrowserReload={browserReload}
+                onBrowserSelectTab={browserSelectTab}
+                onBrowserSelectHistory={browserSelectHistory}
+                onBrowserReportViewportBounds={browserReportViewportBounds}
+                onBrowserTakeControl={browserTakeControl}
+                onBrowserHandBack={browserHandBack}
+                onBrowserStop={browserStop}
+                onCollapse={() => setBrowserSidebarOpen(false)}
+                onStatusChange={setStatusLine}
+                onSendAnnotations={(text) => setComposer((prev) => prev ? `${prev}\n\n${text}` : text)}
+                mcpDevToolsState={mcpDevToolsState}
+              />
+            ) : null}
+          </div>
+        ) : null}
+        {hasProjectContext ? (
+          <button
+            type="button"
             className={`sidebar-resizer sidebar-resizer-right ${showGitPane ? "" : "is-collapsed"}`.trim()}
             aria-label="Resize git sidebar"
             onMouseDown={(event) => startSidebarResize("right", event)}
@@ -4340,21 +4422,6 @@ export default function App() {
               fileProvenanceByPath={sessionProvenanceByPath}
               onAddToChatPath={appendPathToComposer}
               onStatusChange={setStatusLine}
-              browserState={effectiveBrowserState}
-              onBrowserOpenTab={browserOpenTab}
-              onBrowserCloseTab={browserCloseTab}
-              onBrowserNavigate={browserNavigate}
-              onBrowserGoBack={browserGoBack}
-              onBrowserGoForward={browserGoForward}
-              onBrowserReload={browserReload}
-              onBrowserSelectTab={browserSelectTab}
-              onBrowserSelectHistory={browserSelectHistory}
-              onBrowserReportViewportBounds={browserReportViewportBounds}
-              onBrowserTakeControl={browserTakeControl}
-              onBrowserHandBack={browserHandBack}
-              onBrowserStop={browserStop}
-              mcpDevToolsState={mcpDevToolsState}
-              browserEnabled={appPreferences.orxaBrowserEnabled ?? true}
             />
           </div>
         ) : null}

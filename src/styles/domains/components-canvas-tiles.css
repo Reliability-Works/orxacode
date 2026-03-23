@@ -196,38 +196,56 @@
 }
 
 .canvas-pane {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 1fr;
   min-height: 0;
   grid-row: 1 / -1;
+  overflow: hidden;
+}
+
+.canvas-pane > * {
+  grid-row: 1;
+  grid-column: 1;
 }
 
 .canvas-toolbar {
   height: 40px;
-  flex-shrink: 0;
+  align-self: start;
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 8px;
-  background: #0E0E0E;
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.canvas-toolbar > * {
+  pointer-events: auto;
 }
 
 .canvas-toolbar-add {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
-  border: 1px solid var(--accent-green);
+  padding: 4px 8px;
+  border: 1px solid var(--border-secondary);
   border-radius: 4px;
-  color: var(--accent-green);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
   background: transparent;
   cursor: pointer;
 }
 
 .canvas-toolbar-add:hover {
-  background: rgba(34, 197, 94, 0.08);
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+.canvas-toolbar-add.active {
+  color: var(--accent-green);
+  border-color: var(--accent-green);
 }
 
 .canvas-toolbar-spacer {
@@ -335,9 +353,8 @@
 }
 
 .canvas-overlay-layer {
-  position: absolute;
-  inset: 0;
   pointer-events: none;
+  z-index: 50;
 }
 
 .canvas-overlay-layer .canvas-tile {
@@ -698,11 +715,35 @@
 .canvas-tile-resize-sw { bottom: -2px; left: -2px; width: 8px; height: 8px; cursor: sw-resize; }
 
 /* Terminal tile body — xterm.js manages its own rendering; we just fill the space */
+.terminal-tile-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
 .terminal-tile-body {
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: #0d1117;
+}
+
+.terminal-tile-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: rgba(13, 17, 23, 0.88);
+  pointer-events: none;
+}
+
+.terminal-tile-status-error {
+  color: #fca5a5;
 }
 
 .terminal-tile-body .xterm {
@@ -714,6 +755,107 @@
   width: 100% !important;
 }
 
+.canvas-toolbar-jump-wrap {
+  position: relative;
+}
+
+.canvas-toolbar-jump-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.canvas-toolbar-jump-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  text-align: left;
+  cursor: pointer;
+}
+
+.canvas-toolbar-jump-menu button:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-toolbar-jump-type {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.canvas-toolbar-jump-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.canvas-toolbar-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.canvas-toolbar-manage-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.canvas-toolbar-manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.canvas-toolbar-manage-actions button {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.canvas-toolbar-manage-actions button:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-toolbar-manage-delete:hover {
+  color: #F87171 !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
 /* Anchor wrapper that positions the popover relative to the theme button */
 .canvas-toolbar-theme-anchor {
   position: relative;
@@ -722,7 +864,7 @@
 .canvas-theme-picker {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   width: 312px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -886,6 +1028,106 @@
   color: var(--text-muted);
   text-align: right;
   min-width: 58px;
+}
+
+.canvas-theme-hex-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.canvas-theme-hex-input {
+  flex: 1;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 0 8px;
+}
+
+.canvas-theme-hex-input:focus {
+  border-color: var(--border-hover);
+  outline: none;
+}
+
+.canvas-theme-hex-apply {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.canvas-theme-hex-apply:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-surface);
+}
+
+.canvas-theme-image-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+}
+
+.canvas-theme-image-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.canvas-theme-image-upload:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.canvas-theme-image-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 4px;
+  background: transparent;
+  color: #F87171;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.canvas-theme-image-clear:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.canvas-theme-image-preview {
+  padding: 0 12px 8px;
+}
+
+.canvas-theme-image-preview img {
+  width: 100%;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
 }
 
 .canvas-snap-guide {

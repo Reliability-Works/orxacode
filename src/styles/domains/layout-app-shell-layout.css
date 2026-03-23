@@ -87,6 +87,8 @@
     calc(48px + (var(--left-pane-width, 260px) - 48px) * var(--left-pane-visible, 1))
     calc(4px * var(--left-pane-visible, 1))
     minmax(20vw, 1fr)
+    calc(4px * var(--browser-pane-visible, 0))
+    calc(var(--browser-pane-width, 380px) * var(--browser-pane-visible, 0))
     calc(4px * var(--right-pane-visible, 1))
     calc(var(--right-pane-width, 340px) * var(--right-pane-visible, 1));
   gap: 0;

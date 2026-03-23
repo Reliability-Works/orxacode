@@ -103,6 +103,8 @@ export const IPC = {
   browserListHistory: "orxa:browser:listHistory",
   browserClearHistory: "orxa:browser:clearHistory",
   browserPerformAgentAction: "orxa:browser:performAgentAction",
+  browserInspectEnable: "orxa:browser:inspect:enable",
+  browserInspectDisable: "orxa:browser:inspect:disable",
   mcpDevToolsStart: "orxa:mcp:devtools:start",
   mcpDevToolsStop: "orxa:mcp:devtools:stop",
   mcpDevToolsGetStatus: "orxa:mcp:devtools:getStatus",
