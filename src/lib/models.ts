@@ -70,6 +70,13 @@ export function mergeDiscoverableModelOptions(...sources: Array<ModelOption[]>) 
   return [...unique.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
+export function filterModelOptionsByProviderIDs(options: ModelOption[], providerIDs: Iterable<string>) {
+  const allowed = new Set(
+    [...providerIDs].filter((providerID): providerID is string => typeof providerID === "string" && providerID.trim().length > 0),
+  );
+  return options.filter((option) => allowed.has(option.providerID));
+}
+
 export function filterHiddenModelOptions(options: ModelOption[], hiddenModelKeys: string[]) {
   if (hiddenModelKeys.length === 0) {
     return options;

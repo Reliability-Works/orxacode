@@ -34,6 +34,7 @@ type ContentTopBarProps = {
   activeProjectDir: string | null;
   projectData: ProjectData | null;
   terminalOpen: boolean;
+  showTerminalToggle?: boolean;
   toggleTerminal: () => Promise<void>;
   titleMenuOpen: boolean;
   openMenuOpen: boolean;
@@ -76,6 +77,7 @@ export function ContentTopBar({
   activeProjectDir,
   projectData,
   terminalOpen,
+  showTerminalToggle = true,
   toggleTerminal,
   openMenuOpen,
   setOpenMenuOpen,
@@ -469,12 +471,14 @@ export function ContentTopBar({
           ) : null}
         </div>
 
-        <IconButton
-          icon="terminal"
-          label="Toggle terminal"
-          className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
-          onClick={() => void toggleTerminal()}
-        />
+        {showTerminalToggle ? (
+          <IconButton
+            icon="terminal"
+            label="Toggle terminal"
+            className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
+            onClick={() => void toggleTerminal()}
+          />
+        ) : null}
         <div className={`titlebar-git-toggle-group${gitDiffStats.hasChanges ? " has-changes" : ""}`}>
           {gitDiffStats.hasChanges ? (
             <button

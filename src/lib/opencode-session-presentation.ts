@@ -1,5 +1,5 @@
-import type { Part } from "@opencode-ai/sdk/v2/client";
-import type { SessionMessageBundle } from "@shared/ipc";
+import type { FileDiff, Part, SessionStatus } from "@opencode-ai/sdk/v2/client";
+import type { ChangeProvenanceRecord, ExecutionEventRecord, SessionMessageBundle } from "@shared/ipc";
 import type { ToolCallStatus } from "../components/chat/ToolCallCard";
 import type { UnifiedMessageSection, UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
 import {
@@ -13,13 +13,11 @@ import {
 } from "./message-feed-patch-summary";
 import {
   buildTimelineBlocks,
-  pluralize,
   type InternalEvent,
   type TimelineEvent,
   type TimelineKind,
 } from "./message-feed-timeline";
 import {
-  countOrxaMemoryLines,
   extractVisibleText,
   getVisibleParts,
   isLikelyTelemetryJson,
@@ -28,7 +26,13 @@ import {
   shouldHideAssistantText,
   summarizeOrxaBrowserActionText,
 } from "./message-feed-visibility";
-import { groupChangedFileRows, type UnifiedProjectedSessionPresentation } from "./session-presentation";
+import {
+  groupAdjacentExploreRows,
+  groupAdjacentTimelineExplorationRows,
+  groupAdjacentToolCallRows,
+  groupChangedFileRows,
+  type UnifiedProjectedSessionPresentation,
+} from "./session-presentation";
 
 export type ActivityEvent = {
   id: string;
@@ -73,6 +77,29 @@ function compactText(value: string, maxLength = 58) {
   return `${singleLine.slice(0, maxLength - 3).trimEnd()}...`;
 }
 
+function compactPathPreservingBasename(value: string, maxLength = 58) {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxLength) {
+    return singleLine;
+  }
+  const normalized = singleLine.replace(/\\/g, "/");
+  const slashIndex = normalized.lastIndexOf("/");
+  if (slashIndex < 0) {
+    return compactText(singleLine, maxLength);
+  }
+  const basename = normalized.slice(slashIndex + 1);
+  if (!basename) {
+    return compactText(singleLine, maxLength);
+  }
+  const reserved = basename.length + 4;
+  if (reserved >= maxLength) {
+    return `...${basename.slice(-(maxLength - 3))}`;
+  }
+  const prefixBudget = maxLength - reserved;
+  const prefix = normalized.slice(0, prefixBudget).replace(/[/. -]+$/g, "");
+  return `${prefix}.../${basename}`;
+}
+
 function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | null) {
   const normalizedTarget = target.replace(/\\/g, "/").replace(/\/+$/g, "");
   const normalizedWorkspace = (workspaceDirectory ?? "").replace(/\\/g, "/").replace(/\/+$/g, "");
@@ -93,7 +120,7 @@ function toWorkspaceRelativePath(target: string, workspaceDirectory?: string | n
 }
 
 function formatTarget(target: string, workspaceDirectory?: string | null, maxLength = 58) {
-  return compactText(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
+  return compactPathPreservingBasename(toWorkspaceRelativePath(target, workspaceDirectory), maxLength);
 }
 
 function deriveTargetFromCommand(command: string, workspaceDirectory?: string | null) {
@@ -205,6 +232,18 @@ function extractCommandPreview(input: unknown, maxLength = 92) {
     return null;
   }
   return compactText(firstLine, maxLength);
+}
+
+function extractShellCommandForTool(input: unknown, stateTitle?: string) {
+  const explicitCommand = extractCommand(input);
+  if (explicitCommand && isLikelyShellCommand(explicitCommand)) {
+    return explicitCommand;
+  }
+  const normalizedTitle = stateTitle?.trim() ?? "";
+  if (normalizedTitle && isLikelyShellCommand(normalizedTitle)) {
+    return normalizedTitle;
+  }
+  return undefined;
 }
 
 function isLikelyShellCommand(value: string) {
@@ -321,6 +360,11 @@ function isLowSignalCompletedLabel(label: string) {
   return normalized === "completed action" || normalized.startsWith("completed action on ");
 }
 
+function isLowSignalActiveLabel(label: string) {
+  const normalized = label.trim().toLowerCase();
+  return normalized === "working..." || normalized.startsWith("working on ");
+}
+
 function mapPatchVerbToKind(verb: "Edited" | "Created" | "Deleted"): TimelineKind {
   if (verb === "Created") {
     return "create";
@@ -406,10 +450,10 @@ function describeSearchCommand(command: string, workspaceDirectory?: string | nu
   const pattern = (patternMatch?.[2] ?? patternMatch?.[3] ?? patternMatch?.[4] ?? "").replace(/^["']|["']$/g, "");
   const target = deriveTargetFromCommand(command, workspaceDirectory);
   if (pattern && target) {
-    return `for: ${compactText(pattern, 42)} in ${target}`;
+    return `for ${compactText(pattern, 42)} in ${target}`;
   }
   if (pattern) {
-    return `for: ${compactText(pattern, 42)}`;
+    return `for ${compactText(pattern, 42)}`;
   }
   if (target) {
     return `in ${target}`;
@@ -537,10 +581,10 @@ function toToolActivityLabel(
     return isActive ? "Updating todo list..." : "Updated todo list";
   }
   if (name.includes("delete")) {
-    return withTarget("Deleting", "Deleted");
+    return withTarget("Deleting", "Deleted", "Delete failed");
   }
   if (name.includes("create") || name.includes("mkdir") || name.includes("touch")) {
-    return withTarget("Creating", "Created");
+    return withTarget("Creating", "Created", "Create failed");
   }
   if (name.includes("write")) {
     const writeSummary = extractWriteFileSummary(input, metadata, workspaceDirectory);
@@ -548,7 +592,7 @@ function toToolActivityLabel(
       return writeSummary ? `Writing ${writeSummary.summary}...` : "Writing...";
     }
     if (isError) {
-      return writeSummary ? `Failed ${writeSummary.summary}` : "Write failed";
+      return writeSummary ? `Write failed ${writeSummary.summary}` : "Write failed";
     }
     if (writeSummary) {
       return `${writeSummary.verb} ${writeSummary.summary}`;
@@ -560,10 +604,10 @@ function toToolActivityLabel(
     if (!isActive && !isError && filediffSummary) {
       return `Edited ${filediffSummary}`;
     }
-    return withTarget("Editing", "Edited");
+    return withTarget("Editing", "Edited", "Edit failed");
   }
   if (name.includes("rename") || name.includes("move")) {
-    return withTarget("Moving", "Moved");
+    return withTarget("Moving", "Moved", "Move failed");
   }
   if (name.includes("apply_patch")) {
     const patch = extractPatchTarget(input, workspaceDirectory);
@@ -740,14 +784,6 @@ function summarizeAssistantTelemetryPart(part: Part, actor?: string): InternalEv
     if (browserActionSummary) {
       return { id: part.id, summary: browserActionSummary, actor };
     }
-    const memoryLineCount = countOrxaMemoryLines(text);
-    if (memoryLineCount > 0) {
-      return {
-        id: part.id,
-        summary: `Captured ${pluralize(memoryLineCount, "memory item")}`,
-        actor,
-      };
-    }
     if (isLikelyTelemetryJson(text)) {
       const parsed = parseJsonObject(text);
       const summary = typeof parsed?.type === "string" ? parsed.type : "Telemetry event";
@@ -865,15 +901,6 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       delegations.push(trace);
       activeDelegation = trace;
       currentActor = part.agent;
-      activity = {
-        id: `${part.id}:activity`,
-        label: `Delegating to ${part.agent}...`,
-      };
-      timeline.push({
-        id: `${part.id}:timeline`,
-        label: `Delegated to ${part.agent}: ${part.description}`,
-        kind: "delegate",
-      });
       continue;
     }
 
@@ -915,6 +942,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         changedFiles.push(...toolChangedFiles);
       }
       const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+      const shellCommand = extractShellCommandForTool(part.state.input, stateTitle);
       const explicitCommand = extractCommand(part.state.input);
       const explicitCommandPreview = extractCommandPreview(part.state.input, 92);
       const explicitCommandLooksNarrative =
@@ -959,13 +987,19 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         currentActor = taskDelegation.agent;
       }
       if (isToolStatusActive(status)) {
-        activity = {
-          id: `${part.id}:activity`,
-          label,
-        };
+        activity = null;
       } else {
+        if (taskDelegation) {
+          continue;
+        }
+        if (kind === "todo") {
+          continue;
+        }
+        if (isCommandTool && shellCommand && kind !== "read" && kind !== "search" && kind !== "list") {
+          continue;
+        }
         const showReason = kind === "create" || kind === "delete";
-        const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list" && kind !== "todo") || kind === "run" || kind === "git";
+        const showCommand = (isCommandTool && kind !== "read" && kind !== "search" && kind !== "list") || kind === "run" || kind === "git";
         const commandPreview = showCommand
           ? extractCommandPreview(part.state.input) ??
             (kind === "run" && !hasExplicitCommand && stateTitle && isLikelyShellCommand(stateTitle)
@@ -979,7 +1013,10 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
         if (isLowSignalCompletedLabel(label) && !command && !stateError) {
           continue;
         }
-        if (toolChangedFiles.length > 0 && (kind === "edit" || kind === "create" || kind === "delete" || kind === "run")) {
+        if (
+          (part.state.status === "error" && !shellCommand && (kind === "edit" || kind === "create" || kind === "delete")) ||
+          (toolChangedFiles.length > 0 && (kind === "edit" || kind === "create" || kind === "delete" || kind === "run"))
+        ) {
           continue;
         }
         timeline.push({
@@ -1001,7 +1038,7 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
       const summary = typeof record.summary === "string" ? record.summary : typeof record.text === "string" ? record.text : "";
       if (summary) {
         const trimmed = summary.length > 80 ? `${summary.slice(0, 77)}...` : summary;
-        activity = { id: `${part.id}:activity`, label: `Thinking  ${trimmed}` };
+        activity = { id: `${part.id}:activity`, label: trimmed };
       }
       continue;
     }
@@ -1045,7 +1082,7 @@ function buildToolCallCardProps(part: Part & { type: "tool" }, workspaceDirector
   const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
   const stateOutput = typeof stateRecord.output === "string" ? stateRecord.output : undefined;
   const stateError = typeof stateRecord.error === "string" ? stateRecord.error : undefined;
-  const explicitCommand = extractCommand(part.state.input);
+  const explicitCommand = extractShellCommandForTool(part.state.input, stateTitle);
   const derivedTitle = toToolActivityLabel(
     part.tool,
     part.state.status,
@@ -1055,11 +1092,25 @@ function buildToolCallCardProps(part: Part & { type: "tool" }, workspaceDirector
     stateRecord.output,
   );
   const genericStateTitle = !stateTitle || stateTitle.toLowerCase() === toolName;
-  const title = genericStateTitle ? derivedTitle : stateTitle;
-  const command = (isCommandTool && explicitCommand && isLikelyShellCommand(explicitCommand)) ? explicitCommand : undefined;
+  const collapsedCommandPreview = explicitCommand ? compactText(explicitCommand, 92) : undefined;
+  const title = isCommandTool && explicitCommand
+    ? status === "running"
+      ? `Running ${collapsedCommandPreview}...`
+      : status === "error"
+        ? `Command failed ${collapsedCommandPreview}`
+        : `Ran ${collapsedCommandPreview}`
+    : genericStateTitle ? derivedTitle : stateTitle;
+  const expandedTitle = isCommandTool && explicitCommand
+    ? status === "running"
+      ? "Running command"
+      : status === "error"
+        ? "Command failed"
+        : "Ran command"
+    : undefined;
+  const command = isCommandTool && explicitCommand ? explicitCommand : undefined;
   const output = stateOutput || undefined;
   const error = status === "error" ? (stateError ?? "Tool execution failed") : undefined;
-  return { title, status, command, output, error };
+  return { title, expandedTitle, status, command, output, error };
 }
 
 function extractChangedFilesFromToolPart(
@@ -1075,10 +1126,12 @@ function extractChangedFilesFromToolPart(
   }
   const stateRecord = part.state as unknown as Record<string, unknown>;
   const patchFiles = extractPatchFileDetails(part.state.input, stateRecord.output, workspaceDirectory);
+  const metadataPatchFiles = extractPatchFileDetails(stateRecord.metadata, undefined, workspaceDirectory);
   const metadataFiles = extractMetaFileDiffDetails(stateRecord.metadata, workspaceDirectory);
   const writeFile = extractWriteFileDetail(part.state.input, stateRecord.metadata, workspaceDirectory);
   const merged = mergeChangedFileDetails(
     patchFiles,
+    metadataPatchFiles,
     metadataFiles,
     writeFile ? [writeFile] : [],
   );
@@ -1093,28 +1146,50 @@ function extractChangedFilesFromToolPart(
   }));
 }
 
-function renderToolParts(parts: Part[], workspaceDirectory?: string | null) {
+function renderToolParts(parts: Part[], workspaceDirectory?: string | null): UnifiedTimelineRenderRow[] {
   return parts
     .filter((part): part is Part & { type: "tool" } => part.type === "tool")
-    .filter((part) => isToolStatusActive(part.state.status))
     .filter((part) => {
       const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+      const toolName = part.tool.trim().toLowerCase();
+      const isCommandTool = toolName.includes("exec_command") || toolName.includes("bash") || toolName.includes("run");
+      const stateTitle = "title" in part.state && typeof part.state.title === "string" ? part.state.title : undefined;
+      const hasShellCommand = Boolean(extractShellCommandForTool(part.state.input, stateTitle));
+      if (kind === "todo") {
+        return true;
+      }
       if (isTaskToolName(part.tool)) {
         return false;
       }
-      return kind === "run" || kind === "git" || kind === "edit" || kind === "create" || kind === "delete";
+      if (isCommandTool && hasShellCommand) {
+        return kind !== "read" && kind !== "search" && kind !== "list";
+      }
+      return part.state.status === "error" && (kind === "edit" || kind === "create" || kind === "delete");
     })
-    .map((part) => {
+    .flatMap<UnifiedTimelineRenderRow>((part) => {
+      const kind = inferTimelineKind(part.tool, part.state.input, workspaceDirectory);
+      if (kind === "todo") {
+        return [{
+          id: `tool:${part.id}:status`,
+          kind: "status" as const,
+          label: part.state.status === "running" ? "Updating todo list" : "Updated todo list",
+        }];
+      }
       const props = buildToolCallCardProps(part, workspaceDirectory);
-      return {
+      if (isLowSignalActiveLabel(props.title) && !props.command && !props.output && !props.error) {
+        return [];
+      }
+      return [{
         id: `tool:${part.id}`,
         kind: "tool" as const,
         title: props.title,
+        expandedTitle: props.expandedTitle,
         status: props.status,
         command: props.command,
         output: props.output,
         error: props.error,
-      };
+        defaultExpanded: false,
+      }];
     });
 }
 
@@ -1128,6 +1203,252 @@ function summarizeReasoningPart(part: Part & { type: "reasoning" }) {
     summary: summary || (content ? content.slice(0, 80) + (content.length > 80 ? "..." : "") : "..."),
     content,
   };
+}
+
+function isGenericReasoningLabel(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "reasoning update" || normalized === "reasoning";
+}
+
+function mapProvenanceOperationToDiffType(operation: ChangeProvenanceRecord["operation"]) {
+  if (operation === "create") {
+    return "added";
+  }
+  if (operation === "delete") {
+    return "deleted";
+  }
+  return "edited";
+}
+
+function dedupeChangedFiles(
+  files: Array<Extract<UnifiedTimelineRenderRow, { kind: "diff" }>>,
+) {
+  const seen = new Set<string>();
+  return files.filter((file) => {
+    const key = `${file.type}:${file.path}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+type SessionDiffLookup = {
+  all: FileDiff[];
+  byPath: Map<string, FileDiff[]>;
+};
+
+function normalizeFileLookupPath(value: string) {
+  return value.replace(/\\/g, "/").replace(/^\.\/+/, "").replace(/^\/+/, "");
+}
+
+function buildPseudoUnifiedDiff(diff: FileDiff) {
+  const beforeLines = diff.before.split("\n");
+  const afterLines = diff.after.split("\n");
+  const lines = [`@@ -1,${beforeLines.length} +1,${afterLines.length} @@`];
+  if (diff.before.length > 0) {
+    lines.push(...beforeLines.map((line) => `-${line}`));
+  }
+  if (diff.after.length > 0) {
+    lines.push(...afterLines.map((line) => `+${line}`));
+  }
+  return lines.join("\n");
+}
+
+function buildSessionDiffLookup(sessionDiff?: FileDiff[]): SessionDiffLookup | null {
+  if (!sessionDiff || sessionDiff.length === 0) {
+    return null;
+  }
+  const byPath = new Map<string, FileDiff[]>();
+  const register = (map: Map<string, FileDiff[]>, key: string, file: FileDiff) => {
+    const normalized = normalizeFileLookupPath(key);
+    if (!normalized) {
+      return;
+    }
+    const existing = map.get(normalized);
+    if (existing) {
+      existing.push(file);
+    } else {
+      map.set(normalized, [file]);
+    }
+  };
+
+  for (const file of sessionDiff) {
+    register(byPath, file.file, file);
+  }
+
+  return { all: sessionDiff, byPath };
+}
+
+function resolveSessionDiffEntry(path: string, lookup: SessionDiffLookup | null) {
+  if (!lookup) {
+    return null;
+  }
+  const normalized = normalizeFileLookupPath(path);
+  const exact = lookup.byPath.get(normalized);
+  if (exact?.length === 1) {
+    return exact[0];
+  }
+  if (exact && exact.length > 1) {
+    return exact[exact.length - 1] ?? null;
+  }
+
+  const suffixMatches = lookup.all.filter((file) => {
+    const candidatePath = normalizeFileLookupPath(file.file);
+    return (
+      normalized.endsWith(`/${candidatePath}`) ||
+      candidatePath.endsWith(`/${normalized}`)
+    );
+  });
+  if (suffixMatches.length === 1) {
+    return suffixMatches[0] ?? null;
+  }
+
+  return null;
+}
+
+function isLikelyDirectoryPlaceholderPath(path: string, lookup: SessionDiffLookup | null) {
+  const normalized = normalizeFileLookupPath(path);
+  if (!normalized) {
+    return true;
+  }
+  if (resolveSessionDiffEntry(normalized, lookup)) {
+    return false;
+  }
+  const basename = normalized.split("/").pop() ?? normalized;
+  if (normalized.includes("/")) {
+    return false;
+  }
+  if (basename.includes(".")) {
+    return false;
+  }
+  const extensionlessFileNames = new Set([
+    "Dockerfile",
+    "Makefile",
+    "Procfile",
+    "Gemfile",
+    "Rakefile",
+    "README",
+    "LICENSE",
+  ]);
+  return !extensionlessFileNames.has(basename);
+}
+
+function hydrateChangedFilesWithSessionDiff(
+  files: Array<Extract<UnifiedTimelineRenderRow, { kind: "diff" }>>,
+  lookup: SessionDiffLookup | null,
+) {
+  return files
+    .filter((file) => !isLikelyDirectoryPlaceholderPath(file.path, lookup))
+    .map((file) => {
+      const match = resolveSessionDiffEntry(file.path, lookup);
+      if (!match) {
+        return file;
+      }
+
+      const hasMeaningfulOwnStats = (file.insertions ?? 0) > 0 || (file.deletions ?? 0) > 0;
+      const shouldPreferSessionDiffStats = !file.diff && !hasMeaningfulOwnStats;
+
+      return {
+        ...file,
+        diff: file.diff ?? buildPseudoUnifiedDiff(match),
+        insertions: shouldPreferSessionDiffStats ? match.additions : (file.insertions ?? match.additions),
+        deletions: shouldPreferSessionDiffStats ? match.deletions : (file.deletions ?? match.deletions),
+        type: file.type || match.status || "modified",
+      };
+    });
+}
+
+function buildChangedFilesFromProvenance(
+  records: ChangeProvenanceRecord[],
+  lookup: SessionDiffLookup | null,
+) {
+  const latestByPath = new Map<string, ChangeProvenanceRecord>();
+  for (const record of records) {
+    const existing = latestByPath.get(record.filePath);
+    if (!existing || existing.timestamp <= record.timestamp) {
+      latestByPath.set(record.filePath, record);
+    }
+  }
+  return hydrateChangedFilesWithSessionDiff(
+    [...latestByPath.values()]
+    .sort((a, b) => a.filePath.localeCompare(b.filePath))
+    .map((record, index) => ({
+      id: `provenance:${record.eventID}:${index}`,
+      kind: "diff" as const,
+      path: record.filePath,
+      type: mapProvenanceOperationToDiffType(record.operation),
+    })),
+    lookup,
+  );
+}
+
+function buildProvenanceByTurn(records: ChangeProvenanceRecord[]) {
+  const grouped = new Map<string, ChangeProvenanceRecord[]>();
+  for (const record of records) {
+    if (!record.turnID) {
+      continue;
+    }
+    const existing = grouped.get(record.turnID);
+    if (existing) {
+      existing.push(record);
+    } else {
+      grouped.set(record.turnID, [record]);
+    }
+  }
+  return grouped;
+}
+
+function deriveLatestReasoning(messages: SessionMessageBundle[], executionLedger: ExecutionEventRecord[]) {
+  let latest: { label: string; content: string; timestamp: number } | null = null;
+
+  for (const bundle of messages) {
+    if (bundle.info.role !== "assistant") {
+      continue;
+    }
+    for (const part of bundle.parts) {
+      if (part.type !== "reasoning") {
+        continue;
+      }
+      const record = part as unknown as Record<string, unknown>;
+      const content = typeof record.text === "string" ? record.text.trim() : "";
+      const rawSummary = typeof record.summary === "string" ? record.summary.trim() : "";
+      const summary = isGenericReasoningLabel(rawSummary) ? "" : rawSummary;
+      const timestamp = bundle.info.time.created;
+      if (!content && !summary) {
+        continue;
+      }
+      if (!latest || latest.timestamp <= timestamp) {
+        latest = {
+          label: compactText(summary || content, 80),
+          content,
+          timestamp,
+        };
+      }
+    }
+  }
+
+  for (const record of executionLedger) {
+    if (record.kind !== "reasoning") {
+      continue;
+    }
+    const content = record.detail?.trim() ?? "";
+    const rawSummary = record.summary.trim();
+    const summary = isGenericReasoningLabel(rawSummary) ? "" : rawSummary;
+    if (!content && !summary) {
+      continue;
+    }
+    if (!latest || latest.timestamp <= record.timestamp) {
+      latest = {
+        label: compactText(content || summary, 80),
+        content,
+        timestamp: record.timestamp,
+      };
+    }
+  }
+
+  return latest;
 }
 
 function buildMessageRows(
@@ -1188,28 +1509,52 @@ function buildMessageRows(
 
 export function projectOpencodeSessionPresentation(input: {
   messages: SessionMessageBundle[];
+  sessionDiff?: FileDiff[];
+  sessionStatus?: SessionStatus;
+  executionLedger?: ExecutionEventRecord[];
+  changeProvenance?: ChangeProvenanceRecord[];
   assistantLabel?: string;
   workspaceDirectory?: string | null;
 }): UnifiedProjectedSessionPresentation {
-  const { assistantLabel = "Orxa", messages, workspaceDirectory } = input;
+  const {
+    assistantLabel = "Orxa",
+    changeProvenance = [],
+    executionLedger = [],
+    messages,
+    sessionDiff = [],
+    sessionStatus,
+    workspaceDirectory,
+  } = input;
+  const sessionDiffLookup = buildSessionDiffLookup(sessionDiff);
+  const latestReasoning = deriveLatestReasoning(messages, executionLedger);
   if (messages.length === 0) {
     return {
       provider: "opencode" as const,
-      rows: [] as UnifiedTimelineRenderRow[],
-      latestActivity: null as ActivityEvent | null,
+      rows: [],
+      latestActivity: latestReasoning ? { id: "opencode:reasoning:latest", label: latestReasoning.label } : null,
+      latestActivityContent: latestReasoning?.content ?? null,
       placeholderTimestamp: 0,
     };
   }
 
   let latestActivity: ActivityEvent | null = null;
   let lastRenderedRole: string | undefined;
+  const provenanceByTurn = buildProvenanceByTurn(changeProvenance);
 
   const nextRows = messages.flatMap((bundle) => {
     const role = bundle.info.role;
     const assistantClassification = role === "assistant" ? classifyAssistantParts(bundle.parts, workspaceDirectory) : undefined;
     const visibleParts = assistantClassification?.visible ?? getVisibleParts(role, bundle.parts);
     const toolParts = role === "assistant" ? bundle.parts.filter((part) => part.type === "tool") : [];
-    const changedFiles = assistantClassification?.changedFiles ?? [];
+    const provenanceChangedFiles = role === "assistant"
+      ? buildChangedFilesFromProvenance(provenanceByTurn.get(bundle.info.id) ?? [], sessionDiffLookup)
+      : [];
+    const changedFiles = dedupeChangedFiles(
+      hydrateChangedFilesWithSessionDiff(
+        [...(assistantClassification?.changedFiles ?? []), ...provenanceChangedFiles],
+        sessionDiffLookup,
+      ),
+    );
     const timelineBlocks = buildTimelineBlocks(assistantClassification?.timeline ?? []);
     if (role === "assistant") {
       latestActivity = assistantClassification?.activity ?? null;
@@ -1239,11 +1584,24 @@ export function projectOpencodeSessionPresentation(input: {
     lastMessage && "updated" in lastMessage.info.time && typeof lastMessage.info.time.updated === "number"
       ? lastMessage.info.time.updated
       : lastMessage?.info.time.created ?? 0;
+  const effectiveLatestActivity = latestActivity ?? (latestReasoning
+    ? { id: "opencode:reasoning:latest", label: latestReasoning.label }
+    : null);
+  const isBusy = sessionStatus?.type === "busy" || sessionStatus?.type === "retry";
+  const groupedRows = groupAdjacentExploreRows(
+    groupAdjacentTimelineExplorationRows(
+      groupAdjacentToolCallRows(
+        groupChangedFileRows(nextRows, { enabled: !isBusy }),
+        { enabled: isBusy },
+      ),
+    ),
+  );
 
   return {
     provider: "opencode" as const,
-    rows: groupChangedFileRows(nextRows),
-    latestActivity,
+    rows: groupedRows,
+    latestActivity: effectiveLatestActivity,
+    latestActivityContent: latestReasoning?.content ?? null,
     placeholderTimestamp,
   };
 }

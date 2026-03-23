@@ -1,6 +1,41 @@
 import type { DelegationEventBlock, TimelineBlock } from "../../lib/message-feed-timeline";
 import { parseFileReference } from "../../lib/markdown";
 
+function groupAdjacentExplorationBlocks<T extends TimelineBlock | DelegationEventBlock>(blocks: T[]): T[] {
+  const next: T[] = [];
+  let pending: T | null = null;
+
+  const flush = () => {
+    if (!pending) {
+      return;
+    }
+    next.push(pending);
+    pending = null;
+  };
+
+  for (const block of blocks) {
+    if (block.type !== "exploration") {
+      flush();
+      next.push(block);
+      continue;
+    }
+
+    if (!pending || pending.type !== "exploration") {
+      pending = block;
+      continue;
+    }
+
+    pending = {
+      ...pending,
+      id: `${pending.id}:${block.id}`,
+      entries: [...pending.entries, ...block.entries],
+    } as T;
+  }
+
+  flush();
+  return next;
+}
+
 function renderActivityLabel(label: string, onOpenFileReference?: (reference: string) => void) {
   const diffMatch = label.match(/^(.*?)(\+\d+)\s*\|\s*(-\d+)(.*)$/);
   const baseLabel = diffMatch ? `${diffMatch[1] ?? ""}${diffMatch[4] ?? ""}`.trimEnd() : label;
@@ -35,7 +70,7 @@ function renderActivityLabel(label: string, onOpenFileReference?: (reference: st
             }
           }}
         >
-          <span className="message-file-link-name">{parsedTarget.basename}</span>
+          <span className="message-file-link-name">{parsedTarget.path}</span>
           {parsedTarget.lineLabel ? <span className="message-file-link-line">{parsedTarget.lineLabel}</span> : null}
         </span>
       ) : (
@@ -86,9 +121,10 @@ export function MessageTimelineBlocks({
   blocks: TimelineBlock[];
   onOpenFileReference?: (reference: string) => void;
 }) {
+  const groupedBlocks = groupAdjacentExplorationBlocks(blocks);
   return (
     <>
-      {blocks.map((block) =>
+      {groupedBlocks.map((block) =>
         block.type === "exploration" ? (
           <details key={block.id} className="message-exploration">
             <summary className="message-exploration-summary">{block.summary}</summary>
@@ -128,9 +164,10 @@ export function MessageTimelineBlocks({
 }
 
 export function DelegationEventBlocks({ blocks }: { blocks: DelegationEventBlock[] }) {
+  const groupedBlocks = groupAdjacentExplorationBlocks(blocks);
   return (
     <>
-      {blocks.map((block, blockIndex) =>
+      {groupedBlocks.map((block, blockIndex) =>
         block.type === "exploration" ? (
           <details key={`${block.id}:${blockIndex}`} className="message-exploration delegation-event-exploration">
             <summary className="message-exploration-summary">{block.summary}</summary>

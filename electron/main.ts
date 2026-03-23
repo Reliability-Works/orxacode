@@ -14,7 +14,7 @@ import { resolveRendererHtmlPath } from "./services/renderer-entry";
 import { registerAppHandlers } from "./ipc/app-handlers";
 import { registerUpdatesHandlers } from "./ipc/updates-handlers";
 import { registerRuntimeOpencodeHandlers } from "./ipc/runtime-opencode-handlers";
-import { registerMemoryArtifactHandlers } from "./ipc/memory-artifact-handlers";
+import { registerArtifactHandlers } from "./ipc/artifact-handlers";
 import { registerTerminalHandlers } from "./ipc/terminal-handlers";
 import { registerBrowserHandlers } from "./ipc/browser-handlers";
 import { registerCodexHandlers } from "./ipc/codex-handlers";
@@ -95,7 +95,7 @@ function createWindow() {
     minWidth: 1120,
     minHeight: 740,
     // Match renderer base tone to avoid a blue flash before first paint.
-    backgroundColor: "#121316",
+    backgroundColor: "#0C0C0C",
     title: "",
     ...(process.platform === "darwin"
       ? {
@@ -231,7 +231,7 @@ function registerIpcHandlers() {
     inferMimeFromPath,
   });
 
-  registerMemoryArtifactHandlers({
+  registerArtifactHandlers({
     service,
   });
 

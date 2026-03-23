@@ -5,17 +5,15 @@ import {
   assertArtifactExportBundleInput,
   assertArtifactListQuery,
   assertArtifactRetentionUpdateInput,
-  assertMemoryGraphQuery,
-  assertMemorySettingsUpdateInput,
   assertString,
   assertWorkspaceContextWriteInput,
 } from "./validators";
 
-type MemoryArtifactHandlersDeps = {
+type ArtifactHandlersDeps = {
   service: OpencodeService;
 };
 
-export function registerMemoryArtifactHandlers({ service }: MemoryArtifactHandlersDeps) {
+export function registerArtifactHandlers({ service }: ArtifactHandlersDeps) {
   ipcMain.handle(IPC.opencodeArtifactsList, async (_event, query?: unknown) =>
     service.listArtifacts(assertArtifactListQuery(query)),
   );
@@ -53,36 +51,5 @@ export function registerMemoryArtifactHandlers({ service }: MemoryArtifactHandle
   );
   ipcMain.handle(IPC.opencodeContextDelete, async (_event, workspace: unknown, id: unknown) =>
     service.deleteWorkspaceContext(assertString(workspace, "workspace"), assertString(id, "id")),
-  );
-
-  ipcMain.handle(IPC.opencodeMemoryGetSettings, async (_event, directory?: unknown) =>
-    service.getMemorySettings(typeof directory === "string" ? directory : undefined),
-  );
-  ipcMain.handle(IPC.opencodeMemoryUpdateSettings, async (_event, input: unknown) =>
-    service.updateMemorySettings(assertMemorySettingsUpdateInput(input)),
-  );
-  ipcMain.handle(IPC.opencodeMemoryListTemplates, async () => service.listMemoryTemplates());
-  ipcMain.handle(IPC.opencodeMemoryApplyTemplate, async (_event, templateID: unknown, directory?: unknown, scope?: unknown) => {
-    const parsedScope = scope === undefined
-      ? undefined
-      : scope === "global" || scope === "workspace"
-        ? scope
-        : (() => {
-            throw new Error("Invalid memory template scope");
-          })();
-    return service.applyMemoryTemplate(
-      assertString(templateID, "templateID"),
-      typeof directory === "string" ? directory : undefined,
-      parsedScope,
-    );
-  });
-  ipcMain.handle(IPC.opencodeMemoryGetGraph, async (_event, query?: unknown) =>
-    service.getMemoryGraph(assertMemoryGraphQuery(query)),
-  );
-  ipcMain.handle(IPC.opencodeMemoryBackfill, async (_event, directory?: unknown) =>
-    service.backfillMemory(typeof directory === "string" ? directory : undefined),
-  );
-  ipcMain.handle(IPC.opencodeMemoryClearWorkspace, async (_event, directory: unknown) =>
-    service.clearWorkspaceMemory(assertString(directory, "directory")),
   );
 }

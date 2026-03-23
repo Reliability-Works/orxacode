@@ -2,7 +2,7 @@ export * from "./ipc/channels";
 export * from "./ipc/updates";
 export * from "./ipc/runtime";
 export * from "./ipc/opencode-core";
-export * from "./ipc/memory-artifacts";
+export * from "./ipc/artifacts";
 export * from "./ipc/terminal";
 export * from "./ipc/browser";
 export * from "./ipc/mcp-devtools";

@@ -4,20 +4,20 @@ All session types (OpenCode, Codex, Claude) render through a shared set of React
 
 ## Message Components
 
-| Component | Purpose |
-|-----------|---------|
-| `TextPart` | Markdown text with hover copy button |
-| `ToolCallCard` | Collapsible card for tool invocations with status indicator |
-| `BashTool` | Terminal-style command execution with ANSI stripping |
-| `EditTool` | File edit display with unified diff view |
-| `DiffBlock` | Color-coded unified diff (additions green, deletions red) |
-| `CommandOutput` | Monospace terminal output block with exit code |
-| `ContextToolGroup` | Grouped display for read/search/list operations |
-| `ReasoningPart` | Expandable reasoning/thinking block |
-| `ThinkingShimmer` | Animated indicator while agent is processing |
-| `MessageHeader` | Role label, timestamp, agent/model/duration metadata |
-| `CopyButton` | Hover-visible clipboard copy with confirmation |
-| `MessageTurn` | Groups user + assistant messages as a turn |
+| Component          | Purpose                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| `TextPart`         | Markdown text with hover copy button                        |
+| `ToolCallCard`     | Collapsible card for tool invocations with status indicator |
+| `BashTool`         | Terminal-style command execution with ANSI stripping        |
+| `EditTool`         | File edit display with unified diff view                    |
+| `DiffBlock`        | Color-coded unified diff (additions green, deletions red)   |
+| `CommandOutput`    | Monospace terminal output block with exit code              |
+| `ContextToolGroup` | Grouped display for read/search/list operations             |
+| `ReasoningPart`    | Expandable reasoning/thinking block                         |
+| `ThinkingShimmer`  | Animated indicator while agent is processing                |
+| `MessageHeader`    | Role label, timestamp, agent/model/duration metadata        |
+| `CopyButton`       | Hover-visible clipboard copy with confirmation              |
+| `MessageTurn`      | Groups user + assistant messages as a turn                  |
 
 ## Dock System
 

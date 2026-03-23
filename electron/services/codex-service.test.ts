@@ -78,3 +78,22 @@ describe("CodexService archive semantics", () => {
     await expect(service.archiveThread("thr-1")).rejects.toThrow("permission denied");
   });
 });
+
+describe("CodexService turn steering", () => {
+  it("sends turn/steer with expectedTurnId and text input", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({}));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      request,
+    });
+
+    await service.steerTurn("thread-1", "turn-1", "continue with this");
+
+    expect(request).toHaveBeenCalledWith("turn/steer", {
+      threadId: "thread-1",
+      expectedTurnId: "turn-1",
+      input: [{ type: "text", text: "continue with this", text_elements: [] }],
+    });
+  });
+});

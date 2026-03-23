@@ -25,7 +25,7 @@ export function BashTool({ command, output, exitCode, status, error }: BashToolP
       <ToolCallCard
         title={command}
         status={safeStatus}
-        defaultExpanded={hasContent && status !== "pending"}
+        defaultExpanded={false}
       >
         {hasContent ? (
           <div className="bash-tool-body">

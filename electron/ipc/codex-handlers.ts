@@ -106,6 +106,10 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
     return codexService.getThreadRuntime(assertString(threadId, "threadId"));
   });
 
+  ipcMain.handle(IPC.codexResumeThread, async (_event, threadId: unknown) => {
+    return codexService.resumeThread(assertString(threadId, "threadId"));
+  });
+
   ipcMain.handle(IPC.codexArchiveThreadTree, async (_event, threadId: unknown) => {
     return codexService.archiveThreadTree(assertString(threadId, "threadId"));
   });
@@ -131,6 +135,14 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
       });
     },
   );
+
+  ipcMain.handle(IPC.codexSteerTurn, async (_event, threadId: unknown, turnId: unknown, prompt: unknown) => {
+    return codexService.steerTurn(
+      assertString(threadId, "threadId"),
+      assertString(turnId, "turnId"),
+      assertString(prompt, "prompt"),
+    );
+  });
 
   ipcMain.handle(IPC.codexApprove, async (_event, requestId: unknown, decision: unknown) => {
     if (typeof requestId !== "number") throw new Error("requestId must be a number");

@@ -4,6 +4,7 @@ export type ToolCallStatus = "pending" | "running" | "completed" | "error";
 
 interface ToolCallCardProps {
   title: string;
+  expandedTitle?: string;
   subtitle?: string;
   status: ToolCallStatus;
   command?: string;
@@ -28,7 +29,10 @@ export function ToolCallCard({
   const hasBody = !!(children ?? command ?? output ?? error);
 
   return (
-    <div className={`tool-call-card tool-call-card--${status}`}>
+    <div
+      className={`tool-call-card tool-call-card--${status} ${expanded ? "is-expanded" : "is-collapsed"}`.trim()}
+      data-expanded={expanded ? "true" : "false"}
+    >
       <button
         type="button"
         className="tool-call-card-header"

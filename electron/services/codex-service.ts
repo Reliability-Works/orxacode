@@ -202,6 +202,10 @@ function cleanRunMetadataPrompt(prompt: string) {
     : normalized;
 }
 
+function isIgnorableCodexStderr(text: string) {
+  return /fail to delete session:.*404 Not Found.*https:\/\/mcp\.expo\.dev\/mcp/i.test(text);
+}
+
 export function buildRunMetadataPrompt(cleanedPrompt: string) {
   return [
     "You create concise run metadata for a coding task.",
@@ -470,6 +474,10 @@ export class CodexService extends EventEmitter {
       // stderr → debug logging
       child.stderr?.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
+        if (isIgnorableCodexStderr(text)) {
+          console.info("[CodexService] ignored stderr:", text.trim());
+          return;
+        }
         console.error("[CodexService] stderr:", text);
         this.emit("stderr", text);
       });
@@ -582,6 +590,17 @@ export class CodexService extends EventEmitter {
       thread: threadRecord as unknown as CodexThread,
       childThreads,
     };
+  }
+
+  async resumeThread(threadId: string): Promise<Record<string, unknown>> {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    await this.ensureConnected();
+    const result = await this.request("thread/resume", { threadId: normalizedThreadId });
+    const record = asRecord(result);
+    return record ?? {};
   }
 
   private async listThreadRecords(params?: {
@@ -736,6 +755,27 @@ export class CodexService extends EventEmitter {
     if (params.collaborationMode) turnParams.collaborationMode = params.collaborationMode;
 
     await this.request("turn/start", turnParams);
+  }
+
+  async steerTurn(threadId: string, turnId: string, prompt: string): Promise<void> {
+    const normalizedThreadId = threadId.trim();
+    const normalizedTurnId = turnId.trim();
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    if (!normalizedTurnId) {
+      throw new Error("turnId is required");
+    }
+    if (!normalizedPrompt) {
+      throw new Error("prompt is required");
+    }
+    const input = [{ type: "text", text: normalizedPrompt, text_elements: [] }];
+    await this.request("turn/steer", {
+      threadId: normalizedThreadId,
+      expectedTurnId: normalizedTurnId,
+      input,
+    });
   }
 
   async interruptTurn(threadId: string, turnId: string): Promise<void> {

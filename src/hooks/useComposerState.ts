@@ -23,6 +23,7 @@ export type ModelPayload = {
 };
 
 export type SendPromptInput = {
+  textOverride?: string;
   systemAddendum?: string;
   promptSource?: "user" | "job" | "machine";
   tools?: Record<string, boolean>;
@@ -30,11 +31,11 @@ export type SendPromptInput = {
 
 type UseComposerStateOptions = {
   availableSlashCommands: SlashCommand[];
-  refreshMessages: () => Promise<void>;
+  refreshMessages: () => Promise<unknown>;
   refreshProject: (directory: string) => Promise<unknown>;
   sessions: ComposerSession[];
   selectedAgent?: string;
-  serverAgentNames: Set<string>;
+  availableAgentNames: Set<string>;
   setStatusLine: (status: string) => void;
   shouldAutoRenameSessionTitle: (title: string | undefined) => boolean;
   deriveSessionTitleFromPrompt: (prompt: string, maxLength?: number) => string;
@@ -218,14 +219,13 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       return;
     }
 
-    const text = composer.trim();
-    if (!text && composerAttachments.length === 0) {
-      return;
-    }
-
     const promptInput: SendPromptInput = typeof input === "string"
       ? { systemAddendum: input }
       : input ?? {};
+    const text = (promptInput.textOverride ?? composer).trim();
+    if (!text && composerAttachments.length === 0) {
+      return;
+    }
     const normalizedSystemAddendum = promptInput.systemAddendum?.trim() ?? "";
     const promptSource = promptInput.promptSource ?? "user";
     const toolsKey = promptInput.tools
@@ -241,7 +241,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     setComposer("");
     setComposerAttachments([]);
 
-    const supportsSelectedAgent = options.selectedAgent ? options.serverAgentNames.has(options.selectedAgent) : false;
+    const supportsSelectedAgent = options.selectedAgent ? options.availableAgentNames.has(options.selectedAgent) : false;
     const activeSession = options.sessions.find((item) => item.id === activeSessionID);
     const shouldAutoTitle = text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title);
 
@@ -253,6 +253,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       if (shouldAutoTitle) {
         const generatedTitle = options.deriveSessionTitleFromPrompt(text);
         await window.orxa.opencode.renameSession(activeProjectDir, activeSessionID, generatedTitle);
+        await options.refreshProject(activeProjectDir);
       }
 
       await window.orxa.opencode.sendPrompt({
@@ -275,10 +276,6 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
       void options.refreshMessages();
-      window.setTimeout(() => {
-        void options.refreshMessages();
-      }, 180);
-      options.startResponsePolling(activeProjectDir, activeSessionID);
       if (shouldAutoTitle) {
         void options.refreshProject(activeProjectDir).catch(() => undefined);
       }
@@ -308,8 +305,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     try {
       options.onSessionAbortRequested?.(activeProjectDir, activeSessionID);
       await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID);
-      options.setStatusLine("Stopped");
-      options.stopResponsePolling();
+      options.setStatusLine("Stopping session...");
       void options.refreshProject(activeProjectDir).catch(() => undefined);
       void options.refreshMessages().catch(() => undefined);
     } catch (error) {

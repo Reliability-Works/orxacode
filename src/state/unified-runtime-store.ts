@@ -10,10 +10,13 @@ import {
   type UnifiedSessionStatus,
 } from "./unified-runtime";
 import type { CodexApprovalRequest, CodexState, CodexThread, CodexUserInputRequest, ProjectBootstrap, SessionMessageBundle } from "@shared/ipc";
+import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TodoItem } from "../components/chat/TodoDock";
 import type { CodexMessageItem, SubagentInfo } from "../hooks/useCodexSession";
 import {
   buildCodexBackgroundAgents,
+  buildCodexBackgroundAgentsFromChildThreads,
+  buildCodexBackgroundAgentsFromMessages,
   buildComposerPresentation,
   buildOpencodeBackgroundAgents,
   buildPermissionDockData,
@@ -21,7 +24,9 @@ import {
   buildQuestionDockData,
   buildSidebarSessionPresentation,
   buildTaskListPresentation,
+  extractCodexTodoItemsFromMessages,
   extractOpencodeTodoItems,
+  filterOutCurrentCodexThreadAgent,
   type UnifiedBackgroundAgentSummary,
   type UnifiedComposerState,
   type UnifiedPendingActionSurface,
@@ -613,6 +618,14 @@ export function buildOpencodeSessionStatus(
     runtimeSnapshot?.session?.time.updated ??
     projectData?.sessions.find((session) => session.id === sessionID)?.time.updated ??
     0;
+  const latestAssistantMessageAt =
+    [...(runtimeSnapshot?.messages ?? [])]
+      .reverse()
+      .find((bundle) => bundle.info.role === "assistant")?.info.time.created ?? 0;
+  const latestUserMessageAt =
+    [...(runtimeSnapshot?.messages ?? [])]
+      .reverse()
+      .find((bundle) => bundle.info.role === "user")?.info.time.created ?? 0;
   const latestMessageAt = runtimeSnapshot?.messages.at(-1)?.info.time.created ?? runtime?.messages.at(-1)?.info.time.created ?? 0;
   const activityAt = Math.max(latestMessageAt, latestSessionUpdate);
   const awaiting = Boolean(
@@ -621,7 +634,30 @@ export function buildOpencodeSessionStatus(
     projectData?.permissions.some((request) => request.sessionID === sessionID) ||
     projectData?.questions.some((request) => request.sessionID === sessionID),
   );
-  const busy = Boolean(sessionStatus?.type === "busy" || sessionStatus?.type === "retry");
+  const hasRunningPart = Boolean(
+    runtimeSnapshot?.messages.some((bundle) =>
+      bundle.info.role === "assistant" &&
+      bundle.parts.some((part) => {
+        if (part.type !== "tool") {
+          return false;
+        }
+        const toolState = part.state as { status?: string } | undefined;
+        return toolState?.status === "running" || toolState?.status === "pending";
+      }),
+    ),
+  );
+  const inferredActiveTurnBusy =
+    isActive &&
+    !sessionStatus &&
+    latestAssistantMessageAt >= latestUserMessageAt &&
+    latestAssistantMessageAt > 0 &&
+    Date.now() - latestAssistantMessageAt < 45_000;
+  const busy = Boolean(
+    sessionStatus?.type === "busy" ||
+    sessionStatus?.type === "retry" ||
+    hasRunningPart ||
+    inferredActiveTurnBusy,
+  );
 
   return deriveUnifiedSessionStatus({
     busy,
@@ -648,12 +684,19 @@ export function selectSidebarSessionPresentation(input: {
       : provider === "claude"
         ? buildClaudeSessionStatus(sessionKey, isActive)
         : buildOpencodeSessionStatus(directory, sessionID, isActive, sessionKey);
-  return buildSidebarSessionPresentation({
+  const presentation = buildSidebarSessionPresentation({
     sessionKey,
     status,
     updatedAt,
     isActive,
   });
+  if (provider === "claude") {
+    return {
+      ...presentation,
+      indicator: "none",
+    };
+  }
+  return presentation;
 }
 
 export function selectActivePendingActionSurface(input: {
@@ -700,7 +743,8 @@ export function selectActiveTaskListPresentation(input: {
   const { directory, provider, sessionID, sessionKey } = input;
   const state = useUnifiedRuntimeStore.getState();
   if (provider === "codex" && sessionKey) {
-    const items = state.codexSessions[sessionKey]?.planItems ?? [];
+    const session = state.codexSessions[sessionKey];
+    const items = session?.planItems?.length ? session.planItems : extractCodexTodoItemsFromMessages(session?.messages ?? []);
     return buildTaskListPresentation("codex", items);
   }
   if (provider === "opencode" && directory && sessionID) {
@@ -720,7 +764,19 @@ export function selectActiveBackgroundAgentsPresentation(input: {
   const { directory, provider, sessionID, sessionKey } = input;
   const state = useUnifiedRuntimeStore.getState();
   if (provider === "codex" && sessionKey) {
-    return buildCodexBackgroundAgents(state.codexSessions[sessionKey]?.subagents ?? []);
+    const session = state.codexSessions[sessionKey];
+    const runtimeAgents = buildCodexBackgroundAgents(session?.subagents ?? []);
+    if (runtimeAgents.length > 0) {
+      return filterOutCurrentCodexThreadAgent(runtimeAgents, session?.thread?.id ?? null);
+    }
+    const childThreadAgents = buildCodexBackgroundAgentsFromChildThreads(session?.runtimeSnapshot?.childThreads ?? []);
+    if (childThreadAgents.length > 0) {
+      return filterOutCurrentCodexThreadAgent(childThreadAgents, session?.thread?.id ?? null);
+    }
+    return filterOutCurrentCodexThreadAgent(
+      buildCodexBackgroundAgentsFromMessages(session?.messages ?? []),
+      session?.thread?.id ?? null,
+    );
   }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)];
@@ -753,8 +809,21 @@ export function selectSessionPresentation(input: {
   }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)];
+    const unifiedStatus = buildOpencodeSessionStatus(
+      directory,
+      sessionID,
+      state.activeWorkspaceDirectory === directory && state.activeSessionID === sessionID,
+      sessionKey ?? `${directory}::${sessionID}`,
+    );
+    const effectiveSessionStatus =
+      runtime?.runtimeSnapshot?.sessionStatus ??
+      (unifiedStatus.busy ? ({ type: "busy" } as SessionStatus) : undefined);
     return projectOpencodeSessionPresentation({
       messages: runtime?.messages ?? [],
+      sessionDiff: runtime?.runtimeSnapshot?.sessionDiff ?? [],
+      sessionStatus: effectiveSessionStatus,
+      executionLedger: runtime?.runtimeSnapshot?.executionLedger.records ?? [],
+      changeProvenance: runtime?.runtimeSnapshot?.changeProvenance.records ?? [],
       assistantLabel,
       workspaceDirectory: directory,
     });

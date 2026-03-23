@@ -5,7 +5,7 @@ import { toBrowserSidebarState } from "./app-session-utils";
 
 type AppShellWorkspaceLayoutInput = {
   activeProjectDir?: string;
-  sidebarMode: "projects" | "jobs" | "skills" | "memory";
+  sidebarMode: "projects" | "jobs" | "skills";
   projectsSidebarVisible: boolean;
   showOperationsPane: boolean;
   rightSidebarTab: "git" | "files" | "browser";

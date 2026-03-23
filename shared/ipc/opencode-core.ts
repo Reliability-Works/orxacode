@@ -2,6 +2,7 @@ import type {
   Agent,
   Command,
   Config,
+  FileDiff,
   FormatterStatus,
   LspStatus,
   Message,
@@ -69,6 +70,7 @@ export type SessionRuntimeSnapshot = {
   questions: QuestionRequest[];
   commands: Command[];
   messages: SessionMessageBundle[];
+  sessionDiff: FileDiff[];
   executionLedger: ExecutionLedgerSnapshot;
   changeProvenance: SessionProvenanceSnapshot;
 };

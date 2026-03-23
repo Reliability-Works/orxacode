@@ -80,7 +80,10 @@ export function TodoDock({ items, open, onToggle }: TodoDockProps) {
   const progressLabel = `${completedCount} / ${totalCount} tasks`;
 
   return (
-    <DockSurface>
+    <DockSurface
+      className={`dock-surface--compact-width${open ? "" : " dock-surface--collapsed-inline"}`.trim()}
+      bodyClassName="todo-dock-surface-body"
+    >
       <div className="todo-dock">
         <button
           type="button"

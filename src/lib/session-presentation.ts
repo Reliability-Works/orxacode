@@ -1,4 +1,4 @@
-import type { SessionMessageBundle } from "@shared/ipc";
+import type { CodexThread, SessionMessageBundle } from "@shared/ipc";
 import type { UnifiedProvider, UnifiedSessionStatus } from "../state/unified-runtime";
 import type { CodexMessageItem } from "../hooks/useCodexSession";
 import type { SubagentInfo } from "../hooks/useCodexSession";
@@ -83,6 +83,7 @@ export type UnifiedSessionPresentation = {
 
 export type UnifiedProjectedSessionPresentation = UnifiedSessionPresentation & {
   latestActivity: UnifiedSessionActivity | null;
+  latestActivityContent?: string | null;
   placeholderTimestamp: number;
 };
 
@@ -299,16 +300,35 @@ function deriveOpencodeAgentStatus(
 
 function findMatchingBackgroundAgent(
   agents: UnifiedBackgroundAgentSummary[],
-  candidate: Pick<UnifiedBackgroundAgentSummary, "name" | "prompt" | "sessionID">,
+  candidate: Pick<UnifiedBackgroundAgentSummary, "id" | "provider" | "name" | "role" | "prompt" | "command" | "sessionID">,
 ) {
   return agents.find((agent) => {
+    if (candidate.id && candidate.id === agent.id) {
+      return true;
+    }
     if (candidate.sessionID && agent.sessionID && candidate.sessionID === agent.sessionID) {
       return true;
     }
-    if (candidate.prompt && agent.prompt && candidate.prompt === agent.prompt) {
+    if (
+      candidate.provider === "opencode" &&
+      agent.provider === "opencode" &&
+      candidate.prompt &&
+      agent.prompt &&
+      candidate.prompt === agent.prompt &&
+      candidate.name === agent.name &&
+      (candidate.command ?? "") === (agent.command ?? "")
+    ) {
       return true;
     }
-    return candidate.name === agent.name;
+    if (
+      candidate.provider === "codex" &&
+      agent.provider === "codex" &&
+      candidate.name === agent.name &&
+      (candidate.role ?? "") === (agent.role ?? "")
+    ) {
+      return true;
+    }
+    return false;
   });
 }
 
@@ -381,6 +401,15 @@ export function buildSidebarSessionPresentation(input: {
 }): UnifiedSidebarSessionState {
   const { isActive, sessionKey, status, updatedAt } = input;
   const activityAt = Math.max(updatedAt, status.activityAt);
+  if (isActive) {
+    return {
+      sessionKey,
+      indicator: "none",
+      statusType: status.busy ? "busy" : status.awaiting || status.planReady ? "awaiting" : "idle",
+      activityAt,
+      unread: false,
+    };
+  }
   if (status.awaiting || status.planReady) {
     return {
       sessionKey,
@@ -482,6 +511,7 @@ export function extractOpencodeTodoItems(messages: SessionMessageBundle[]): Todo
 export function buildCodexBackgroundAgents(subagents: SubagentInfo[]): UnifiedBackgroundAgentSummary[] {
   return subagents.map((agent) => ({
     id: agent.threadId,
+    sessionID: agent.threadId,
     provider: "codex",
     name: agent.nickname,
     role: agent.role,
@@ -490,57 +520,180 @@ export function buildCodexBackgroundAgents(subagents: SubagentInfo[]): UnifiedBa
   }));
 }
 
+export function buildCodexBackgroundAgentsFromChildThreads(childThreads: CodexThread[]): UnifiedBackgroundAgentSummary[] {
+  const agents: UnifiedBackgroundAgentSummary[] = [];
+  childThreads.forEach((thread, index) => {
+    const threadId = thread.id?.trim();
+    if (!threadId) {
+      return;
+    }
+    const preview = thread.preview?.trim();
+    if (!preview) {
+      return;
+    }
+    const normalized = collabStatusToAgentStatus(thread.status?.type);
+    agents.push({
+      id: threadId,
+      sessionID: threadId,
+      provider: "codex",
+      name: preview || `Agent-${index + 1}`,
+      status: normalized.status,
+      statusText: normalized.statusText,
+    });
+  });
+  return agents;
+}
+
+function collabStatusToAgentStatus(
+  status: string | undefined,
+): Pick<UnifiedBackgroundAgentSummary, "status" | "statusText"> {
+  const normalized = status?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return { status: "thinking", statusText: "is thinking" };
+  }
+  if (normalized.includes("await")) {
+    return { status: "awaiting_instruction", statusText: status ?? "awaiting instruction" };
+  }
+  if (normalized.includes("done") || normalized.includes("complete") || normalized.includes("finish")) {
+    return { status: "completed", statusText: status ?? "completed" };
+  }
+  if (normalized.includes("idle")) {
+    return { status: "idle", statusText: status ?? "idle" };
+  }
+  return { status: "thinking", statusText: status ?? "is thinking" };
+}
+
+export function buildCodexBackgroundAgentsFromMessages(messages: CodexMessageItem[]): UnifiedBackgroundAgentSummary[] {
+  const agents: UnifiedBackgroundAgentSummary[] = [];
+  const upsert = (candidate: UnifiedBackgroundAgentSummary) => upsertBackgroundAgent(agents, candidate);
+
+  for (const item of messages) {
+    if (
+      item.kind !== "tool" ||
+      (!(item.collabReceivers?.length || item.collabStatuses?.length) && item.toolType !== "task")
+    ) {
+      continue;
+    }
+    for (const receiver of item.collabReceivers ?? []) {
+      upsert({
+        id: receiver.threadId,
+        sessionID: receiver.threadId,
+        provider: "codex",
+        name: receiver.nickname ?? receiver.threadId,
+        role: receiver.role,
+        status: "thinking",
+        statusText: "is thinking",
+      });
+    }
+    for (const status of item.collabStatuses ?? []) {
+      const normalized = collabStatusToAgentStatus(status.status);
+      upsert({
+        id: status.threadId,
+        sessionID: status.threadId,
+        provider: "codex",
+        name: status.nickname ?? status.threadId,
+        role: status.role,
+        status: normalized.status,
+        statusText: normalized.statusText,
+      });
+    }
+  }
+
+  return agents;
+}
+
+export function filterOutCurrentCodexThreadAgent(
+  agents: UnifiedBackgroundAgentSummary[],
+  currentThreadId: string | null | undefined,
+) {
+  if (!currentThreadId) {
+    return agents;
+  }
+  return agents.filter((agent) => agent.sessionID !== currentThreadId && agent.id !== currentThreadId);
+}
+
+export function extractCodexTodoItemsFromMessages(messages: CodexMessageItem[]): TodoItem[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const item = messages[index];
+    if (item.kind !== "message" || item.role !== "assistant") {
+      continue;
+    }
+    if (!/\b(task list|plan|phases?)\b/i.test(item.content)) {
+      continue;
+    }
+    const lines = item.content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const numberedItems = lines
+      .map((line) => line.match(/^(\d+)\.\s+(.+)$/))
+      .filter((match): match is RegExpMatchArray => Boolean(match))
+      .map((match, itemIndex) => ({
+        id: `fallback-plan:${item.id}:${itemIndex}`,
+        content: match[2].trim(),
+        status: "pending" as const,
+      }));
+    if (numberedItems.length >= 2) {
+      return numberedItems;
+    }
+  }
+  return [];
+}
+
 export function buildOpencodeBackgroundAgents(
   messages: SessionMessageBundle[],
   sessionStatusByID?: Record<string, { type?: string }>,
 ): UnifiedBackgroundAgentSummary[] {
-  const latestAssistant = [...messages].reverse().find((bundle) => bundle.info.role === "assistant");
-  if (!latestAssistant) {
-    return [];
-  }
   const agents: UnifiedBackgroundAgentSummary[] = [];
-  for (const part of latestAssistant.parts) {
-    if (part.type === "subtask") {
-      const status = deriveOpencodeAgentStatus(
-        part.sessionID ? sessionStatusByID?.[part.sessionID]?.type : undefined,
-      );
+  for (const bundle of messages) {
+    if (bundle.info.role !== "assistant") {
+      continue;
+    }
+    for (const part of bundle.parts) {
+      if (part.type === "subtask") {
+        const resolvedSessionID = part.sessionID?.trim() || `opencode-provisional:${bundle.info.id}:${part.id}`;
+        const status = deriveOpencodeAgentStatus(
+          part.sessionID?.trim() ? sessionStatusByID?.[part.sessionID]?.type : "busy",
+        );
+        upsertBackgroundAgent(agents, {
+          id: resolvedSessionID,
+          provider: "opencode",
+          name: part.agent,
+          role: undefined,
+          status: status.status,
+          statusText: status.statusText,
+          prompt: part.prompt,
+          modelLabel: extractModelLabel(part.model),
+          command: part.command,
+          sessionID: part.sessionID?.trim() || undefined,
+        });
+        continue;
+      }
+      if (part.type !== "tool" || !isTaskToolName(part.tool)) {
+        continue;
+      }
+      const metadata = (part.state as Record<string, unknown>).metadata;
+      const output = (part.state as Record<string, unknown>).output;
+      const taskDelegation = extractTaskDelegationInfo(part.state.input, metadata);
+      if (!taskDelegation) {
+        continue;
+      }
+      const sessionID = taskDelegation.sessionID ?? extractTaskSessionIDFromOutput(output) ?? undefined;
+      const resolvedId = sessionID ?? `opencode-provisional:${bundle.info.id}:${part.id}`;
+      const status = deriveOpencodeAgentStatus(sessionID ? sessionStatusByID?.[sessionID]?.type : "busy");
       upsertBackgroundAgent(agents, {
-        id: part.sessionID ?? part.id,
+        id: resolvedId,
         provider: "opencode",
-        name: part.agent,
+        name: taskDelegation.agent,
         role: undefined,
         status: status.status,
         statusText: status.statusText,
-        prompt: part.prompt,
-        modelLabel: extractModelLabel(part.model),
-        command: part.command,
-        sessionID: part.sessionID,
+        prompt: taskDelegation.prompt,
+        modelLabel: taskDelegation.modelLabel,
+        command: taskDelegation.command,
+        sessionID,
       });
-      continue;
     }
-    if (part.type !== "tool" || !isTaskToolName(part.tool)) {
-      continue;
-    }
-    const metadata = (part.state as Record<string, unknown>).metadata;
-    const output = (part.state as Record<string, unknown>).output;
-    const taskDelegation = extractTaskDelegationInfo(part.state.input, metadata);
-    if (!taskDelegation) {
-      continue;
-    }
-    const sessionID = taskDelegation.sessionID ?? extractTaskSessionIDFromOutput(output);
-    const status = deriveOpencodeAgentStatus(sessionID ? sessionStatusByID?.[sessionID]?.type : undefined);
-    upsertBackgroundAgent(agents, {
-      id: sessionID ?? `task:${part.id}`,
-      provider: "opencode",
-      name: taskDelegation.agent,
-      role: undefined,
-      status: status.status,
-      statusText: status.statusText,
-      prompt: taskDelegation.prompt,
-      modelLabel: taskDelegation.modelLabel,
-      command: taskDelegation.command,
-      sessionID,
-    });
   }
   return agents.map((agent) => ({
     ...agent,
@@ -562,7 +715,13 @@ export function buildTaskListPresentation(
   };
 }
 
-export function groupChangedFileRows(rows: UnifiedTimelineRenderRow[]): UnifiedTimelineRenderRow[] {
+export function groupChangedFileRows(
+  rows: UnifiedTimelineRenderRow[],
+  options?: { enabled?: boolean },
+): UnifiedTimelineRenderRow[] {
+  if (options?.enabled === false) {
+    return rows;
+  }
   const nextRows: UnifiedTimelineRenderRow[] = [];
   let pendingAssistantMessage: UnifiedTimelineRenderRow | null = null;
   let pendingRows: UnifiedTimelineRenderRow[] = [];
@@ -571,6 +730,7 @@ export function groupChangedFileRows(rows: UnifiedTimelineRenderRow[]): UnifiedT
   const flush = () => {
     if (pendingAssistantMessage) {
       nextRows.push(pendingAssistantMessage);
+      nextRows.push(...pendingRows);
       if (pendingDiffs.length > 0) {
         nextRows.push({
           id: `${pendingAssistantMessage.id}:changed-files`,
@@ -586,11 +746,15 @@ export function groupChangedFileRows(rows: UnifiedTimelineRenderRow[]): UnifiedT
           })),
         });
       }
-      nextRows.push(...pendingRows);
       pendingAssistantMessage = null;
       pendingRows = [];
       pendingDiffs = [];
       return;
+    }
+
+    if (pendingRows.length > 0) {
+      nextRows.push(...pendingRows);
+      pendingRows = [];
     }
 
     if (pendingDiffs.length > 0) {
@@ -608,11 +772,6 @@ export function groupChangedFileRows(rows: UnifiedTimelineRenderRow[]): UnifiedT
         })),
       });
       pendingDiffs = [];
-    }
-
-    if (pendingRows.length > 0) {
-      nextRows.push(...pendingRows);
-      pendingRows = [];
     }
   };
 
@@ -645,6 +804,160 @@ export function groupChangedFileRows(rows: UnifiedTimelineRenderRow[]): UnifiedT
 
   flush();
   return nextRows;
+}
+
+export function groupAdjacentExploreRows(rows: UnifiedTimelineRenderRow[]): UnifiedTimelineRenderRow[] {
+  const nextRows: UnifiedTimelineRenderRow[] = [];
+  let pending: Extract<UnifiedTimelineRenderRow, { kind: "explore" }> | null = null;
+
+  const flush = () => {
+    if (!pending) {
+      return;
+    }
+    nextRows.push(pending);
+    pending = null;
+  };
+
+  for (const row of rows) {
+    if (row.kind !== "explore") {
+      flush();
+      nextRows.push(row);
+      continue;
+    }
+
+    if (!pending) {
+      pending = row;
+      continue;
+    }
+
+    pending = {
+      ...pending,
+      id: `${pending.id}:${row.id}`,
+      item: {
+        ...pending.item,
+        status: pending.item.status === "exploring" || row.item.status === "exploring" ? "exploring" : "explored",
+        entries: [...pending.item.entries, ...row.item.entries],
+      },
+    };
+  }
+
+  flush();
+  return nextRows;
+}
+
+function isExplorationOnlyTimelineRow(row: UnifiedTimelineRenderRow): row is Extract<UnifiedTimelineRenderRow, { kind: "timeline" }> {
+  return row.kind === "timeline" && row.blocks.length > 0 && row.blocks.every((block) => block.type === "exploration");
+}
+
+export function groupAdjacentTimelineExplorationRows(rows: UnifiedTimelineRenderRow[]): UnifiedTimelineRenderRow[] {
+  const nextRows: UnifiedTimelineRenderRow[] = [];
+  let pending: Extract<UnifiedTimelineRenderRow, { kind: "timeline" }> | null = null;
+
+  const flush = () => {
+    if (!pending) {
+      return;
+    }
+    nextRows.push(pending);
+    pending = null;
+  };
+
+  for (const row of rows) {
+    if (!isExplorationOnlyTimelineRow(row)) {
+      flush();
+      nextRows.push(row);
+      continue;
+    }
+
+    if (!pending) {
+      pending = row;
+      continue;
+    }
+
+    pending = {
+      ...pending,
+      id: `${pending.id}:${row.id}`,
+      blocks: [...pending.blocks, ...row.blocks],
+    };
+  }
+
+  flush();
+  return nextRows;
+}
+
+export function groupAdjacentToolCallRows(
+  rows: UnifiedTimelineRenderRow[],
+  options?: { enabled?: boolean },
+): UnifiedTimelineRenderRow[] {
+  if (options?.enabled === false) {
+    return rows;
+  }
+
+  const nextRows: UnifiedTimelineRenderRow[] = [];
+  let pendingDiffs: Extract<UnifiedTimelineRenderRow, { kind: "diff" }>[] = [];
+
+  const flush = () => {
+    if (pendingDiffs.length === 0) {
+      return;
+    }
+    nextRows.push({
+      id: `${pendingDiffs[0]?.id ?? "tool-group"}:tool-calls`,
+      kind: "tool-group",
+      title: "Tool calls",
+      files: pendingDiffs.map((diff) => ({
+        id: diff.id,
+        path: diff.path,
+        type: diff.type,
+        diff: diff.diff,
+        insertions: diff.insertions,
+        deletions: diff.deletions,
+      })),
+    });
+    pendingDiffs = [];
+  };
+
+  for (const row of rows) {
+    if (row.kind === "diff") {
+      pendingDiffs.push(row);
+      continue;
+    }
+    flush();
+    nextRows.push(row);
+  }
+
+  flush();
+  return nextRows;
+}
+
+export function extractReviewChangesFiles(rows: UnifiedTimelineRenderRow[]) {
+  const latestByPath = new Map<string, {
+    id: string;
+    path: string;
+    type: string;
+    diff?: string;
+    insertions?: number;
+    deletions?: number;
+  }>();
+
+  for (const row of rows) {
+    if (row.kind === "diff") {
+      latestByPath.set(row.path, {
+        id: row.id,
+        path: row.path,
+        type: row.type,
+        diff: row.diff,
+        insertions: row.insertions,
+        deletions: row.deletions,
+      });
+      continue;
+    }
+    if (row.kind === "diff-group" || row.kind === "tool-group") {
+      for (const file of row.files) {
+        latestByPath.set(file.path, file);
+      }
+    }
+  }
+
+  return [...latestByPath.values()];
 }
 
 export function projectCodexSessionPresentation(
@@ -689,6 +1002,9 @@ export function projectCodexSessionPresentation(
       continue;
     }
     if (item.kind === "reasoning") {
+      if (!isStreaming) {
+        continue;
+      }
       rawRows.push({ id: item.id, kind: "thinking", summary: item.summary, content: item.content });
       continue;
     }
@@ -700,7 +1016,7 @@ export function projectCodexSessionPresentation(
         status: item.status,
         command: item.command,
         output: item.output,
-        defaultExpanded: item.status === "error",
+        defaultExpanded: false,
       });
       continue;
     }
@@ -742,6 +1058,10 @@ export function projectCodexSessionPresentation(
 
   return {
     provider: "codex",
-    rows: groupChangedFileRows(rawRows),
+    rows: groupAdjacentExploreRows(
+      groupAdjacentTimelineExplorationRows(
+        groupAdjacentToolCallRows(groupChangedFileRows(rawRows, { enabled: !isStreaming }), { enabled: isStreaming }),
+      ),
+    ),
   };
 }

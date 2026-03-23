@@ -8,6 +8,7 @@ interface ThinkingRowProps {
 export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
   const normalizedSummary = summary
     .replace(/^thinking(?:\.\.\.)?[:\s-]*/i, "")
+    .replace(/^working(?:\.\.\.)?[:\s-]*/i, "")
     .trim();
   const summaryText = normalizedSummary || "...";
   const hasContent = content.trim().length > 0;
@@ -25,7 +26,6 @@ export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
     <details className="message-exploration thinking-disclosure">
       <summary className="message-exploration-summary thinking-disclosure-summary">
         <ThinkingShimmer label="Thinking" />
-        <span className="thinking-summary">{summaryText}</span>
       </summary>
       <div className="thinking-row-content">
         <pre className="thinking-row-text">{content}</pre>

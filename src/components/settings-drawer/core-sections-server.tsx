@@ -1,5 +1,5 @@
+import { ChevronDown, ChevronRight, Plus, Plug, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Play, Plug, Plus, Square, Trash2 } from "lucide-react";
 import type { RuntimeProfile, RuntimeProfileInput, RuntimeState, ServerDiagnostics } from "@shared/ipc";
 
 type ServerSectionProps = {
@@ -18,6 +18,18 @@ type ServerSectionProps = {
   onRefreshProfiles: () => Promise<void>;
 };
 
+function formatEndpoint(baseUrl?: string) {
+  if (!baseUrl) {
+    return "Not connected";
+  }
+  try {
+    const url = new URL(baseUrl);
+    return `${url.hostname}:${url.port || (url.protocol === "https:" ? "443" : "80")}`;
+  } catch {
+    return baseUrl;
+  }
+}
+
 export function ServerSection({
   serverDiagnostics,
   onGetServerDiagnostics,
@@ -33,22 +45,27 @@ export function ServerSection({
   onStopLocalProfile,
   onRefreshProfiles,
 }: ServerSectionProps) {
-  const statusValue = serverDiagnostics?.runtime.status ?? "unknown";
-  const healthValue = serverDiagnostics?.health ?? "unknown";
-  const isRunning = String(statusValue) === "running";
-  const isHealthy = String(healthValue) === "ok";
-
-  const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>(profiles[0]?.id);
+  const localProfile = useMemo(
+    () => profiles.find((profile) => profile.startCommand),
+    [profiles],
+  );
+  const remoteProfiles = useMemo(
+    () => profiles.filter((profile) => !localProfile || profile.id !== localProfile.id),
+    [localProfile, profiles],
+  );
+  const [selectedProfileId, setSelectedProfileId] = useState<string | undefined>(remoteProfiles[0]?.id);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const selected = useMemo(
-    () => (isCreatingNew ? undefined : profiles.find((p) => p.id === selectedProfileId) ?? profiles[0]),
-    [profiles, selectedProfileId, isCreatingNew],
+    () => (isCreatingNew ? undefined : remoteProfiles.find((profile) => profile.id === selectedProfileId) ?? remoteProfiles[0]),
+    [isCreatingNew, remoteProfiles, selectedProfileId],
   );
   const [password, setPassword] = useState("");
   const [draft, setDraft] = useState<RuntimeProfileInput | null>(null);
 
   useEffect(() => {
-    if (isCreatingNew) return; // Don't overwrite new-profile draft
+    if (isCreatingNew) {
+      return;
+    }
     if (!selected) {
       setDraft(null);
       return;
@@ -60,7 +77,7 @@ export function ServerSection({
       port: selected.port,
       https: selected.https,
       username: selected.username,
-      startCommand: selected.startCommand,
+      startCommand: false,
       startHost: selected.startHost,
       startPort: selected.startPort,
       cliPath: selected.cliPath,
@@ -68,18 +85,24 @@ export function ServerSection({
       password: "",
     });
     setPassword("");
-  }, [selected, isCreatingNew]);
+  }, [isCreatingNew, selected]);
 
-  const createNewProfile = () => {
+  useEffect(() => {
+    if (!selectedProfileId && remoteProfiles[0]?.id) {
+      setSelectedProfileId(remoteProfiles[0].id);
+    }
+  }, [remoteProfiles, selectedProfileId]);
+
+  const createNewRemoteProfile = () => {
     setIsCreatingNew(true);
     setSelectedProfileId(undefined);
     setDraft({
-      name: "New Profile",
-      host: "127.0.0.1",
-      port: 4096,
-      https: false,
+      name: "Remote OpenCode",
+      host: "",
+      port: 443,
+      https: true,
       username: "opencode",
-      startCommand: true,
+      startCommand: false,
       startHost: "127.0.0.1",
       startPort: 4096,
       cliPath: "",
@@ -89,65 +112,79 @@ export function ServerSection({
     setPassword("");
   };
 
+  const refreshDiagnostics = async (message: string, action: () => Promise<ServerDiagnostics>) => {
+    try {
+      const next = await action();
+      setServerDiagnostics(next);
+      setFeedback(message);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const handleSave = async () => {
-    if (!draft) return;
+    if (!draft) {
+      return;
+    }
     try {
       await onSaveProfile({ ...draft, password, corsOrigins: draft.corsOrigins });
       await onRefreshProfiles();
       setIsCreatingNew(false);
-      setFeedback("Profile saved");
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      setFeedback("Remote profile saved");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
     }
   };
 
   const handleDelete = async () => {
-    if (!draft?.id) return;
+    if (!draft?.id) {
+      return;
+    }
     try {
       await onDeleteProfile(draft.id);
       await onRefreshProfiles();
-      setSelectedProfileId(profiles[0]?.id);
-      setFeedback("Profile deleted");
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      setSelectedProfileId(remoteProfiles[0]?.id);
+      setFeedback("Remote profile deleted");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
     }
   };
 
   const handleAttach = async () => {
-    if (!draft?.id) return;
+    if (!draft?.id) {
+      return;
+    }
     try {
       await onAttachProfile(draft.id);
-      setFeedback("Attached to server");
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      setFeedback("Attached to remote server");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
     }
   };
 
-  const handleStartLocal = async () => {
-    if (!draft?.id) return;
-    try {
-      await onStartLocalProfile(draft.id);
-      setFeedback("Local server started");
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+  const handleRestartLocal = async () => {
+    if (!localProfile) {
+      return;
     }
-  };
-
-  const handleStopLocal = async () => {
     try {
       await onStopLocalProfile();
-      setFeedback("Local server stopped");
-    } catch (err) {
-      setFeedback(err instanceof Error ? err.message : String(err));
+      await onStartLocalProfile(localProfile.id);
+      setFeedback("Local runtime restarted");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : String(error));
     }
   };
+
+  const statusValue = serverDiagnostics?.runtime.status ?? runtime.status ?? "unknown";
+  const healthValue = serverDiagnostics?.health ?? "unknown";
+  const isRunning = String(statusValue) === "running" || String(statusValue) === "connected";
+  const isHealthy = String(healthValue) === "connected";
 
   return (
     <section className="settings-section-card settings-pad settings-server-grid">
       <p className="settings-server-title">server</p>
 
-      {/* Diagnostics */}
-      <p className="settings-server-subtitle">// diagnostics</p>
+      <p className="settings-server-subtitle">// local runtime</p>
       <div className="settings-server-status-card">
         <div className="settings-server-status-row">
           <span className="settings-server-status-key">status</span>
@@ -164,7 +201,13 @@ export function ServerSection({
         <div className="settings-server-status-row">
           <span className="settings-server-status-key">connection</span>
           <span className={`settings-server-status-value${runtime.status === "connected" ? " settings-server-status-value--green" : ""}`}>
-            {runtime.status}
+            {runtime.managedServer ? formatEndpoint(runtime.baseUrl) : "Not managed by app"}
+          </span>
+        </div>
+        <div className="settings-server-status-row">
+          <span className="settings-server-status-key">launch config</span>
+          <span className="settings-server-status-value">
+            {localProfile ? `${localProfile.startHost}:${localProfile.startPort}` : "Unavailable"}
           </span>
         </div>
         <div className="settings-server-status-row">
@@ -176,21 +219,18 @@ export function ServerSection({
         {runtime.lastError ? (
           <div className="settings-server-status-row">
             <span className="settings-server-status-key">error</span>
-            <span className="settings-server-status-value" style={{ color: "var(--accent-error, #ef4444)" }}>
-              {runtime.lastError}
-            </span>
+            <span className="settings-server-status-value settings-server-status-value--error">{runtime.lastError}</span>
           </div>
         ) : null}
       </div>
+      <p className="settings-server-help">
+        Local OpenCode is managed by Orxa. The live endpoint can change on each launch, so this section shows the actual connected runtime rather than an editable profile.
+      </p>
       <div className="settings-server-buttons">
         <button
           type="button"
           className="settings-server-btn"
-          onClick={() =>
-            void onGetServerDiagnostics()
-              .then((next) => { setServerDiagnostics(next); setFeedback("Diagnostics refreshed"); })
-              .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-          }
+          onClick={() => void refreshDiagnostics("Diagnostics refreshed", onGetServerDiagnostics)}
         >
           <ChevronDown size={12} />
           refresh diagnostics
@@ -198,38 +238,49 @@ export function ServerSection({
         <button
           type="button"
           className="settings-server-btn"
-          onClick={() =>
-            void onRepairRuntime()
-              .then((next) => { setServerDiagnostics(next); setFeedback("Runtime repaired"); })
-              .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
-          }
+          onClick={() => void refreshDiagnostics("Runtime repaired", onRepairRuntime)}
         >
           <ChevronRight size={12} />
           repair runtime
         </button>
+        {localProfile ? (
+          <button
+            type="button"
+            className="settings-server-btn"
+            onClick={() => void handleRestartLocal()}
+          >
+            restart local runtime
+          </button>
+        ) : null}
       </div>
 
-      {/* Profiles */}
-      <p className="settings-server-subtitle" style={{ marginTop: 16 }}>// connection profiles</p>
-
+      <p className="settings-server-subtitle" style={{ marginTop: 16 }}>// remote profiles</p>
+      <p className="settings-server-help">
+        Remote profiles are for attaching to an OpenCode server hosted elsewhere. They do not control the app-managed local runtime.
+      </p>
       <div className="settings-profiles-layout">
         <div className="settings-profiles-list">
-          {profiles.map((profile) => (
+          {remoteProfiles.map((profile) => (
             <button
               key={profile.id}
               type="button"
               className={`settings-profile-item${profile.id === selected?.id ? " active" : ""}`}
-              onClick={() => { setIsCreatingNew(false); setSelectedProfileId(profile.id); }}
+              onClick={() => {
+                setIsCreatingNew(false);
+                setSelectedProfileId(profile.id);
+              }}
             >
               <span className="settings-profile-item-name">{profile.name}</span>
-              <span className="settings-profile-item-addr">{profile.host}:{profile.port}</span>
-              {runtime.activeProfileId === profile.id ? (
+              <span className="settings-profile-item-addr">
+                {profile.https ? "https" : "http"}://{profile.host}:{profile.port}
+              </span>
+              {runtime.activeProfileId === profile.id && !runtime.managedServer ? (
                 <span className="settings-profile-item-connected" />
               ) : null}
             </button>
           ))}
-          <button type="button" className="settings-profile-add" onClick={createNewProfile}>
-            <Plus size={12} /> new profile
+          <button type="button" className="settings-profile-add" onClick={createNewRemoteProfile}>
+            <Plus size={12} /> new remote profile
           </button>
         </div>
 
@@ -237,62 +288,43 @@ export function ServerSection({
           <div className="settings-profile-form">
             <label>
               name
-              <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+              <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
             </label>
             <div className="settings-profile-row-2">
               <label>
                 host
-                <input value={draft.host} onChange={(e) => setDraft({ ...draft, host: e.target.value })} />
+                <input value={draft.host} onChange={(event) => setDraft({ ...draft, host: event.target.value })} />
               </label>
               <label>
                 port
-                <input type="number" value={draft.port} onChange={(e) => setDraft({ ...draft, port: Number(e.target.value) })} />
+                <input
+                  type="number"
+                  value={draft.port}
+                  onChange={(event) => setDraft({ ...draft, port: Number(event.target.value) })}
+                />
               </label>
             </div>
             <div className="settings-profile-row-2">
               <label>
                 username
-                <input value={draft.username ?? ""} onChange={(e) => setDraft({ ...draft, username: e.target.value })} />
+                <input
+                  value={draft.username ?? ""}
+                  onChange={(event) => setDraft({ ...draft, username: event.target.value })}
+                />
               </label>
               <label>
                 password
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
               </label>
             </div>
-            <label className="settings-toggle-row" style={{ padding: "4px 0" }}>
-              <span>start local server from app</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={draft.startCommand}
-                className={`settings-switch${draft.startCommand ? " on" : ""}`}
-                onClick={() => setDraft({ ...draft, startCommand: !draft.startCommand })}
-              >
-                <span className="settings-switch-thumb" />
-              </button>
+            <label className="settings-inline-toggle">
+              use https
+              <input
+                type="checkbox"
+                checked={draft.https}
+                onChange={(event) => setDraft({ ...draft, https: event.target.checked })}
+              />
             </label>
-            {draft.startCommand ? (
-              <>
-                <div className="settings-profile-row-2">
-                  <label>
-                    start host
-                    <input value={draft.startHost} onChange={(e) => setDraft({ ...draft, startHost: e.target.value })} />
-                  </label>
-                  <label>
-                    start port
-                    <input type="number" value={draft.startPort} onChange={(e) => setDraft({ ...draft, startPort: Number(e.target.value) })} />
-                  </label>
-                </div>
-                <label>
-                  binary path override
-                  <input
-                    value={draft.cliPath ?? ""}
-                    placeholder="opencode"
-                    onChange={(e) => setDraft({ ...draft, cliPath: e.target.value })}
-                  />
-                </label>
-              </>
-            ) : null}
             <div className="settings-profile-actions">
               <button type="button" className="settings-server-btn" onClick={() => void handleSave()}>
                 save
@@ -303,21 +335,17 @@ export function ServerSection({
                 </button>
               ) : null}
               {draft.id ? (
-                <button type="button" className="settings-server-btn settings-profile-btn-green" onClick={() => void handleStartLocal()}>
-                  <Play size={11} /> start local
-                </button>
-              ) : null}
-              <button type="button" className="settings-server-btn" onClick={() => void handleStopLocal()}>
-                <Square size={11} /> stop local
-              </button>
-              {draft.id ? (
                 <button type="button" className="settings-server-btn settings-profile-btn-danger" onClick={() => void handleDelete()}>
                   <Trash2 size={11} /> delete
                 </button>
               ) : null}
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="settings-server-empty-state">
+            No remote profiles yet. Add one to attach Orxa to an externally hosted OpenCode server.
+          </div>
+        )}
       </div>
     </section>
   );

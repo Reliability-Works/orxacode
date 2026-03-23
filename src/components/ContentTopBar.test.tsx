@@ -143,4 +143,11 @@ describe("ContentTopBar open target control", () => {
     expect(deleteMock).toHaveBeenCalledWith("install-run");
     confirmMock.mockRestore();
   });
+
+  it("hides the terminal toggle when the integrated terminal is unavailable", () => {
+    const { props } = buildProps();
+    render(<ContentTopBar {...props} showTerminalToggle={false} />);
+
+    expect(screen.queryByRole("button", { name: "Toggle terminal" })).not.toBeInTheDocument();
+  });
 });

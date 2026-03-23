@@ -12,6 +12,7 @@ function buildOrxaCodex() {
     getState: vi.fn(async () => ({ status: "disconnected" as const })),
     startThread: vi.fn(async () => ({ id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() })),
     getThreadRuntime: vi.fn(async () => ({ thread: null, childThreads: [] })) as ReturnType<typeof vi.fn>,
+    resumeThread: vi.fn(async () => ({ thread: null })) as ReturnType<typeof vi.fn>,
     listThreads: vi.fn(async () => ({ threads: [] as Array<Record<string, unknown>>, nextCursor: undefined })),
     archiveThreadTree: vi.fn(async () => undefined),
     startTurn: vi.fn(async () => undefined),
@@ -468,7 +469,7 @@ describe("useCodexSession", () => {
       await result.current.interruptTurn();
     });
 
-    expect(codex.interruptThreadTree).toHaveBeenCalledWith("thr-1", "pending");
+    expect(codex.interruptTurn).toHaveBeenCalledWith("thr-1", "pending");
 
     act(() => {
       notify?.({
@@ -480,7 +481,89 @@ describe("useCodexSession", () => {
       });
     });
 
-    expect(codex.interruptThreadTree).toHaveBeenCalledWith("thr-1", "turn-queued");
+    expect(codex.interruptTurn).toHaveBeenCalledWith("thr-1", "turn-queued");
+  });
+
+  it("does not route child thread output into the main Codex transcript", async () => {
+    let notify: ((event: unknown) => void) | undefined;
+    const codex = buildOrxaCodex();
+    window.orxa = {
+      codex,
+      events: {
+        subscribe: vi.fn((handler: (event: unknown) => void) => {
+          notify = handler;
+          return vi.fn();
+        }),
+      },
+    } as unknown as typeof window.orxa;
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    act(() => {
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "turn/started",
+          params: { threadId: "thr-1", turn: { id: "turn-main" } },
+        },
+      });
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "thread/started",
+          params: {
+            thread: {
+              id: "thr-child-output",
+              preview: "Scout repo",
+              source: {
+                subAgent: {
+                  kind: "explorer",
+                  nickname: "Scout",
+                  role: "explorer",
+                },
+              },
+            },
+          },
+        },
+      });
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "item/started",
+          params: {
+            threadId: "thr-child-output",
+            item: {
+              id: "child-agent-message-1",
+              type: "agentMessage",
+            },
+          },
+        },
+      });
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "item/agentMessage/delta",
+          params: {
+            threadId: "thr-child-output",
+            itemId: "child-agent-message-1",
+            delta: "Child agent output",
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.subagents).toEqual(
+        expect.arrayContaining([expect.objectContaining({ threadId: "thr-child-output" })]),
+      );
+    });
+    expect(result.current.messages).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "message", content: expect.stringContaining("Child agent output") })]),
+    );
   });
 
   it("creates a live diff item so file change deltas are rendered", async () => {
@@ -1101,6 +1184,222 @@ describe("useCodexSession", () => {
             threadId: "thr-child-1",
             nickname: "Docs Worker",
             status: "thinking",
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("polls for child subagent threads even before local subagent state exists", async () => {
+    const codex = buildOrxaCodex();
+    codex.getThreadRuntime = vi.fn(async () => ({
+      thread: { id: "thr-1", preview: "Main thread", modelProvider: "openai", createdAt: Date.now() },
+      childThreads: [
+        {
+          id: "thr-child-2",
+          preview: "Frontend worker",
+          modelProvider: "openai",
+          createdAt: Date.now(),
+          status: { type: "running" },
+          source: {
+            subagent: {
+              role: "worker",
+              nickname: "Frontend Worker",
+              thread_spawn: { parent_thread_id: "thr-1" },
+            },
+          },
+          activeTurnId: "turn-child-2",
+        },
+      ],
+    }));
+    window.orxa = {
+      codex,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    await waitFor(() => {
+      expect(result.current.subagents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            threadId: "thr-child-2",
+            nickname: "Frontend Worker",
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("preserves provisional subagents across transient empty runtime snapshots", async () => {
+    let notify: ((event: unknown) => void) | undefined;
+    const codex = buildOrxaCodex();
+    codex.getThreadRuntime = vi.fn(async () => ({
+      thread: { id: "thr-1", preview: "Main thread", modelProvider: "openai", createdAt: Date.now(), activeTurnId: "turn-main" },
+      childThreads: [],
+    }));
+    window.orxa = {
+      codex,
+      events: {
+        subscribe: vi.fn((handler: (event: unknown) => void) => {
+          notify = handler;
+          return vi.fn();
+        }),
+      },
+    } as unknown as typeof window.orxa;
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    act(() => {
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "turn/started",
+          params: {
+            turn: { id: "turn-main", threadId: "thr-1" },
+          },
+        },
+      });
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "thread/started",
+          params: {
+            thread: {
+              id: "child-provisional-1",
+              preview: "Scout repo",
+              source: {
+                subAgent: {
+                  kind: "explorer",
+                  nickname: "Scout",
+                  role: "explorer",
+                },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.subagents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            threadId: "child-provisional-1",
+            nickname: "Scout",
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("hydrates child subagents from thread list when runtime snapshots omit them", async () => {
+    const codex = buildOrxaCodex();
+    codex.getThreadRuntime = vi.fn(async () => ({
+      thread: { id: "thr-1", preview: "Main thread", modelProvider: "openai", createdAt: Date.now(), activeTurnId: "turn-main" },
+      childThreads: [],
+    }));
+    codex.listThreads = vi.fn(async () => ({
+      threads: [
+        {
+          id: "thr-child-3",
+          preview: "Site explorer",
+          modelProvider: "openai",
+          createdAt: Date.now(),
+          status: { type: "running" },
+          source: {
+            subagent: {
+              role: "explorer",
+              nickname: "Explorer Northline",
+              thread_spawn: { parent_thread_id: "thr-1" },
+            },
+          },
+          activeTurnId: "turn-child-3",
+        },
+      ] as Array<Record<string, unknown>>,
+      nextCursor: undefined,
+    }));
+    window.orxa = {
+      codex,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    await waitFor(() => {
+      expect(result.current.subagents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            threadId: "thr-child-3",
+            nickname: "Explorer Northline",
+          }),
+        ]),
+      );
+    });
+  });
+
+  it("discovers child subagents from completed collab tool payloads", async () => {
+    let notify: ((event: unknown) => void) | undefined;
+    const codex = buildOrxaCodex();
+    window.orxa = {
+      codex,
+      events: {
+        subscribe: vi.fn((handler: (event: unknown) => void) => {
+          notify = handler;
+          return vi.fn();
+        }),
+      },
+    } as unknown as typeof window.orxa;
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    act(() => {
+      notify?.({
+        type: "codex.notification",
+        payload: {
+          method: "item/completed",
+          params: {
+            threadId: "thr-1",
+            item: {
+              id: "item-collab-complete-1",
+              type: "collabToolCall",
+              sender_thread_id: "thr-1",
+              receiver_agents: [
+                {
+                  thread_id: "thr-child-4",
+                  agent_nickname: "Athena",
+                  agent_role: "explorer",
+                },
+              ],
+            },
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.subagents).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            threadId: "thr-child-4",
+            nickname: "Athena",
+            role: "explorer",
           }),
         ]),
       );

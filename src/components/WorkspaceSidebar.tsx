@@ -2,10 +2,11 @@ import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, ty
 import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
+import type { AppShellUpdateStatusMessage } from "../hooks/useAppShellUpdateFlow";
 import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
 
-type SidebarMode = "projects" | "jobs" | "skills" | "memory";
+type SidebarMode = "projects" | "jobs" | "skills";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 type SessionSidebarIndicator = "busy" | "awaiting" | "unread" | "none";
 
@@ -23,7 +24,10 @@ export type WorkspaceSidebarProps = {
   setSidebarMode: Dispatch<SetStateAction<SidebarMode>>;
   unreadJobRunsCount: number;
   updateAvailableVersion: string | null;
+  isCheckingForUpdates: boolean;
   updateInstallPending: boolean;
+  updateStatusMessage: AppShellUpdateStatusMessage | null;
+  onCheckForUpdates: () => Promise<void> | void;
   onDownloadAndInstallUpdate: () => Promise<void> | void;
   openWorkspaceDashboard: () => void;
   projectSearchOpen: boolean;
@@ -41,6 +45,7 @@ export type WorkspaceSidebarProps = {
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>;
   sessions: SessionListItem[];
   cachedSessionsByProject?: Record<string, SessionListItem[]>;
+  hiddenSessionIDsByProject?: Record<string, string[]>;
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionTitle: (sessionID: string, directory?: string, fallbackTitle?: string) => string | undefined;
@@ -51,6 +56,7 @@ export type WorkspaceSidebarProps = {
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
+  onOpenMemoryModal: () => void;
   onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -60,7 +66,10 @@ export function WorkspaceSidebar({
   setSidebarMode,
   unreadJobRunsCount,
   updateAvailableVersion,
+  isCheckingForUpdates,
   updateInstallPending,
+  updateStatusMessage,
+  onCheckForUpdates,
   onDownloadAndInstallUpdate,
   openWorkspaceDashboard,
   projectSearchOpen,
@@ -78,6 +87,7 @@ export function WorkspaceSidebar({
   setCollapsedProjects,
   sessions,
   cachedSessionsByProject,
+  hiddenSessionIDsByProject,
   activeSessionID,
   setAllSessionsModalOpen,
   getSessionTitle,
@@ -88,12 +98,19 @@ export function WorkspaceSidebar({
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
+  onOpenMemoryModal,
   onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
-  const [updateButtonHovered, setUpdateButtonHovered] = useState(false);
   const [pickerOpenForProject, setPickerOpenForProject] = useState<string | null>(null);
   const pickerAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const updateButtonLabel = isCheckingForUpdates
+    ? "Checking for updates"
+    : updateInstallPending
+      ? "Downloading update"
+      : updateAvailableVersion
+        ? `Download ${updateAvailableVersion} now`
+        : "Check for updates";
 
   return (
     <aside className="sidebar projects-pane">
@@ -104,22 +121,6 @@ export function WorkspaceSidebar({
           <span className="sidebar-logo-symbol">~</span>
           <span className="sidebar-logo-name">orxa</span>
         </div>
-
-        {/* Update CTA (shown above mode tabs when update available) */}
-        {updateAvailableVersion ? (
-          <button
-            type="button"
-            className={`sidebar-update-cta ${updateInstallPending ? "active" : ""}`.trim()}
-            onMouseEnter={() => setUpdateButtonHovered(true)}
-            onMouseLeave={() => setUpdateButtonHovered(false)}
-            onClick={() => void onDownloadAndInstallUpdate()}
-            disabled={updateInstallPending}
-            title={`Version ${updateAvailableVersion}`}
-          >
-            <span>{updateInstallPending ? "Updating..." : updateButtonHovered ? "Update now" : "Update available"}</span>
-            <small>{updateAvailableVersion}</small>
-          </button>
-        ) : null}
 
         {/* Mode nav tabs */}
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
@@ -150,8 +151,7 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className={sidebarMode === "memory" ? "active" : ""}
-            onClick={() => setSidebarMode("memory")}
+            onClick={onOpenMemoryModal}
           >
             <Brain size={16} aria-hidden="true" />
             Memory
@@ -265,17 +265,19 @@ export function WorkspaceSidebar({
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
               const isActiveProject = project.worktree === activeProjectDir;
               const isExpanded = !collapsedProjects[project.worktree];
+              const hiddenSessionIDs = new Set(hiddenSessionIDsByProject?.[project.worktree] ?? []);
               // Use active sessions for active project, cached sessions for others
               const projectSessions = isActiveProject
                 ? sessions
                 : (cachedSessionsByProject?.[project.worktree] ?? []);
-              const visibleSessions = isExpanded ? projectSessions : [];
+              const visibleProjectSessions = projectSessions.filter((session) => !hiddenSessionIDs.has(session.id));
+              const visibleSessions = isExpanded ? visibleProjectSessions : [];
               const displayedSessions = (() => {
-                const first = visibleSessions.slice(0, 4);
+                const first = visibleProjectSessions.slice(0, 4);
                 if (!activeSessionID || first.some((session) => session.id === activeSessionID)) {
                   return first;
                 }
-                const active = visibleSessions.find((session) => session.id === activeSessionID);
+                const active = visibleProjectSessions.find((session) => session.id === activeSessionID);
                 if (!active) {
                   return first;
                 }
@@ -403,6 +405,24 @@ export function WorkspaceSidebar({
 
         {/* Footer */}
         <div className="sidebar-footer-actions">
+          <div className="sidebar-footer-update">
+            {updateStatusMessage ? (
+              <div className={`sidebar-update-status sidebar-update-status--${updateStatusMessage.tone}`.trim()}>
+                {updateStatusMessage.text}
+              </div>
+            ) : (
+              <div className="sidebar-update-status sidebar-update-status--placeholder" aria-hidden="true">
+                &nbsp;
+              </div>
+            )}
+            <IconButton
+              icon="refresh"
+              label={updateButtonLabel}
+              className={`sidebar-update-button ${isCheckingForUpdates ? "is-spinning" : ""}`.trim()}
+              onClick={() => void (updateAvailableVersion ? onDownloadAndInstallUpdate() : onCheckForUpdates())}
+              disabled={isCheckingForUpdates || updateInstallPending}
+            />
+          </div>
           <IconButton icon="log" label="Debug logs" onClick={onOpenDebugLogs} />
           <IconButton icon="settings" label="Config" onClick={() => setSettingsOpen((value) => !value)} />
           <span className="sidebar-footer-spacer" />

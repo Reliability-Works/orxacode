@@ -37,6 +37,8 @@ export type UnifiedTimelineRenderRow =
       id: string;
       kind: "tool";
       title: string;
+      expandedTitle?: string;
+      subtitle?: string;
       status: ToolCallStatus;
       command?: string;
       output?: string;
@@ -55,6 +57,19 @@ export type UnifiedTimelineRenderRow =
   | {
       id: string;
       kind: "diff-group";
+      title: string;
+      files: Array<{
+        id: string;
+        path: string;
+        type: string;
+        diff?: string;
+        insertions?: number;
+        deletions?: number;
+      }>;
+    }
+  | {
+      id: string;
+      kind: "tool-group";
       title: string;
       files: Array<{
         id: string;
@@ -118,6 +133,8 @@ export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) 
     case "diff":
       return row.diff ? 68 : 44;
     case "diff-group":
+      return 34 + row.files.reduce((total, file) => total + (file.diff ? 68 : 44), 0);
+    case "tool-group":
       return 34 + row.files.reduce((total, file) => total + (file.diff ? 68 : 44), 0);
     case "context":
       return row.items.length > 1 ? 72 : 52;

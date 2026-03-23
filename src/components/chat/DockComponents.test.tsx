@@ -3,11 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import { DockSurface } from "./DockSurface";
 import { TodoDock } from "./TodoDock";
 import type { TodoItem } from "./TodoDock";
+import { ReviewChangesDock } from "./ReviewChangesDock";
 import { QuestionDock } from "./QuestionDock";
 import type { AgentQuestion } from "./QuestionDock";
 import { PermissionDock } from "./PermissionDock";
 import { QueuedMessagesDock } from "./QueuedMessagesDock";
 import type { QueuedMessage } from "./QueuedMessagesDock";
+import { BackgroundAgentsPanel } from "./BackgroundAgentsPanel";
 
 // ─── DockSurface ─────────────────────────────────────────────────────────────
 
@@ -77,6 +79,15 @@ describe("DockSurface", () => {
     );
     expect(document.querySelector(".dock-surface")).toBeTruthy();
   });
+
+  it("applies custom className when provided", () => {
+    render(
+      <DockSurface className="dock-surface--compact-width">
+        <span>body</span>
+      </DockSurface>,
+    );
+    expect(document.querySelector(".dock-surface--compact-width")).toBeTruthy();
+  });
 });
 
 // ─── TodoDock ─────────────────────────────────────────────────────────────────
@@ -135,6 +146,152 @@ describe("TodoDock", () => {
     render(<TodoDock items={makeTodos()} open={true} onToggle={() => {}} />);
     const item = document.querySelector('[data-status="in_progress"]');
     expect(item).toBeTruthy();
+  });
+});
+
+describe("ReviewChangesDock", () => {
+  const files = [
+    { id: "file-1", path: "src/a.ts", type: "modified", diff: "+const a = 1;", insertions: 1, deletions: 0 },
+    { id: "file-2", path: "src/b.ts", type: "added", diff: "+const b = 2;", insertions: 1, deletions: 0 },
+  ];
+
+  it("renders review changes label and file count", () => {
+    render(<ReviewChangesDock files={files} open={false} onToggle={() => {}} />);
+    expect(screen.getByText("Review changes")).toBeInTheDocument();
+    expect(screen.getByText("2 files")).toBeInTheDocument();
+  });
+
+  it("renders diff blocks when open", () => {
+    render(<ReviewChangesDock files={files} open={true} onToggle={() => {}} />);
+    expect(screen.getByText("src/a.ts")).toBeInTheDocument();
+    expect(screen.getByText("src/b.ts")).toBeInTheDocument();
+  });
+});
+
+describe("BackgroundAgentsPanel", () => {
+  it("hides the tagging hint when none is provided", () => {
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "thinking",
+            statusText: "thinking",
+            sessionID: "child-1",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+        taggingHint={null}
+      />,
+    );
+
+    expect(screen.queryByText(/tag agents/i)).toBeNull();
+    expect(screen.queryByText(/tag subagents/i)).toBeNull();
+  });
+
+  it("keeps a single header row for the drawer toggle", () => {
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "thinking",
+            statusText: "thinking",
+            sessionID: "child-1",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("1 background agent")).toBeInTheDocument();
+    expect(screen.getAllByText("1 background agent")).toHaveLength(1);
+  });
+
+  it("renders selected agent details inside a modal overlay instead of inline", () => {
+    const onBack = vi.fn();
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "thinking",
+            statusText: "thinking",
+            sessionID: "child-1",
+            modelLabel: "openai/gpt-5.4",
+          },
+        ]}
+        selectedAgentId="agent-1"
+        onOpenAgent={() => undefined}
+        onBack={onBack}
+        detailBody={<div>Agent transcript</div>}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Background agent" })).toBeInTheDocument();
+    expect(screen.getByText("Agent transcript")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close background agent" }));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts the background-agent drawer collapsed by default", () => {
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "thinking",
+            statusText: "thinking",
+            sessionID: "child-1",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("build")).not.toBeInTheDocument();
+  });
+
+  it("calls archive from the drawer row and modal", () => {
+    const onArchiveAgent = vi.fn();
+    render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "thinking",
+            statusText: "thinking",
+            sessionID: "child-1",
+          },
+        ]}
+        selectedAgentId="agent-1"
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+        onArchiveAgent={onArchiveAgent}
+        detailBody={<div>Agent transcript</div>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand background agents" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive build" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive background agent" }));
+    expect(onArchiveAgent).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -364,7 +521,7 @@ describe("QueuedMessagesDock", () => {
     const { container } = render(
       <QueuedMessagesDock
         messages={[]}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -376,7 +533,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={[makeQueuedMessages()[0]]}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -388,7 +545,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -400,7 +557,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -414,7 +571,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={[{ id: "q1", text: longText, timestamp: Date.now() }]}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -424,19 +581,20 @@ describe("QueuedMessagesDock", () => {
     expect(displayed.textContent?.length).toBeLessThanOrEqual(61);
   });
 
-  it("calls onSendNow with the correct id when Send now is clicked", () => {
-    const onSendNow = vi.fn();
+  it("calls onPrimaryAction with the correct id when Steer is clicked", () => {
+    const onPrimaryAction = vi.fn();
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={onSendNow}
+        actionKind="steer"
+        onPrimaryAction={onPrimaryAction}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
     );
-    const sendButtons = screen.getAllByRole("button", { name: "Send now" });
-    fireEvent.click(sendButtons[0]);
-    expect(onSendNow).toHaveBeenCalledWith("q1");
+    const steerButtons = screen.getAllByRole("button", { name: "Steer message" });
+    fireEvent.click(steerButtons[0]);
+    expect(onPrimaryAction).toHaveBeenCalledWith("q1");
   });
 
   it("calls onEdit with the correct id when Edit is clicked", () => {
@@ -444,7 +602,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={onEdit}
         onRemove={() => {}}
       />,
@@ -459,7 +617,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={onRemove}
       />,
@@ -469,40 +627,42 @@ describe("QueuedMessagesDock", () => {
     expect(onRemove).toHaveBeenCalledWith("q1");
   });
 
-  it("disables Send now buttons while sendingId is set", () => {
+  it("disables Steer buttons while sendingId is set", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
         sendingId="q1"
-        onSendNow={() => {}}
+        actionKind="steer"
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
     );
-    const sendButtons = screen.getAllByRole("button", { name: /Send now|Sending/ });
-    for (const btn of sendButtons) {
+    const steerButtons = screen.getAllByRole("button", { name: /Steer message/ });
+    for (const btn of steerButtons) {
       expect(btn).toBeDisabled();
     }
   });
 
-  it("shows 'Sending' label on the in-flight item", () => {
+  it("shows 'Steering' label on the in-flight item", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
         sendingId="q1"
-        onSendNow={() => {}}
+        actionKind="steer"
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
     );
-    expect(screen.getByText("Sending")).toBeInTheDocument();
+    expect(screen.getByText("Steering")).toBeInTheDocument();
   });
 
   it("renders queued-messages-dock class", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,
@@ -514,7 +674,7 @@ describe("QueuedMessagesDock", () => {
     render(
       <QueuedMessagesDock
         messages={makeQueuedMessages()}
-        onSendNow={() => {}}
+        onPrimaryAction={() => {}}
         onEdit={() => {}}
         onRemove={() => {}}
       />,

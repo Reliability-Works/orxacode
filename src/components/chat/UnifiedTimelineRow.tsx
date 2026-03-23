@@ -7,6 +7,7 @@ import { MessageCardFrame } from "./MessageCardFrame";
 import { TextPart } from "./TextPart";
 import { ContextToolGroup } from "./ContextToolGroup";
 import { ExploreRow } from "./ExploreRow";
+import { ToolGroup } from "./ToolGroup";
 import { ThinkingRow } from "./ThinkingRow";
 import { MessageTurn } from "./MessageTurn";
 import { MessageTimelineBlocks } from "../message-feed/TimelineBlocks";
@@ -61,23 +62,39 @@ export function UnifiedTimelineRowView({
     case "thinking":
       return <ThinkingRow summary={row.summary} content={row.content} />;
     case "tool":
-      return (
-        <article className="message-card message-assistant">
-          <ToolCallCard title={row.title} status={row.status} defaultExpanded={row.defaultExpanded}>
-            {row.command !== undefined ? (
-              <CommandOutput
-                command={row.command}
-                output={row.output ?? row.error ?? ""}
-                exitCode={row.status === "error" ? 1 : 0}
-              />
-            ) : row.output ? (
-              <pre className="tool-call-card-output">{row.output}</pre>
-            ) : row.error ? (
-              <pre className="tool-call-card-output">{row.error}</pre>
-            ) : null}
-          </ToolCallCard>
-        </article>
-      );
+      {
+        const normalizedTitle = row.title.trim();
+        const normalizedCommand = row.command?.trim() ?? "";
+        const hideDuplicateCommandPrompt =
+          normalizedCommand.length > 0 &&
+          normalizedTitle.length > 0 &&
+          normalizedTitle === normalizedCommand;
+        const hasCommandBodyContent = Boolean(row.output ?? row.error);
+        return (
+          <article className="message-card message-assistant">
+            <ToolCallCard
+              title={row.title}
+              expandedTitle={row.expandedTitle}
+              subtitle={row.subtitle}
+              status={row.status}
+              defaultExpanded={row.defaultExpanded}
+            >
+              {row.command !== undefined && (!hideDuplicateCommandPrompt || hasCommandBodyContent) ? (
+                <CommandOutput
+                  command={row.command}
+                  output={row.output ?? row.error ?? ""}
+                  exitCode={row.status === "error" ? 1 : 0}
+                  hidePrompt={hideDuplicateCommandPrompt}
+                />
+              ) : row.output ? (
+                <pre className="tool-call-card-output">{row.output}</pre>
+              ) : row.error ? (
+                <pre className="tool-call-card-output">{row.error}</pre>
+              ) : null}
+            </ToolCallCard>
+          </article>
+        );
+      }
     case "diff":
       return (
         <article className="message-card message-assistant">
@@ -95,6 +112,26 @@ export function UnifiedTimelineRowView({
       return (
         <article className="message-card message-assistant">
           <ChangedFilesCluster title={row.title} files={row.files} onOpenFileReference={onOpenFileReference} />
+        </article>
+      );
+    case "tool-group":
+      return (
+        <article className="message-card message-assistant">
+          <ToolGroup
+            label={row.title}
+            count={row.files.length}
+            items={row.files.map((file) => (
+              <DiffBlock
+                key={file.id}
+                path={file.path}
+                type={file.type}
+                diff={file.diff}
+                insertions={file.insertions}
+                deletions={file.deletions}
+                onOpenPath={onOpenFileReference}
+              />
+            ))}
+          />
         </article>
       );
     case "context":

@@ -12,7 +12,10 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     setSidebarMode: vi.fn(),
     unreadJobRunsCount: 0,
     updateAvailableVersion: null,
+    isCheckingForUpdates: false,
     updateInstallPending: false,
+    updateStatusMessage: null,
+    onCheckForUpdates: vi.fn(),
     onDownloadAndInstallUpdate: vi.fn(),
     openWorkspaceDashboard: vi.fn(),
     projectSearchOpen: false,
@@ -39,32 +42,43 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     openProjectContextMenu: vi.fn(),
     openSessionContextMenu: vi.fn(),
     addProjectDirectory: vi.fn(),
+    onOpenMemoryModal: vi.fn(),
     onOpenDebugLogs: vi.fn(),
     setSettingsOpen: vi.fn(),
     ...overrides,
   };
 }
 
-describe("WorkspaceSidebar update CTA", () => {
-  it("renders the update action above Dashboard and toggles label on hover", () => {
-    render(<WorkspaceSidebar {...buildProps({ updateAvailableVersion: "0.1.0-beta.6" })} />);
+describe("WorkspaceSidebar update button", () => {
+  it("renders a footer check-for-updates button by default", () => {
+    render(<WorkspaceSidebar {...buildProps()} />);
 
-    const updateButton = screen.getByRole("button", { name: /^Update available/ });
-    const dashboardButton = screen.getByRole("button", { name: "Dashboard" });
-    expect(updateButton.compareDocumentPosition(dashboardButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-
-    fireEvent.mouseEnter(updateButton);
-    expect(screen.getByRole("button", { name: /^Update now/ })).toBeInTheDocument();
-
-    fireEvent.mouseLeave(updateButton);
-    expect(screen.getByRole("button", { name: /^Update available/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeInTheDocument();
+    expect(screen.queryByText("Update found")).not.toBeInTheDocument();
   });
 
-  it("calls update action when the CTA is clicked", () => {
-    const onDownloadAndInstallUpdate = vi.fn();
-    render(<WorkspaceSidebar {...buildProps({ updateAvailableVersion: "0.1.0-beta.6", onDownloadAndInstallUpdate })} />);
+  it("calls update check when no update is available", () => {
+    const onCheckForUpdates = vi.fn();
+    render(<WorkspaceSidebar {...buildProps({ onCheckForUpdates })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Update available/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(onCheckForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows update-found text and downloads when an update is available", () => {
+    const onDownloadAndInstallUpdate = vi.fn();
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          updateAvailableVersion: "0.1.0-beta.6",
+          updateStatusMessage: { text: "Update found", tone: "success" },
+          onDownloadAndInstallUpdate,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Update found")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Download 0.1.0-beta.6 now" }));
     expect(onDownloadAndInstallUpdate).toHaveBeenCalledTimes(1);
   });
 
@@ -78,8 +92,22 @@ describe("WorkspaceSidebar update CTA", () => {
       />,
     );
 
-    const updatingButton = screen.getByRole("button", { name: /^Updating\.\.\./ });
+    const updatingButton = screen.getByRole("button", { name: "Downloading update" });
     expect(updatingButton).toBeDisabled();
+  });
+
+  it("shows checking state while a check is in progress", () => {
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          isCheckingForUpdates: true,
+        })}
+      />,
+    );
+
+    const checkingButton = screen.getByRole("button", { name: "Checking for updates" });
+    expect(checkingButton).toBeDisabled();
+    expect(checkingButton.className).toContain("is-spinning");
   });
 
   it("opens debug logs from sidebar footer", () => {
@@ -88,6 +116,14 @@ describe("WorkspaceSidebar update CTA", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Debug logs" }));
     expect(onOpenDebugLogs).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the coming soon memory modal from the sidebar", () => {
+    const onOpenMemoryModal = vi.fn();
+    render(<WorkspaceSidebar {...buildProps({ onOpenMemoryModal })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Memory" }));
+    expect(onOpenMemoryModal).toHaveBeenCalledTimes(1);
   });
 
   it("shows awaiting and unread indicators for session rows", () => {
@@ -165,5 +201,33 @@ describe("WorkspaceSidebar update CTA", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open me" }));
     expect(openSession).toHaveBeenCalledWith("/workspace/project", "session-2");
+  });
+
+  it("hides background-agent session ids from the workspace session list", () => {
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-main",
+            slug: "session-main",
+            title: "Main session",
+            time: { updated: 2 },
+          }, {
+            id: "session-subagent",
+            slug: "session-subagent",
+            title: "Subagent session",
+            time: { updated: 3 },
+          }],
+          hiddenSessionIDsByProject: {
+            "/workspace/project": ["session-subagent"],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Main session" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Subagent session" })).toBeNull();
   });
 });
