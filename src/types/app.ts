@@ -18,7 +18,6 @@ export type AppPreferences = {
   notifyOnTaskComplete: boolean;
   collaborationModesEnabled: boolean;
   subagentSystemNotificationsEnabled: boolean;
-  orxaBrowserEnabled: boolean;
 };
 
 export type CodeFontOption = {

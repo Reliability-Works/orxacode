@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal as TerminalIcon } from "lucide-react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -32,6 +32,41 @@ const TERMINAL_THEME = {
 
 type TerminalTileProps = CanvasTileComponentProps;
 
+type TerminalLoadState = "connecting" | "ready" | "error";
+
+function sanitizeTerminalChunk(chunk: string) {
+  const sanitized = chunk.replace(/\{"cursor":\d+\}/g, "");
+  return sanitized.trim() === "%" ? "" : sanitized;
+}
+
+function isRetryableTerminalConnectError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Unexpected server response:\s*(500|502|503|504)/i.test(message);
+}
+
+async function connectTerminalWithRetry(
+  directory: string,
+  ptyID: string,
+  maxAttempts = 5,
+  baseDelayMs = 120,
+) {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await window.orxa.terminal.connect(directory, ptyID);
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts || !isRetryableTerminalConnectError(error)) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * attempt));
+    }
+  }
+
+  throw lastError ?? new Error("Failed to connect terminal");
+}
+
 export function TerminalTile({
   tile,
   canvasTheme,
@@ -45,6 +80,8 @@ export function TerminalTile({
   canvasOffsetY,
   viewportScale,
 }: TerminalTileProps) {
+  const [loadState, setLoadState] = useState<TerminalLoadState>("connecting");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -62,15 +99,12 @@ export function TerminalTile({
 
     // Guard: if the terminal IPC is not available, degrade gracefully
     if (!window.orxa?.terminal) {
-      container.style.display = "flex";
-      container.style.alignItems = "center";
-      container.style.justifyContent = "center";
-      container.style.color = "var(--text-muted)";
-      container.style.fontSize = "12px";
-      container.textContent = "Terminal unavailable in this environment.";
+      setLoadState("error");
+      setErrorMessage("Terminal unavailable in this environment.");
       return;
     }
 
+    let cancelled = false;
     const terminal = new Terminal({
       fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
       fontSize: 13,
@@ -87,48 +121,83 @@ export function TerminalTile({
     fitAddonRef.current = fit;
 
     const cleanups: Array<() => void> = [];
+    cleanupRef.current = cleanups;
 
-    // Create the PTY then connect
-    void window.orxa.terminal.create(directory, cwd).then((pty) => {
-      ptyIdRef.current = pty.id;
-
-      void window.orxa.terminal.connect(directory, pty.id).then(() => {
-        void window.orxa.terminal.resize(directory, pty.id, terminal.cols, terminal.rows);
-      });
-
-      // Forward local keystrokes to the PTY
-      const disposeInput = terminal.onData((data) => {
-        void window.orxa.terminal.write(directory, pty.id, data);
-      });
-      cleanups.push(() => disposeInput.dispose());
-
-      // Receive output from the PTY
-      const unsubscribe = window.orxa.events.subscribe((event) => {
-        if (event.type === "pty.output" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
-          terminal.write(event.payload.chunk);
-        }
-        if (event.type === "pty.closed" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
-          terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
-        }
-      });
-      cleanups.push(unsubscribe);
-    });
-
-    // Watch the container for resize and reflow xterm
-    const resizeObs = new ResizeObserver(() => {
+    const resizeTerminal = () => {
       fit.fit();
       if (ptyIdRef.current) {
         void window.orxa.terminal.resize(directory, ptyIdRef.current, terminal.cols, terminal.rows);
       }
+    };
+
+    const disposeInput = terminal.onData((data) => {
+      if (!ptyIdRef.current) {
+        return;
+      }
+      void window.orxa.terminal.write(directory, ptyIdRef.current, data);
+    });
+    cleanups.push(() => disposeInput.dispose());
+
+    void (async () => {
+      try {
+        setLoadState("connecting");
+        setErrorMessage(null);
+
+        const pty = await window.orxa.terminal.create(directory, cwd);
+        if (cancelled) {
+          return;
+        }
+
+        ptyIdRef.current = pty.id;
+        await connectTerminalWithRetry(directory, pty.id);
+        if (cancelled) {
+          return;
+        }
+
+        const unsubscribe = window.orxa.events.subscribe((event) => {
+          if (event.type === "pty.output" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
+            const sanitizedChunk = sanitizeTerminalChunk(event.payload.chunk);
+            if (sanitizedChunk) {
+              terminal.write(sanitizedChunk);
+            }
+          }
+          if (event.type === "pty.closed" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
+            terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
+          }
+        });
+        cleanups.push(unsubscribe);
+
+        setLoadState("ready");
+        requestAnimationFrame(() => {
+          resizeTerminal();
+          terminal.focus();
+        });
+        setTimeout(() => {
+          if (!cancelled) {
+            resizeTerminal();
+          }
+        }, 80);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : "Terminal failed to connect.";
+        setLoadState("error");
+        setErrorMessage(message);
+        terminal.writeln("\r\n\u001b[31m[failed to connect terminal]\u001b[0m");
+        terminal.writeln(`\u001b[90m${message}\u001b[0m`);
+      }
+    })();
+
+    // Watch the container for resize and reflow xterm
+    const resizeObs = new ResizeObserver(() => {
+      resizeTerminal();
     });
     resizeObs.observe(container);
     cleanups.push(() => resizeObs.disconnect());
 
-    cleanupRef.current = cleanups;
-
-    requestAnimationFrame(() => terminal.focus());
-
     return () => {
+      cancelled = true;
       for (const cleanup of cleanupRef.current) cleanup();
       cleanupRef.current = [];
 
@@ -163,7 +232,14 @@ export function TerminalTile({
       canvasOffsetY={canvasOffsetY}
       viewportScale={viewportScale}
     >
-      <div className="terminal-tile-body" ref={containerRef} />
+      <div className="terminal-tile-shell">
+        <div className="terminal-tile-body" ref={containerRef} />
+        {loadState !== "ready" ? (
+          <div className={`terminal-tile-status terminal-tile-status-${loadState}`}>
+            {loadState === "connecting" ? "Connecting terminal..." : errorMessage ?? "Terminal failed to load."}
+          </div>
+        ) : null}
+      </div>
     </CanvasTileComponent>
   );
 }

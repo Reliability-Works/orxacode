@@ -2024,6 +2024,12 @@ export class OpencodeService {
   }
 
   private baseWsUrl() {
+    if (this.managedBaseUrl && this.managedProcess) {
+      const managedUrl = new URL(this.managedBaseUrl);
+      managedUrl.protocol = managedUrl.protocol === "https:" ? "wss:" : "ws:";
+      return managedUrl;
+    }
+
     const active = this.requireProfile();
     const protocol = active.https ? "wss" : "ws";
     return new URL(`${protocol}://${active.host}:${active.port}`);

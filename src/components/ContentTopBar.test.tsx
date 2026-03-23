@@ -12,6 +12,8 @@ function buildProps() {
       toggleProjectsPane: vi.fn(),
       showGitPane: true,
       setGitPaneVisible: vi.fn(),
+      browserSidebarOpen: false,
+      toggleBrowserSidebar: vi.fn(),
       gitDiffStats: { additions: 0, deletions: 0, filesChanged: 0, hasChanges: false },
       contentPaneTitle: "Workspace",
       activeProjectDir: "/tmp/workspace",
@@ -149,5 +151,14 @@ describe("ContentTopBar open target control", () => {
     render(<ContentTopBar {...props} showTerminalToggle={false} />);
 
     expect(screen.queryByRole("button", { name: "Toggle terminal" })).not.toBeInTheDocument();
+  });
+
+  it("toggles the browser sidebar from the top bar", () => {
+    const { props } = buildProps();
+    render(<ContentTopBar {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open browser sidebar" }));
+
+    expect(props.toggleBrowserSidebar).toHaveBeenCalledTimes(1);
   });
 });
