@@ -115,15 +115,31 @@ function formatErrorMessage(error: unknown) {
   return "Unknown updater error";
 }
 
-function isMissingStableReleaseError(error: unknown, releaseChannel: UpdateReleaseChannel): boolean {
-  if (releaseChannel !== "stable") {
-    return false;
-  }
+function isMissingReleaseError(error: unknown): boolean {
   const message = formatErrorMessage(error).toLowerCase();
+  // No release found at all
   if (message.includes("unable to find latest version on github")) {
     return true;
   }
-  return message.includes("/releases/latest") && message.includes("httperror: 406");
+  // Stable channel: 406 on /releases/latest
+  if (message.includes("/releases/latest") && message.includes("httperror: 406")) {
+    return true;
+  }
+  // Release artifact not yet published (e.g. CI still running): 404 on latest-mac.yml
+  if (message.includes("latest-mac.yml") && message.includes("httperror: 404")) {
+    return true;
+  }
+  if (message.includes("latest-linux.yml") && message.includes("httperror: 404")) {
+    return true;
+  }
+  if (message.includes("latest.yml") && message.includes("httperror: 404")) {
+    return true;
+  }
+  // Cannot find latest version in release artifacts
+  if (message.includes("cannot find") && message.includes("latest") && message.includes("release artifacts")) {
+    return true;
+  }
+  return false;
 }
 
 async function showMessage(
@@ -304,12 +320,12 @@ export function createAutoUpdaterController(options: {
     isDownloadingUpdate = false;
     activeDownloadManual = false;
     installAfterDownload = false;
-    if (isMissingStableReleaseError(error, preferences.releaseChannel)) {
+    if (isMissingReleaseError(error)) {
       emitTelemetry({
         phase: "check.success",
         manual,
         durationMs,
-        message: "No stable release has been published yet.",
+        message: "No update available — release not found or not yet published.",
       });
 
       pendingManualResult = false;
@@ -319,16 +335,16 @@ export function createAutoUpdaterController(options: {
       if (manual) {
         await showMessage(deps, getWindow, {
           type: "info",
-          title: "No stable updates available",
-          message: "You're on the stable channel and no stable release is published yet.",
-          detail: "Switch release channel to Prerelease to receive beta updates.",
+          title: "Already up to date",
+          message: "No updates available right now.",
+          detail: "The release may still be building, or you're already on the latest version.",
           buttons: ["OK"],
           defaultId: 0,
           cancelId: 0,
         });
       }
 
-      console.info("Auto update check skipped: no stable release published yet for the stable channel.");
+      console.info("Auto update check: no release artifact found (may not be published yet).");
       return "nonfatal";
     }
 
@@ -394,7 +410,7 @@ export function createAutoUpdaterController(options: {
         return {
           ok: true,
           status: "skipped",
-          message: "No stable release has been published yet.",
+          message: "Already up to date.",
         };
       }
       return {

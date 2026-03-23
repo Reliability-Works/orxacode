@@ -333,17 +333,17 @@ describe("createAutoUpdaterController", () => {
 
     expect(result.ok).toBe(true);
     expect(result.status).toBe("skipped");
-    expect(result.message).toContain("No stable release");
+    expect(result.message).toContain("Already up to date");
     expect(harness.showMessageBox).toHaveBeenCalledWith(
       null,
       expect.objectContaining({
-        title: "No stable updates available",
+        title: "Already up to date",
       }),
     );
     expect(harness.publishTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
         phase: "check.success",
-        message: "No stable release has been published yet.",
+        message: "No update available — release not found or not yet published.",
       }),
     );
     expect(console.error).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe("createAutoUpdaterController", () => {
     expect(harness.publishTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
         phase: "check.success",
-        message: "No stable release has been published yet.",
+        message: "No update available — release not found or not yet published.",
       }),
     );
     expect(console.error).not.toHaveBeenCalled();
