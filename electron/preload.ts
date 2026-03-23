@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { IPC, type OrxaBridge } from "../shared/ipc";
 import { createIpcEventHub } from "./services/ipc-event-hub";
 
-const eventHub = createIpcEventHub(ipcRenderer, IPC.events);
+const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch]);
 
 const bridge: OrxaBridge = {
   app: {
@@ -138,6 +138,7 @@ const bridge: OrxaBridge = {
     respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
     getSessionMessages: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
     archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
+    archiveProviderSession: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
   },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),

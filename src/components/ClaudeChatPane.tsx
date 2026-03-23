@@ -88,6 +88,7 @@ export function ClaudeChatPane({
     interruptTurn,
     approveAction,
     respondToUserInput,
+    archiveProviderSession,
     loadSubagentMessages,
   } = useClaudeChatSession(directory, sessionStorageKey);
   const [composer, setComposer] = useState("");
@@ -97,6 +98,7 @@ export function ClaudeChatPane({
   const [thinking, setThinking] = useState(true);
   const [fastMode, setFastMode] = useState(false);
   const [selectedBackgroundAgentId, setSelectedBackgroundAgentId] = useState<string | null>(null);
+  const [archivedBackgroundAgentIds, setArchivedBackgroundAgentIds] = useState<string[]>([]);
   const [subagentMessages, setSubagentMessages] = useState<Record<string, ClaudeChatMessageItem[]>>({});
   const [subagentLoading, setSubagentLoading] = useState<Record<string, boolean>>({});
   const [subagentErrors, setSubagentErrors] = useState<Record<string, string | null>>({});
@@ -134,24 +136,64 @@ export function ClaudeChatPane({
     () => buildClaudeChatBackgroundAgents(subagents),
     [subagents],
   );
+  const visibleBackgroundAgents = useMemo(
+    () => backgroundAgents.filter((agent) => !archivedBackgroundAgentIds.includes(agent.id) && !(agent.sessionID && archivedBackgroundAgentIds.includes(agent.sessionID))),
+    [archivedBackgroundAgentIds, backgroundAgents],
+  );
+  const hasLoadedSelectedSubagentMessages = useMemo(
+    () => (activeSubagent ? Boolean(subagentMessages[activeSubagent.id]) : false),
+    [activeSubagent, subagentMessages],
+  );
 
   useEffect(() => {
-    if (!activeSubagent?.sessionID || subagentMessages[activeSubagent.id] || subagentLoading[activeSubagent.id]) {
+    setArchivedBackgroundAgentIds((current) =>
+      current.filter((id) => backgroundAgents.some((agent) => agent.id === id || agent.sessionID === id)),
+    );
+  }, [backgroundAgents]);
+
+  useEffect(() => {
+    const sessionID = activeSubagent?.sessionID;
+    if (!sessionID) {
       return;
     }
-    setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: true }));
-    setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: null }));
-    void loadSubagentMessages(activeSubagent.sessionID)
-      .then((history) => {
+    let cancelled = false;
+    let timer: number | null = null;
+    const shouldShowLoading = !hasLoadedSelectedSubagentMessages;
+
+    const load = async (showLoading: boolean) => {
+      if (showLoading) {
+        setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: true }));
+      }
+      setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: null }));
+      try {
+        const history = await loadSubagentMessages(sessionID);
+        if (cancelled) {
+          return;
+        }
         setSubagentMessages((prev) => ({ ...prev, [activeSubagent.id]: historyToMessageItems(history) }));
-      })
-      .catch((error) => {
-        setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: error instanceof Error ? error.message : String(error) }));
-      })
-      .finally(() => {
-        setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: false }));
-      });
-  }, [activeSubagent, loadSubagentMessages, subagentLoading, subagentMessages]);
+      } catch (error) {
+        if (!cancelled) {
+          setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: error instanceof Error ? error.message : String(error) }));
+        }
+      } finally {
+        if (!cancelled && showLoading) {
+          setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: false }));
+        }
+      }
+    };
+
+    void load(shouldShowLoading);
+    timer = window.setInterval(() => {
+      void load(false);
+    }, 1300);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) {
+        window.clearInterval(timer);
+      }
+    };
+  }, [activeSubagent, hasLoadedSelectedSubagentMessages, loadSubagentMessages]);
 
   const subagentDetailPresentation = useMemo(() => {
     if (!activeSubagent) {
@@ -298,10 +340,27 @@ export function ClaudeChatPane({
             onFastModeChange={setFastMode}
           />
         )}
-        backgroundAgents={backgroundAgents}
+        backgroundAgents={visibleBackgroundAgents}
         selectedBackgroundAgentId={selectedBackgroundAgentId}
         onOpenBackgroundAgent={(id) => setSelectedBackgroundAgentId(id)}
         onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
+        onArchiveBackgroundAgent={async (agent) => {
+          const sessionID = agent.sessionID;
+          if (sessionID) {
+            await archiveProviderSession(sessionID);
+          }
+          setArchivedBackgroundAgentIds((current) => {
+            const next = new Set(current);
+            next.add(agent.id);
+            if (sessionID) {
+              next.add(sessionID);
+            }
+            return [...next];
+          });
+          if (selectedBackgroundAgentId === agent.id) {
+            setSelectedBackgroundAgentId(null);
+          }
+        }}
         backgroundAgentDetail={
           subagentDetailPresentation
             ? subagentDetailPresentation.map((row) => <UnifiedTimelineRowView key={row.id} row={row} />)

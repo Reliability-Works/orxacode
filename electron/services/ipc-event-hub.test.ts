@@ -5,15 +5,15 @@ import type { OrxaEvent } from "../../shared/ipc";
 import { createIpcEventHub } from "./ipc-event-hub";
 
 class TinyEmitter {
-  private listeners = new Map<string, Set<(event: unknown, payload: OrxaEvent) => void>>();
+  private listeners = new Map<string, Set<(event: unknown, payload: OrxaEvent | OrxaEvent[]) => void>>();
 
-  on(event: string, listener: (event: unknown, payload: OrxaEvent) => void) {
-    const entries = this.listeners.get(event) ?? new Set<(event: unknown, payload: OrxaEvent) => void>();
+  on(event: string, listener: (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void) {
+    const entries = this.listeners.get(event) ?? new Set<(event: unknown, payload: OrxaEvent | OrxaEvent[]) => void>();
     entries.add(listener);
     this.listeners.set(event, entries);
   }
 
-  removeListener(event: string, listener: (event: unknown, payload: OrxaEvent) => void) {
+  removeListener(event: string, listener: (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void) {
     const entries = this.listeners.get(event);
     if (!entries) {
       return;
@@ -24,7 +24,7 @@ class TinyEmitter {
     }
   }
 
-  emit(event: string, payload: OrxaEvent) {
+  emit(event: string, payload: OrxaEvent | OrxaEvent[]) {
     const entries = this.listeners.get(event);
     if (!entries) {
       return;
@@ -44,10 +44,10 @@ describe("createIpcEventHub", () => {
     const hub = createIpcEventHub(
       {
         on: (channel, listener) => {
-          emitter.on(channel, listener as (event: unknown, payload: OrxaEvent) => void);
+          emitter.on(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
         },
         removeListener: (channel, listener) => {
-          emitter.removeListener(channel, listener as (event: unknown, payload: OrxaEvent) => void);
+          emitter.removeListener(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
         },
       },
       "orxa:events",
@@ -72,10 +72,10 @@ describe("createIpcEventHub", () => {
     const hub = createIpcEventHub(
       {
         on: (channel, listener) => {
-          emitter.on(channel, listener as (event: unknown, payload: OrxaEvent) => void);
+          emitter.on(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
         },
         removeListener: (channel, listener) => {
-          emitter.removeListener(channel, listener as (event: unknown, payload: OrxaEvent) => void);
+          emitter.removeListener(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
         },
       },
       "orxa:events",
@@ -113,5 +113,34 @@ describe("createIpcEventHub", () => {
     expect(seenByFirst.at(-1)).toBe(totalEvents - 1);
 
     stopFirst();
+  });
+
+  it("fans out batched payloads in order", () => {
+    const emitter = new TinyEmitter();
+    const hub = createIpcEventHub(
+      {
+        on: (channel, listener) => {
+          emitter.on(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
+        },
+        removeListener: (channel, listener) => {
+          emitter.removeListener(channel, listener as (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void);
+        },
+      },
+      ["orxa:events", "orxa:events:batch"],
+    );
+
+    const seen: string[] = [];
+    hub.subscribe((event) => {
+      seen.push(event.type);
+    });
+
+    const payload = [
+      { type: "codex.notification", payload: { method: "assistant/partial", params: {} } },
+      { type: "claude-chat.notification", payload: { sessionKey: "s1", method: "assistant/partial", params: {} } },
+    ] as OrxaEvent[];
+
+    emitter.emit("orxa:events:batch", payload);
+
+    expect(seen).toEqual(["codex.notification", "claude-chat.notification"]);
   });
 });

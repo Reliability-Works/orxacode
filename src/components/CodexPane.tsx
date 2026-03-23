@@ -15,11 +15,11 @@ import {
   buildCodexBackgroundAgents,
   buildCodexBackgroundAgentsFromChildThreads,
   buildCodexBackgroundAgentsFromMessages,
-  extractReviewChangesFiles,
   extractCodexTodoItemsFromMessages,
   filterOutCurrentCodexThreadAgent,
   projectCodexSessionPresentation,
 } from "../lib/session-presentation";
+import { extractReviewChangesFiles } from "../lib/timeline-row-grouping";
 import { selectPendingPermissionDockData, selectPendingPlanDockData, selectPendingQuestionDockData, useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 interface Props {

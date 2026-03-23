@@ -86,21 +86,15 @@ export function BackgroundAgentsPanel({
                     </span>
                   </div>
                   <div className="agent-dock-row-actions">
-                    {agent.sessionID ? (
-                      <button
-                        type="button"
-                        className="agent-dock-action"
-                        aria-label={`Open ${agent.name}`}
-                        title={`Open ${agent.name}`}
-                        onClick={() => onOpenAgent(agent.id)}
-                      >
-                        <ExternalLink size={13} aria-hidden="true" />
-                      </button>
-                    ) : (
-                      <button type="button" className="agent-dock-action" disabled aria-disabled="true" aria-label={`${agent.name} pending`}>
-                        <ExternalLink size={13} aria-hidden="true" />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="agent-dock-action"
+                      aria-label={`Open ${agent.name}`}
+                      title={`Open ${agent.name}`}
+                      onClick={() => onOpenAgent(agent.id)}
+                    >
+                      <ExternalLink size={13} aria-hidden="true" />
+                    </button>
                     <button
                       type="button"
                       className="agent-dock-action"

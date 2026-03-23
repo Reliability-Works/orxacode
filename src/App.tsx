@@ -21,7 +21,6 @@ import type {
   ChangeProvenanceRecord,
   OpenCodeAgentFile,
   ProjectListItem,
-  ProjectBootstrap,
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeDependencyReport,
@@ -73,6 +72,10 @@ import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
 import { useBrowserAgentBridge } from "./hooks/useBrowserAgentBridge";
 import { useWorkspaceState } from "./hooks/useWorkspaceState";
+import { useWorkspaceSessionMetadata } from "./hooks/useWorkspaceSessionMetadata";
+import { useWorkspaceSessionMetadataMigration } from "./hooks/useWorkspaceSessionMetadataMigration";
+import { useAppShellSessionCollections } from "./hooks/useAppShellSessionCollections";
+import { useBackgroundSessionDescriptors } from "./hooks/useBackgroundSessionDescriptors";
 import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
 import {
@@ -80,15 +83,12 @@ import {
   buildClaudeSessionStatus,
   buildCodexSessionStatus,
   buildOpencodeSessionStatus,
-  selectActiveBackgroundAgentsPresentation,
   selectActiveComposerPresentation,
-  selectClaudeChatSessionRuntime,
   selectActiveTaskListPresentation,
   selectPendingPermissionDockData,
   selectPendingQuestionDockData,
   selectCodexSessionRuntime,
   selectSessionPresentation,
-  selectSidebarSessionPresentation,
   useUnifiedRuntimeStore,
 } from "./state/unified-runtime-store";
 import {
@@ -124,12 +124,10 @@ import {
   buildAppShellHomeDashboardProps,
   deriveAppShellWorkspaceLayout,
 } from "./lib/app-shell-view-models";
-import { extractReviewChangesFiles, type UnifiedBackgroundAgentSummary } from "./lib/session-presentation";
+import type { UnifiedBackgroundAgentSummary } from "./lib/session-presentation";
+import { extractReviewChangesFiles } from "./lib/timeline-row-grouping";
 import {
   buildWorkspaceSessionMetadataKey,
-  migrateLegacySessionMetadata,
-  readWorkspaceSessionMetadata,
-  type WorkspaceSessionReference,
 } from "./lib/workspace-session-metadata";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
@@ -187,11 +185,6 @@ const SIDEBAR_BROWSER_WIDTH_KEY = "orxa:browserPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
-const LEGACY_SESSION_TYPES_KEY = "orxa:sessionTypes:v1";
-const LEGACY_SESSION_TITLES_KEY = "orxa:sessionTitles:v1";
-const SESSION_TYPES_KEY = "orxa:sessionTypes:v2";
-const SESSION_TITLES_KEY = "orxa:sessionTitles:v2";
-const MANUAL_SESSION_TITLES_KEY = "orxa:manualSessionTitles:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
 const DEFAULT_TERMINAL_PANEL_HEIGHT = 180;
@@ -408,23 +401,6 @@ function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
   return result.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-function readLocalStorageRecord<T>(key: string): Record<string, T> {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      return {};
-    }
-    const parsed = JSON.parse(raw) as Record<string, T>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 function splitCommandLines(commands: string) {
   return commands
     .replace(/\r\n/g, "\n")
@@ -591,6 +567,20 @@ export default function App() {
   const [sessionProvenanceByPath, setSessionProvenanceByPath] = useState<Record<string, ChangeProvenanceRecord>>({});
   const scheduleGitRefreshRef = useRef<((delayMs?: number) => void) | null>(null);
   const {
+    sessionTypes,
+    setSessionTypes,
+    setSessionTitles,
+    manualSessionTitles,
+    setManualSessionTitles,
+    codexSessionCount,
+    claudeSessionCount,
+    clearSessionMetadata,
+    cleanupEmptySession,
+    getSessionType,
+    getSessionTitle,
+    normalizePresentationProvider,
+  } = useWorkspaceSessionMetadata();
+  const {
     sidebarMode,
     setSidebarMode,
     activeProjectDir,
@@ -622,6 +612,7 @@ export default function App() {
     openProjectContextMenu,
     openSessionContextMenu,
     markSessionUsed,
+    cleanupPersistedEmptySessions,
   } = useWorkspaceState({
     setStatusLine,
     terminalTabIds: terminalTabs.map((t) => t.id),
@@ -629,41 +620,7 @@ export default function App() {
     setActiveTerminalId,
     setTerminalOpen,
     scheduleGitRefresh: (delayMs) => scheduleGitRefreshRef.current?.(delayMs),
-    onCleanupEmptySession: (directory, sessionID) => {
-      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
-      const sessionType = getSessionType(sessionID, directory);
-      if (sessionType === "codex") {
-        clearPersistedCodexState(sessionKey);
-        removeCodexSession(sessionKey);
-      } else if (sessionType === "claude-chat") {
-        clearPersistedClaudeChatState(sessionKey);
-        removeClaudeChatSession(sessionKey);
-      }
-      setSessionTypes((prev) => {
-        if (!(sessionKey in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[sessionKey];
-        return next;
-      });
-      setSessionTitles((prev) => {
-        if (!(sessionKey in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[sessionKey];
-        return next;
-      });
-      setManualSessionTitles((prev) => {
-        if (!(sessionKey in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[sessionKey];
-        return next;
-      });
-    },
+    onCleanupEmptySession: cleanupEmptySession,
   });
 
   const openSession = useCallback(
@@ -689,12 +646,8 @@ export default function App() {
     serialize: (value) => value,
   });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
-  const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {});
-  const [sessionTitles, setSessionTitles] = usePersistedState<Record<string, string>>(SESSION_TITLES_KEY, {});
-  const [manualSessionTitles, setManualSessionTitles] = usePersistedState<Record<string, boolean>>(MANUAL_SESSION_TITLES_KEY, {});
   const [projectCacheVersion, setProjectCacheVersion] = useState(0);
   const canvasState = useCanvasState(activeSessionID ?? "__none__", activeProjectDir ?? undefined);
-  const sessionMetadataMigrationDoneRef = useRef(false);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
   const sessionReadTimestamps = useUnifiedRuntimeStore((state) => state.sessionReadTimestamps);
   const workspaceMetaByDirectory = useUnifiedRuntimeStore((state) => state.workspaceMetaByDirectory);
@@ -706,14 +659,22 @@ export default function App() {
   const projectDataByDirectory = useUnifiedRuntimeStore((state) => state.projectDataByDirectory);
   const setSessionReadAt = useUnifiedRuntimeStore((state) => state.setSessionReadAt);
   const clearSessionReadAt = useUnifiedRuntimeStore((state) => state.clearSessionReadAt);
-  const removeCodexSession = useUnifiedRuntimeStore((state) => state.removeCodexSession);
-  const removeClaudeChatSession = useUnifiedRuntimeStore((state) => state.removeClaudeChatSession);
   const removeClaudeSession = useUnifiedRuntimeStore((state) => state.removeClaudeSession);
+  const removeClaudeChatSession = useUnifiedRuntimeStore((state) => state.removeClaudeChatSession);
   const setProjectDataForDirectory = useUnifiedRuntimeStore((state) => state.setProjectData);
   const initCodexSession = useUnifiedRuntimeStore((state) => state.initCodexSession);
   const setCodexThread = useUnifiedRuntimeStore((state) => state.setCodexThread);
   const setCodexStreaming = useUnifiedRuntimeStore((state) => state.setCodexStreaming);
   const replaceCodexMessages = useUnifiedRuntimeStore((state) => state.replaceCodexMessages);
+  useWorkspaceSessionMetadataMigration({
+    projects,
+    projectData: projectData ?? undefined,
+    projectDataByDirectory,
+    setProjectDataForDirectory,
+    bumpProjectCacheVersion: () => setProjectCacheVersion((version) => version + 1),
+    setSessionTypes,
+    setSessionTitles,
+  });
   const [leftPaneWidth, setLeftPaneWidth] = usePersistedState<number>(SIDEBAR_LEFT_WIDTH_KEY, 300, {
     deserialize: (raw) => {
       const parsed = Number(raw);
@@ -852,37 +813,6 @@ export default function App() {
     activeProjectDir ?? null,
     projectData,
   );
-  const codexSessionCount = useMemo(
-    () => Object.values(sessionTypes).filter((t) => t === "codex").length,
-    [sessionTypes],
-  );
-  const claudeSessionCount = useMemo(
-    () => Object.values(sessionTypes).filter((t) => t === "claude" || t === "claude-chat").length,
-    [sessionTypes],
-  );
-  const getSessionType = useCallback(
-    (sessionID: string, directory?: string) => {
-      if (!sessionID) {
-        return undefined;
-      }
-      return readWorkspaceSessionMetadata(sessionTypes, directory, sessionID) ?? "standalone";
-    },
-    [sessionTypes],
-  );
-  const getSessionTitle = useCallback(
-    (sessionID: string, directory?: string, fallbackTitle?: string) =>
-      readWorkspaceSessionMetadata(sessionTitles, directory, sessionID) ?? fallbackTitle,
-    [sessionTitles],
-  );
-  const normalizePresentationProvider = useCallback((sessionType: string | undefined) => {
-    if (sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat") {
-      return sessionType;
-    }
-    if (sessionType === "opencode" || sessionType === "canvas" || sessionType === "standalone") {
-      return "opencode" as const;
-    }
-    return undefined;
-  }, []);
   const activeSessionType = useMemo(
     () => getSessionType(activeSessionID ?? "", activeProjectDir),
     [activeProjectDir, activeSessionID, getSessionType],
@@ -1041,53 +971,24 @@ export default function App() {
     scheduleGitRefreshRef.current = scheduleGitRefresh;
   }, [scheduleGitRefresh]);
 
-  const hiddenSessionIDsByProject = useMemo(() => {
-    const projects = new Set([
-      ...Object.keys(archivedBackgroundAgentIds),
-      ...Object.keys(hiddenBackgroundSessionIdsByProject),
-    ]);
-    const next: Record<string, string[]> = {};
-    for (const directory of projects) {
-      const ids = new Set([
-        ...(archivedBackgroundAgentIds[directory] ?? []),
-        ...(hiddenBackgroundSessionIdsByProject[directory] ?? []),
-      ]);
-      next[directory] = [...ids];
-    }
-    return next;
-  }, [archivedBackgroundAgentIds, hiddenBackgroundSessionIdsByProject]);
-
-  const sessions = useMemo(() => {
-    if (!projectData) {
-      return [];
-    }
-    const pinned = new Set(pinnedSessions[projectData.directory] ?? []);
-    const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[projectData.directory] ?? []);
-    return [...projectData.sessions]
-      .filter((item) => !item.time.archived && !hiddenSessionIDs.has(item.id))
-      .sort((a, b) => {
-        const aPinned = pinned.has(a.id) ? 1 : 0;
-        const bPinned = pinned.has(b.id) ? 1 : 0;
-        if (aPinned !== bPinned) {
-          return bPinned - aPinned;
-        }
-        return b.time.updated - a.time.updated;
-      });
-  }, [hiddenSessionIDsByProject, pinnedSessions, projectData]);
-
-  // Build per-project session lists from cache for sidebar display
-  const cachedSessionsByProject = useMemo(() => {
-    void projectCacheVersion;
-    const result: Record<string, Array<{ id: string; title?: string; slug: string; time: { updated: number } }>> = {};
-    for (const [dir, data] of Object.entries(projectDataByDirectory)) {
-      if (dir === activeProjectDir) continue; // Active project uses live `sessions`
-      const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[dir] ?? []);
-      result[dir] = [...data.sessions]
-        .filter((s) => !s.time.archived && !hiddenSessionIDs.has(s.id))
-        .sort((a, b) => b.time.updated - a.time.updated);
-    }
-    return result;
-  }, [activeProjectDir, hiddenSessionIDsByProject, projectCacheVersion, projectDataByDirectory]);
+  const {
+    hiddenSessionIDsByProject,
+    sessions,
+    cachedSessionsByProject,
+    getSessionStatusType,
+    getSessionIndicator,
+  } = useAppShellSessionCollections({
+    projectData: projectData ?? undefined,
+    projectDataByDirectory,
+    activeProjectDir,
+    activeSessionID: activeSessionID ?? undefined,
+    projectCacheVersion,
+    pinnedSessions,
+    archivedBackgroundAgentIds,
+    hiddenBackgroundSessionIdsByProject,
+    getSessionType,
+    normalizePresentationProvider,
+  });
 
   const availableSlashCommands = useMemo(() => {
     return projectData?.commands ?? [];
@@ -1655,6 +1556,7 @@ export default function App() {
   }, [selectedModel, modelSelectOptions]);
   const startupSteps = useMemo(() => [
     { message: "Loading runtime profiles…", action: refreshProfiles },
+    { message: "Cleaning temporary sessions…", action: cleanupPersistedEmptySessions },
     { message: "Bootstrapping workspaces…", action: bootstrap },
     { message: "Loading model references…", action: refreshConfigModels },
     { message: "Loading provider registry…", action: refreshGlobalProviders },
@@ -1664,6 +1566,7 @@ export default function App() {
     { message: "Syncing browser state…", action: syncBrowserSnapshot },
   ], [
     bootstrap,
+    cleanupPersistedEmptySessions,
     refreshConfigModels,
     refreshGlobalAgents,
     refreshGlobalProviders,
@@ -2062,61 +1965,10 @@ export default function App() {
     });
     return withIndex.map((item) => item.project);
   }, [projectSearchQuery, projectSortMode, projects, workspaceMetaByDirectory]);
-  const getSessionStatusType = useCallback(
-    (sessionID: string, directory?: string) => {
-      void claudeChatSessionStateMap;
-      void claudeSessionStateMap;
-      void codexSessionStateMap;
-      void opencodeSessionStateMap;
-      if (!directory) return "idle";
-      const sessionType = getSessionType(sessionID, directory);
-      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
-      const isActiveSession = activeProjectDir === directory && activeSessionID === sessionID;
-      const provider = normalizePresentationProvider(sessionType);
-      if (!provider) {
-        return "idle";
-      }
-      return selectSidebarSessionPresentation({
-        provider,
-        directory,
-        sessionID,
-        updatedAt: 0,
-        isActive: isActiveSession,
-        sessionKey,
-      }).statusType;
-    },
-    [activeProjectDir, activeSessionID, claudeChatSessionStateMap, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
-  );
-
   const setSessionReadTimestamp = useCallback((directory: string, sessionID: string, nextReadAt: number) => {
     const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
     setSessionReadAt(sessionKey, nextReadAt);
   }, [setSessionReadAt]);
-
-  const getSessionIndicator = useCallback(
-    (sessionID: string, directory: string, updatedAt: number) => {
-      void claudeChatSessionStateMap;
-      void claudeSessionStateMap;
-      void codexSessionStateMap;
-      void opencodeSessionStateMap;
-      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
-      const sessionType = getSessionType(sessionID, directory);
-      const isActiveSession = activeProjectDir === directory && activeSessionID === sessionID;
-      const provider = normalizePresentationProvider(sessionType);
-      if (!provider) {
-        return "none" as const;
-      }
-      return selectSidebarSessionPresentation({
-        provider,
-        directory,
-        sessionID,
-        updatedAt,
-        isActive: isActiveSession,
-        sessionKey,
-      }).indicator;
-    },
-    [activeProjectDir, activeSessionID, claudeChatSessionStateMap, claudeSessionStateMap, codexSessionStateMap, getSessionType, normalizePresentationProvider, opencodeSessionStateMap],
-  );
 
   useEffect(() => {
     const cachedProjects = { ...projectDataByDirectory };
@@ -2386,74 +2238,6 @@ export default function App() {
     setAllSessionsModalOpen(false);
   }, [activeProjectDir]);
 
-  useEffect(() => {
-    if (sessionMetadataMigrationDoneRef.current || projects.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      const legacyTypes = readLocalStorageRecord<SessionType>(LEGACY_SESSION_TYPES_KEY);
-      const legacyTitles = readLocalStorageRecord<string>(LEGACY_SESSION_TITLES_KEY);
-      if (Object.keys(legacyTypes).length === 0 && Object.keys(legacyTitles).length === 0) {
-        sessionMetadataMigrationDoneRef.current = true;
-        return;
-      }
-
-      const discoveredSessions: WorkspaceSessionReference[] = [];
-      let fullyLoaded = true;
-
-      for (const project of projects) {
-        let data: ProjectBootstrap | undefined =
-          projectData?.directory === project.worktree
-            ? projectData
-            : projectDataByDirectory[project.worktree];
-
-        if (!data) {
-          data = await opencodeClient.refreshProject(project.worktree).catch(() => undefined);
-          if (data) {
-            setProjectDataForDirectory(project.worktree, data);
-            setProjectCacheVersion((version) => version + 1);
-          } else {
-            fullyLoaded = false;
-            continue;
-          }
-        }
-
-        for (const session of data.sessions) {
-          if (session.time.archived) {
-            continue;
-          }
-          discoveredSessions.push({
-            directory: project.worktree,
-            sessionID: session.id,
-          });
-        }
-      }
-
-      if (cancelled) {
-        return;
-      }
-
-      if (Object.keys(legacyTypes).length > 0) {
-        setSessionTypes((current) => migrateLegacySessionMetadata(legacyTypes, current, discoveredSessions));
-      }
-      if (Object.keys(legacyTitles).length > 0) {
-        setSessionTitles((current) => migrateLegacySessionMetadata(legacyTitles, current, discoveredSessions));
-      }
-
-      if (fullyLoaded) {
-        window.localStorage.removeItem(LEGACY_SESSION_TYPES_KEY);
-        window.localStorage.removeItem(LEGACY_SESSION_TITLES_KEY);
-        sessionMetadataMigrationDoneRef.current = true;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectData, projectDataByDirectory, projects, setProjectDataForDirectory, setSessionTitles, setSessionTypes]);
-
   const removeProjectDirectory = useCallback(
     async (directory: string, label: string) => {
       try {
@@ -2586,25 +2370,7 @@ export default function App() {
           removeClaudeSession(sessionKey);
         }
         clearSessionReadAt(sessionKey);
-        // Clear session type tracking
-        setSessionTypes((prev) => {
-          const next = { ...prev };
-          delete next[sessionKey];
-          return next;
-        });
-        setSessionTitles((prev) => {
-          const next = { ...prev };
-          delete next[sessionKey];
-          return next;
-        });
-        setManualSessionTitles((prev) => {
-          if (!(sessionKey in prev)) {
-            return prev;
-          }
-          const next = { ...prev };
-          delete next[sessionKey];
-          return next;
-        });
+        clearSessionMetadata(sessionKey);
         removeSessionFromLocalProjectCache(directory, sessionID);
         const next = await refreshProject(directory);
         if (sessionID === activeSessionID) {
@@ -2620,6 +2386,7 @@ export default function App() {
     [
       activeSessionID,
       clearPendingSession,
+      clearSessionMetadata,
       clearSessionReadAt,
       getSessionType,
       refreshProject,
@@ -2627,9 +2394,6 @@ export default function App() {
       removeClaudeSession,
       removeSessionFromLocalProjectCache,
       setActiveSessionID,
-      setManualSessionTitles,
-      setSessionTitles,
-      setSessionTypes,
     ],
   );
 
@@ -2943,129 +2707,20 @@ export default function App() {
     }
     return next;
   }, [projectData, projectDataByDirectory]);
-  const inactiveCodexSessions = useMemo(() => {
-    const seenSessionKeys = new Set<string>();
-    const next: Array<{ directory: string; sessionStorageKey: string }> = [];
-    for (const [directory, data] of Object.entries(cachedProjects)) {
-      for (const session of data.sessions) {
-        if (getSessionType(session.id, directory) !== "codex") {
-          continue;
-        }
-        const sessionStorageKey = buildWorkspaceSessionMetadataKey(directory, session.id);
-        if (sessionStorageKey === activeSessionKey || seenSessionKeys.has(sessionStorageKey)) {
-          continue;
-        }
-        const runtime = codexSessionStateMap[sessionStorageKey];
-        const persisted = getPersistedCodexState(sessionStorageKey);
-        const hasBackgroundRuntime =
-          Boolean(runtime?.thread) ||
-          Boolean(runtime?.isStreaming) ||
-          (runtime?.messages.length ?? 0) > 0 ||
-          Boolean(persisted.thread) ||
-          Boolean(persisted.isStreaming) ||
-          persisted.messages.length > 0;
-        if (!hasBackgroundRuntime) {
-          continue;
-        }
-        seenSessionKeys.add(sessionStorageKey);
-        next.push({ directory, sessionStorageKey });
-      }
-    }
-    return next;
-  }, [activeSessionKey, cachedProjects, codexSessionStateMap, getSessionType]);
-  const inactiveOpencodeSessions = useMemo(() => {
-    const next: Array<{ directory: string; sessionID: string }> = [];
-    for (const [directory, data] of Object.entries(cachedProjects)) {
-      for (const session of data.sessions) {
-        const sessionType = getSessionType(session.id, directory);
-        if (normalizePresentationProvider(sessionType) !== "opencode") {
-          continue;
-        }
-        const sessionStorageKey = buildWorkspaceSessionMetadataKey(directory, session.id);
-        if (sessionStorageKey === activeSessionKey) {
-          continue;
-        }
-        const status = buildOpencodeSessionStatus(directory, session.id, false, sessionStorageKey);
-        if (status.type !== "busy" && status.type !== "awaiting") {
-          continue;
-        }
-        next.push({ directory, sessionID: session.id });
-      }
-    }
-    return next;
-  }, [activeSessionKey, cachedProjects, getSessionType, normalizePresentationProvider]);
-  const inactiveClaudeSessions = useMemo(() => {
-    const next: Array<{ directory: string; sessionStorageKey: string }> = [];
-    for (const [directory, data] of Object.entries(cachedProjects)) {
-      for (const session of data.sessions) {
-        if (getSessionType(session.id, directory) !== "claude") {
-          continue;
-        }
-        const sessionStorageKey = buildWorkspaceSessionMetadataKey(directory, session.id);
-        if (sessionStorageKey === activeSessionKey) {
-          continue;
-        }
-        const status = buildClaudeSessionStatus(sessionStorageKey, false);
-        if (status.type !== "busy" && status.type !== "awaiting") {
-          continue;
-        }
-        next.push({ directory, sessionStorageKey });
-      }
-    }
-    return next;
-  }, [activeSessionKey, cachedProjects, getSessionType]);
-  const inactiveClaudeChatSessions = useMemo(() => {
-    const next: Array<{ directory: string; sessionStorageKey: string }> = [];
-    for (const [directory, data] of Object.entries(cachedProjects)) {
-      for (const session of data.sessions) {
-        if (getSessionType(session.id, directory) !== "claude-chat") {
-          continue;
-        }
-        const sessionStorageKey = buildWorkspaceSessionMetadataKey(directory, session.id);
-        if (sessionStorageKey === activeSessionKey) {
-          continue;
-        }
-        const runtime = claudeChatSessionStateMap[sessionStorageKey] ?? selectClaudeChatSessionRuntime(sessionStorageKey);
-        const hasBackgroundRuntime =
-          Boolean(runtime?.providerThreadId) ||
-          Boolean(runtime?.isStreaming) ||
-          Boolean(runtime?.pendingApproval) ||
-          Boolean(runtime?.pendingUserInput) ||
-          (runtime?.messages.length ?? 0) > 0 ||
-          (runtime?.subagents.length ?? 0) > 0;
-        if (!hasBackgroundRuntime) {
-          continue;
-        }
-        const status = buildClaudeChatSessionStatus(sessionStorageKey, false);
-        if (status.type !== "busy" && status.type !== "awaiting") {
-          continue;
-        }
-        next.push({ directory, sessionStorageKey });
-      }
-    }
-    return next;
-  }, [activeSessionKey, cachedProjects, claudeChatSessionStateMap, getSessionType]);
-  const activeBackgroundAgents = selectActiveBackgroundAgentsPresentation({
-    provider: normalizePresentationProvider(activeSessionType),
-    directory: activeProjectDir,
-    sessionID: activeSessionID,
-    sessionKey: activeSessionKey ?? undefined,
+  const {
+    backgroundSessionDescriptors,
+    activeBackgroundAgents,
+    visibleBackgroundAgents,
+  } = useBackgroundSessionDescriptors({
+    activeProjectDir: activeProjectDir ?? undefined,
+    activeSessionID: activeSessionID ?? undefined,
+    activeSessionKey: activeSessionKey ?? undefined,
+    activeSessionType,
+    cachedProjects,
+    archivedBackgroundAgentIds,
+    getSessionType,
+    normalizePresentationProvider,
   });
-  const visibleBackgroundAgents = useMemo(() => {
-    if (!activeProjectDir) {
-      return activeBackgroundAgents;
-    }
-    const hiddenIds = new Set(archivedBackgroundAgentIds[activeProjectDir] ?? []);
-    return activeBackgroundAgents.filter((agent) => {
-      if (hiddenIds.has(agent.id)) {
-        return false;
-      }
-      if (agent.sessionID && hiddenIds.has(agent.sessionID)) {
-        return false;
-      }
-      return true;
-    });
-  }, [activeBackgroundAgents, activeProjectDir, archivedBackgroundAgentIds]);
   useEffect(() => {
     if (!activeProjectDir || activeBackgroundAgents.length === 0) {
       return;
@@ -4033,10 +3688,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <BackgroundSessionSupervisorHost
-        codexSessions={inactiveCodexSessions}
-        opencodeSessions={inactiveOpencodeSessions}
-        claudeSessions={inactiveClaudeSessions}
-        claudeChatSessions={inactiveClaudeChatSessions}
+        sessions={backgroundSessionDescriptors}
         codexPath={appPreferences.codexPath}
         codexArgs={appPreferences.codexArgs}
       />

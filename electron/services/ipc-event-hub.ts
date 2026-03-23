@@ -1,28 +1,36 @@
 import type { OrxaEvent } from "../../shared/ipc";
 
 type IpcRendererLike = {
-  on: (channel: string, listener: (event: unknown, payload: OrxaEvent) => void) => void;
-  removeListener: (channel: string, listener: (event: unknown, payload: OrxaEvent) => void) => void;
+  on: (channel: string, listener: (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void) => void;
+  removeListener: (channel: string, listener: (event: unknown, payload: OrxaEvent | OrxaEvent[]) => void) => void;
 };
 
-export function createIpcEventHub(ipcRenderer: IpcRendererLike, channel: string) {
+export function createIpcEventHub(ipcRenderer: IpcRendererLike, channels: string | string[]) {
+  const eventChannels = Array.isArray(channels) ? channels : [channels];
   const listeners = new Set<(event: OrxaEvent) => void>();
 
-  const onEvents = (_event: unknown, payload: OrxaEvent) => {
-    for (const listener of listeners) {
-      listener(payload);
+  const onEvents = (_event: unknown, payload: OrxaEvent | OrxaEvent[]) => {
+    const events = Array.isArray(payload) ? payload : [payload];
+    for (const event of events) {
+      for (const listener of listeners) {
+        listener(event);
+      }
     }
   };
 
   const ensureAttached = () => {
     if (listeners.size === 1) {
-      ipcRenderer.on(channel, onEvents);
+      for (const channel of eventChannels) {
+        ipcRenderer.on(channel, onEvents);
+      }
     }
   };
 
   const detachIfIdle = () => {
     if (listeners.size === 0) {
-      ipcRenderer.removeListener(channel, onEvents);
+      for (const channel of eventChannels) {
+        ipcRenderer.removeListener(channel, onEvents);
+      }
     }
   };
 

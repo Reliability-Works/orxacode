@@ -195,6 +195,7 @@ export interface OrxaBridge {
     respondToUserInput: (requestId: string, response: string) => Promise<void>;
     getSessionMessages: (sessionId: string, directory?: string) => Promise<ClaudeChatHistoryMessage[]>;
     archiveSession: (sessionKey: string) => Promise<void>;
+    archiveProviderSession: (sessionId: string, directory?: string) => Promise<void>;
   };
   browser: {
     getState: () => Promise<BrowserState>;

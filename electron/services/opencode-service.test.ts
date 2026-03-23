@@ -341,6 +341,31 @@ describe("OpencodeService git flows", () => {
     expect(summary.deletions).toBe(0);
   });
 
+  it("dedupes concurrent git status requests for the same workspace", async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      gitStatus: (directory: string) => Promise<string>;
+      gitStatusInFlight: Map<string, Promise<string>>;
+      resolveGitRepoRoot: ReturnType<typeof vi.fn>;
+      runCommandWithOutput: ReturnType<typeof vi.fn>;
+    };
+
+    service.gitStatusInFlight = new Map();
+    service.resolveGitRepoRoot = vi.fn(async () => "/repo");
+    service.runCommandWithOutput = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return " M src/App.tsx\n";
+    });
+
+    const [first, second] = await Promise.all([
+      service.gitStatus("/repo"),
+      service.gitStatus("/repo"),
+    ]);
+
+    expect(first).toBe(" M src/App.tsx");
+    expect(second).toBe(" M src/App.tsx");
+    expect(service.runCommandWithOutput).toHaveBeenCalledTimes(1);
+  });
+
   it("passes requested base branch to gh when creating pull requests", async () => {
     const service = Object.create(OpencodeService.prototype) as {
       gitCommit: (directory: string, request: {

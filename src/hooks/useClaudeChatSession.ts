@@ -235,7 +235,6 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
         updateClaudeChatMessages(sessionKey, (messages) =>
           upsertAssistantMessage(removeThinkingRow(messages, turnId), id, content, timestamp, false),
         );
-        setClaudeChatStreaming(sessionKey, false);
         return;
       }
       if (method === "tool/progress") {
@@ -271,8 +270,8 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
           const toolItem: ClaudeChatMessageItem = {
             id,
             kind: "tool",
-            title: "Tool call",
-            toolType: "tool",
+            title: typeof params.toolName === "string" ? params.toolName : "Tool call",
+            toolType: typeof params.toolName === "string" ? params.toolName : "tool",
             status: "completed",
             output: typeof params.summary === "string" ? params.summary : undefined,
             timestamp,
@@ -314,7 +313,6 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
                 ...agent,
                 status: "thinking",
                 statusText: summary || description || "is running",
-                taskText: summary || description || agent.taskText,
               }
             : agent,
         ));
@@ -322,14 +320,12 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
       }
       if (method === "task/completed") {
         const taskId = typeof params.taskId === "string" ? params.taskId : "";
-        const summary = typeof params.summary === "string" ? params.summary : undefined;
         setClaudeChatSubagents(sessionKey, (previous) => previous.map((agent) =>
           agent.id === taskId
             ? {
                 ...agent,
                 status: "completed",
                 statusText: "completed",
-                taskText: summary || agent.taskText,
               }
             : agent,
         ));
@@ -413,6 +409,10 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     removeClaudeChatSession(sessionKey);
   }, [removeClaudeChatSession, sessionKey]);
 
+  const archiveProviderSession = useCallback(async (providerThreadId: string) => {
+    await window.orxa.claudeChat.archiveProviderSession(providerThreadId, directory);
+  }, [directory]);
+
   const loadSubagentMessages = useCallback(async (providerThreadId: string): Promise<ClaudeChatHistoryMessage[]> => {
     const messages = await window.orxa.claudeChat.getSessionMessages(providerThreadId, directory);
     return messages;
@@ -433,6 +433,7 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     approveAction,
     respondToUserInput,
     archiveSession,
+    archiveProviderSession,
     loadSubagentMessages,
   };
 }

@@ -39,4 +39,7 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
   ipcMain.handle(IPC.claudeChatArchiveSession, async (_event, sessionKey: unknown) => {
     return claudeChatService.archiveSession(assertString(sessionKey, "sessionKey"));
   });
+  ipcMain.handle(IPC.claudeChatArchiveProviderSession, async (_event, sessionId: unknown, directory?: unknown) => {
+    return claudeChatService.archiveProviderSession(assertString(sessionId, "sessionId"), typeof directory === "string" ? directory : undefined);
+  });
 }

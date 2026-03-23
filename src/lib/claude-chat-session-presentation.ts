@@ -1,12 +1,8 @@
 import type { UnifiedProjectedSessionPresentation, UnifiedSessionPresentation } from "./session-presentation";
 import type { UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
 import type { ClaudeChatMessageItem } from "../hooks/useClaudeChatSession";
-import {
-  groupAdjacentExploreRows,
-  groupAdjacentTimelineExplorationRows,
-  groupAdjacentToolCallRows,
-  groupChangedFileRows,
-} from "./session-presentation";
+import { groupChangedFileRows } from "./session-presentation";
+import { groupAdjacentExploreRows, groupAdjacentTimelineExplorationRows, groupAdjacentToolCallRows } from "./timeline-row-grouping";
 
 export function projectClaudeChatSessionPresentation(
   messages: ClaudeChatMessageItem[],

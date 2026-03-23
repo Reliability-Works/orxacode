@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClaudeChatSession } from "./useClaudeChatSession";
 import { clearPersistedClaudeChatState } from "./claude-chat-session-storage";
@@ -38,6 +38,7 @@ describe("useClaudeChatSession", () => {
         approve: vi.fn(async () => undefined),
         respondToUserInput: vi.fn(async () => undefined),
         archiveSession: vi.fn(async () => undefined),
+        archiveProviderSession: vi.fn(async () => undefined),
         getSessionMessages: vi.fn(async () => []),
         getState: vi.fn(async () => ({ sessionKey: SESSION_KEY, status: "disconnected" })),
         health: vi.fn(async () => ({ available: true, authenticated: true })),
@@ -88,5 +89,110 @@ describe("useClaudeChatSession", () => {
     expect(assistantMessages[0]).toMatchObject({
       content: "Hi! How can I help you today?",
     });
+  });
+
+  it("keeps streaming active through assistant text until turn completion and updates tool rows in place", async () => {
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+    const events = window.orxa!.events as unknown as ReturnType<typeof buildEvents>;
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "turn/started",
+          params: { turnId: "turn-2", timestamp: 1 },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "tool/progress",
+          params: { id: "toolu_1", toolName: "Task", timestamp: 2, elapsedTimeSeconds: 1.2 },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "assistant/message",
+          params: { id: "assistant-2", turnId: "turn-2", content: "I'll fan out a few agents.", timestamp: 3 },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "tool/completed",
+          params: { id: "toolu_1", toolName: "Task", summary: "Queued 1 background task", timestamp: 4 },
+        },
+      });
+    });
+
+    expect(result.current.isStreaming).toBe(true);
+
+    const toolMessages = result.current.messages.filter((item) => item.kind === "tool");
+    expect(toolMessages).toHaveLength(1);
+    expect(toolMessages[0]).toMatchObject({
+      title: "Task",
+      status: "completed",
+      output: "Queued 1 background task",
+    });
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "turn/completed",
+          params: { turnId: "turn-2", timestamp: 5 },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isStreaming).toBe(false);
+    });
+  });
+
+  it("keeps the original Claude subagent task text when progress updates arrive", async () => {
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+    const events = window.orxa!.events as unknown as ReturnType<typeof buildEvents>;
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "task/started",
+          params: {
+            taskId: "task-1",
+            description: "Explore the repository structure",
+            taskType: "explorer",
+          },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "task/progress",
+          params: {
+            taskId: "task-1",
+            description: "Explore the repository structure",
+            summary: "Running ls -1d /Users/callumspencer/Repos/...",
+          },
+        },
+      });
+    });
+
+    expect(result.current.subagents).toEqual([
+      expect.objectContaining({
+        id: "task-1",
+        taskText: "Explore the repository structure",
+        statusText: "Running ls -1d /Users/callumspencer/Repos/...",
+      }),
+    ]);
   });
 });

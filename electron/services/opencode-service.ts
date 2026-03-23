@@ -506,6 +506,8 @@ export class OpencodeService {
   private sessionSyncFingerprint = new Map<string, string>();
   private sessionSyncInFlight = new Map<string, Promise<void>>();
   private promptFence = new Map<string, number>();
+  private gitDiffInFlight = new Map<string, Promise<string>>();
+  private gitStatusInFlight = new Map<string, Promise<string>>();
 
   onEvent?: (event: OrxaEvent) => void;
 
@@ -1168,25 +1170,29 @@ export class OpencodeService {
   }
 
   async gitDiff(directory: string): Promise<string> {
-    return gitDiffWorkflow(directory, {
-      resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
-      runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
-      renderUntrackedDiff: (repoRoot, relativePath) => this.renderUntrackedDiff(repoRoot, relativePath),
-    });
+    return this.runDedupedWorkspaceRequest(this.gitDiffInFlight, path.resolve(directory), () =>
+      gitDiffWorkflow(directory, {
+        resolveGitRepoRoot: (target) => this.resolveGitRepoRoot(target),
+        runCommandWithOutput: (command, args, cwd) => this.runCommandWithOutput(command, args, cwd),
+        renderUntrackedDiff: (repoRoot, relativePath) => this.renderUntrackedDiff(repoRoot, relativePath),
+      }),
+    );
   }
 
   async gitStatus(directory: string) {
     const cwd = path.resolve(directory);
-    const repoRoot = await this.resolveGitRepoRoot(cwd);
-    if (!repoRoot) {
-      return "Not a git repository.";
-    }
-    const output = await this.runCommandWithOutput(
-      "git",
-      ["-C", repoRoot, "status", "--porcelain=v1", "--untracked-files=all", "--renames"],
-      cwd,
-    ).catch((error) => `Unable to load git status: ${sanitizeError(error)}`);
-    return output.trim().length > 0 ? output.trimEnd() : "";
+    return this.runDedupedWorkspaceRequest(this.gitStatusInFlight, cwd, async () => {
+      const repoRoot = await this.resolveGitRepoRoot(cwd);
+      if (!repoRoot) {
+        return "Not a git repository.";
+      }
+      const output = await this.runCommandWithOutput(
+        "git",
+        ["-C", repoRoot, "status", "--porcelain=v1", "--untracked-files=all", "--renames"],
+        cwd,
+      ).catch((error) => `Unable to load git status: ${sanitizeError(error)}`);
+      return output.trim().length > 0 ? output.trimEnd() : "";
+    });
   }
 
   async gitLog(directory: string) {
@@ -2502,6 +2508,20 @@ export class OpencodeService {
     return this.commandHelpers.runCommandAttempts(attempts, cwd, (command, args, attemptCwd) =>
       this.runCommand(command, args, attemptCwd),
     );
+  }
+
+  private runDedupedWorkspaceRequest<T>(bucket: Map<string, Promise<T>>, key: string, run: () => Promise<T>) {
+    const existing = bucket.get(key);
+    if (existing) {
+      return existing;
+    }
+    const pending = run().finally(() => {
+      if (bucket.get(key) === pending) {
+        bucket.delete(key);
+      }
+    });
+    bucket.set(key, pending);
+    return pending;
   }
 
   private async collectGitStats(repoRoot: string, includeUnstaged: boolean) {

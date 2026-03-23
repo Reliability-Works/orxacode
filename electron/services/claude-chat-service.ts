@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   getSessionMessages,
   query,
+  tagSession,
   type Options as ClaudeQueryOptions,
   type ElicitationRequest,
   type PermissionMode,
@@ -56,6 +57,12 @@ type ClaudeSessionRuntime = {
   activeQuery: Query | null;
   runningTasks: ClaudeSubagentRuntime[];
   mainProviderThreadId?: string;
+  toolNamesById: Map<string, string>;
+};
+
+type CachedClaudeHealth = {
+  value: ClaudeChatHealthStatus;
+  cachedAt: number;
 };
 
 const CLAUDE_MODELS: ClaudeChatModelEntry[] = [
@@ -87,6 +94,7 @@ const CLAUDE_MODELS: ClaudeChatModelEntry[] = [
     defaultReasoningEffort: null,
   },
 ];
+const CLAUDE_HEALTH_CACHE_TTL_MS = 10_000;
 
 function supportsClaudeFastMode(model: string | null | undefined) {
   return model?.trim() === "claude-opus-4-6";
@@ -140,8 +148,40 @@ function extractTextFromUnknown(value: unknown): string {
     .join("");
 }
 
+function extractTextBlocks(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.trim() ? [value] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => extractTextBlocks(entry));
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const record = value as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type : null;
+  if (type === "tool_use" || type === "tool_result") {
+    return [];
+  }
+  if (type === "text" && typeof record.text === "string") {
+    return record.text.trim() ? [record.text] : [];
+  }
+  if (Array.isArray(record.content)) {
+    return record.content.flatMap((entry) => extractTextBlocks(entry));
+  }
+  if (!type && typeof record.text === "string" && record.text.trim()) {
+    return [record.text];
+  }
+  return [];
+}
+
 function extractAssistantText(message: SDKAssistantMessage) {
-  return extractTextFromUnknown(message.message).trim();
+  const content = (message.message as Record<string, unknown> | undefined)?.content;
+  const textBlocks = extractTextBlocks(content);
+  if (textBlocks.length > 0) {
+    return textBlocks.join("").trim();
+  }
+  return extractTextBlocks(message.message).join("").trim();
 }
 
 function extractPartialAssistantText(message: SDKMessage) {
@@ -158,9 +198,6 @@ function extractPartialAssistantText(message: SDKMessage) {
   }
   if (typeof delta.text === "string") {
     return delta.text;
-  }
-  if (typeof delta.partial_json === "string") {
-    return delta.partial_json;
   }
   return "";
 }
@@ -210,6 +247,18 @@ function extractQuestionOptionsFromSchema(schema: Record<string, unknown> | unde
   return undefined;
 }
 
+function isClaudeInterruptedError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("all fibers interrupted without error") ||
+    normalized.includes("request was aborted") ||
+    normalized.includes("interrupted by user") ||
+    normalized.includes("interrupt") ||
+    normalized.includes("aborted")
+  );
+}
+
 async function runClaudeCommand(args: string[]) {
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -231,6 +280,10 @@ export class ClaudeChatService extends EventEmitter {
 
   private readonly pendingUserInputs = new Map<string, PendingUserInput>();
 
+  private cachedHealth: CachedClaudeHealth | null = null;
+
+  private inflightHealth: Promise<ClaudeChatHealthStatus> | null = null;
+
   getState(sessionKey: string): ClaudeChatState {
     return (
       this.sessions.get(sessionKey)?.state ?? {
@@ -241,46 +294,19 @@ export class ClaudeChatService extends EventEmitter {
   }
 
   async health(): Promise<ClaudeChatHealthStatus> {
-    try {
-      const version = await runClaudeCommand(["--version"]);
-      const versionLine = `${version.stdout}\n${version.stderr}`.trim().split(/\r?\n/)[0]?.trim();
-      try {
-        const auth = await runClaudeCommand(["auth", "status"]);
-        const combined = `${auth.stdout}\n${auth.stderr}`.trim();
-        const parsed =
-          combined.startsWith("{") || combined.startsWith("[")
-            ? (JSON.parse(combined) as Record<string, unknown>)
-            : null;
-        const normalized = combined.toLowerCase();
-        const authenticated =
-          parsed && typeof parsed.loggedIn === "boolean"
-            ? parsed.loggedIn
-            : normalized.includes("not authenticated") || normalized.includes("not logged in") || normalized.includes("login required")
-                ? false
-                : normalized.includes("authenticated") || normalized.includes("logged in")
-                  ? true
-                  : null;
-        return {
-          available: true,
-          authenticated,
-          version: versionLine,
-          message: authenticated === null ? combined || undefined : undefined,
-        };
-      } catch (error) {
-        return {
-          available: true,
-          authenticated: null,
-          version: versionLine,
-          message: error instanceof Error ? error.message : String(error),
-        };
-      }
-    } catch (error) {
-      return {
-        available: false,
-        authenticated: null,
-        message: error instanceof Error ? error.message : String(error),
-      };
+    const now = Date.now();
+    if (this.cachedHealth && now - this.cachedHealth.cachedAt < CLAUDE_HEALTH_CACHE_TTL_MS) {
+      return this.cachedHealth.value;
     }
+    if (this.inflightHealth) {
+      return this.inflightHealth;
+    }
+    this.inflightHealth = this.fetchHealth().finally(() => {
+      this.inflightHealth = null;
+    });
+    const value = await this.inflightHealth;
+    this.cachedHealth = { value, cachedAt: now };
+    return value;
   }
 
   async listModels(): Promise<ClaudeChatModelEntry[]> {
@@ -292,6 +318,7 @@ export class ClaudeChatService extends EventEmitter {
     if (runtime.activeQuery) {
       throw new Error("Claude chat session already has an active turn.");
     }
+    runtime.toolNamesById.clear();
 
     const turnId = randomUUID();
     runtime.state = {
@@ -427,6 +454,27 @@ export class ClaudeChatService extends EventEmitter {
       });
     } catch (error) {
       runtime.activeQuery = null;
+      const interrupted = isClaudeInterruptedError(error);
+      if (interrupted) {
+        runtime.state = {
+          ...runtime.state,
+          status: "connected",
+          activeTurnId: null,
+          lastError: undefined,
+        };
+        this.emitState(runtime.state);
+        this.emitNotification({
+          sessionKey,
+          method: "thinking/stopped",
+          params: { turnId, timestamp: Date.now() },
+        });
+        this.emitNotification({
+          sessionKey,
+          method: "turn/completed",
+          params: { turnId, interrupted: true, timestamp: Date.now() },
+        });
+        return;
+      }
       runtime.state = {
         ...runtime.state,
         status: "error",
@@ -454,6 +502,25 @@ export class ClaudeChatService extends EventEmitter {
 
   async interruptTurn(sessionKey: string) {
     const runtime = this.sessions.get(sessionKey);
+    for (const [requestId, pending] of this.pendingApprovals.entries()) {
+      if (pending.sessionKey !== sessionKey) {
+        continue;
+      }
+      this.pendingApprovals.delete(requestId);
+      pending.resolve({
+        behavior: "deny",
+        toolUseID: pending.itemId,
+        message: "User cancelled tool execution.",
+        interrupt: true,
+      });
+    }
+    for (const [requestId, pending] of this.pendingUserInputs.entries()) {
+      if (pending.sessionKey !== sessionKey) {
+        continue;
+      }
+      this.pendingUserInputs.delete(requestId);
+      pending.resolve({ action: "cancel" });
+    }
     if (runtime?.activeQuery) {
       await runtime.activeQuery.interrupt();
     }
@@ -527,6 +594,10 @@ export class ClaudeChatService extends EventEmitter {
     });
   }
 
+  async archiveProviderSession(sessionId: string, directory?: string) {
+    await tagSession(sessionId, "archived", directory ? { dir: directory } : undefined);
+  }
+
   private getOrCreateSession(sessionKey: string, directory: string): ClaudeSessionRuntime {
     const existing = this.sessions.get(sessionKey);
     if (existing) {
@@ -537,6 +608,7 @@ export class ClaudeChatService extends EventEmitter {
       directory,
       activeQuery: null,
       runningTasks: [],
+      toolNamesById: new Map(),
       state: {
         sessionKey,
         status: "disconnected",
@@ -552,6 +624,49 @@ export class ClaudeChatService extends EventEmitter {
 
   private emitNotification(payload: ClaudeChatNotification) {
     this.emit("notification", payload);
+  }
+
+  private async fetchHealth(): Promise<ClaudeChatHealthStatus> {
+    try {
+      const version = await runClaudeCommand(["--version"]);
+      const versionLine = `${version.stdout}\n${version.stderr}`.trim().split(/\r?\n/)[0]?.trim();
+      try {
+        const auth = await runClaudeCommand(["auth", "status"]);
+        const combined = `${auth.stdout}\n${auth.stderr}`.trim();
+        const parsed =
+          combined.startsWith("{") || combined.startsWith("[")
+            ? (JSON.parse(combined) as Record<string, unknown>)
+            : null;
+        const normalized = combined.toLowerCase();
+        const authenticated =
+          parsed && typeof parsed.loggedIn === "boolean"
+            ? parsed.loggedIn
+            : normalized.includes("not authenticated") || normalized.includes("not logged in") || normalized.includes("login required")
+              ? false
+              : normalized.includes("authenticated") || normalized.includes("logged in")
+                ? true
+                : null;
+        return {
+          available: true,
+          authenticated,
+          version: versionLine,
+          message: authenticated === null ? combined || undefined : undefined,
+        };
+      } catch (error) {
+        return {
+          available: true,
+          authenticated: null,
+          version: versionLine,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    } catch (error) {
+      return {
+        available: false,
+        authenticated: null,
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   private updateTask(runtime: ClaudeSessionRuntime, taskId: string, updater: (task: ClaudeSubagentRuntime) => ClaudeSubagentRuntime) {
@@ -610,21 +725,24 @@ export class ClaudeChatService extends EventEmitter {
     }
 
     if (message.type === "assistant") {
-      this.emitNotification({
-        sessionKey,
-        method: "assistant/message",
-        params: {
-          id: message.uuid,
-          turnId,
-          content: extractAssistantText(message),
-          timestamp: Date.now(),
-        },
-      });
-      this.emitNotification({
-        sessionKey,
-        method: "thinking/stopped",
-        params: { turnId, timestamp: Date.now() },
-      });
+      const content = extractAssistantText(message);
+      if (content) {
+        this.emitNotification({
+          sessionKey,
+          method: "assistant/message",
+          params: {
+            id: message.uuid,
+            turnId,
+            content,
+            timestamp: Date.now(),
+          },
+        });
+        this.emitNotification({
+          sessionKey,
+          method: "thinking/stopped",
+          params: { turnId, timestamp: Date.now() },
+        });
+      }
       return;
     }
 
@@ -651,6 +769,7 @@ export class ClaudeChatService extends EventEmitter {
     }
 
     if (message.type === "tool_progress") {
+      runtime.toolNamesById.set(message.tool_use_id, message.tool_name);
       this.emitNotification({
         sessionKey,
         method: "tool/progress",
@@ -667,12 +786,16 @@ export class ClaudeChatService extends EventEmitter {
     }
 
     if (message.type === "tool_use_summary") {
+      const toolUseId = message.preceding_tool_use_ids[0];
+      const toolName = toolUseId ? runtime.toolNamesById.get(toolUseId) : undefined;
       this.emitNotification({
         sessionKey,
         method: "tool/completed",
         params: {
-          id: message.uuid,
+          id: toolUseId ?? message.uuid,
           turnId,
+          toolUseId,
+          toolName,
           summary: message.summary,
           precedingToolUseIds: message.preceding_tool_use_ids,
           timestamp: Date.now(),

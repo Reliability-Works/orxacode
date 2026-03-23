@@ -2,76 +2,62 @@ import { ClaudeChatBackgroundSessionManager } from "./ClaudeChatBackgroundSessio
 import { ClaudeBackgroundSessionManager } from "./ClaudeTerminalPane";
 import { CodexBackgroundSessionManager } from "./CodexBackgroundSessionManager";
 import { OpencodeBackgroundSessionManager } from "./OpencodeBackgroundSessionManager";
-
-type BackgroundCodexSession = {
-  directory: string;
-  sessionStorageKey: string;
-};
-
-type BackgroundOpencodeSession = {
-  directory: string;
-  sessionID: string;
-};
-
-type BackgroundClaudeSession = {
-  directory: string;
-  sessionStorageKey: string;
-};
-
-type BackgroundClaudeChatSession = {
-  directory: string;
-  sessionStorageKey: string;
-};
+import type { BackgroundSessionDescriptor } from "../lib/background-session-descriptors";
 
 type Props = {
-  codexSessions: BackgroundCodexSession[];
-  opencodeSessions: BackgroundOpencodeSession[];
-  claudeSessions: BackgroundClaudeSession[];
-  claudeChatSessions: BackgroundClaudeChatSession[];
+  sessions: BackgroundSessionDescriptor[];
   codexPath?: string;
   codexArgs?: string;
 };
 
 export function BackgroundSessionSupervisorHost({
-  codexSessions,
-  opencodeSessions,
-  claudeSessions,
-  claudeChatSessions,
+  sessions,
   codexPath,
   codexArgs,
 }: Props) {
   return (
     <>
-      {codexSessions.map((session) => (
-        <CodexBackgroundSessionManager
-          key={`codex:${session.sessionStorageKey}`}
-          directory={session.directory}
-          sessionStorageKey={session.sessionStorageKey}
-          codexPath={codexPath}
-          codexArgs={codexArgs}
-        />
-      ))}
-      {opencodeSessions.map((session) => (
-        <OpencodeBackgroundSessionManager
-          key={`opencode:${session.directory}:${session.sessionID}`}
-          directory={session.directory}
-          sessionID={session.sessionID}
-        />
-      ))}
-      {claudeSessions.map((session) => (
-        <ClaudeBackgroundSessionManager
-          key={`claude:${session.sessionStorageKey}`}
-          directory={session.directory}
-          sessionStorageKey={session.sessionStorageKey}
-        />
-      ))}
-      {claudeChatSessions.map((session) => (
-        <ClaudeChatBackgroundSessionManager
-          key={`claude-chat:${session.sessionStorageKey}`}
-          directory={session.directory}
-          sessionStorageKey={session.sessionStorageKey}
-        />
-      ))}
+      {sessions.map((session) => {
+        if (session.provider === "codex" && session.sessionStorageKey) {
+          return (
+            <CodexBackgroundSessionManager
+              key={session.key}
+              directory={session.directory}
+              sessionStorageKey={session.sessionStorageKey}
+              codexPath={codexPath}
+              codexArgs={codexArgs}
+            />
+          );
+        }
+        if (session.provider === "opencode" && session.sessionID) {
+          return (
+            <OpencodeBackgroundSessionManager
+              key={session.key}
+              directory={session.directory}
+              sessionID={session.sessionID}
+            />
+          );
+        }
+        if (session.provider === "claude" && session.sessionStorageKey) {
+          return (
+            <ClaudeBackgroundSessionManager
+              key={session.key}
+              directory={session.directory}
+              sessionStorageKey={session.sessionStorageKey}
+            />
+          );
+        }
+        if (session.provider === "claude-chat" && session.sessionStorageKey) {
+          return (
+            <ClaudeChatBackgroundSessionManager
+              key={session.key}
+              directory={session.directory}
+              sessionStorageKey={session.sessionStorageKey}
+            />
+          );
+        }
+        return null;
+      })}
     </>
   );
 }

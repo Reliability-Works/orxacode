@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CLAUDE_SESSION_PTY_TITLE_PREFIX } from "@shared/ipc";
 import type { ProjectBootstrap, SessionMessageBundle, SessionRuntimeSnapshot } from "@shared/ipc";
 import { normalizeMessageBundles } from "../lib/opencode-event-reducer";
-import { useWorkspaceState } from "./useWorkspaceState";
+import { EMPTY_WORKSPACE_SESSIONS_KEY, useWorkspaceState } from "./useWorkspaceState";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 function createProjectBootstrap(
@@ -334,6 +334,50 @@ describe("useWorkspaceState", () => {
 
     expect(result.current.activeProjectDir).toBe(targetDirectory);
     expect(result.current.activeSessionID).toBe(targetSessionID);
+  });
+
+  it("cleans up persisted empty sessions on startup", async () => {
+    const directory = "/repo";
+    const deleteSessionMock = vi.fn(async () => true);
+    const onCleanupEmptySession = vi.fn(async () => undefined);
+
+    window.localStorage.setItem(EMPTY_WORKSPACE_SESSIONS_KEY, JSON.stringify({
+      "session-empty": directory,
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+          refreshProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+          createSession: vi.fn(async () => ({ id: "unused", slug: "unused", title: "unused", time: { created: 1, updated: 1 } })),
+          deleteSession: deleteSessionMock,
+          getSessionRuntime: vi.fn(async (currentDirectory: string, sessionID: string) =>
+            createRuntimeSnapshot(currentDirectory, sessionID, [])),
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceState({
+        setStatusLine: vi.fn(),
+        terminalTabIds: [],
+        setTerminalTabs: vi.fn(),
+        setActiveTerminalId: vi.fn(),
+        setTerminalOpen: vi.fn(),
+        onCleanupEmptySession,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.cleanupPersistedEmptySessions();
+    });
+
+    expect(deleteSessionMock).toHaveBeenCalledWith(directory, "session-empty");
+    expect(onCleanupEmptySession).toHaveBeenCalledWith(directory, "session-empty");
+    expect(window.localStorage.getItem(EMPTY_WORKSPACE_SESSIONS_KEY)).toBeNull();
   });
 
   it("refreshes messages immediately after sending the initial prompt for a new session", async () => {

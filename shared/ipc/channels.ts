@@ -147,6 +147,7 @@ export const IPC = {
   claudeChatRespondToUserInput: "orxa:claude-chat:respondToUserInput",
   claudeChatGetSessionMessages: "orxa:claude-chat:getSessionMessages",
   claudeChatArchiveSession: "orxa:claude-chat:archiveSession",
+  claudeChatArchiveProviderSession: "orxa:claude-chat:archiveProviderSession",
   getClaudeUsageStats: "orxa:usage:claudeStats",
   getCodexUsageStats: "orxa:usage:codexStats",
   claudeTerminalCreate: "orxa:claude-terminal:create",
@@ -154,4 +155,5 @@ export const IPC = {
   claudeTerminalResize: "orxa:claude-terminal:resize",
   claudeTerminalClose: "orxa:claude-terminal:close",
   events: "orxa:events",
+  eventsBatch: "orxa:events:batch",
 } as const;
