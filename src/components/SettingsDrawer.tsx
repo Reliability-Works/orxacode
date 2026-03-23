@@ -17,7 +17,6 @@ import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
 import {
   AppSettingsSection,
-  BrowserSection,
   ConfigSection,
   GitSettingsSection,
   PersonalizationSection,
@@ -76,7 +75,6 @@ type SettingsSection =
   | "git"
   | "app"
   | "preferences"
-  | "browser"
   | "server"
   | "claude-config"
   | "claude-permissions"
@@ -454,10 +452,6 @@ export function SettingsDrawer({
       return <PreferencesSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
     }
 
-    if (section === "browser") {
-      return <BrowserSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
-    }
-
     if (section === "server") {
       return (
         <ServerSection
@@ -657,10 +651,6 @@ export function SettingsDrawer({
                     <button type="button" className={section === "git" ? "active" : ""} onClick={() => setSection("git")}>
                       {section === "git" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                       Git
-                    </button>
-                    <button type="button" className={section === "browser" ? "active" : ""} onClick={() => setSection("browser")}>
-                      {section === "browser" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
-                      Browser
                     </button>
                   </>
                 ) : null}

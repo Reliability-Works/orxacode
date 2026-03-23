@@ -24,6 +24,7 @@ export interface CanvasTile {
 export interface CanvasTheme {
   preset: string | null;
   background: string;
+  backgroundImage?: string;
   tileBorder: string;
   accent: string;
 }

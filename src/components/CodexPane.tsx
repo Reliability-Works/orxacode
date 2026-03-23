@@ -54,6 +54,8 @@ interface Props {
   filteredBranches: string[];
   openBranchCreateModal: () => void | Promise<void>;
   onOpenFileReference?: (reference: string) => void;
+  browserModeEnabled?: boolean;
+  setBrowserModeEnabled?: (enabled: boolean) => void;
 }
 
 const CODEX_PROVIDER_ID = "codex";
@@ -169,6 +171,8 @@ export function CodexPane({
   filteredBranches,
   openBranchCreateModal,
   onOpenFileReference,
+  browserModeEnabled = false,
+  setBrowserModeEnabled,
 }: Props) {
   const codexRuntime = useUnifiedRuntimeStore((state) => state.codexSessions[sessionStorageKey] ?? null);
   const {
@@ -798,9 +802,9 @@ export function CodexPane({
           isPlanMode={isPlanMode}
           hasPlanAgent={true}
           togglePlanMode={(enabled) => setIsPlanMode(enabled)}
-          browserModeEnabled={false}
-          setBrowserModeEnabled={() => undefined}
-          hideBrowserToggle
+          browserModeEnabled={browserModeEnabled}
+          setBrowserModeEnabled={setBrowserModeEnabled ?? (() => undefined)}
+          hideBrowserToggle={!setBrowserModeEnabled}
           agentOptions={[]}
           onAgentChange={() => undefined}
           permissionMode={permissionMode}

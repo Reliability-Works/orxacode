@@ -43,7 +43,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -105,7 +104,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -188,7 +186,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -252,7 +249,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -328,7 +324,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -398,7 +393,6 @@ describe("SettingsDrawer", () => {
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
           subagentSystemNotificationsEnabled: false,
-          orxaBrowserEnabled: true,
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}

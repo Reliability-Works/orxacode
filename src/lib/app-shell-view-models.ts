@@ -8,8 +8,6 @@ type AppShellWorkspaceLayoutInput = {
   sidebarMode: "projects" | "jobs" | "skills";
   projectsSidebarVisible: boolean;
   showOperationsPane: boolean;
-  rightSidebarTab: "git" | "files" | "browser";
-  anyOverlayInDom: boolean;
 };
 
 type AppShellBrowserSidebarInput = {
@@ -40,12 +38,10 @@ export function deriveAppShellWorkspaceLayout(input: AppShellWorkspaceLayoutInpu
   const hasProjectContext = Boolean(input.activeProjectDir) && input.sidebarMode === "projects";
   const showProjectsPane = !hasProjectContext || input.projectsSidebarVisible;
   const showGitPane = hasProjectContext && input.sidebarMode === "projects" && input.showOperationsPane;
-  const browserPaneVisible = showGitPane && input.rightSidebarTab === "browser" && !input.anyOverlayInDom;
   return {
     hasProjectContext,
     showProjectsPane,
     showGitPane,
-    browserPaneVisible,
   };
 }
 

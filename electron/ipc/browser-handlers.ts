@@ -93,6 +93,21 @@ export function registerBrowserHandlers({
     return requireBrowserController(getBrowserController).performAgentAction(assertBrowserAgentActionRequest(request));
   });
 
+  ipcMain.handle(IPC.browserInspectEnable, async (event) => {
+    assertBrowserSender(event);
+    const controller = requireBrowserController(getBrowserController);
+    await controller.enableInspect((annotation) => {
+      publishEvent({ type: "browser.inspect.annotation", payload: annotation } as OrxaEvent);
+    });
+    return { ok: true };
+  });
+
+  ipcMain.handle(IPC.browserInspectDisable, async (event) => {
+    assertBrowserSender(event);
+    await requireBrowserController(getBrowserController).disableInspect();
+    return { ok: true };
+  });
+
   ipcMain.handle(IPC.mcpDevToolsStart, async (event, directory: string) => {
     assertBrowserSender(event);
     let cdpPort = 0;

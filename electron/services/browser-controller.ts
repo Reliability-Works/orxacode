@@ -14,6 +14,9 @@ import type {
 import { ArtifactStore } from "./artifact-store";
 import {
   buildInteractionScript,
+  buildInspectDisableScript,
+  buildInspectEnableScript,
+  buildInspectGetAnnotationScript,
   buildPressScript,
   buildRecoveryScript,
   buildScrollScript,
@@ -1201,6 +1204,61 @@ export class BrowserController {
       await delay(DEFAULT_WAIT_INTERVAL_MS);
     }
     throw new Error(`wait_for_idle timed out after ${timeoutMs}ms`);
+  }
+
+  // ── Inspect mode ────────────────────────────────────────────────────
+
+  private inspectPollTimer: ReturnType<typeof setInterval> | null = null;
+  private inspectEventCallback: ((annotation: unknown) => void) | null = null;
+
+  async enableInspect(onAnnotation: (annotation: unknown) => void): Promise<void> {
+    const wc = this.getActiveWebContents();
+    if (!wc) throw new Error("No active tab");
+    await wc.executeJavaScript(buildInspectEnableScript(), true);
+    this.inspectEventCallback = onAnnotation;
+    // Poll for click annotations since we can't use IPC from the sandboxed page
+    this.inspectPollTimer = setInterval(async () => {
+      try {
+        const activeWc = this.getActiveWebContents();
+        if (!activeWc || activeWc.isDestroyed()) {
+          this.disableInspectPolling();
+          return;
+        }
+        const annotation = await activeWc.executeJavaScript(buildInspectGetAnnotationScript(), true);
+        if (annotation && this.inspectEventCallback) {
+          this.inspectEventCallback(annotation);
+        }
+      } catch {
+        // Tab may have navigated or been destroyed — ignore
+      }
+    }, 150);
+  }
+
+  async disableInspect(): Promise<void> {
+    this.disableInspectPolling();
+    try {
+      const wc = this.getActiveWebContents();
+      if (wc && !wc.isDestroyed()) {
+        await wc.executeJavaScript(buildInspectDisableScript(), true);
+      }
+    } catch {
+      // Ignore — tab may already be gone
+    }
+  }
+
+  private disableInspectPolling(): void {
+    if (this.inspectPollTimer) {
+      clearInterval(this.inspectPollTimer);
+      this.inspectPollTimer = null;
+    }
+    this.inspectEventCallback = null;
+  }
+
+  private getActiveWebContents(): WebContents | null {
+    if (!this.activeTabID) return null;
+    const record = this.tabs.get(this.activeTabID);
+    if (!record || record.view.webContents.isDestroyed()) return null;
+    return record.view.webContents;
   }
 
 }

@@ -141,6 +141,8 @@ const bridge: OrxaBridge = {
     listHistory: (limit) => ipcRenderer.invoke(IPC.browserListHistory, limit),
     clearHistory: () => ipcRenderer.invoke(IPC.browserClearHistory),
     performAgentAction: (request) => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
+    inspectEnable: () => ipcRenderer.invoke(IPC.browserInspectEnable),
+    inspectDisable: () => ipcRenderer.invoke(IPC.browserInspectDisable),
   },
   mcpDevTools: {
     start: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsStart, directory),

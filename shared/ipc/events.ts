@@ -103,6 +103,15 @@ export type OrxaEvent =
       payload: BrowserAgentActionResult;
     }
   | {
+      type: "browser.inspect.annotation";
+      payload: {
+        element: string;
+        selector: string;
+        boundingBox?: { x: number; y: number; width: number; height: number };
+        computedStyles?: string;
+      };
+    }
+  | {
       type: "artifact.created";
       payload: ArtifactRecord;
     }

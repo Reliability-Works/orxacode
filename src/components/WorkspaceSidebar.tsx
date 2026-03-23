@@ -403,10 +403,27 @@ export function WorkspaceSidebar({
           </div>
         </div>
 
+        {/* Update card */}
+        {updateAvailableVersion ? (
+          <button
+            type="button"
+            className={`sidebar-update-card ${updateInstallPending ? "is-downloading" : ""}`.trim()}
+            onClick={() => void onDownloadAndInstallUpdate()}
+            disabled={updateInstallPending}
+          >
+            <span className="sidebar-update-card-title">
+              {updateInstallPending ? "Downloading update..." : "Update available"}
+            </span>
+            <span className="sidebar-update-card-version">
+              {updateInstallPending ? "" : `v${updateAvailableVersion} — tap to install`}
+            </span>
+          </button>
+        ) : null}
+
         {/* Footer */}
         <div className="sidebar-footer-actions">
           <div className="sidebar-footer-update">
-            {updateStatusMessage ? (
+            {updateStatusMessage && !updateAvailableVersion ? (
               <div className={`sidebar-update-status sidebar-update-status--${updateStatusMessage.tone}`.trim()}>
                 {updateStatusMessage.text}
               </div>

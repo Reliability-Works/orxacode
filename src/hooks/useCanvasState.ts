@@ -10,9 +10,9 @@ import {
 } from "../types/canvas";
 
 const DEFAULT_THEME: CanvasTheme = {
-  preset: "midnight",
-  background: "#0C0C0C",
-  tileBorder: "#1F1F1F",
+  preset: "glass",
+  background: "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%), #141418",
+  tileBorder: "rgba(255,255,255,0.08)",
   accent: "#22C55E",
 };
 
@@ -48,12 +48,15 @@ function normalizeCanvasState(value: unknown): CanvasSessionState {
   const candidate = value as Partial<CanvasSessionState>;
   const tiles = Array.isArray(candidate.tiles) ? candidate.tiles : DEFAULT_STATE.tiles;
 
+  // Migrate old "midnight" default to new "glass" default
+  const rawTheme = candidate.theme ?? {};
+  const migratedTheme = (rawTheme as Record<string, unknown>).preset === "midnight" && (rawTheme as Record<string, unknown>).background === "#0C0C0C"
+    ? { ...DEFAULT_THEME }
+    : { ...DEFAULT_THEME, ...rawTheme };
+
   return {
     tiles,
-    theme: {
-      ...DEFAULT_THEME,
-      ...(candidate.theme ?? {}),
-    },
+    theme: migratedTheme,
     snapToGrid: typeof candidate.snapToGrid === "boolean" ? candidate.snapToGrid : DEFAULT_STATE.snapToGrid,
     gridSize: typeof candidate.gridSize === "number" ? candidate.gridSize : DEFAULT_STATE.gridSize,
     viewport: {

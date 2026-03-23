@@ -1,11 +1,8 @@
-import type { ChangeProvenanceRecord, GitBranchState, McpDevToolsServerState } from "@shared/ipc";
-import { McpStatusIndicator } from "./McpStatusIndicator";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import {
   AlignJustify,
-  ArrowLeft,
-  ArrowRight,
   ChevronDown,
   ChevronRight,
   Columns2,
@@ -17,7 +14,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Plus,
-  RefreshCw,
   RotateCcw,
   Search,
   X,
@@ -38,37 +34,8 @@ import { buildFileTree, filterTreeNodes, type FileTreeNode } from "../lib/git-fi
 
 export type BranchState = GitBranchState;
 
-type SidebarPanelTab = "git" | "files" | "browser";
+type SidebarPanelTab = "git" | "files";
 type GitPanelTab = "diff" | "log" | "issues" | "prs";
-
-export type BrowserControlOwner = "agent" | "human";
-
-export type BrowserTabState = {
-  id: string;
-  title: string;
-  url: string;
-  isActive: boolean;
-};
-
-export type BrowserHistoryEntry = {
-  id: string;
-  label: string;
-  url: string;
-};
-
-export type BrowserSidebarState = {
-  modeEnabled: boolean;
-  controlOwner: BrowserControlOwner;
-  tabs: BrowserTabState[];
-  activeTabID: string | null;
-  activeUrl: string;
-  history: BrowserHistoryEntry[];
-  canGoBack: boolean;
-  canGoForward: boolean;
-  isLoading: boolean;
-  actionRunning: boolean;
-  canStop?: boolean;
-};
 
 export type GitSidebarProps = {
   sidebarPanelTab: SidebarPanelTab;
@@ -95,21 +62,6 @@ export type GitSidebarProps = {
   onAddToChatPath: (filePath: string) => void;
   onStatusChange: (message: string) => void;
   onCollapse?: () => void;
-  browserState: BrowserSidebarState;
-  onBrowserOpenTab?: () => Promise<void> | void;
-  onBrowserCloseTab?: (tabID: string) => Promise<void> | void;
-  onBrowserNavigate: (url: string) => Promise<void> | void;
-  onBrowserGoBack: () => Promise<void> | void;
-  onBrowserGoForward: () => Promise<void> | void;
-  onBrowserReload: () => Promise<void> | void;
-  onBrowserSelectTab: (tabID: string) => Promise<void> | void;
-  onBrowserSelectHistory: (url: string) => Promise<void> | void;
-  onBrowserReportViewportBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void> | void;
-  onBrowserTakeControl: () => Promise<void> | void;
-  onBrowserHandBack: () => Promise<void> | void;
-  onBrowserStop: () => Promise<void> | void;
-  mcpDevToolsState?: McpDevToolsServerState;
-  browserEnabled?: boolean;
 };
 
 export function GitSidebar(props: GitSidebarProps) {
@@ -135,21 +87,6 @@ export function GitSidebar(props: GitSidebarProps) {
     onAddToChatPath,
     onStatusChange,
     onCollapse,
-    browserState,
-    onBrowserOpenTab,
-    onBrowserCloseTab,
-    onBrowserNavigate,
-    onBrowserGoBack,
-    onBrowserGoForward,
-    onBrowserReload,
-    onBrowserSelectTab,
-    onBrowserSelectHistory,
-    onBrowserReportViewportBounds,
-    onBrowserTakeControl,
-    onBrowserHandBack,
-    onBrowserStop,
-    mcpDevToolsState,
-    browserEnabled = true,
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
@@ -161,17 +98,6 @@ export function GitSidebar(props: GitSidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
-  const [browserUrlInput, setBrowserUrlInput] = useState("");
-  const [browserHistoryValue, setBrowserHistoryValue] = useState("");
-
-  // Fall back to git tab if browser is disabled while active
-  useEffect(() => {
-    if (!browserEnabled && sidebarPanelTab === "browser") {
-      setSidebarPanelTab("git");
-    }
-  }, [browserEnabled, sidebarPanelTab, setSidebarPanelTab]);
-  const browserViewportHostRef = useRef<HTMLDivElement | null>(null);
-
   const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {
     const direct = fileProvenanceByPath?.[file.path];
     if (direct) {
@@ -247,71 +173,6 @@ export function GitSidebar(props: GitSidebarProps) {
       setPendingAction(null);
     }
   };
-
-  const runBrowserAction = (action: () => void | Promise<void>) => {
-    void Promise.resolve(action()).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      onStatusChange(message);
-    });
-  };
-
-  useEffect(() => {
-    setBrowserUrlInput(browserState.activeUrl);
-  }, [browserState.activeUrl]);
-
-  useEffect(() => {
-    setBrowserHistoryValue("");
-  }, [browserState.history, browserState.activeTabID]);
-
-  useLayoutEffect(() => {
-    if (sidebarPanelTab !== "browser") {
-      return;
-    }
-    const host = browserViewportHostRef.current;
-    if (!host) {
-      return;
-    }
-    let frameID: number | null = null;
-    const report = () => {
-      const rect = host.getBoundingClientRect();
-      void onBrowserReportViewportBounds({
-        x: Math.round(rect.left),
-        y: Math.round(rect.top),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height),
-      });
-    };
-    const schedule = () => {
-      if (frameID !== null) {
-        window.cancelAnimationFrame(frameID);
-      }
-      frameID = window.requestAnimationFrame(() => {
-        frameID = null;
-        report();
-      });
-    };
-
-    report();
-    window.addEventListener("resize", schedule);
-    window.addEventListener("scroll", schedule, true);
-    let observer: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => {
-        schedule();
-      });
-      observer.observe(host);
-    }
-    return () => {
-      if (observer) {
-        observer.disconnect();
-      }
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("scroll", schedule, true);
-      if (frameID !== null) {
-        window.cancelAnimationFrame(frameID);
-      }
-    };
-  }, [onBrowserReportViewportBounds, sidebarPanelTab, browserState.activeTabID, browserState.activeUrl]);
 
   const renderListView = () => (
     <div className="git-list-view">
@@ -645,179 +506,6 @@ export function GitSidebar(props: GitSidebarProps) {
     return rows;
   };
 
-  const submitBrowserNavigation = () => {
-    const rawValue = browserUrlInput.trim();
-    if (!rawValue) {
-      return;
-    }
-    const normalized = /^https?:\/\//i.test(rawValue) ? rawValue : `https://${rawValue}`;
-    setBrowserUrlInput(normalized);
-    runBrowserAction(() => onBrowserNavigate(normalized));
-  };
-
-  const renderBrowserPane = () => (
-    <section className="ops-section ops-section-fill browser-pane">
-      <div className="browser-tab-strip" role="tablist" aria-label="Browser tabs">
-        {browserState.tabs.length === 0 ? (
-          <span className="browser-tab-empty">No tabs</span>
-        ) : (
-          browserState.tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={tab.isActive}
-              className={`browser-tab ${tab.isActive ? "active" : ""}`.trim()}
-              onClick={() => runBrowserAction(() => onBrowserSelectTab(tab.id))}
-              title={tab.url || tab.title}
-            >
-              <span className="browser-tab-title">{tab.title || tab.url || "Untitled"}</span>
-              {onBrowserCloseTab ? (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="browser-tab-close"
-                  aria-label={`Close ${tab.title || tab.url || "tab"}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    runBrowserAction(() => onBrowserCloseTab(tab.id));
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      runBrowserAction(() => onBrowserCloseTab(tab.id));
-                    }
-                  }}
-                >
-                  <X size={11} />
-                </span>
-              ) : null}
-            </button>
-          ))
-        )}
-        {onBrowserOpenTab ? (
-          <button
-            type="button"
-            className="browser-tab browser-tab-add"
-            onClick={() => runBrowserAction(onBrowserOpenTab)}
-            title="Open new tab"
-            aria-label="Open new tab"
-          >
-            <Plus size={12} />
-            <span>new tab</span>
-          </button>
-        ) : null}
-      </div>
-
-      <div className="browser-nav-row">
-        <button
-          type="button"
-          className="browser-nav-btn"
-          onClick={() => runBrowserAction(onBrowserGoBack)}
-          disabled={!browserState.canGoBack}
-          aria-label="Back"
-          title="Back"
-        >
-          <ArrowLeft size={14} />
-        </button>
-        <button
-          type="button"
-          className="browser-nav-btn"
-          onClick={() => runBrowserAction(onBrowserGoForward)}
-          disabled={!browserState.canGoForward}
-          aria-label="Forward"
-          title="Forward"
-        >
-          <ArrowRight size={14} />
-        </button>
-        <button
-          type="button"
-          className="browser-nav-btn"
-          onClick={() => runBrowserAction(onBrowserReload)}
-          aria-label="Reload"
-          title={browserState.isLoading ? "Loading..." : "Reload"}
-        >
-          <RefreshCw size={14} className={browserState.isLoading ? "spin" : ""} />
-        </button>
-        <form
-          className="browser-url-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitBrowserNavigation();
-          }}
-        >
-          <input
-            type="text"
-            className="browser-url-input"
-            value={browserUrlInput}
-            placeholder="Enter URL"
-            onChange={(event) => setBrowserUrlInput(event.target.value)}
-            aria-label="Browser URL"
-          />
-          <button type="submit" className="browser-url-go">Go</button>
-        </form>
-      </div>
-
-      <div className="browser-history-row">
-        <select
-          className="browser-history-select"
-          value={browserHistoryValue}
-          onChange={(event) => {
-            const selected = event.target.value;
-            setBrowserHistoryValue(selected);
-            if (selected) {
-              runBrowserAction(() => onBrowserSelectHistory(selected));
-            }
-          }}
-          aria-label="Browser history"
-        >
-          <option value="">History</option>
-          {browserState.history.map((entry) => (
-            <option key={entry.id} value={entry.url}>
-              {entry.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="browser-control-strip">
-        <span className={`browser-owner-chip owner-${browserState.controlOwner}`.trim()}>
-          {browserState.controlOwner === "human" ? "human" : "agent"}
-        </span>
-        {mcpDevToolsState ? <McpStatusIndicator state={mcpDevToolsState} /> : null}
-        <div className="browser-control-actions">
-          <button
-            type="button"
-            className="browser-control-btn"
-            onClick={() => runBrowserAction(browserState.controlOwner === "human" ? onBrowserHandBack : onBrowserTakeControl)}
-          >
-            {browserState.controlOwner === "human" ? "hand back" : "take control"}
-          </button>
-          <button
-            type="button"
-            className="browser-control-btn danger"
-            onClick={() => runBrowserAction(onBrowserStop)}
-            disabled={!(browserState.canStop ?? browserState.actionRunning)}
-          >
-            stop
-          </button>
-        </div>
-      </div>
-
-      {!browserState.modeEnabled ? (
-        <p className="browser-mode-note">browser mode disabled</p>
-      ) : null}
-
-      <div className="browser-viewport-pane">
-        <div ref={browserViewportHostRef} className="browser-viewport-host">
-          <span className="browser-viewport-label">Renderer viewport host</span>
-          <span className="browser-viewport-url">{browserState.activeUrl || "No active URL"}</span>
-        </div>
-      </div>
-    </section>
-  );
-
   return (
     <aside className="sidebar ops-pane">
       <div className="ops-panel-tabs">
@@ -851,22 +539,6 @@ export function GitSidebar(props: GitSidebarProps) {
           </span>
           <span className="ops-panel-tab-label">Files</span>
         </button>
-        {browserEnabled ? <button
-          type="button"
-          className={`ops-panel-tab ${sidebarPanelTab === "browser" ? "active" : ""}`.trim()}
-          onClick={() => setSidebarPanelTab("browser")}
-          aria-label="Browser"
-        >
-          <span className="ops-panel-tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
-              <circle cx="12" cy="12" r="9" />
-              <path d="M3 12h18" />
-              <path d="M12 3a15 15 0 0 1 0 18" />
-              <path d="M12 3a15 15 0 0 0 0 18" />
-            </svg>
-          </span>
-          <span className="ops-panel-tab-label">Browser</span>
-        </button> : null}
         {onCollapse ? (
           <button
             type="button"
@@ -1153,9 +825,6 @@ export function GitSidebar(props: GitSidebarProps) {
       {sidebarPanelTab === "files" ? (
         <ProjectFilesPanel directory={activeProjectDir ?? ""} onAddToChatPath={onAddToChatPath} onStatus={onStatusChange} />
       ) : null}
-
-      {sidebarPanelTab === "browser" && browserEnabled ? renderBrowserPane() : null}
-
       {sidebarPanelTab === "git" && gitDiffViewMode === "list" && listViewFocusFile ? (
         <div className="git-list-diff-overlay">
           <div className="git-diff-file-header">

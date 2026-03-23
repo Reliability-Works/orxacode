@@ -191,6 +191,8 @@ export interface OrxaBridge {
     listHistory: (limit?: number) => Promise<BrowserHistoryItem[]>;
     clearHistory: () => Promise<BrowserHistoryItem[]>;
     performAgentAction: (request: BrowserAgentActionRequest) => Promise<BrowserAgentActionResult>;
+    inspectEnable: () => Promise<{ ok: boolean }>;
+    inspectDisable: () => Promise<{ ok: boolean }>;
   };
   mcpDevTools: {
     start: (directory: string) => Promise<McpDevToolsServerStatus>;

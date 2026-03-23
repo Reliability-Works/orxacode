@@ -29,6 +29,8 @@ type ContentTopBarProps = {
   toggleProjectsPane: () => void;
   showGitPane: boolean;
   setGitPaneVisible: (visible: boolean) => void;
+  browserSidebarOpen: boolean;
+  toggleBrowserSidebar: () => void;
   gitDiffStats: GitDiffStats;
   contentPaneTitle: string;
   activeProjectDir: string | null;
@@ -72,6 +74,8 @@ export function ContentTopBar({
   toggleProjectsPane,
   showGitPane,
   setGitPaneVisible,
+  browserSidebarOpen,
+  toggleBrowserSidebar,
   gitDiffStats,
   contentPaneTitle,
   activeProjectDir,
@@ -349,6 +353,13 @@ export function ContentTopBar({
 
       {/* Right actions group */}
       <div className="topbar-right-group">
+        <IconButton
+          icon="browser"
+          label={browserSidebarOpen ? "Close browser sidebar" : "Open browser sidebar"}
+          className={`titlebar-toggle titlebar-toggle-browser ${browserSidebarOpen ? "active" : ""}`.trim()}
+          onClick={toggleBrowserSidebar}
+          disabled={!hasProjectContext}
+        />
         <div ref={runMenuRootRef} className={`titlebar-run-wrap ${runMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
