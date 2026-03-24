@@ -8,6 +8,7 @@ export * from "./ipc/browser";
 export * from "./ipc/mcp-devtools";
 export * from "./ipc/codex";
 export * from "./ipc/claude-chat";
+export * from "./ipc/simulator";
 export * from "./ipc/app";
 export * from "./ipc/events";
 export * from "./ipc/bridge";

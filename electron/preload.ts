@@ -146,6 +146,15 @@ const bridge: OrxaBridge = {
     archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
     archiveProviderSession: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
   },
+  simulator: {
+    getState: () => ipcRenderer.invoke(IPC.simulatorGetState),
+    listDevices: () => ipcRenderer.invoke(IPC.simulatorListDevices),
+    bootDevice: (udid) => ipcRenderer.invoke(IPC.simulatorBootDevice, udid),
+    shutdownDevice: (udid) => ipcRenderer.invoke(IPC.simulatorShutdownDevice, udid),
+    selectDevice: (udid) => ipcRenderer.invoke(IPC.simulatorSelectDevice, udid),
+    takeScreenshot: (udid) => ipcRenderer.invoke(IPC.simulatorTakeScreenshot, udid),
+    getCaptureSourceId: (udid) => ipcRenderer.invoke(IPC.simulatorGetCaptureSourceId, udid),
+  },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),
     setVisible: (visible) => ipcRenderer.invoke(IPC.browserSetVisible, visible),

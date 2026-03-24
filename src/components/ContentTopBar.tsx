@@ -31,6 +31,8 @@ type ContentTopBarProps = {
   setGitPaneVisible: (visible: boolean) => void;
   browserSidebarOpen: boolean;
   toggleBrowserSidebar: () => void;
+  mobileSidebarOpen?: boolean;
+  toggleMobileSidebar?: () => void;
   gitDiffStats: GitDiffStats;
   contentPaneTitle: string;
   activeProjectDir: string | null;
@@ -76,6 +78,8 @@ export function ContentTopBar({
   setGitPaneVisible,
   browserSidebarOpen,
   toggleBrowserSidebar,
+  mobileSidebarOpen,
+  toggleMobileSidebar,
   gitDiffStats,
 
   activeProjectDir,
@@ -347,6 +351,13 @@ export function ContentTopBar({
           label={browserSidebarOpen ? "Close browser sidebar" : "Open browser sidebar"}
           className={`titlebar-toggle titlebar-toggle-browser ${browserSidebarOpen ? "active" : ""}`.trim()}
           onClick={toggleBrowserSidebar}
+          disabled={!hasProjectContext}
+        />
+        <IconButton
+          icon="simulator"
+          className={`titlebar-toggle titlebar-toggle-mobile ${mobileSidebarOpen ? "active" : ""}`.trim()}
+          label={mobileSidebarOpen ? "Close simulator" : "Open simulator"}
+          onClick={toggleMobileSidebar}
           disabled={!hasProjectContext}
         />
         {showTerminalToggle ? (

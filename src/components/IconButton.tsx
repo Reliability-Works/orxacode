@@ -23,7 +23,8 @@ type IconName =
   | "panelLeft"
   | "panelRight"
   | "orxa"
-  | "standard";
+  | "standard"
+  | "simulator";
 
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon: IconName;
@@ -206,6 +207,13 @@ function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) 
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
           <circle cx="12" cy="12" r="9" />
+        </svg>
+      );
+    case "simulator":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+          <rect x="5" y="2" width="14" height="20" rx="2" />
+          <path d="M12 18h.01" />
         </svg>
       );
     default:

@@ -158,6 +158,13 @@ export const IPC = {
   claudeTerminalWrite: "orxa:claude-terminal:write",
   claudeTerminalResize: "orxa:claude-terminal:resize",
   claudeTerminalClose: "orxa:claude-terminal:close",
+  simulatorGetState: "orxa:simulator:getState",
+  simulatorListDevices: "orxa:simulator:listDevices",
+  simulatorBootDevice: "orxa:simulator:bootDevice",
+  simulatorShutdownDevice: "orxa:simulator:shutdownDevice",
+  simulatorSelectDevice: "orxa:simulator:selectDevice",
+  simulatorTakeScreenshot: "orxa:simulator:takeScreenshot",
+  simulatorGetCaptureSourceId: "orxa:simulator:getCaptureSourceId",
   events: "orxa:events",
   eventsBatch: "orxa:events:batch",
 } as const;

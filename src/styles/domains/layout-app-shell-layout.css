@@ -87,6 +87,8 @@
     0px
     calc(var(--browser-pane-width, 380px) * var(--browser-pane-visible, 0))
     0px
+    calc(var(--mobile-pane-width, 360px) * var(--mobile-pane-visible, 0))
+    0px
     calc(var(--right-pane-width, 340px) * var(--right-pane-visible, 1));
   gap: 0;
   padding: 0;

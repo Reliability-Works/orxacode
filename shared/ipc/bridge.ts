@@ -40,6 +40,7 @@ import type {
 } from "./opencode-core";
 import type { RuntimeDependencyReport, RuntimeProfile, RuntimeProfileInput, RuntimeState, ServerDiagnostics } from "./runtime";
 import type { BrowserAgentActionRequest, BrowserAgentActionResult, BrowserBounds, BrowserHistoryItem, BrowserState } from "./browser";
+import type { SimulatorDevice, SimulatorState, SimulatorScreenshot } from "./simulator";
 import type { ClaudeTerminalCreateResult, ClaudeTerminalMode, OrxaTerminalOwner, OrxaTerminalSession, TerminalConnectResult } from "./terminal";
 import type { McpDevToolsServerStatus } from "./mcp-devtools";
 import type { ProviderUsageStats, OpenFileOptions, OpenFileResult, ListeningPort, HttpRequestOptions, HttpRequestResult } from "./app";
@@ -219,6 +220,15 @@ export interface OrxaBridge {
     performAgentAction: (request: BrowserAgentActionRequest) => Promise<BrowserAgentActionResult>;
     inspectEnable: () => Promise<{ ok: boolean }>;
     inspectDisable: () => Promise<{ ok: boolean }>;
+  };
+  simulator: {
+    getState: () => Promise<SimulatorState>;
+    listDevices: () => Promise<SimulatorDevice[]>;
+    bootDevice: (udid: string) => Promise<SimulatorState>;
+    shutdownDevice: (udid: string) => Promise<SimulatorState>;
+    selectDevice: (udid: string) => Promise<SimulatorState>;
+    takeScreenshot: (udid: string) => Promise<SimulatorScreenshot>;
+    getCaptureSourceId: (udid: string) => Promise<string | null>;
   };
   mcpDevTools: {
     start: (directory: string) => Promise<McpDevToolsServerStatus>;
