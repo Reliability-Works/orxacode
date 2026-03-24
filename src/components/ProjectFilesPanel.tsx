@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ProjectFileDocument, ProjectFileEntry } from "@shared/ipc";
-import { ChevronDown, ChevronRight, FileText, Folder, FolderOpen, Plus, Send, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ClipboardCopy, FileText, Folder, FolderOpen, RotateCcw, Save, X } from "lucide-react";
 import { getFileIcon } from "../lib/file-icons";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
@@ -99,23 +99,22 @@ function sortEntries(entries: ProjectFileEntry[]) {
 }
 
 function lineFromNode(node: Node | null): number | undefined {
-  if (!node) {
-    return undefined;
-  }
-
-  if (node instanceof Element) {
-    const holder = node.closest<HTMLElement>("[data-line-number]");
-    if (!holder) {
+  let current: Node | null = node;
+  while (current) {
+    if (current instanceof Element) {
+      const holder = current.closest<HTMLElement>("[data-line-number]");
+      if (holder) {
+        const value = Number.parseInt(holder.dataset.lineNumber ?? "", 10);
+        return Number.isFinite(value) ? value : undefined;
+      }
       return undefined;
     }
-    const value = Number.parseInt(holder.dataset.lineNumber ?? "", 10);
-    return Number.isFinite(value) ? value : undefined;
+    current = current.parentNode as Node | null;
   }
-
-  return lineFromNode(node.parentElement);
+  return undefined;
 }
 
-export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Props) {
+export function ProjectFilesPanel({ directory, onStatus }: Props) {
   const [nodesByPath, setNodesByPath] = useState<TreeState>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState<Record<string, boolean>>({});
@@ -126,6 +125,7 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
   const [preview, setPreview] = useState<ProjectFileDocument | null>(null);
   const [selection, setSelection] = useState<LineSelection | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [copiedField, setCopiedField] = useState<"path" | "selection" | null>(null);
   const [editorState, setEditorState] = useState<EditablePreviewState | null>(null);
   const previewScrollerRef = useRef<HTMLDivElement | null>(null);
   const selectionPopoverRef = useRef<HTMLDivElement | null>(null);
@@ -317,7 +317,8 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
         const doc = await window.orxa.opencode.readProjectFile(directory, entry.relativePath);
         setPreview(doc);
         setSelection(null);
-        setIsEditing(false);
+        const editable = !doc.binary && !doc.truncated;
+        setIsEditing(editable);
         setEditorState({
           content: doc.content ?? "",
           savedContent: doc.content ?? "",
@@ -400,22 +401,22 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
       return;
     }
 
-    let frameId: number | null = null;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
     const scheduleSelectionCapture = () => {
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
+      if (timerId !== null) {
+        clearTimeout(timerId);
       }
-      frameId = window.requestAnimationFrame(() => {
-        frameId = null;
+      timerId = setTimeout(() => {
+        timerId = null;
         captureSelection();
-      });
+      }, 300);
     };
 
     document.addEventListener("selectionchange", scheduleSelectionCapture);
     return () => {
       document.removeEventListener("selectionchange", scheduleSelectionCapture);
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
+      if (timerId !== null) {
+        clearTimeout(timerId);
       }
     };
   }, [captureSelection, isEditing, preview]);
@@ -701,55 +702,48 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                 <div className="file-preview-actions">
                   <button
                     type="button"
-                    className="file-preview-icon-action"
+                    className={`file-preview-icon-action ${copiedField === "path" ? "file-preview-icon-action--copied" : ""}`.trim()}
                     onClick={() => {
-                      onAddToChatPath(preview.path);
-                      onStatus(`Added path to composer: ${preview.path}`);
+                      void navigator.clipboard.writeText(preview.path).then(() => {
+                        setCopiedField("path");
+                        onStatus(`Copied to clipboard: ${preview.relativePath}`);
+                        setTimeout(() => setCopiedField(null), 1500);
+                      });
                     }}
-                    aria-label="Add file path to chat"
+                    aria-label="Copy file path"
+                    title="Copy file path to clipboard"
                   >
-                    <Send size={14} aria-hidden="true" />
+                    {copiedField === "path" ? <Check size={14} aria-hidden="true" /> : <ClipboardCopy size={14} aria-hidden="true" />}
                   </button>
-                  {canEditPreview ? (
-                    <button
-                      type="button"
-                      className="file-preview-icon-action"
-                      onClick={() => {
-                        setIsEditing((current) => !current);
-                        setSelection(null);
-                      }}
-                      aria-label={isEditing ? "Preview file" : "Edit file"}
-                      title={isEditing ? "Preview file" : "Edit file"}
-                    >
-                      <FileText size={14} aria-hidden="true" />
-                    </button>
+                  {canEditPreview && editorState ? (
+                    <>
+                      <button
+                        type="button"
+                        className="file-preview-icon-action"
+                        onClick={undoPreviewChanges}
+                        disabled={!editorState.dirty || editorState.saving}
+                        aria-label="Undo changes"
+                        title="Undo changes"
+                      >
+                        <RotateCcw size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="file-preview-icon-action"
+                        onClick={() => void savePreview()}
+                        disabled={!editorState.dirty || editorState.saving}
+                        aria-label={editorState.saving ? "Saving..." : "Save file"}
+                        title={editorState.saving ? "Saving..." : "Save file"}
+                      >
+                        <Save size={14} aria-hidden="true" />
+                      </button>
+                    </>
                   ) : null}
-                  <button type="button" className="file-preview-icon-action" onClick={() => setPreview(null)} aria-label="Close preview">
+                  <button type="button" className="file-preview-icon-action" onClick={() => setPreview(null)} aria-label="Close preview" title="Close preview">
                     <X size={14} aria-hidden="true" />
                   </button>
                 </div>
               </div>
-              {isEditing && editorState ? (
-                <div className="file-preview-edit-actions">
-                  <button
-                    type="button"
-                    className="file-preview-primary-action"
-                    onClick={() => void savePreview()}
-                    disabled={!editorState.dirty || editorState.saving}
-                  >
-                    {editorState.saving ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    className="file-preview-secondary-action"
-                    onClick={undoPreviewChanges}
-                    disabled={!editorState.dirty || editorState.saving}
-                  >
-                    Undo
-                  </button>
-                  <small className="file-preview-shortcut-hint">Cmd/Ctrl+S to save. Native undo/redo works while editing.</small>
-                </div>
-              ) : null}
               {preview.truncated ? <small>Preview truncated</small> : null}
             </header>
             <div
@@ -771,6 +765,27 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                       dirty: nextContent !== current.savedContent,
                     } : current);
                   }}
+                  onSelect={() => {
+                    const ta = editorRef.current;
+                    if (!ta || !preview) return;
+                    const { selectionStart, selectionEnd } = ta;
+                    if (selectionStart === selectionEnd) {
+                      setSelection(null);
+                      return;
+                    }
+                    const text = editorState.content;
+                    const startLine = text.substring(0, selectionStart).split("\n").length;
+                    const endLine = text.substring(0, selectionEnd).split("\n").length;
+                    setSelection({
+                      startLine,
+                      endLine,
+                      top: 0,
+                      left: 0,
+                      anchorTop: 0,
+                      anchorBottom: 0,
+                      clamped: false,
+                    });
+                  }}
                   spellCheck={false}
                 />
               ) : preview.binary ? (
@@ -791,11 +806,11 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                 ))
               )}
 
-              {selection && !isEditing ? (
+              {selection ? (
                 <div
                   ref={selectionPopoverRef}
-                  className="file-preview-selection-popover"
-                  style={{ top: `${selection.top}px`, left: `${selection.left}px` }}
+                  className={`file-preview-selection-popover ${isEditing ? "file-preview-selection-popover--fixed" : ""}`.trim()}
+                  style={isEditing ? undefined : { top: `${selection.top}px`, left: `${selection.left}px` }}
                   onMouseDown={(event) => event.stopPropagation()}
                   onMouseUp={(event) => event.stopPropagation()}
                 >
@@ -807,20 +822,25 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
                   <div className="file-preview-selection-actions">
                     <button
                       type="button"
-                      className="file-preview-selection-add"
+                      className={`file-preview-selection-add ${copiedField === "selection" ? "file-preview-selection-add--copied" : ""}`.trim()}
                       onClick={() => {
                         const lineRef =
                           selection.startLine === selection.endLine
-                            ? `${preview.path}:${selection.startLine}`
-                            : `${preview.path}:${selection.startLine}-${selection.endLine}`;
-                        onAddToChatPath(lineRef);
-                        onStatus(`Added selection to composer: ${lineRef}`);
-                        setSelection(null);
-                        window.getSelection()?.removeAllRanges();
+                            ? `${preview.relativePath}:${selection.startLine}`
+                            : `${preview.relativePath}:${selection.startLine}-${selection.endLine}`;
+                        void navigator.clipboard.writeText(lineRef).then(() => {
+                          setCopiedField("selection");
+                          onStatus(`Copied to clipboard: ${lineRef}`);
+                          setTimeout(() => {
+                            setCopiedField(null);
+                            setSelection(null);
+                            window.getSelection()?.removeAllRanges();
+                          }, 1200);
+                        });
                       }}
                     >
-                      <Plus size={12} aria-hidden="true" />
-                      Add selection
+                      {copiedField === "selection" ? <Check size={12} aria-hidden="true" /> : <ClipboardCopy size={12} aria-hidden="true" />}
+                      {copiedField === "selection" ? "Copied!" : "Copy reference"}
                     </button>
                     <button type="button" className="file-preview-selection-close" onClick={() => setSelection(null)} aria-label="Close selection actions">
                       <X size={12} aria-hidden="true" />
@@ -831,7 +851,7 @@ export function ProjectFilesPanel({ directory, onAddToChatPath, onStatus }: Prop
             </div>
             <footer className="file-preview-footer">
               <FileText size={13} aria-hidden="true" />
-              <span>{isEditing ? "Edit the file, then save or undo your changes." : "Select text to add path and line range into chat."}</span>
+              <span>Select text to copy file path and line numbers. Edits auto-save with Cmd/Ctrl+S.</span>
             </footer>
           </div>
         </div>

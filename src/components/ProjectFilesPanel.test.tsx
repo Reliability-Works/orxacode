@@ -41,11 +41,10 @@ describe("ProjectFilesPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: "notes.md" }));
     expect(await screen.findByText("notes.md")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit file" }));
-    const editor = screen.getByRole("textbox");
+    const editor = await screen.findByRole("textbox");
     fireEvent.change(editor, { target: { value: "hello\nchanged" } });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
 
     await waitFor(() => {
       expect(window.orxa?.app.writeTextFile).toHaveBeenCalledWith("/repo/notes.md", "hello\nchanged");

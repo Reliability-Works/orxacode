@@ -1,5 +1,5 @@
 import type { ChangeProvenanceRecord, GitBranchState } from "@shared/ipc";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ProjectFilesPanel } from "./ProjectFilesPanel";
 import {
   AlignJustify,
@@ -90,6 +90,8 @@ export function GitSidebar(props: GitSidebarProps) {
   } = props;
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null);
+  const [gitTabMenuOpen, setGitTabMenuOpen] = useState(false);
+  const gitTabMenuRef = useRef<HTMLDivElement>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [expandedUnchangedRows, setExpandedUnchangedRows] = useState<Record<string, boolean>>({});
@@ -98,6 +100,28 @@ export function GitSidebar(props: GitSidebarProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [collapsedFileSections, setCollapsedFileSections] = useState<Record<string, boolean>>({});
   const [listViewFocusKey, setListViewFocusKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!gitTabMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (gitTabMenuRef.current && !gitTabMenuRef.current.contains(e.target as Node)) {
+        setGitTabMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [gitTabMenuOpen]);
+
+  const gitTabLabels: Record<GitPanelTab, string> = { diff: "Diff", log: "Log", issues: "Issues", prs: "PRs" };
+  const selectGitTab = useCallback((tab: GitPanelTab) => {
+    setGitPanelTab(tab);
+    setGitTabMenuOpen(false);
+    if (tab === "diff") void onLoadGitDiff();
+    else if (tab === "log") void onLoadGitLog();
+    else if (tab === "issues") void onLoadGitIssues();
+    else if (tab === "prs") void onLoadGitPrs();
+  }, [setGitPanelTab, onLoadGitDiff, onLoadGitLog, onLoadGitIssues, onLoadGitPrs]);
+
   const resolveProvenance = (file: Pick<GitDiffFile, "path" | "oldPath">): ChangeProvenanceRecord | null => {
     const direct = fileProvenanceByPath?.[file.path];
     if (direct) {
@@ -509,36 +533,38 @@ export function GitSidebar(props: GitSidebarProps) {
   return (
     <aside className="sidebar ops-pane">
       <div className="ops-panel-tabs">
-        <button
-          type="button"
-          className={`ops-panel-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
-          onClick={() => setSidebarPanelTab("git")}
-          aria-label="Git"
-        >
-          <span className="ops-panel-tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
-              <circle cx="7" cy="6" r="2.2" />
-              <circle cx="17" cy="12" r="2.2" />
-              <circle cx="7" cy="18" r="2.2" />
-              <path d="M8.9 7.3 15 10.7" />
-              <path d="M8.9 16.7 15 13.3" />
-            </svg>
-          </span>
-          <span className="ops-panel-tab-label">Git</span>
-        </button>
-        <button
-          type="button"
-          className={`ops-panel-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
-          onClick={() => setSidebarPanelTab("files")}
-          aria-label="Files"
-        >
-          <span className="ops-panel-tab-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={13} height={13}>
-              <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 18 20H6A2.5 2.5 0 0 1 3.5 17.5z" />
-            </svg>
-          </span>
-          <span className="ops-panel-tab-label">Files</span>
-        </button>
+        <div className="ops-panel-tab-pills">
+          <button
+            type="button"
+            className={`ops-panel-tab ${sidebarPanelTab === "git" ? "active" : ""}`.trim()}
+            onClick={() => setSidebarPanelTab("git")}
+            aria-label="Git"
+            title="Git"
+          >
+            <span className="ops-panel-tab-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={16} height={16}>
+                <circle cx="7" cy="6" r="2.2" />
+                <circle cx="17" cy="12" r="2.2" />
+                <circle cx="7" cy="18" r="2.2" />
+                <path d="M8.9 7.3 15 10.7" />
+                <path d="M8.9 16.7 15 13.3" />
+              </svg>
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`ops-panel-tab ${sidebarPanelTab === "files" ? "active" : ""}`.trim()}
+            onClick={() => setSidebarPanelTab("files")}
+            aria-label="Files"
+            title="Files"
+          >
+            <span className="ops-panel-tab-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" width={16} height={16}>
+                <path d="M3.5 6.5A2.5 2.5 0 0 1 6 4h4l2 2h6a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 18 20H6A2.5 2.5 0 0 1 3.5 17.5z" />
+              </svg>
+            </span>
+          </button>
+        </div>
         {onCollapse ? (
           <button
             type="button"
@@ -555,46 +581,33 @@ export function GitSidebar(props: GitSidebarProps) {
       {sidebarPanelTab === "git" ? (
         <section className="ops-section ops-section-fill">
           <div className="ops-git-sub-tabs">
-            <button
-              type="button"
-              className={`ops-git-sub-tab ${gitPanelTab === "diff" ? "active" : ""}`.trim()}
-              onClick={() => {
-                setGitPanelTab("diff");
-                void onLoadGitDiff();
-              }}
-            >
-              Diff
-            </button>
-            <button
-              type="button"
-              className={`ops-git-sub-tab ${gitPanelTab === "log" ? "active" : ""}`.trim()}
-              onClick={() => {
-                setGitPanelTab("log");
-                void onLoadGitLog();
-              }}
-            >
-              Log
-            </button>
-            <button
-              type="button"
-              className={`ops-git-sub-tab ${gitPanelTab === "issues" ? "active" : ""}`.trim()}
-              onClick={() => {
-                setGitPanelTab("issues");
-                void onLoadGitIssues();
-              }}
-            >
-              Issues
-            </button>
-            <button
-              type="button"
-              className={`ops-git-sub-tab ${gitPanelTab === "prs" ? "active" : ""}`.trim()}
-              onClick={() => {
-                setGitPanelTab("prs");
-                void onLoadGitPrs();
-              }}
-            >
-              PRs
-            </button>
+            <div ref={gitTabMenuRef} className="ops-git-panel-dropdown-wrap">
+              <button
+                type="button"
+                className="ops-git-panel-dropdown-btn"
+                onClick={() => setGitTabMenuOpen((v) => !v)}
+                aria-expanded={gitTabMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span>{gitTabLabels[gitPanelTab]}</span>
+                <ChevronDown size={10} aria-hidden="true" />
+              </button>
+              {gitTabMenuOpen ? (
+                <div className="ops-git-panel-dropdown-menu" role="menu">
+                  {(["diff", "log", "issues", "prs"] as GitPanelTab[]).map((tab) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      role="menuitem"
+                      className={gitPanelTab === tab ? "active" : ""}
+                      onClick={() => selectGitTab(tab)}
+                    >
+                      {gitTabLabels[tab]}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <div className="ops-git-view-modes">
               <button
                 type="button"
