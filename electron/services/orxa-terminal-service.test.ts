@@ -139,7 +139,9 @@ describe("OrxaTerminalService", () => {
     spawnProcessMock.mockReturnValueOnce(scriptProcess);
 
     const originalShell = process.env.SHELL;
+    const originalPlatform = process.platform;
     process.env.SHELL = "/definitely/missing-shell";
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
     try {
       const service = new OrxaTerminalService();
@@ -151,6 +153,7 @@ describe("OrxaTerminalService", () => {
       expect(spawnProcessMock).toHaveBeenCalledTimes(1);
     } finally {
       process.env.SHELL = originalShell;
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     }
   });
 
@@ -163,7 +166,9 @@ describe("OrxaTerminalService", () => {
     });
 
     const originalShell = process.env.SHELL;
+    const originalPlatform = process.platform;
     process.env.SHELL = "/definitely/missing-shell";
+    Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
     try {
       const service = new OrxaTerminalService();
@@ -171,6 +176,7 @@ describe("OrxaTerminalService", () => {
       expect(() => service.createPty(directory, directory, "Tab 1")).toThrow(/Failed to start terminal shell/);
     } finally {
       process.env.SHELL = originalShell;
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     }
   });
 
