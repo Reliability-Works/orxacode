@@ -170,7 +170,6 @@
 
 .session-status-label {
   font-size: 11px;
-  font-family: var(--font-mono);
   font-weight: 500;
 }
 
@@ -251,7 +250,6 @@
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 11px;
-  font-family: var(--font-mono);
   font-weight: 500;
 }
 
@@ -336,7 +334,6 @@
 }
 
 .commit-summary-grid strong {
-  font-family: var(--font-mono);
   font-size: 13px;
 }
 
@@ -383,7 +380,6 @@
 
 .commit-ai-btn {
   font-size: 11px;
-  font-family: var(--font-mono);
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -602,7 +598,6 @@
 }
 
 .text-input-dialog-field input {
-  font-family: var(--font-mono);
 }
 
 .text-input-dialog-error {
@@ -1262,7 +1257,6 @@ button.primary {
   cursor: pointer;
   transition: background 100ms ease;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .new-session-picker-option:last-child {
@@ -1452,7 +1446,6 @@ button.primary {
   border-radius: 4px;
   color: var(--text-secondary);
   font-size: 12px;
-  font-family: var(--font-mono);
   cursor: pointer;
   text-align: left;
 }
@@ -1662,7 +1655,6 @@ button.primary {
   gap: 8px;
   color: var(--text-muted);
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .image-tile-error {
@@ -1718,7 +1710,6 @@ button.primary {
 
 .image-tile-zoom-label {
   font-size: 10px;
-  font-family: var(--font-mono);
   color: var(--text-muted);
   min-width: 38px;
   text-align: center;
@@ -2287,7 +2278,6 @@ button.primary {
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  font-family: var(--font-mono);
 }
 
 .collab-status-name {
@@ -2327,7 +2317,6 @@ button.primary {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
-  font-family: var(--font-mono);
   margin: 0;
 }
 
@@ -2335,7 +2324,6 @@ button.primary {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
 }
 
 .workspace-landing-cards {
@@ -2358,7 +2346,6 @@ button.primary {
   cursor: pointer;
   transition: transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   text-align: center;
-  font-family: var(--font-mono);
 }
 
 .workspace-landing-card:hover,

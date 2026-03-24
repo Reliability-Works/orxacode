@@ -56,7 +56,6 @@
   font-weight: 700;
   font-size: 13px;
   color: var(--text-primary);
-  font-family: var(--font-mono);
 }
 
 .slash-command-desc {
@@ -118,7 +117,6 @@
 .model-modal-header h3 {
   margin: 0;
   font-size: 13px;
-  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
@@ -141,7 +139,6 @@
   outline: none;
   color: var(--text-primary);
   font-size: 12px;
-  font-family: var(--font-mono);
   padding: 0;
 }
 
@@ -174,7 +171,6 @@
   font-weight: 400;
   color: var(--text-muted);
   padding: 8px 12px 4px;
-  font-family: var(--font-mono);
 }
 
 .model-modal-item {
@@ -190,7 +186,6 @@
   transition: background 0.1s ease;
   background: none;
   border: none;
-  font-family: var(--font-mono);
 }
 
 .model-modal-item:hover {
