@@ -378,8 +378,8 @@
 
 .file-preview-selection-add--copied {
   color: var(--accent-green);
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(34, 197, 94, 0.08);
+  border-color: var(--accent-border-medium);
+  background: var(--accent-bg-light);
 }
 
 .file-preview-selection-close {

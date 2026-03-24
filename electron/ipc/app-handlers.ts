@@ -215,6 +215,20 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
     return skills.sort((left, right) => left.name.localeCompare(right.name));
   });
 
+  ipcMain.handle(IPC.appSetWindowVibrancy, async (_event, vibrancy: unknown) => {
+    const win = getMainWindow();
+    if (!win) return;
+    if (process.platform === "darwin") {
+      if (typeof vibrancy === "string" && vibrancy.length > 0) {
+        win.setVibrancy(vibrancy as Parameters<BrowserWindow["setVibrancy"]>[0]);
+        win.setBackgroundColor("#00000000");
+      } else {
+        win.setVibrancy(null as unknown as Parameters<BrowserWindow["setVibrancy"]>[0]);
+        win.setBackgroundColor("#0C0C0C");
+      }
+    }
+  });
+
   ipcMain.handle(IPC.appRunAgentCli, async (_event, options: unknown) => {
     if (!options || typeof options !== "object") throw new Error("options is required");
     const { agent, prompt, cwd } = options as { agent?: string; prompt?: string; cwd?: string };

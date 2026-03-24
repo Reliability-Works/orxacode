@@ -17,6 +17,7 @@ import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
 import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import {
+  AppearanceSection,
   AppSettingsSection,
   ConfigSection,
   GitSettingsSection,
@@ -75,6 +76,7 @@ type SettingsSection =
   | "personalization"
   | "git"
   | "app"
+  | "appearance"
   | "preferences"
   | "server"
   | "claude-config"
@@ -431,6 +433,10 @@ export function SettingsDrawer({
       );
     }
 
+    if (section === "appearance") {
+      return <AppearanceSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
+    }
+
     if (section === "git") {
       return <GitSettingsSection appPreferences={appPreferences} onAppPreferencesChange={onAppPreferencesChange} />;
     }
@@ -644,6 +650,10 @@ export function SettingsDrawer({
                     <button type="button" className={section === "app" ? "active" : ""} onClick={() => setSection("app")}>
                       {section === "app" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
                       App
+                    </button>
+                    <button type="button" className={section === "appearance" ? "active" : ""} onClick={() => setSection("appearance")}>
+                      {section === "appearance" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}
+                      Appearance
                     </button>
                     <button type="button" className={section === "preferences" ? "active" : ""} onClick={() => setSection("preferences")}>
                       {section === "preferences" ? <span className="settings-nav-chevron" aria-hidden="true">&gt;</span> : null}

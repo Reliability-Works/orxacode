@@ -116,12 +116,6 @@ export function WorkspaceSidebar({
     <aside className="sidebar projects-pane">
       <div className="sidebar-inner">
 
-        {/* Logo */}
-        <div className="sidebar-logo">
-          <span className="sidebar-logo-symbol">~</span>
-          <span className="sidebar-logo-name">orxa</span>
-        </div>
-
         {/* Mode nav tabs */}
         <nav className="sidebar-mode-links" aria-label="Sidebar mode">
           <button

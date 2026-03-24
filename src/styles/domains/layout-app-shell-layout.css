@@ -74,19 +74,19 @@
   height: 100%;
   width: 0%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #22C55E, #1DAF54);
+  background: var(--accent-green);
   transition: width 220ms ease;
 }
 
 .workspace {
   display: grid;
   grid-template-columns:
-    calc(48px + (var(--left-pane-width, 260px) - 48px) * var(--left-pane-visible, 1))
-    calc(4px * var(--left-pane-visible, 1))
+    calc(var(--left-pane-width, 260px) * var(--left-pane-visible, 1))
+    0px
     minmax(380px, 1fr)
-    calc(4px * var(--browser-pane-visible, 0))
+    0px
     calc(var(--browser-pane-width, 380px) * var(--browser-pane-visible, 0))
-    calc(4px * var(--right-pane-visible, 1))
+    0px
     calc(var(--right-pane-width, 340px) * var(--right-pane-visible, 1));
   gap: 0;
   padding: 0;
@@ -350,17 +350,21 @@ body.is-resizing * {
 }
 
 .content-edge-controls {
-  flex-shrink: 0;
-  width: 100%;
-  height: 48px;
+  position: absolute;
+  top: 0;
+  left: calc(var(--left-pane-width, 260px) * var(--left-pane-visible, 1));
+  right: 0;
+  height: 44px;
   display: flex;
   align-items: center;
-  padding: 0 16px 0 80px;
+  /* 80px clears traffic lights when sidebar hidden; collapses to 16px when sidebar provides the offset */
+  padding: 0 6px 0 calc(80px - 64px * var(--left-pane-visible, 1));
   gap: 12px;
   z-index: 80;
-  background: var(--bg-page);
-  border-bottom: 1px solid var(--border);
+  background: transparent;
+  border-bottom: none;
   box-sizing: border-box;
+  pointer-events: none;
   -webkit-app-region: drag;
 }
 
@@ -605,8 +609,9 @@ body.is-resizing * {
 }
 
 .composer-input-actions .composer-send-button:hover:not(:disabled) {
-  border-color: #4ade80;
-  background: #4ade80;
+  border-color: var(--accent-green);
+  background: var(--accent-green);
+  filter: brightness(1.15);
 }
 
 .composer-input-actions .composer-stop-button {
@@ -1134,7 +1139,7 @@ body.is-resizing * {
 
 .composer-mode-toggle-icon.is-active {
   border-color: var(--accent-green);
-  background: rgba(34, 197, 94, 0.12);
+  background: var(--accent-bg-medium);
   color: var(--accent-green);
 }
 
@@ -1286,7 +1291,7 @@ body.is-resizing * {
 
 .composer-agent-menu button.active {
   border-color: var(--accent-green);
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--accent-bg-light);
 }
 
 .composer-agent-option-main {
@@ -1378,19 +1383,20 @@ body.is-resizing * {
   align-items: center;
   gap: 4px;
   height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-input);
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .ops-git-panel-dropdown-btn:hover {
-  border-color: var(--border-hover);
+  background: var(--bg-hover);
+  border-color: var(--border);
 }
 
 .ops-git-panel-dropdown-menu {
@@ -1441,7 +1447,7 @@ body.is-resizing * {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
+  margin: 0 auto;
 }
 
 .ops-tabs {

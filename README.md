@@ -38,20 +38,7 @@ All session types stay available in the picker. If a backend isn't installed, th
 - **Claude Code (Chat)** — structured chat UI with Claude models, traits, plan mode, permissions, and background agents in the shared dock
 - **Claude Code (Terminal)** — the raw Claude Code CLI terminal for users who want the native terminal workflow inside Orxa Code
 
-![Codex session](assets/readme/codex_session.png)
-
-### Canvas
-
-A tiled workspace where you arrange terminals, browsers, file editors, markdown previews, and more on an infinite pannable canvas.
-
-- **Customisable backgrounds** — nine gradient presets (glass, frost, aurora, etc.), hex colour picker, or upload your own image
-- **Jump to** — quickly locate any tile on the canvas from the toolbar dropdown
-- **Tile management** — duplicate or remove tiles from the manage menu
-- **Snap-to-grid** — lock tiles to a grid for clean layouts
-
-![Canvas mode](assets/readme/canvas_mode.png)
-
-### Integrated browser
+### Integrated browser & annotations
 
 A multi-tab Chromium browser in its own dedicated sidebar with agent automation, a persistent browsing profile, and element inspection.
 
@@ -59,7 +46,7 @@ A multi-tab Chromium browser in its own dedicated sidebar with agent automation,
 - **Agent control** — hand browser control to the AI agent or take it back at any time
 - **Inspect mode** — click elements on the page to annotate them with notes, then copy a structured prompt to your clipboard
 
-![Browser annotations](assets/readme/annotation.png)
+![Session with browser annotations](assets/readme/session_annotation.png)
 
 The copied prompt includes the page URL, element selectors, your notes, and bounding boxes — ready to paste into any AI agent:
 
@@ -81,6 +68,29 @@ The copied prompt includes the page URL, element selectors, your notes, and boun
 Please review these annotated elements and address the notes above.
 ```
 
+### Canvas
+
+A tiled workspace where you arrange terminals, browsers, file editors, markdown previews, and more on an infinite pannable canvas.
+
+- **Customisable backgrounds** — nine gradient presets (glass, frost, aurora, etc.), hex colour picker, or upload your own image
+- **Jump to** — quickly locate any tile on the canvas from the toolbar dropdown
+- **Tile management** — duplicate or remove tiles from the manage menu
+- **Snap-to-grid** — lock tiles to a grid for clean layouts
+
+![Canvas mode](assets/readme/canvas_mode.png)
+
+### Themes
+
+Five built-in themes with full accent colour customisation:
+
+- **Glass** (default) — deep dark base with atmospheric gradient glows and frosted surfaces
+- **Terminal** — classic opaque dark with green accents
+- **Midnight** — deep navy with purple/indigo accents
+- **Ember** — warm dark with amber/orange accents
+- **Arctic** — clean light mode with blue accents
+
+Switch themes and UI fonts from Settings > Appearance. See [Theming guide](docs/theming.md) for creating custom themes.
+
 ### Workspace tools
 
 - **Git sidebar** — diffs, commit flow, and branch management in the right panel
@@ -98,6 +108,7 @@ Docs live in [`docs/`](docs/):
 - [Session types](docs/sessions.md) — OpenCode, Codex, Claude Code (Chat), Claude Code (Terminal), Canvas
 - [Chat UI](docs/chat-ui.md) — message components, docks, message queue
 - [Browser integration](docs/browser.md) — agent automation, control handoff, annotations
+- [Theming](docs/theming.md) — creating custom themes and tweaking Glass mode
 - [Settings](docs/settings.md) — per-provider configuration reference
 - [Troubleshooting](docs/troubleshooting.md) — common issues and fixes
 

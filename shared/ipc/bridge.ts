@@ -80,6 +80,7 @@ export interface OrxaBridge {
     httpRequest: (options: HttpRequestOptions) => Promise<HttpRequestResult>;
     listSkillsFromDir: (directory: string) => Promise<SkillEntry[]>;
     runAgentCli: (options: { agent: "opencode" | "codex" | "claude"; prompt: string; cwd: string }) => Promise<{ ok: boolean; output: string; exitCode: number }>;
+    setWindowVibrancy: (vibrancy: string | null) => Promise<void>;
   };
   updates: {
     getPreferences: () => Promise<UpdatePreferences>;

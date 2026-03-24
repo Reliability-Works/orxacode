@@ -201,6 +201,7 @@
   min-height: 0;
   grid-row: 1 / -1;
   overflow: hidden;
+  position: relative;
 }
 
 .canvas-pane > * {
@@ -209,62 +210,112 @@
 }
 
 .canvas-toolbar {
-  height: 40px;
-  align-self: start;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 8px;
-  background: transparent;
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 10;
   pointer-events: none;
 }
 
-.canvas-toolbar > * {
+/* ---- Draggable floating hub ---- */
+
+.canvas-hub {
+  position: absolute;
+  z-index: 15;
   pointer-events: auto;
 }
 
-.canvas-toolbar-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
+.canvas-hub-trigger {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
   border: 1px solid var(--border-secondary);
-  border-radius: 4px;
+  background: var(--bg-input);
   color: var(--text-secondary);
-  font-size: 11px;
-  background: transparent;
-  cursor: pointer;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  user-select: none;
 }
 
-.canvas-toolbar-add:hover {
-  color: var(--text-primary);
-  border-color: var(--border-primary);
+.canvas-hub-trigger:hover {
+  border-color: var(--border-hover, var(--border-primary));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
-.canvas-toolbar-add.active {
-  color: var(--accent-green);
+.canvas-hub-trigger:active {
+  cursor: grabbing;
+}
+
+.canvas-hub-trigger.is-open {
   border-color: var(--accent-green);
+  background: var(--accent-bg-light, rgba(52, 211, 153, 0.08));
+  color: var(--accent-green);
+}
+
+.canvas-hub-menu {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+}
+
+.canvas-hub-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.canvas-hub-menu-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+}
+
+.canvas-hub-menu-item.active {
+  color: var(--accent-green);
 }
 
 .canvas-toolbar-spacer {
-  flex: 1;
+  display: none;
 }
 
 .canvas-toolbar-count {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
+  display: none;
 }
 
 .canvas-toolbar-zoom-group {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 4px;
+  padding: 4px 6px;
   border: 1px solid var(--border-secondary);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  pointer-events: auto;
 }
 
 .canvas-toolbar-zoom-label {
@@ -1340,7 +1391,7 @@
 .claude-tab.active {
   color: var(--text-primary);
   background: var(--bg-input, rgba(255, 255, 255, 0.06));
-  box-shadow: inset 0 -2px 0 #22C55E;
+  box-shadow: inset 0 -2px 0 var(--accent-green);
 }
 
 .claude-tab-label {

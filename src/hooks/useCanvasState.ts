@@ -11,9 +11,9 @@ import {
 
 const DEFAULT_THEME: CanvasTheme = {
   preset: "glass",
-  background: "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%), #141418",
+  background: "radial-gradient(700px 700px at 15% 20%, rgba(108,123,255,0.13) 0%, transparent 100%), radial-gradient(450px 450px at 5% 80%, rgba(168,85,247,0.08) 0%, transparent 100%), radial-gradient(600px 600px at 75% 70%, rgba(124,58,237,0.10) 0%, transparent 100%), radial-gradient(500px 500px at 85% 15%, rgba(14,165,233,0.09) 0%, transparent 100%), #0A0A14",
   tileBorder: "rgba(255,255,255,0.08)",
-  accent: "#22C55E",
+  accent: "#6C7BFF",
 };
 
 const DEFAULT_VIEWPORT: CanvasViewport = {
@@ -48,9 +48,14 @@ function normalizeCanvasState(value: unknown): CanvasSessionState {
   const candidate = value as Partial<CanvasSessionState>;
   const tiles = Array.isArray(candidate.tiles) ? candidate.tiles : DEFAULT_STATE.tiles;
 
-  // Migrate old "midnight" default to new "glass" default
+  // Migrate old defaults to new glass theme
   const rawTheme = candidate.theme ?? {};
-  const migratedTheme = (rawTheme as Record<string, unknown>).preset === "midnight" && (rawTheme as Record<string, unknown>).background === "#0C0C0C"
+  const presetId = (rawTheme as Record<string, unknown>).preset;
+  const bg = (rawTheme as Record<string, unknown>).background;
+  const needsMigration =
+    (presetId === "midnight" && bg === "#0C0C0C") ||
+    (presetId === "glass" && typeof bg === "string" && bg.includes("#141418"));
+  const migratedTheme = needsMigration
     ? { ...DEFAULT_THEME }
     : { ...DEFAULT_THEME, ...rawTheme };
 

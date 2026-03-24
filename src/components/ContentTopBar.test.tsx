@@ -162,10 +162,10 @@ describe("ContentTopBar open target control", () => {
     expect(props.toggleBrowserSidebar).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the claude chat suffix for structured chat sessions", () => {
+  it("shows orxa code brand in the topbar", () => {
     const { props } = buildProps();
-    render(<ContentTopBar {...props} activeSessionType="claude-chat" />);
+    render(<ContentTopBar {...props} />);
 
-    expect(screen.getByText("/ claude chat")).toBeInTheDocument();
+    expect(screen.getByText("orxa code")).toBeInTheDocument();
   });
 });
