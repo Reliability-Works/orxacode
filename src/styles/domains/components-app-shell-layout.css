@@ -2296,6 +2296,38 @@ button.primary {
   flex-shrink: 0;
 }
 
+.codex-session-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 40px 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-primary);
+}
+
+.codex-session-alert strong {
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-warning);
+}
+
+.codex-session-alert strong::before {
+  content: "\26A0";
+  font-size: 14px;
+}
+
+.codex-session-alert span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 /* ─── WorkspaceLanding ──────────────────────────────────────────────── */
 
 .workspace-landing {

@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -170,6 +171,147 @@ function fileToDataUrl(file: File) {
 function isImageAttachment(attachment: Attachment) {
   return attachment.mime.startsWith("image/") || attachment.url.startsWith("data:image/") || attachment.url.startsWith("file:");
 }
+
+type ComposerDockStackProps = Pick<
+  ComposerPanelProps,
+  | "queuedMessages"
+  | "sendingQueuedId"
+  | "queuedActionKind"
+  | "onPrimaryQueuedAction"
+  | "onEditQueued"
+  | "onRemoveQueued"
+  | "backgroundAgents"
+  | "selectedBackgroundAgentId"
+  | "onOpenBackgroundAgent"
+  | "onCloseBackgroundAgent"
+  | "onArchiveBackgroundAgent"
+  | "backgroundAgentDetail"
+  | "backgroundAgentTaskText"
+  | "backgroundAgentDetailLoading"
+  | "backgroundAgentDetailError"
+  | "backgroundAgentTaggingHint"
+  | "todoItems"
+  | "todoOpen"
+  | "onTodoToggle"
+  | "reviewChangesFiles"
+  | "onOpenReviewChange"
+  | "pendingPlan"
+  | "pendingQuestion"
+  | "pendingPermission"
+  | "followupSuggestions"
+  | "onFollowupSelect"
+  | "onFollowupDismiss"
+>;
+
+const ComposerDockStack = memo(function ComposerDockStack({
+  queuedMessages,
+  sendingQueuedId,
+  queuedActionKind,
+  onPrimaryQueuedAction,
+  onEditQueued,
+  onRemoveQueued,
+  backgroundAgents,
+  selectedBackgroundAgentId,
+  onOpenBackgroundAgent,
+  onCloseBackgroundAgent,
+  onArchiveBackgroundAgent,
+  backgroundAgentDetail,
+  backgroundAgentTaskText,
+  backgroundAgentDetailLoading,
+  backgroundAgentDetailError,
+  backgroundAgentTaggingHint,
+  todoItems,
+  todoOpen,
+  onTodoToggle,
+  reviewChangesFiles,
+  onOpenReviewChange,
+  pendingPlan,
+  pendingQuestion,
+  pendingPermission,
+  followupSuggestions,
+  onFollowupSelect,
+  onFollowupDismiss,
+}: ComposerDockStackProps) {
+  return (
+    <div className="composer-docks-float">
+      {queuedMessages && queuedMessages.length > 0 && onPrimaryQueuedAction && onEditQueued && onRemoveQueued ? (
+        <QueuedMessagesDock
+          messages={queuedMessages}
+          sendingId={sendingQueuedId}
+          actionKind={queuedActionKind}
+          onPrimaryAction={onPrimaryQueuedAction}
+          onEdit={onEditQueued}
+          onRemove={onRemoveQueued}
+        />
+      ) : null}
+
+      {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
+        <BackgroundAgentsPanel
+          agents={backgroundAgents}
+          selectedAgentId={selectedBackgroundAgentId}
+          onOpenAgent={onOpenBackgroundAgent}
+          onBack={onCloseBackgroundAgent}
+          onArchiveAgent={onArchiveBackgroundAgent}
+          detailBody={backgroundAgentDetail}
+          detailTaskText={backgroundAgentTaskText}
+          detailLoading={backgroundAgentDetailLoading}
+          detailError={backgroundAgentDetailError}
+          taggingHint={backgroundAgentTaggingHint}
+        />
+      ) : null}
+
+      {onTodoToggle ? (
+        reviewChangesFiles && reviewChangesFiles.length > 0 ? (
+          <ReviewChangesDock
+            files={reviewChangesFiles}
+            open={todoOpen ?? false}
+            onToggle={onTodoToggle}
+            onOpenPath={onOpenReviewChange}
+          />
+        ) : todoItems && todoItems.length > 0 ? (
+          <TodoDock
+            items={todoItems}
+            open={todoOpen ?? false}
+            onToggle={onTodoToggle}
+          />
+        ) : null
+      ) : null}
+
+      {pendingPlan ? (
+        <PlanDock
+          onAccept={pendingPlan.onAccept}
+          onSubmitChanges={pendingPlan.onSubmitChanges}
+          onDismiss={pendingPlan.onDismiss}
+        />
+      ) : null}
+
+      {pendingQuestion ? (
+        <QuestionDock
+          questions={pendingQuestion.questions}
+          onSubmit={pendingQuestion.onSubmit}
+          onReject={pendingQuestion.onReject}
+        />
+      ) : null}
+
+      {pendingPermission ? (
+        <PermissionDock
+          description={pendingPermission.description}
+          filePattern={pendingPermission.filePattern}
+          command={pendingPermission.command}
+          onDecide={pendingPermission.onDecide}
+        />
+      ) : null}
+
+      {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
+        <FollowupDock
+          suggestions={followupSuggestions}
+          onSelect={onFollowupSelect}
+          onDismiss={onFollowupDismiss}
+        />
+      ) : null}
+    </div>
+  );
+});
 
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
@@ -364,83 +506,35 @@ export function ComposerPanel(props: ComposerPanelProps) {
 
   return (
     <section ref={composerZoneRef} className="composer-zone">
-      <div className="composer-docks-float">
-        {queuedMessages && queuedMessages.length > 0 && onPrimaryQueuedAction && onEditQueued && onRemoveQueued ? (
-          <QueuedMessagesDock
-            messages={queuedMessages}
-            sendingId={sendingQueuedId}
-            actionKind={queuedActionKind}
-            onPrimaryAction={onPrimaryQueuedAction}
-            onEdit={onEditQueued}
-            onRemove={onRemoveQueued}
-          />
-        ) : null}
-
-        {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
-          <BackgroundAgentsPanel
-            agents={backgroundAgents}
-            selectedAgentId={selectedBackgroundAgentId}
-            onOpenAgent={onOpenBackgroundAgent}
-            onBack={onCloseBackgroundAgent}
-            onArchiveAgent={onArchiveBackgroundAgent}
-            detailBody={backgroundAgentDetail}
-            detailTaskText={backgroundAgentTaskText}
-            detailLoading={backgroundAgentDetailLoading}
-            detailError={backgroundAgentDetailError}
-            taggingHint={backgroundAgentTaggingHint}
-          />
-        ) : null}
-
-        {onTodoToggle ? (
-          reviewChangesFiles && reviewChangesFiles.length > 0 ? (
-            <ReviewChangesDock
-              files={reviewChangesFiles}
-              open={todoOpen ?? false}
-              onToggle={onTodoToggle}
-              onOpenPath={onOpenReviewChange}
-            />
-          ) : todoItems && todoItems.length > 0 ? (
-            <TodoDock
-              items={todoItems}
-              open={todoOpen ?? false}
-              onToggle={onTodoToggle}
-            />
-          ) : null
-        ) : null}
-
-        {pendingPlan ? (
-          <PlanDock
-            onAccept={pendingPlan.onAccept}
-            onSubmitChanges={pendingPlan.onSubmitChanges}
-            onDismiss={pendingPlan.onDismiss}
-          />
-        ) : null}
-
-        {pendingQuestion ? (
-          <QuestionDock
-            questions={pendingQuestion.questions}
-            onSubmit={pendingQuestion.onSubmit}
-            onReject={pendingQuestion.onReject}
-          />
-        ) : null}
-
-        {pendingPermission ? (
-          <PermissionDock
-            description={pendingPermission.description}
-            filePattern={pendingPermission.filePattern}
-            command={pendingPermission.command}
-            onDecide={pendingPermission.onDecide}
-          />
-        ) : null}
-
-        {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
-          <FollowupDock
-            suggestions={followupSuggestions}
-            onSelect={onFollowupSelect}
-            onDismiss={onFollowupDismiss}
-          />
-        ) : null}
-      </div>
+      <ComposerDockStack
+        queuedMessages={queuedMessages}
+        sendingQueuedId={sendingQueuedId}
+        queuedActionKind={queuedActionKind}
+        onPrimaryQueuedAction={onPrimaryQueuedAction}
+        onEditQueued={onEditQueued}
+        onRemoveQueued={onRemoveQueued}
+        backgroundAgents={backgroundAgents}
+        selectedBackgroundAgentId={selectedBackgroundAgentId}
+        onOpenBackgroundAgent={onOpenBackgroundAgent}
+        onCloseBackgroundAgent={onCloseBackgroundAgent}
+        onArchiveBackgroundAgent={onArchiveBackgroundAgent}
+        backgroundAgentDetail={backgroundAgentDetail}
+        backgroundAgentTaskText={backgroundAgentTaskText}
+        backgroundAgentDetailLoading={backgroundAgentDetailLoading}
+        backgroundAgentDetailError={backgroundAgentDetailError}
+        backgroundAgentTaggingHint={backgroundAgentTaggingHint}
+        todoItems={todoItems}
+        todoOpen={todoOpen}
+        onTodoToggle={onTodoToggle}
+        reviewChangesFiles={reviewChangesFiles}
+        onOpenReviewChange={onOpenReviewChange}
+        pendingPlan={pendingPlan}
+        pendingQuestion={pendingQuestion}
+        pendingPermission={pendingPermission}
+        followupSuggestions={followupSuggestions}
+        onFollowupSelect={onFollowupSelect}
+        onFollowupDismiss={onFollowupDismiss}
+      />
 
       <div className="composer-input-wrap">
         <button

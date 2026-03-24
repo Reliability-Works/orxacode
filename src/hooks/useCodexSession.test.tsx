@@ -2,6 +2,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { useCodexSession } from "./useCodexSession";
 import { resetPersistedCodexStateForTests, setPersistedCodexState } from "./codex-session-storage";
+import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 const SESSION_KEY = "/workspace::session-1";
 
@@ -148,6 +149,22 @@ describe("useCodexSession", () => {
       await result.current.connect();
     });
     expect(result.current.lastError).toBe("Codex bridge not available");
+  });
+
+  it("clears a stale lastError when a new turn starts successfully", async () => {
+    const store = useUnifiedRuntimeStore.getState();
+    store.initCodexSession(SESSION_KEY, "/workspace");
+    store.setCodexConnectionState(SESSION_KEY, "connected", { name: "codex", version: "1.0.0" }, "insufficient quota");
+    store.setCodexThread(SESSION_KEY, { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() });
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.sendMessage("hello world");
+    });
+
+    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined);
+    expect(result.current.lastError).toBeUndefined();
   });
 
   it("unsubscribes from events on unmount", () => {

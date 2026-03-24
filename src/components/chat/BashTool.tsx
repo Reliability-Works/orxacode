@@ -26,6 +26,7 @@ export function BashTool({ command, output, exitCode, status, error }: BashToolP
         title={command}
         status={safeStatus}
         defaultExpanded={false}
+        iconHint="bash"
       >
         {hasContent ? (
           <div className="bash-tool-body">

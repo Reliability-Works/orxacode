@@ -1364,8 +1364,8 @@
 .compaction-divider {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 12px;
+  padding: 12px 0;
   color: var(--text-muted);
   font-size: 11px;
 }
@@ -1380,6 +1380,16 @@
 .compaction-divider-label {
   white-space: nowrap;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
 .message-header--user {
@@ -2927,4 +2937,97 @@
   background: var(--border-secondary, rgba(255, 255, 255, 0.07));
   margin: 4px 0;
   border-radius: 1px;
+}
+
+/* ── Working indicator ───────────────────────────────── */
+.working-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--text-muted);
+}
+
+.working-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.working-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: working-pulse 1.4s ease-in-out infinite;
+}
+
+.working-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.working-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes working-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(1); }
+  40% { opacity: 1; transform: scale(1.3); }
+}
+
+.working-timer {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Tool call card icon ─────────────────────────────── */
+.tool-call-card-icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.tool-call-card-icon--pending {
+  color: #6b7280;
+}
+
+.tool-call-card-icon--running {
+  color: #f59e0b;
+}
+
+.tool-call-card-icon--completed {
+  color: #22c55e;
+}
+
+.tool-call-card-icon--error {
+  color: #ef4444;
+}
+
+/* ── Explore header icon ─────────────────────────────── */
+.explore-header-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Turn divider ────────────────────────────────────── */
+.turn-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.turn-divider::before,
+.turn-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.turn-divider-badge {
+  white-space: nowrap;
+  flex-shrink: 0;
 }

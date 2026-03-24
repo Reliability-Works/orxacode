@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ToolTypeIcon } from "./tool-type-icon";
 
 export type ToolCallStatus = "pending" | "running" | "completed" | "error";
 
@@ -11,6 +12,8 @@ interface ToolCallCardProps {
   output?: string;
   error?: string;
   defaultExpanded?: boolean;
+  /** Override the auto-detected icon hint (e.g. "bash" forces Terminal icon). */
+  iconHint?: string;
   children?: ReactNode;
 }
 
@@ -22,6 +25,7 @@ export function ToolCallCard({
   output,
   error,
   defaultExpanded = false,
+  iconHint,
   children,
 }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -40,6 +44,7 @@ export function ToolCallCard({
         aria-expanded={expanded}
         disabled={!hasBody}
       >
+        <ToolTypeIcon title={iconHint ?? title} className={`tool-call-card-icon tool-call-card-icon--${status}`} />
         <span className={`tool-call-card-status tool-call-card-status--${status}`} aria-label={status} />
         <span className="tool-call-card-title">{title}</span>
         {subtitle ? <span className="tool-call-card-subtitle">{subtitle}</span> : null}

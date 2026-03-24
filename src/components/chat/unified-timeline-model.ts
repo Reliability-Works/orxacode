@@ -111,6 +111,12 @@ export type UnifiedTimelineRenderRow =
   | {
       id: string;
       kind: "compaction";
+    }
+  | {
+      id: string;
+      kind: "turn-divider";
+      timestamp?: number;
+      durationSeconds?: number;
     };
 
 export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) {
@@ -148,6 +154,8 @@ export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) 
       return 30;
     case "compaction":
       return 42;
+    case "turn-divider":
+      return 32;
     default:
       return 72;
   }

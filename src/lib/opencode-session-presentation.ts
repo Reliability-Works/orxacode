@@ -1505,6 +1505,70 @@ function buildMessageRows(
   return rows;
 }
 
+function injectTurnDividers(
+  rows: UnifiedTimelineRenderRow[],
+  messages: SessionMessageBundle[],
+): UnifiedTimelineRenderRow[] {
+  if (rows.length === 0) {
+    return rows;
+  }
+
+  // Build a map from message id to timestamps for duration calculation.
+  const messageTimestamps = new Map<string, { created: number; updated?: number }>();
+  for (const msg of messages) {
+    const updated = "updated" in msg.info.time && typeof msg.info.time.updated === "number"
+      ? msg.info.time.updated
+      : undefined;
+    messageTimestamps.set(msg.info.id, { created: msg.info.time.created, updated });
+  }
+
+  // Find user message rows (turn starts) and insert dividers before them,
+  // after any preceding assistant content.
+  const result: UnifiedTimelineRenderRow[] = [];
+  let prevWasAssistantContent = false;
+  let lastAssistantTimestamp: number | undefined;
+  let lastUserTimestamp: number | undefined;
+
+  for (const row of rows) {
+    const isUserMessage = row.kind === "message" && row.role === "user";
+
+    if (isUserMessage && prevWasAssistantContent) {
+      const duration =
+        lastAssistantTimestamp !== undefined && lastUserTimestamp !== undefined
+          ? Math.round((lastAssistantTimestamp - lastUserTimestamp) / 1000)
+          : undefined;
+      result.push({
+        id: `turn-divider:${row.id}`,
+        kind: "turn-divider",
+        timestamp: lastAssistantTimestamp,
+        durationSeconds: duration !== undefined && duration > 0 ? duration : undefined,
+      });
+    }
+
+    if (isUserMessage) {
+      prevWasAssistantContent = false;
+      lastUserTimestamp = row.timestamp;
+    } else if (
+      row.kind === "message" && row.role === "assistant" ||
+      row.kind === "tool" ||
+      row.kind === "diff" ||
+      row.kind === "diff-group" ||
+      row.kind === "tool-group" ||
+      row.kind === "explore" ||
+      row.kind === "thinking"
+    ) {
+      prevWasAssistantContent = true;
+      if (row.kind === "message" && row.timestamp) {
+        lastAssistantTimestamp = row.timestamp;
+      }
+    }
+
+    result.push(row);
+  }
+
+  return result;
+}
+
 export function projectOpencodeSessionPresentation(input: {
   messages: SessionMessageBundle[];
   sessionDiff?: FileDiff[];
@@ -1595,9 +1659,11 @@ export function projectOpencodeSessionPresentation(input: {
     ),
   );
 
+  const finalRows = isBusy ? groupedRows : injectTurnDividers(groupedRows, messages);
+
   return {
     provider: "opencode" as const,
-    rows: groupedRows,
+    rows: finalRows,
     latestActivity: effectiveLatestActivity,
     latestActivityContent: latestReasoning?.content ?? null,
     placeholderTimestamp,

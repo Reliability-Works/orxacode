@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, type CSSProperties } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import { MessageCardFrame } from "./chat/MessageCardFrame";
 import { ThinkingRow } from "./chat/ThinkingRow";
+import { WorkingIndicator } from "./chat/WorkingIndicator";
 import { VirtualizedTimeline } from "./chat/VirtualizedTimeline";
 import { UnifiedTimelineRowView } from "./chat/UnifiedTimelineRow";
 import { estimateUnifiedTimelineRowHeight, type UnifiedTimelineRenderRow } from "./chat/unified-timeline-model";
@@ -88,7 +89,11 @@ export function MessageFeed({
     if (!el) {
       return;
     }
-    el.scrollTop = el.scrollHeight;
+    if (typeof el.scrollTo === "function") {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages, renderedRows.length, sessionNotices.length, showAssistantPlaceholder]);
 
   return (
@@ -108,15 +113,18 @@ export function MessageFeed({
       renderRow={(row) => <UnifiedTimelineRowView key={row.id} row={row} onOpenFileReference={onOpenFileReference} />}
       footer={
         showAssistantPlaceholder && (messages.length > 0 || renderedRows.length > 0) ? (
-          <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
-            <div className="message-parts">
-              <section className="message-part thinking-panel">
-                <div className="message-thinking">
-                  <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
-                </div>
-              </section>
-            </div>
-          </MessageCardFrame>
+          <>
+            <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
+              <div className="message-parts">
+                <section className="message-part thinking-panel">
+                  <div className="message-thinking">
+                    <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
+                  </div>
+                </section>
+              </div>
+            </MessageCardFrame>
+            <WorkingIndicator active />
+          </>
         ) : undefined
       }
     />

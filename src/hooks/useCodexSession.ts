@@ -40,6 +40,7 @@ import {
   mcpToolCallToExploreEntry,
 } from "../lib/explore-utils";
 import { parseGitDiffOutput, parseGitStatusOutput } from "../lib/git-diff";
+import type { CodexThreadRuntimeSnapshot } from "../state/unified-runtime";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 export { agentColor, agentColorForId } from "./codex-subagent-helpers";
@@ -303,6 +304,63 @@ export interface CodexSessionState {
 
 const COMMAND_DIFF_CONTENT_BASELINE_LIMIT = 24;
 const COMMAND_DIFF_POLL_INTERVAL_MS = 850;
+
+function isSameCodexThreadSummary(left: CodexThread | null | undefined, right: CodexThread | null | undefined) {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return left === right;
+  }
+  return (
+    left.id === right.id &&
+    left.preview === right.preview &&
+    left.modelProvider === right.modelProvider &&
+    left.createdAt === right.createdAt &&
+    left.ephemeral === right.ephemeral &&
+    (left.status?.type ?? "") === (right.status?.type ?? "")
+  );
+}
+
+function isSameCodexRuntimeSnapshot(
+  left: CodexThreadRuntimeSnapshot | null | undefined,
+  right: CodexThreadRuntimeSnapshot | null | undefined,
+) {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return left === right;
+  }
+  if (!isSameCodexThreadSummary(left.thread, right.thread)) {
+    return false;
+  }
+  if (left.childThreads.length !== right.childThreads.length) {
+    return false;
+  }
+  return left.childThreads.every((thread, index) => isSameCodexThreadSummary(thread, right.childThreads[index]));
+}
+
+function isSameSubagentInfo(left: SubagentInfo, right: SubagentInfo) {
+  return (
+    left.threadId === right.threadId &&
+    left.nickname === right.nickname &&
+    left.role === right.role &&
+    left.status === right.status &&
+    left.statusText === right.statusText &&
+    left.spawnedAt === right.spawnedAt
+  );
+}
+
+function areSameSubagentInfos(left: SubagentInfo[], right: SubagentInfo[]) {
+  if (left === right) {
+    return true;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((agent, index) => isSameSubagentInfo(agent, right[index]!));
+}
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -341,7 +399,7 @@ export function useCodexSession(
   const threadName = codexRuntime?.threadName;
   const planItems = codexRuntime?.planItems ?? [];
   const dismissedPlanIds = useMemo(() => new Set(codexRuntime?.dismissedPlanIds ?? []), [codexRuntime?.dismissedPlanIds]);
-  const subagents = codexRuntime?.subagents ?? [];
+  const subagents = useMemo(() => codexRuntime?.subagents ?? [], [codexRuntime?.subagents]);
   const activeSubagentThreadId = codexRuntime?.activeSubagentThreadId ?? null;
 
   // Track the current assistant message being streamed
@@ -429,6 +487,9 @@ export function useCodexSession(
   const setSubagentsState = useCallback((next: SubagentInfo[] | ((previous: SubagentInfo[]) => SubagentInfo[])) => {
     const previous = useUnifiedRuntimeStore.getState().codexSessions[sessionKey]?.subagents ?? [];
     const resolved = typeof next === "function" ? next(previous) : next;
+    if (areSameSubagentInfos(previous, resolved)) {
+      return;
+    }
     setCodexSubagents(sessionKey, resolved);
   }, [sessionKey, setCodexSubagents]);
 
@@ -457,6 +518,19 @@ export function useCodexSession(
     },
     [sessionKey, setCodexConnectionState],
   );
+
+  const clearLastError = useCallback(() => {
+    const currentRuntime = useUnifiedRuntimeStore.getState().codexSessions[sessionKey];
+    if (!currentRuntime?.lastError) {
+      return;
+    }
+    setCodexConnectionState(
+      sessionKey,
+      currentRuntime.connectionStatus,
+      currentRuntime.serverInfo,
+      undefined,
+    );
+  }, [sessionKey, setCodexConnectionState]);
 
   useCodexSessionPersistence({
     directory,
@@ -1952,10 +2026,14 @@ export function useCodexSession(
         }
       }
 
-      setCodexRuntimeSnapshot(sessionKey, {
+      const nextRuntimeSnapshot = {
         thread: currentThread ?? null,
         childThreads: childThreads as unknown as CodexThread[],
-      });
+      };
+      const currentRuntimeSnapshot = getCurrentCodexRuntime()?.runtimeSnapshot ?? null;
+      if (!isSameCodexRuntimeSnapshot(currentRuntimeSnapshot, nextRuntimeSnapshot)) {
+        setCodexRuntimeSnapshot(sessionKey, nextRuntimeSnapshot);
+      }
 
       setSubagentsState((previous) => {
         if (childThreads.length === 0) {
@@ -1991,14 +2069,20 @@ export function useCodexSession(
     }
 
     void syncCodexThreadRuntime();
+    const hasActiveBackgroundWork =
+      isStreaming ||
+      Boolean(pendingApproval) ||
+      Boolean(pendingUserInput) ||
+      subagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction");
+    const pollIntervalMs = hasActiveBackgroundWork ? 1500 : 8000;
     const timer = window.setInterval(() => {
       void syncCodexThreadRuntime();
-    }, 1500);
+    }, pollIntervalMs);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [isStreaming, pendingApproval, pendingUserInput, subagents.length, syncCodexThreadRuntime, thread?.id]);
+  }, [isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
 
   // Derive subagent messages reactively from current messages
   const subagentMessages = useMemo(() => {
@@ -2046,6 +2130,7 @@ export function useCodexSession(
     async (options?: { model?: string; title?: string; approvalPolicy?: string; sandbox?: string }) => {
       if (!window.orxa?.codex) return;
       try {
+        clearLastError();
         const t = await window.orxa.codex.startThread({
           cwd: directory,
           model: options?.model,
@@ -2081,6 +2166,7 @@ export function useCodexSession(
     [
       directory,
       recordLastError,
+      clearLastError,
       setActiveSubagentThreadIdState,
       setMessagesState,
       setPlanItemsState,
@@ -2102,12 +2188,13 @@ export function useCodexSession(
       ]);
 
       try {
+        clearLastError();
         await window.orxa.codex.startTurn(thread.id, prompt, directory, options?.model, options?.effort, options?.collaborationMode);
       } catch (err) {
         recordLastError(err);
       }
     },
-    [directory, recordLastError, setMessagesState, thread],
+    [clearLastError, directory, recordLastError, setMessagesState, thread],
   );
 
   const steerMessage = useCallback(
@@ -2124,6 +2211,7 @@ export function useCodexSession(
         { id: userMsgId, kind: "message", role: "user", content: trimmed, timestamp: Date.now() },
       ]);
       try {
+        clearLastError();
         await window.orxa.codex.steerTurn(thread.id, turnId, trimmed);
         return true;
       } catch (err) {
@@ -2131,7 +2219,7 @@ export function useCodexSession(
         return false;
       }
     },
-    [recordLastError, setMessagesState, thread],
+    [clearLastError, recordLastError, setMessagesState, thread],
   );
 
   const approveAction = useCallback(

@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Archive, Bot, ChevronDown, ExternalLink } from "lucide-react";
 import { DockSurface } from "./DockSurface";
 import type { UnifiedBackgroundAgentSummary } from "../../lib/session-presentation";
@@ -18,7 +17,7 @@ interface BackgroundAgentsPanelProps {
   taggingHint?: string | null;
 }
 
-export function BackgroundAgentsPanel({
+export const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
   agents,
   selectedAgentId,
   onOpenAgent,
@@ -217,4 +216,4 @@ export function BackgroundAgentsPanel({
       ) : null}
     </>
   );
-}
+});
