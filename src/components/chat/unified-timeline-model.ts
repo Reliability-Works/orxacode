@@ -79,6 +79,7 @@ export type UnifiedTimelineRenderRow =
         insertions?: number;
         deletions?: number;
       }>;
+      tools?: Array<Extract<UnifiedTimelineRenderRow, { kind: "tool" }>>;
     }
   | {
       id: string;
@@ -141,7 +142,9 @@ export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) 
     case "diff-group":
       return 34 + row.files.reduce((total, file) => total + (file.diff ? 68 : 44), 0);
     case "tool-group":
-      return 34 + row.files.reduce((total, file) => total + (file.diff ? 68 : 44), 0);
+      return 34
+        + row.files.reduce((total, file) => total + (file.diff ? 68 : 44), 0)
+        + (row.tools ?? []).reduce((total, tool) => total + 80 + Math.min(520, Math.ceil(((tool.output ?? tool.error)?.length ?? 0) / 120) * 18), 0);
     case "context":
       return row.items.length > 1 ? 72 : 52;
     case "explore":

@@ -140,7 +140,7 @@ type ComposerPanelProps = {
   onFollowupDismiss?: () => void;
   queuedMessages?: QueuedMessage[];
   sendingQueuedId?: string;
-  onQueueMessage?: (text: string) => void;
+  onQueueMessage?: (text: string, attachments?: Attachment[]) => void;
   queuedActionKind?: "send" | "steer";
   onPrimaryQueuedAction?: (id: string) => void;
   onEditQueued?: (id: string) => void;
@@ -504,8 +504,56 @@ export function ComposerPanel(props: ComposerPanelProps) {
     [addComposerAttachments],
   );
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    const hasFiles = event.dataTransfer.types.includes("Files");
+    if (hasFiles) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      setIsDragOver(false);
+      const files = Array.from(event.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+      if (files.length === 0) return;
+      void (async () => {
+        const timestamp = Date.now();
+        const attachments = await Promise.all(
+          files.map(async (file, index) => {
+            const dataUrl = await fileToDataUrl(file);
+            const filename = file.name?.trim() || `dropped-image-${timestamp}-${index + 1}.png`;
+            return {
+              url: dataUrl,
+              filename: filename || IMAGE_FILENAME_FALLBACK,
+              mime: file.type || "image/png",
+              path: (file as File & { path?: string }).path || `drop://${filename || IMAGE_FILENAME_FALLBACK}`,
+            } satisfies Attachment;
+          }),
+        );
+        addComposerAttachments(attachments);
+      })().catch(() => undefined);
+    },
+    [addComposerAttachments],
+  );
+
   return (
-    <section ref={composerZoneRef} className="composer-zone">
+    <section
+      ref={composerZoneRef}
+      className={`composer-zone${isDragOver ? " drag-over" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <ComposerDockStack
         queuedMessages={queuedMessages}
         sendingQueuedId={sendingQueuedId}
@@ -566,7 +614,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               if (isSessionBusy) {
                 const trimmed = composer.trim();
                 if (trimmed && onQueueMessage) {
-                  onQueueMessage(trimmed);
+                  onQueueMessage(trimmed, composerAttachments.length > 0 ? composerAttachments : undefined);
                 }
               } else if (isSendingPrompt) {
                 return;
@@ -577,7 +625,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
           }}
         />
         <div className="composer-input-actions">
-          <IconButton icon="plus" className="composer-attach-button" label="Add attachment" onClick={() => void pickImageAttachment()} />
           <div
             className={`composer-compaction-inline ${compactionCompacted ? "compacted" : ""}`.trim()}
             title={compactionHint}
@@ -585,22 +632,25 @@ export function ComposerPanel(props: ComposerPanelProps) {
             <span className="composer-compaction-glyph" style={compactionProgressStyle} aria-hidden="true" />
             <span className="composer-compaction-label">{Math.round(clampedCompactionProgress * 100)}%</span>
           </div>
-          {isSessionBusy ? (
-            <IconButton
-              icon="stop"
-              className="composer-send-button composer-stop-button"
-              label="Stop"
-              onClick={() => void abortActiveSession()}
-            />
-          ) : (
-            <IconButton
-              icon="send"
-              className="composer-send-button"
-              label="Send prompt"
-              onClick={() => void sendPrompt()}
-              disabled={!hasActiveSession}
-            />
-          )}
+          <div className="composer-action-group">
+            <IconButton icon="plus" className="composer-attach-button" label="Add attachment" onClick={() => void pickImageAttachment()} />
+            {isSessionBusy ? (
+              <IconButton
+                icon="stop"
+                className="composer-send-button composer-stop-button"
+                label="Stop"
+                onClick={() => void abortActiveSession()}
+              />
+            ) : (
+              <IconButton
+                icon="send"
+                className="composer-send-button"
+                label="Send prompt"
+                onClick={() => void sendPrompt()}
+                disabled={!hasActiveSession}
+              />
+            )}
+          </div>
         </div>
       </div>
 

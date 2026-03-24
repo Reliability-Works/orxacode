@@ -66,7 +66,7 @@ import { useAppShellStartupFlow } from "./hooks/useAppShellStartupFlow";
 import { useAppShellToasts } from "./hooks/useAppShellToasts";
 import { useAppShellUpdateFlow } from "./hooks/useAppShellUpdateFlow";
 import { useCanvasState } from "./hooks/useCanvasState";
-import { useComposerState } from "./hooks/useComposerState";
+import { useComposerState, type Attachment } from "./hooks/useComposerState";
 import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
@@ -534,7 +534,7 @@ export default function App() {
   const [activeTerminalId, setActiveTerminalId] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [followupQueue, setFollowupQueue] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
+  const [followupQueue, setFollowupQueue] = useState<Array<{ id: string; text: string; timestamp: number; attachments?: Attachment[] }>>([]);
   const [sendingQueuedId, setSendingQueuedId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -1422,6 +1422,7 @@ export default function App() {
     composer,
     setComposer,
     composerAttachments,
+    setComposerAttachments,
     isSendingPrompt,
     selectedModel,
     setSelectedModel,
@@ -1532,14 +1533,17 @@ export default function App() {
     [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, effectiveSystemAddendum, markSessionUsed, sendPrompt],
   );
 
-  const queueFollowupMessage = useCallback((text: string) => {
+  const queueFollowupMessage = useCallback((text: string, attachments?: Attachment[]) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const id = `fq:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-    setFollowupQueue((current) => [...current, { id, text: trimmed, timestamp: Date.now() }]);
+    setFollowupQueue((current) => [...current, { id, text: trimmed, timestamp: Date.now(), attachments: attachments?.length ? attachments : undefined }]);
     setComposer("");
+    if (attachments?.length) {
+      setComposerAttachments([]);
+    }
     pushToast("Message queued — will send when agent finishes", "info", 3_500);
-  }, [setComposer, pushToast]);
+  }, [setComposer, setComposerAttachments, pushToast]);
 
   const removeQueuedMessage = useCallback((id: string) => {
     setFollowupQueue((current) => current.filter((item) => item.id !== id));
@@ -1550,10 +1554,13 @@ export default function App() {
       const item = current.find((m) => m.id === id);
       if (item) {
         setComposer(item.text);
+        if (item.attachments?.length) {
+          setComposerAttachments(item.attachments);
+        }
       }
       return current.filter((m) => m.id !== id);
     });
-  }, [setComposer]);
+  }, [setComposer, setComposerAttachments]);
 
   const allModelOptions = settingsModelOptions;
 
@@ -4126,6 +4133,7 @@ export default function App() {
                       setSendingQueuedId(id);
                       void sendPrompt({
                         textOverride: item.text,
+                        attachmentOverride: item.attachments ?? [],
                         systemAddendum: effectiveSystemAddendum,
                         promptSource: "user",
                         tools: activePromptToolsPolicy,

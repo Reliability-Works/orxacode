@@ -115,25 +115,52 @@ export function UnifiedTimelineRowView({
         </article>
       );
     case "tool-group":
-      return (
-        <article className="message-card message-assistant">
-          <ToolGroup
-            label={row.title}
-            count={row.files.length}
-            items={row.files.map((file) => (
-              <DiffBlock
-                key={file.id}
-                path={file.path}
-                type={file.type}
-                diff={file.diff}
-                insertions={file.insertions}
-                deletions={file.deletions}
-                onOpenPath={onOpenFileReference}
-              />
-            ))}
-          />
-        </article>
-      );
+      {
+        const toolGroupItems = [
+          ...row.files.map((file) => (
+            <DiffBlock
+              key={file.id}
+              path={file.path}
+              type={file.type}
+              diff={file.diff}
+              insertions={file.insertions}
+              deletions={file.deletions}
+              onOpenPath={onOpenFileReference}
+            />
+          )),
+          ...(row.tools ?? []).map((tool) => (
+            <ToolCallCard
+              key={tool.id}
+              title={tool.title}
+              expandedTitle={tool.expandedTitle}
+              subtitle={tool.subtitle}
+              status={tool.status}
+              defaultExpanded={tool.defaultExpanded}
+            >
+              {tool.command !== undefined ? (
+                <CommandOutput
+                  command={tool.command}
+                  output={tool.output ?? tool.error ?? ""}
+                  exitCode={tool.status === "error" ? 1 : 0}
+                />
+              ) : tool.output ? (
+                <pre className="tool-call-card-output">{tool.output}</pre>
+              ) : tool.error ? (
+                <pre className="tool-call-card-output">{tool.error}</pre>
+              ) : null}
+            </ToolCallCard>
+          )),
+        ];
+        return (
+          <article className="message-card message-assistant">
+            <ToolGroup
+              label={row.title}
+              count={toolGroupItems.length}
+              items={toolGroupItems}
+            />
+          </article>
+        );
+      }
     case "context":
       return (
         <article className="message-card message-assistant">
