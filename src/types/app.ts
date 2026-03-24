@@ -1,5 +1,7 @@
 export type PermissionMode = "ask-write" | "yolo-write";
 
+export type ThemeId = "glass" | "terminal" | "midnight" | "ember" | "arctic";
+
 export type AppPreferences = {
   showOperationsPane: boolean;
   autoOpenTerminalOnCreate: boolean;
@@ -7,6 +9,8 @@ export type AppPreferences = {
   permissionMode: PermissionMode;
   commitGuidancePrompt: string;
   codeFont: string;
+  theme: ThemeId;
+  uiFont: string;
   hiddenModels: string[];
   codexPath: string;
   codexArgs: string;
@@ -25,6 +29,19 @@ export type CodeFontOption = {
   value: string;
   stack: string;
 };
+
+export type UiFontOption = {
+  label: string;
+  value: string;
+  stack: string;
+};
+
+export const UI_FONT_OPTIONS: UiFontOption[] = [
+  { label: "Inter", value: "Inter", stack: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif' },
+  { label: "System", value: "System", stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif' },
+  { label: "DM Sans", value: "DM Sans", stack: '"DM Sans", -apple-system, BlinkMacSystemFont, sans-serif' },
+  { label: "IBM Plex Sans", value: "IBM Plex Sans", stack: '"IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif' },
+];
 
 export const CODE_FONT_OPTIONS: CodeFontOption[] = [
   { label: "IBM Plex Mono", value: "IBM Plex Mono", stack: '"IBM Plex Mono", monospace' },

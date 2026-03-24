@@ -3,7 +3,7 @@ import { ImagePlus, X } from "lucide-react";
 import type { CanvasTheme } from "../types/canvas";
 
 export const CANVAS_PRESETS = [
-  { id: "glass", label: "glass", background: "linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0.03) 100%), #141418", tileBorder: "rgba(255,255,255,0.08)", accent: "#22C55E" },
+  { id: "glass", label: "glass", background: "radial-gradient(700px 700px at 15% 20%, rgba(108,123,255,0.13) 0%, transparent 100%), radial-gradient(450px 450px at 5% 80%, rgba(168,85,247,0.08) 0%, transparent 100%), radial-gradient(600px 600px at 75% 70%, rgba(124,58,237,0.10) 0%, transparent 100%), radial-gradient(500px 500px at 85% 15%, rgba(14,165,233,0.09) 0%, transparent 100%), #0A0A14", tileBorder: "rgba(255,255,255,0.08)", accent: "#6C7BFF" },
   { id: "midnight", label: "midnight", background: "#0C0C0C", tileBorder: "#1F1F1F", accent: "#22C55E" },
   { id: "charcoal", label: "charcoal", background: "#2A2A2A", tileBorder: "#3A3A3A", accent: "#22C55E" },
   { id: "deep_navy", label: "deep navy", background: "#0D1B2A", tileBorder: "#1B3A5C", accent: "#3B82F6" },

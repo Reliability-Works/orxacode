@@ -2,7 +2,7 @@
 
 .messages-scroll {
   overflow: auto;
-  padding: 24px 32px;
+  padding: 80px 32px 24px;
   padding-bottom: var(--message-feed-bottom-clearance, 120px);
   display: flex;
   flex-direction: column;
@@ -124,7 +124,7 @@
 }
 
 .message-copy-btn:hover {
-  color: #22C55E;
+  color: var(--accent-green);
   border-color: hsl(151 40% 30% / 0.6);
   background: hsl(151 30% 15% / 0.4);
 }
@@ -138,7 +138,7 @@
 }
 
 .message-copy-btn[aria-label="Copied"] {
-  color: #22C55E;
+  color: var(--accent-green);
   opacity: 1;
   pointer-events: auto;
 }
@@ -840,7 +840,7 @@
 }
 
 .command-output-prompt-symbol {
-  color: #22c55e;
+  color: var(--accent-green);
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -857,7 +857,7 @@
 }
 
 .command-output-exit-code--ok {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .command-output-exit-code--err {
@@ -940,7 +940,7 @@
 }
 
 .diff-block-stat--add {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .diff-block-stat--del {
@@ -1022,7 +1022,7 @@
 }
 
 .diff-line-add {
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--accent-bg-light);
 }
 
 .diff-line-del {
@@ -1030,7 +1030,7 @@
 }
 
 .diff-line-add .diff-block-line-content {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .diff-line-del .diff-block-line-content {
@@ -1068,17 +1068,21 @@
 
 .changed-files-cluster-toggle {
   align-self: flex-start;
-  padding: 0;
-  border: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
   background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-secondary);
+  font-size: 11px;
   line-height: 1.4;
   cursor: pointer;
+  margin-top: 4px;
 }
 
 .changed-files-cluster-toggle:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+  background: var(--bg-hover);
 }
 
 .changed-files-cluster .message-file-link {
@@ -1272,7 +1276,7 @@
 }
 
 .copy-button:hover {
-  color: #22C55E;
+  color: var(--accent-green);
   border-color: hsl(151 40% 30% / 0.6);
   background: hsl(151 30% 15% / 0.4);
 }
@@ -1287,7 +1291,7 @@
 
 /* Confirmed-copy state */
 .copy-button[aria-label="Copied"] {
-  color: #22C55E;
+  color: var(--accent-green);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1698,7 +1702,7 @@
 }
 
 .todo-checklist-item--done .todo-checklist-checkbox {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .todo-checklist-content {
@@ -1978,13 +1982,13 @@
 
 .todo-item-dot {
   animation: pulse-dot 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  color: #22c55e;
+  color: var(--accent-green);
   transform-origin: center;
   transform-box: fill-box;
 }
 
 .todo-item-check {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .agent-dock {
@@ -2316,8 +2320,8 @@
 .plan-dock-option:hover,
 .plan-dock-option.is-selected {
   transform: none;
-  border-color: rgba(34, 197, 94, 0.35);
-  background: rgba(34, 197, 94, 0.08);
+  border-color: var(--accent-border-subtle);
+  background: var(--accent-bg-light);
   color: var(--text-primary);
 }
 
@@ -2351,8 +2355,8 @@
 }
 
 .plan-dock-btn--primary {
-  border: 1px solid rgba(34, 197, 94, 0.35);
-  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid var(--accent-border-subtle);
+  background: var(--accent-bg-medium);
   color: var(--accent-green);
 }
 
@@ -2469,7 +2473,7 @@
 
 .question-option--selected {
   border-color: var(--accent-green, #22c55e);
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--accent-bg-light);
   color: var(--text-primary);
 }
 
@@ -2577,7 +2581,7 @@
 
 .question-continue-btn.is-ready {
   border-color: var(--accent-green, #22c55e);
-  background: rgba(34, 197, 94, 0.12);
+  background: var(--accent-bg-medium);
   color: var(--accent-green, #22c55e);
 }
 
@@ -2587,7 +2591,7 @@
 }
 
 .question-continue-btn.is-ready:hover {
-  background: rgba(34, 197, 94, 0.2);
+  background: color-mix(in srgb, var(--accent-green) 0.2);
   color: var(--accent-green, #22c55e);
 }
 
@@ -2711,7 +2715,7 @@
 }
 
 .permission-preview-prompt {
-  color: #22c55e;
+  color: var(--accent-green);
   user-select: none;
 }
 
@@ -2734,12 +2738,12 @@
 
 .permission-btn--allow-once {
   border: 1px solid #22c55e;
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  background: var(--accent-bg-medium);
+  color: var(--accent-green);
 }
 
 .permission-btn--allow-once:hover {
-  background: rgba(34, 197, 94, 0.2);
+  background: color-mix(in srgb, var(--accent-green) 0.2);
 }
 
 .permission-btn--allow-always {
@@ -2750,8 +2754,8 @@
 
 .permission-btn--allow-always:hover {
   background: var(--bg-hover, rgba(255,255,255,0.06));
-  border-color: rgba(34, 197, 94, 0.3);
-  color: #22c55e;
+  border-color: var(--accent-border-subtle);
+  color: var(--accent-green);
 }
 
 .permission-btn--reject {
@@ -2996,7 +3000,7 @@
 }
 
 .tool-call-card-icon--completed {
-  color: #22c55e;
+  color: var(--accent-green);
 }
 
 .tool-call-card-icon--error {

@@ -77,7 +77,7 @@ export function ContentTopBar({
   browserSidebarOpen,
   toggleBrowserSidebar,
   gitDiffStats,
-  contentPaneTitle,
+
   activeProjectDir,
   projectData,
   terminalOpen,
@@ -101,8 +101,8 @@ export function ContentTopBar({
   onUpsertCustomRunCommand,
   onRunCustomRunCommand,
   onDeleteCustomRunCommand,
-  isActiveSessionCanvasSession,
-  activeSessionType,
+
+
 }: ContentTopBarProps) {
   const hasProjectContext = Boolean(activeProjectDir ?? projectData?.directory);
   const runMenuRootRef = useRef<HTMLDivElement | null>(null);
@@ -326,29 +326,16 @@ export function ContentTopBar({
 
   return (
     <div className="content-edge-controls">
-      {/* Left: sidebar toggle */}
-      <IconButton
-        icon="panelLeft"
-        label="Toggle left sidebar"
-        className={`topbar-sidebar-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
-        onClick={toggleProjectsPane}
-      />
-
-      {/* Workspace + session name */}
-      <h2 className="topbar-title" title={contentPaneTitle}>
-        {activeProjectDir ? activeProjectDir.split("/").pop() ?? activeProjectDir : contentPaneTitle}
-        {activeSessionType === "canvas" || isActiveSessionCanvasSession ? (
-          <span className="topbar-title-session-suffix"> / canvas</span>
-        ) : activeSessionType === "claude-chat" ? (
-          <span className="topbar-title-session-suffix"> / claude chat</span>
-        ) : activeSessionType === "claude" ? (
-          <span className="topbar-title-session-suffix"> / claude terminal</span>
-        ) : activeSessionType === "codex" ? (
-          <span className="topbar-title-session-suffix"> / codex</span>
-        ) : contentPaneTitle && activeProjectDir ? (
-          <span className="topbar-title-session-suffix"> / {contentPaneTitle}</span>
-        ) : null}
-      </h2>
+      {/* Toggle + brand — positioned over sidebar when expanded */}
+      <div className={`topbar-brand-group ${projectsPaneVisible ? "in-sidebar" : ""}`.trim()}>
+        <IconButton
+          icon="panelLeft"
+          label="Toggle left sidebar"
+          className={`topbar-sidebar-toggle titlebar-toggle ${projectsPaneVisible ? "expanded" : "collapsed"}`.trim()}
+          onClick={toggleProjectsPane}
+        />
+        <span className="topbar-brand">orxa code</span>
+      </div>
 
       {/* Spacer */}
       <div className="topbar-spacer" />
@@ -362,6 +349,14 @@ export function ContentTopBar({
           onClick={toggleBrowserSidebar}
           disabled={!hasProjectContext}
         />
+        {showTerminalToggle ? (
+          <IconButton
+            icon="terminal"
+            label="Toggle terminal"
+            className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
+            onClick={() => void toggleTerminal()}
+          />
+        ) : null}
         <div ref={runMenuRootRef} className={`titlebar-run-wrap ${runMenuOpen ? "open" : ""}`.trim()}>
           <button
             type="button"
@@ -484,14 +479,6 @@ export function ContentTopBar({
           ) : null}
         </div>
 
-        {showTerminalToggle ? (
-          <IconButton
-            icon="terminal"
-            label="Toggle terminal"
-            className={`titlebar-toggle titlebar-toggle-terminal ${terminalOpen ? "active" : ""}`.trim()}
-            onClick={() => void toggleTerminal()}
-          />
-        ) : null}
         <div className={`titlebar-git-toggle-group${gitDiffStats.hasChanges ? " has-changes" : ""}`}>
           {gitDiffStats.hasChanges ? (
             <button

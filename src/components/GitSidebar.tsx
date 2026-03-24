@@ -580,67 +580,65 @@ export function GitSidebar(props: GitSidebarProps) {
 
       {sidebarPanelTab === "git" ? (
         <section className="ops-section ops-section-fill">
-          <div className="ops-git-sub-tabs">
-            <div ref={gitTabMenuRef} className="ops-git-panel-dropdown-wrap">
-              <button
-                type="button"
-                className="ops-git-panel-dropdown-btn"
-                onClick={() => setGitTabMenuOpen((v) => !v)}
-                aria-expanded={gitTabMenuOpen}
-                aria-haspopup="menu"
-              >
-                <span>{gitTabLabels[gitPanelTab]}</span>
-                <ChevronDown size={10} aria-hidden="true" />
-              </button>
-              {gitTabMenuOpen ? (
-                <div className="ops-git-panel-dropdown-menu" role="menu">
-                  {(["diff", "log", "issues", "prs"] as GitPanelTab[]).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      role="menuitem"
-                      className={gitPanelTab === tab ? "active" : ""}
-                      onClick={() => selectGitTab(tab)}
-                    >
-                      {gitTabLabels[tab]}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="ops-git-view-modes">
-              <button
-                type="button"
-                className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
-                aria-label="List view"
-                title="List view"
-                onClick={() => setGitDiffViewMode("list")}
-              >
-                <List size={13} />
-              </button>
-              <button
-                type="button"
-                className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
-                aria-label="Unified view"
-                title="Unified view"
-                onClick={() => setGitDiffViewMode("unified")}
-              >
-                <AlignJustify size={13} />
-              </button>
-              <button
-                type="button"
-                className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
-                aria-label="Split view"
-                title="Split view"
-                onClick={() => setGitDiffViewMode("split")}
-              >
-                <Columns2 size={13} />
-              </button>
-            </div>
-          </div>
           {gitPanelTab === "diff" ? (
             <div className="git-files-panel">
               <div className="git-files-actions">
+                <div ref={gitTabMenuRef} className="ops-git-panel-dropdown-wrap">
+                  <button
+                    type="button"
+                    className="ops-git-panel-dropdown-btn"
+                    onClick={() => setGitTabMenuOpen((v) => !v)}
+                    aria-expanded={gitTabMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <span>{gitTabLabels[gitPanelTab]}</span>
+                    <ChevronDown size={10} aria-hidden="true" />
+                  </button>
+                  {gitTabMenuOpen ? (
+                    <div className="ops-git-panel-dropdown-menu" role="menu">
+                      {(["diff", "log", "issues", "prs"] as GitPanelTab[]).map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="menuitem"
+                          className={gitPanelTab === tab ? "active" : ""}
+                          onClick={() => selectGitTab(tab)}
+                        >
+                          {gitTabLabels[tab]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="ops-git-view-modes">
+                  <button
+                    type="button"
+                    className={`git-action-icon-btn ${gitDiffViewMode === "list" ? "active" : ""}`.trim()}
+                    aria-label="List view"
+                    title="List view"
+                    onClick={() => setGitDiffViewMode("list")}
+                  >
+                    <List size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`git-action-icon-btn ${gitDiffViewMode === "unified" ? "active" : ""}`.trim()}
+                    aria-label="Unified view"
+                    title="Unified view"
+                    onClick={() => setGitDiffViewMode("unified")}
+                  >
+                    <AlignJustify size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`git-action-icon-btn ${gitDiffViewMode === "split" ? "active" : ""}`.trim()}
+                    aria-label="Split view"
+                    title="Split view"
+                    onClick={() => setGitDiffViewMode("split")}
+                  >
+                    <Columns2 size={13} />
+                  </button>
+                </div>
                 <button
                   type="button"
                   className="git-action-icon-btn"
@@ -830,7 +828,38 @@ export function GitSidebar(props: GitSidebarProps) {
               )}
             </div>
           ) : (
-            <pre className="ops-console">{gitPanelOutput}</pre>
+            <div className="git-files-panel">
+              <div className="git-files-actions">
+                <div ref={gitTabMenuRef} className="ops-git-panel-dropdown-wrap">
+                  <button
+                    type="button"
+                    className="ops-git-panel-dropdown-btn"
+                    onClick={() => setGitTabMenuOpen((v) => !v)}
+                    aria-expanded={gitTabMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <span>{gitTabLabels[gitPanelTab]}</span>
+                    <ChevronDown size={10} aria-hidden="true" />
+                  </button>
+                  {gitTabMenuOpen ? (
+                    <div className="ops-git-panel-dropdown-menu" role="menu">
+                      {(["diff", "log", "issues", "prs"] as GitPanelTab[]).map((tab) => (
+                        <button
+                          key={tab}
+                          type="button"
+                          role="menuitem"
+                          className={gitPanelTab === tab ? "active" : ""}
+                          onClick={() => selectGitTab(tab)}
+                        >
+                          {gitTabLabels[tab]}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <pre className="ops-console">{gitPanelOutput}</pre>
+            </div>
           )}
         </section>
       ) : null}

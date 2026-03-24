@@ -20,6 +20,7 @@ const bridge: OrxaBridge = {
     httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
     listSkillsFromDir: (directory) => ipcRenderer.invoke(IPC.appListSkillsFromDir, directory),
     runAgentCli: (options) => ipcRenderer.invoke(IPC.appRunAgentCli, options),
+    setWindowVibrancy: (vibrancy) => ipcRenderer.invoke(IPC.appSetWindowVibrancy, vibrancy),
   },
   updates: {
     getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),

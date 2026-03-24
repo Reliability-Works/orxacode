@@ -42,7 +42,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -103,7 +103,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -185,7 +185,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -248,7 +248,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -323,7 +323,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
@@ -392,7 +392,7 @@ describe("SettingsDrawer", () => {
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
+          subagentSystemNotificationsEnabled: false, theme: "glass" as const, uiFont: "Inter",
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}

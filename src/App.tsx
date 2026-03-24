@@ -132,7 +132,7 @@ import {
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import type { SessionType } from "~/types/canvas";
-import { CODE_FONT_OPTIONS } from "~/types/app";
+import { CODE_FONT_OPTIONS, UI_FONT_OPTIONS } from "~/types/app";
 import antigravityLogo from "./assets/app-icons/antigravity.png";
 import cursorLogo from "./assets/app-icons/cursor.png";
 import finderLogo from "./assets/app-icons/finder.png";
@@ -165,6 +165,8 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   permissionMode: "ask-write",
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
   codeFont: "IBM Plex Mono",
+  theme: "glass",
+  uiFont: "Inter",
   hiddenModels: [],
   codexPath: "",
   codexArgs: "",
@@ -540,6 +542,19 @@ export default function App() {
     const stack = option?.stack ?? `"${appPreferences.codeFont}", monospace`;
     document.documentElement.style.setProperty("--code-font", stack);
   }, [appPreferences.codeFont]);
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", appPreferences.theme);
+  }, [appPreferences.theme]);
+
+  // Apply UI font
+  useEffect(() => {
+    const option = UI_FONT_OPTIONS.find((o) => o.value === appPreferences.uiFont);
+    if (option) {
+      document.documentElement.style.setProperty("--font-sans", option.stack);
+    }
+  }, [appPreferences.uiFont]);
   const [statusLine, setStatusLine] = useState<string>("Ready");
   const [debugModalOpen, setDebugModalOpen] = useState(false);
   const [debugLogLevelFilter, setDebugLogLevelFilter] = useState<"all" | DebugLogLevel>("all");

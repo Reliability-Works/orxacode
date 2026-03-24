@@ -120,6 +120,7 @@ export const IPC = {
   appHttpRequest: "orxa:app:httpRequest",
   appListSkillsFromDir: "orxa:app:listSkillsFromDir",
   appRunAgentCli: "orxa:app:runAgentCli",
+  appSetWindowVibrancy: "orxa:app:setWindowVibrancy",
   codexDoctor: "orxa:codex:doctor",
   codexUpdate: "orxa:codex:update",
   codexListModels: "orxa:codex:listModels",

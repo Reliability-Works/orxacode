@@ -54,13 +54,13 @@ describe("CanvasPane", () => {
   it("renders canvas toolbar with add tile button", () => {
     const state = buildCanvasState();
     render(<CanvasPane canvasState={state} />);
-    expect(screen.getByRole("button", { name: "Add tile" })).toBeInTheDocument();
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); expect(screen.getByRole("menuitem", { name: "Add tile" })).toBeInTheDocument();
   });
 
   it("displays the tile count from canvasState", () => {
     const state = buildCanvasState({ tiles: [makeTile(), makeTile({ id: "tile-2" })] });
     render(<CanvasPane canvasState={state} />);
-    expect(screen.getByText("2 tiles")).toBeInTheDocument();
+    
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
@@ -77,7 +77,7 @@ describe("CanvasPane", () => {
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
     // Open the add tile dropdown
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     // Click "terminal"
     fireEvent.click(screen.getByText("terminal"));
 
@@ -92,7 +92,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("browser"));
 
     const call = addTile.mock.calls[0][0];
@@ -105,7 +105,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("file editor"));
 
     const call = addTile.mock.calls[0][0];
@@ -118,7 +118,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("dev server"));
 
     const call = addTile.mock.calls[0][0];
@@ -131,7 +131,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("markdown preview"));
 
     const call = addTile.mock.calls[0][0];
@@ -144,7 +144,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("image viewer"));
 
     const call = addTile.mock.calls[0][0];
@@ -157,7 +157,7 @@ describe("CanvasPane", () => {
     const state = buildCanvasState({ addTile });
     render(<CanvasPane canvasState={state} directory="/workspace/project" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add tile" }));
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
     fireEvent.click(screen.getByText("api tester"));
 
     const call = addTile.mock.calls[0][0];
@@ -165,14 +165,10 @@ describe("CanvasPane", () => {
     expect(call.meta).toEqual({ method: "GET", url: "" });
   });
 
-  it("tile count label updates when tiles change", () => {
-    const state = buildCanvasState({ tiles: [] });
-    const { rerender } = render(<CanvasPane canvasState={state} />);
-    expect(screen.getByText("0 tiles")).toBeInTheDocument();
-
-    const updatedState = buildCanvasState({ tiles: [makeTile(), makeTile({ id: "tile-2" }), makeTile({ id: "tile-3" })] });
-    rerender(<CanvasPane canvasState={updatedState} />);
-    expect(screen.getByText("3 tiles")).toBeInTheDocument();
+  it("renders zoom controls", () => {
+    const state = buildCanvasState();
+    render(<CanvasPane canvasState={state} />);
+    expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
   it("updates viewport state when canvas is scrolled", async () => {

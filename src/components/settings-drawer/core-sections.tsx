@@ -1,3 +1,4 @@
+export { AppearanceSection } from "./core-sections-appearance";
 export { AppSettingsSection } from "./core-sections-app";
 export { GitSettingsSection } from "./core-sections-git";
 export { PersonalizationSection } from "./core-sections-personalization";
