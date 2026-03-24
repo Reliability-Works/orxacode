@@ -1543,8 +1543,7 @@ export default function App() {
     if (attachments?.length) {
       setComposerAttachments([]);
     }
-    pushToast("Message queued — will send when agent finishes", "info", 3_500);
-  }, [setComposer, setComposerAttachments, pushToast]);
+  }, [setComposer, setComposerAttachments]);
 
   const removeQueuedMessage = useCallback((id: string) => {
     setFollowupQueue((current) => current.filter((item) => item.id !== id));
@@ -3483,11 +3482,23 @@ export default function App() {
     const isBusy = isSessionInProgress;
     const wasBusy = prevSessionBusyForQueue.current;
     prevSessionBusyForQueue.current = isBusy;
-    if (wasBusy && !isBusy && followupQueue.length > 0) {
-      // Session just went idle — show the dock so user can choose to send
-      // (The dock is already visible; no auto-send to keep user in control)
+    if (wasBusy && !isBusy && followupQueue.length > 0 && !sendingQueuedId) {
+      const first = followupQueue[0];
+      if (first) {
+        setSendingQueuedId(first.id);
+        void sendPrompt({
+          textOverride: first.text,
+          attachmentOverride: first.attachments ?? [],
+          systemAddendum: effectiveSystemAddendum,
+          promptSource: "user",
+          tools: activePromptToolsPolicy,
+        }).finally(() => {
+          setSendingQueuedId(undefined);
+        });
+        setFollowupQueue((current) => current.filter((m) => m.id !== first.id));
+      }
     }
-  }, [isSessionInProgress, followupQueue.length]);
+  }, [isSessionInProgress, followupQueue.length, sendingQueuedId, sendPrompt, effectiveSystemAddendum, activePromptToolsPolicy, followupQueue]);
 
   // Clear queue when active session changes
   useEffect(() => {
