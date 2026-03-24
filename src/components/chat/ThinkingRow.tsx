@@ -1,5 +1,5 @@
-import { renderMarkdownText } from "../../lib/markdown";
 import { ThinkingShimmer } from "./ThinkingShimmer";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ThinkingRowProps {
   summary?: string;
@@ -29,10 +29,9 @@ export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
         <ThinkingShimmer label="Thinking" />
       </summary>
       <div className="thinking-row-content">
-        <div
-          className="thinking-content-md"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownText(content) }}
-        />
+        <div className="thinking-content-md">
+          <MarkdownRenderer content={content} />
+        </div>
       </div>
     </details>
   );

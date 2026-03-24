@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { renderMarkdownText } from "../../lib/markdown";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ReasoningPartProps {
   content: string;
@@ -26,10 +26,9 @@ export function ReasoningPart({ content, summary, defaultExpanded = false }: Rea
         <span className="reasoning-part-label">{label}</span>
       </button>
       {expanded ? (
-        <div
-          className="reasoning-part-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdownText(content) }}
-        />
+        <div className="reasoning-part-body">
+          <MarkdownRenderer content={content} />
+        </div>
       ) : null}
     </div>
   );
