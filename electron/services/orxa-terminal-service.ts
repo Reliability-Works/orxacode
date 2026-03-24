@@ -97,9 +97,6 @@ function spawnFallbackScriptPty(shell: string, args: string[], cwd: string, env:
     throw new Error("script PTY fallback is only available on macOS");
   }
   const scriptBinary = "/usr/bin/script";
-  if (!existsSync(scriptBinary)) {
-    throw new Error("macOS script binary not found");
-  }
   const processHandle = spawn(scriptBinary, ["-q", "/dev/null", shell, ...args], {
     cwd,
     env,
