@@ -52,20 +52,38 @@ export function MessageFeed({
     [assistantLabel, messages, presentation, workspaceDirectory],
   );
   const { rows: renderedRows, latestActivity, latestActivityContent, placeholderTimestamp } = computedPresentation;
-  const feedRows = useMemo<UnifiedTimelineRenderRow[]>(
-    () => [
-      ...renderedRows,
-      ...sessionNotices.map((notice) => ({
+  const feedRows = useMemo<UnifiedTimelineRenderRow[]>(() => {
+    if (sessionNotices.length === 0) return renderedRows;
+
+    const noticeRows: Array<{ time: number; row: UnifiedTimelineRenderRow }> = sessionNotices.map((notice) => ({
+      time: notice.time,
+      row: {
         id: `notice:${notice.id}`,
         kind: "notice" as const,
         label: notice.label,
         detail: notice.detail,
         tone: notice.tone,
         timestamp: notice.time,
-      })),
-    ],
-    [renderedRows, sessionNotices],
-  );
+      },
+    }));
+
+    // Merge notices into rendered rows at the correct chronological position.
+    const result = [...renderedRows];
+    for (const { time, row: noticeRow } of noticeRows) {
+      let insertAt = result.length;
+      for (let i = result.length - 1; i >= 0; i--) {
+        const row = result[i]!;
+        const rowTime = "timestamp" in row ? ((row as { timestamp?: number }).timestamp ?? 0) : 0;
+        if (rowTime <= time) {
+          insertAt = i + 1;
+          break;
+        }
+        if (i === 0) insertAt = 0;
+      }
+      result.splice(insertAt, 0, noticeRow);
+    }
+    return result;
+  }, [renderedRows, sessionNotices]);
 
   useEffect(() => {
     const el = messageFeedRef.current;
