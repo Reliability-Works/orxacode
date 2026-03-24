@@ -30,12 +30,12 @@
 .message-card {
   display: grid;
   gap: 4px;
-  max-width: min(74%, 780px);
+  max-width: min(92%, 900px);
   width: fit-content;
 }
 
 .message-user.message-card {
-  max-width: min(74%, 480px);
+  max-width: min(88%, 720px);
 }
 
 .message-user {
@@ -157,8 +157,8 @@
 .message-user .message-part {
   border-radius: 16px 16px 4px 16px;
   padding: 12px 16px;
-  border: 1px solid var(--border-secondary);
-  background: var(--bg-input);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
 .message-assistant .message-part {
@@ -167,6 +167,25 @@
   border-radius: 0;
   padding: 4px 0;
   color: var(--text-secondary);
+}
+
+.part-image {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.part-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 400px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.part-file {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
 }
 
 /* Thinking, live events, and status parts should not have card styling */

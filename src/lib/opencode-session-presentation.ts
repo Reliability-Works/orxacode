@@ -1466,7 +1466,12 @@ function buildMessageRows(
       return sections;
     }
     if (part.type === "file") {
-      sections.push({ id: `${bundle.info.id}:${part.id}:file`, type: "file", label: part.filename ?? part.url });
+      const isImage = part.mime?.startsWith("image/") ?? false;
+      if (isImage && part.url) {
+        sections.push({ id: `${bundle.info.id}:${part.id}:image`, type: "image", url: part.url, label: part.filename ?? "image" });
+      } else {
+        sections.push({ id: `${bundle.info.id}:${part.id}:file`, type: "file", label: part.filename ?? part.url });
+      }
     }
     return sections;
   }, []);

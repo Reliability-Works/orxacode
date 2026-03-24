@@ -13,6 +13,12 @@ export type UnifiedMessageSection =
       id: string;
       type: "file";
       label: string;
+    }
+  | {
+      id: string;
+      type: "image";
+      url: string;
+      label: string;
     };
 
 export type UnifiedTimelineRenderRow =

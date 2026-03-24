@@ -29,6 +29,14 @@ function renderMessageSection(
     );
   }
 
+  if (section.type === "image") {
+    return (
+      <div className="part-image">
+        <img src={section.url} alt={section.label} loading="lazy" />
+      </div>
+    );
+  }
+
   return <div className="part-file">Attached file: {section.label}</div>;
 }
 
