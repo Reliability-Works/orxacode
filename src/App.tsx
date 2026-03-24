@@ -740,6 +740,7 @@ export default function App() {
   const [skillUseModal, setSkillUseModal] = useState<{ skill: SkillEntry; projectDir: string } | null>(null);
   const [memoryComingSoonOpen, setMemoryComingSoonOpen] = useState(false);
   const [composerLayoutHeight, setComposerLayoutHeight] = useState(DEFAULT_COMPOSER_LAYOUT_HEIGHT);
+  const [composerDockHeight, setComposerDockHeight] = useState(0);
   const [terminalPanelHeight, setTerminalPanelHeight] = useState(DEFAULT_TERMINAL_PANEL_HEIGHT);
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
@@ -2824,7 +2825,7 @@ export default function App() {
 
 
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
-  const messageFeedBottomClearance = useMemo(() => Math.max(24, 24 + composerOffsetLift), [composerOffsetLift]);
+  const messageFeedBottomClearance = useMemo(() => Math.max(24, 24 + composerOffsetLift + composerDockHeight), [composerOffsetLift, composerDockHeight]);
   const composerAnchorBottom = useMemo(
     () =>
       Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) +
@@ -3556,6 +3557,10 @@ export default function App() {
     setComposerLayoutHeight((current) => (current === height ? current : height));
   }, []);
 
+  const handleDockHeightChange = useCallback((height: number) => {
+    setComposerDockHeight((current) => (current === height ? current : height));
+  }, []);
+
   const openPendingPullRequest = useCallback(() => {
     if (!pendingPrUrl) {
       return;
@@ -4084,6 +4089,7 @@ export default function App() {
                     variantOptions={variantOptions}
                     placeholder={composerPlaceholder}
                     onLayoutHeightChange={handleComposerLayoutHeightChange}
+                    onDockHeightChange={handleDockHeightChange}
                     backgroundAgents={visibleBackgroundAgents}
                     selectedBackgroundAgentId={selectedBackgroundAgentId}
                     onOpenBackgroundAgent={setSelectedBackgroundAgentId}

@@ -145,6 +145,7 @@ type ComposerPanelProps = {
   onPrimaryQueuedAction?: (id: string) => void;
   onEditQueued?: (id: string) => void;
   onRemoveQueued?: (id: string) => void;
+  onDockHeightChange?: (height: number) => void;
 };
 
 const COMPOSER_MIN_HEIGHT = 96;
@@ -201,7 +202,9 @@ type ComposerDockStackProps = Pick<
   | "followupSuggestions"
   | "onFollowupSelect"
   | "onFollowupDismiss"
->;
+> & {
+  onDockHeightChange?: (height: number) => void;
+};
 
 const ComposerDockStack = memo(function ComposerDockStack({
   queuedMessages,
@@ -231,9 +234,24 @@ const ComposerDockStack = memo(function ComposerDockStack({
   followupSuggestions,
   onFollowupSelect,
   onFollowupDismiss,
+  onDockHeightChange,
 }: ComposerDockStackProps) {
+  const dockRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!onDockHeightChange) return;
+    const el = dockRef.current;
+    if (!el) return;
+    const report = () => onDockHeightChange(Math.round(el.getBoundingClientRect().height));
+    report();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [onDockHeightChange]);
+
   return (
-    <div className="composer-docks-float">
+    <div ref={dockRef} className="composer-docks-float">
       {queuedMessages && queuedMessages.length > 0 && onPrimaryQueuedAction && onEditQueued && onRemoveQueued ? (
         <QueuedMessagesDock
           messages={queuedMessages}
@@ -399,6 +417,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
     onPrimaryQueuedAction,
     onEditQueued,
     onRemoveQueued,
+    onDockHeightChange,
   } = props;
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
@@ -582,6 +601,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
         followupSuggestions={followupSuggestions}
         onFollowupSelect={onFollowupSelect}
         onFollowupDismiss={onFollowupDismiss}
+        onDockHeightChange={onDockHeightChange}
       />
 
       <div className="composer-input-wrap">
