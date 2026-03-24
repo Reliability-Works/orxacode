@@ -68,7 +68,7 @@ export function ClaudeTraitsPicker({
         aria-haspopup="menu"
         title="Claude traits"
       >
-        <span className="composer-model-btn-label">{triggerLabel}</span>
+        <span className="composer-pill-label">{triggerLabel}</span>
         <ChevronDown size={10} aria-hidden="true" />
       </button>
       {open ? (

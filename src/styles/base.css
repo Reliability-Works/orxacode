@@ -1,13 +1,14 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500;600&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap");
 @import url("https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@4.2.1/index.css");
 @import url("https://cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack-subset.css");
 
 :root {
   /* Pencil design tokens */
-  --bg-page: #0C0C0C;
-  --bg-sidebar: #141414;
-  --bg-surface: #171717;
-  --bg-input: #1A1A1A;
+  --bg-page: #111111;
+  --bg-sidebar: #161616;
+  --bg-surface: #1C1C1C;
+  --bg-input: #222222;
 
   /* Legacy aliases (mapped to new tokens) */
   --bg-app: var(--bg-page);
@@ -19,11 +20,12 @@
   --text-main: var(--text-primary);
   --text-secondary: #A3A3A3;
   --text-tertiary: #737373;
-  --text-muted: #525252;
+  --text-muted: #5C5C5C;
   --text-dim: var(--text-muted);
 
   /* Accent colors */
   --accent-green: #22C55E;
+  --accent-interactive: #3B82F6;
   --accent-error: #EF4444;
   --accent-warning: #F59E0B;
   --accent-info: #3B82F6;
@@ -37,10 +39,10 @@
   --danger: var(--accent-error);
 
   /* Borders */
-  --border: #1F1F1F;
-  --border-secondary: #252525;
-  --border-hover: #2A2A2A;
-  --border-active: var(--accent-green);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.16);
+  --border-active: var(--accent-interactive);
 
   /* Legacy border aliases */
   --border-primary: var(--border);
@@ -53,6 +55,7 @@
   --shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
 
   /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   --code-font: var(--font-mono);
 
@@ -113,9 +116,21 @@ body,
 body {
   background: var(--bg-page);
   color: var(--text-primary);
-  font-family: "JetBrains Mono", monospace;
-  font-size: 13px;
+  font-family: var(--font-sans);
+  font-size: 14px;
   line-height: 1.5;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  z-index: 9999;
 }
 
 button,
@@ -209,11 +224,10 @@ textarea::placeholder {
 
 textarea {
   resize: vertical;
-  font-family: var(--font-mono);
 }
 
 :focus {
-  outline: 1px solid var(--accent-green);
+  outline: 1px solid var(--accent-interactive);
   outline-offset: 1px;
 }
 

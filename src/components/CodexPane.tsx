@@ -90,6 +90,37 @@ function normalizeGeneratedTitle(title: string | undefined) {
   return cleaned || null;
 }
 
+type CodexUsageAlert = {
+  title: string;
+  body: string;
+};
+
+function getCodexUsageAlert(lastError: string | undefined): CodexUsageAlert | null {
+  const raw = lastError?.trim();
+  if (!raw) {
+    return null;
+  }
+  const normalized = raw.toLowerCase();
+  const quotaSignals = [
+    "insufficient quota",
+    "quota exceeded",
+    "out of credits",
+    "no credits",
+    "usage limit",
+    "billing",
+    "payment required",
+    "credits remaining",
+    "reached your current usage limit",
+  ];
+  if (!quotaSignals.some((signal) => normalized.includes(signal))) {
+    return null;
+  }
+  return {
+    title: "Codex usage unavailable",
+    body: "This account appears to have no remaining Codex credits or usage. Add credits or switch account, then retry the session.",
+  };
+}
+
 const CodexConversationView = memo(function CodexConversationView({
   visibleMessages,
   trailingReasoning,
@@ -323,10 +354,15 @@ export function CodexPane({
   }, []);
 
   // Auto-scroll on new messages — only when user is near the bottom
+  // Throttled to one scroll per animation frame to avoid glitching during fast streaming
+  const scrollFrameRef = useRef<number | null>(null);
   useEffect(() => {
-    if (isUserNearBottomRef.current) {
+    if (!isUserNearBottomRef.current) return;
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
       messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
-    }
+    });
   }, [messages]);
 
   // Reset auto-scroll to active when thread changes
@@ -638,6 +674,10 @@ export function CodexPane({
   const showReviewChangesDrawer = effectiveTodoItems.length > 0
     && effectiveTodoItems.every((item) => item.status === "completed")
     && reviewChangesFiles.length > 0;
+  const codexUsageAlert = useMemo(
+    () => getCodexUsageAlert(lastError),
+    [lastError],
+  );
   useEffect(() => {
     if (!activeSubagentThreadId || subagentThreadMessages[activeSubagentThreadId] || !window.orxa?.codex?.resumeThread) {
       return;
@@ -725,6 +765,25 @@ export function CodexPane({
   useEffect(() => {
     setArchivedBackgroundAgentIds((current) => current.filter((id) => rawBackgroundAgents.some((agent) => agent.id === id)));
   }, [rawBackgroundAgents]);
+  const handleOpenBackgroundAgent = useCallback((threadId: string) => {
+    openSubagentThread(threadId);
+  }, [openSubagentThread]);
+  const handleArchiveBackgroundAgent = useCallback(async (agent: typeof effectiveBackgroundAgents[number]) => {
+    if (!window.orxa?.codex || !agent.sessionID) {
+      return;
+    }
+    await window.orxa.codex.archiveThreadTree(agent.id);
+    setArchivedBackgroundAgentIds((current) => current.includes(agent.id) ? current : [...current, agent.id]);
+    if (activeSubagentThreadId === agent.id) {
+      closeSubagentThread();
+    }
+  }, [activeSubagentThreadId, closeSubagentThread]);
+  const toggleTodoOpen = useCallback(() => {
+    setTodoOpen((value) => !value);
+  }, []);
+  const handleOpenReviewChange = useCallback((path: string) => {
+    onOpenFileReference?.(path);
+  }, [onOpenFileReference]);
   const trailingReasoningId = useMemo(
     () => (isStreaming ? [...messages].reverse().find((msg) => msg.kind === "reasoning")?.id ?? null : null),
     [messages, isStreaming],
@@ -783,6 +842,12 @@ export function CodexPane({
 
       {/* Composer area — overlays for plan/questions replace the composer */}
       <div className="codex-composer-area">
+        {codexUsageAlert ? (
+          <div className="codex-session-alert" role="alert">
+            <strong>{codexUsageAlert.title}</strong>
+            <span>{codexUsageAlert.body}</span>
+          </div>
+        ) : null}
         <ComposerPanel
           composer={input}
           setComposer={setInput}
@@ -839,18 +904,9 @@ export function CodexPane({
           simpleModelPicker
           backgroundAgents={effectiveBackgroundAgents}
           selectedBackgroundAgentId={activeSubagentThreadId}
-          onOpenBackgroundAgent={(threadId) => openSubagentThread(threadId)}
+          onOpenBackgroundAgent={handleOpenBackgroundAgent}
           onCloseBackgroundAgent={closeSubagentThread}
-          onArchiveBackgroundAgent={async (agent) => {
-            if (!window.orxa?.codex || !agent.sessionID) {
-              return;
-            }
-            await window.orxa.codex.archiveThreadTree(agent.id);
-            setArchivedBackgroundAgentIds((current) => current.includes(agent.id) ? current : [...current, agent.id]);
-            if (activeSubagentThreadId === agent.id) {
-              closeSubagentThread();
-            }
-          }}
+          onArchiveBackgroundAgent={handleArchiveBackgroundAgent}
           backgroundAgentDetail={subagentDetailBody}
           backgroundAgentTaskText={subagentTaskText}
           backgroundAgentDetailLoading={activeSubagentThreadId ? (subagentThreadLoading[activeSubagentThreadId] ?? false) : false}
@@ -861,9 +917,9 @@ export function CodexPane({
           pendingQuestion={questionDockProps}
           todoItems={effectiveTodoItems.length > 0 ? effectiveTodoItems : undefined}
           todoOpen={todoOpen}
-          onTodoToggle={() => setTodoOpen((v) => !v)}
+          onTodoToggle={toggleTodoOpen}
           reviewChangesFiles={showReviewChangesDrawer ? reviewChangesFiles : undefined}
-          onOpenReviewChange={(path) => onOpenFileReference?.(path)}
+          onOpenReviewChange={handleOpenReviewChange}
           queuedMessages={codexQueue}
           sendingQueuedId={codexSendingId}
           onQueueMessage={queueCodexMessage}

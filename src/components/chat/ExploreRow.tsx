@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Search as SearchLucide, Eye as EyeLucide } from "lucide-react";
 import type { ExploreEntry, ExploreEntryKind } from "../../lib/explore-utils";
 import { buildExploreLabel } from "../../lib/explore-utils";
 import { ChatFileIcon, ChatSearchIcon } from "./chat-icons";
@@ -12,6 +13,14 @@ export interface ExploreRowItem {
 
 interface ExploreRowProps {
   item: ExploreRowItem;
+}
+
+function ExploreHeaderIcon({ entries }: { entries: ExploreEntry[] }) {
+  const hasSearch = entries.some((e) => e.kind === "search" || e.kind === "list");
+  if (hasSearch) {
+    return <SearchLucide size={13} className="explore-header-icon" aria-hidden="true" />;
+  }
+  return <EyeLucide size={13} className="explore-header-icon" aria-hidden="true" />;
 }
 
 function EntryIcon({ kind }: { kind: ExploreEntryKind }) {
@@ -47,6 +56,7 @@ export function ExploreRow({ item }: ExploreRowProps) {
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
+        <ExploreHeaderIcon entries={item.entries} />
         <span className={`explore-group-label${isExploring ? " explore-group-label--exploring" : ""}`}>
           {label}
         </span>

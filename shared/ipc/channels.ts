@@ -1,4 +1,7 @@
 export const IPC = {
+  persistenceGet: "orxa:persistence:get",
+  persistenceSet: "orxa:persistence:set",
+  persistenceRemove: "orxa:persistence:remove",
   appOpenExternal: "orxa:app:openExternal",
   updatesGetPreferences: "orxa:updates:getPreferences",
   updatesSetPreferences: "orxa:updates:setPreferences",

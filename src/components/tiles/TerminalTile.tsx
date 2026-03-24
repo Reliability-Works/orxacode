@@ -143,7 +143,7 @@ export function TerminalTile({
         setLoadState("connecting");
         setErrorMessage(null);
 
-        const pty = await window.orxa.terminal.create(directory, cwd);
+        const pty = await window.orxa.terminal.create(directory, cwd, undefined, "canvas");
         if (cancelled) {
           return;
         }

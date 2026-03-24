@@ -9,18 +9,7 @@ export type ParsedFileReference = {
   lineLabel?: string;
 };
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeAttribute(value: string) {
-  return escapeHtml(value).replace(/"/g, "&quot;");
-}
-
-function looksLikeFilePath(value: string) {
+export function looksLikeFilePath(value: string) {
   if (!value || /\s{2,}/.test(value)) {
     return false;
   }
@@ -76,48 +65,3 @@ export function parseFileReference(input: string): ParsedFileReference | null {
   };
 }
 
-export function renderFileReferenceHtml(input: string): string {
-  const parsed = parseFileReference(input);
-  if (!parsed) {
-    return escapeHtml(input);
-  }
-
-  return `<a href="#" class="md-file-link" data-orxa-file-ref="${escapeAttribute(parsed.raw)}"><span class="md-file-link-name">${escapeHtml(parsed.basename)}</span>${parsed.lineLabel ? `<span class="md-file-link-line">${escapeHtml(parsed.lineLabel)}</span>` : ""}</a>`;
-}
-
-export function renderMarkdownText(text: string): string {
-  const html = text
-    // Escape HTML entities first
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    // Fenced code blocks (must come before inline code)
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="md-code-block"><code>$2</code></pre>')
-    // Links (only allow http/https URLs to prevent javascript: XSS)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
-      const trimmed = url.trim().toLowerCase();
-      if (trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:")) {
-        return `<a href="${url}" class="md-link" rel="noopener noreferrer">${label}</a>`;
-      }
-      return renderFileReferenceHtml(url);
-    })
-    // Inline code
-    .replace(/`([^`]+)`/g, (_match, code: string) => {
-      return parseFileReference(code)
-        ? renderFileReferenceHtml(code)
-        : `<code class="md-inline-code">${code}</code>`;
-    })
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    // Italic
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    // Headings (order: h3, h2, h1 to avoid partial matches)
-    .replace(/^### (.+)$/gm, '<h3 class="md-h3">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="md-h2">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 class="md-h1">$1</h1>')
-    // Horizontal rule
-    .replace(/^---$/gm, '<hr class="md-hr" />')
-    // Preserve newlines
-    .replace(/\n/g, "<br />");
-  return html;
-}

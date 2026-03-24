@@ -12,12 +12,10 @@ import {
   type OpencodeClient,
   type ProviderListResponse,
   type QuestionAnswer,
-  type Pty,
   type Session,
   type SessionStatus,
   type Worktree,
 } from "@opencode-ai/sdk/v2/client";
-import WebSocket from "ws";
 import type {
   ArtifactListQuery,
   ArtifactExportBundleInput,
@@ -59,7 +57,6 @@ import type {
   ProjectFileDocument,
   ProjectFileEntry,
   SessionMessageBundle,
-  TerminalConnectResult,
   WorkspaceArtifactSummary,
   WorkspaceContextFile,
   WorkspaceContextWriteInput,
@@ -502,7 +499,6 @@ export class OpencodeService {
   private authHeader: string | undefined;
   private globalAbort: AbortController | undefined;
   private projectAbort: AbortController | undefined;
-  private ptySockets = new Map<string, WebSocket>();
   private sessionSyncFingerprint = new Map<string, string>();
   private sessionSyncInFlight = new Map<string, Promise<void>>();
   private promptFence = new Map<string, number>();
@@ -701,11 +697,6 @@ export class OpencodeService {
     }
     this.managedBaseUrl = undefined;
 
-    for (const socket of this.ptySockets.values()) {
-      socket.close();
-    }
-    this.ptySockets.clear();
-
     this.setState({
       status: "disconnected",
       activeProfileId: this.state.activeProfileId,
@@ -720,11 +711,6 @@ export class OpencodeService {
   async disconnect() {
     this.stopProjectStream();
     this.stopGlobalStream();
-
-    for (const socket of this.ptySockets.values()) {
-      socket.close();
-    }
-    this.ptySockets.clear();
 
     this.setState({
       status: "disconnected",
@@ -834,7 +820,6 @@ export class OpencodeService {
       lsp,
       formatter,
       vcs,
-      ptys,
     ] = await Promise.all([
       this.unwrap(client.path.get({ directory: normalizedDirectory })).catch(() => ({
         home: homedir(),
@@ -855,7 +840,6 @@ export class OpencodeService {
       this.unwrap(client.lsp.status({ directory: normalizedDirectory })).catch(() => []),
       this.unwrap(client.formatter.status({ directory: normalizedDirectory })).catch(() => []),
       this.unwrap(client.vcs.get({ directory: normalizedDirectory })).catch(() => undefined),
-      this.unwrap(client.pty.list({ directory: normalizedDirectory })).catch(() => []),
     ]);
 
     return {
@@ -873,7 +857,7 @@ export class OpencodeService {
       lsp,
       formatter,
       vcs,
-      ptys,
+      ptys: [],
     };
   }
 
@@ -1560,115 +1544,6 @@ export class OpencodeService {
     return this.unwrap(client.mcp.status({ directory: normalizedDirectory })).catch(() => ({}));
   }
 
-  async listPtys(directory: string) {
-    const response = await this.client(directory).pty.list({ directory });
-    return this.unwrap<Pty[]>(response);
-  }
-
-  async createPty(directory: string, cwd?: string, title?: string) {
-    const response = await this.client(directory).pty.create({
-      directory,
-      cwd,
-      title,
-    });
-    return this.unwrap<Pty>(response);
-  }
-
-  async connectPty(directory: string, ptyID: string): Promise<TerminalConnectResult> {
-    const key = this.ptyKey(directory, ptyID);
-    const existing = this.ptySockets.get(key);
-    if (existing && existing.readyState === WebSocket.OPEN) {
-      return {
-        ptyID,
-        directory,
-        connected: true,
-      };
-    }
-
-    const url = this.baseWsUrl();
-    url.pathname = `/pty/${ptyID}/connect`;
-    url.searchParams.set("directory", directory);
-
-    const authHeader = this.authHeader;
-    const socket = new WebSocket(url, {
-      headers: authHeader ? { Authorization: authHeader } : undefined,
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      socket.once("open", () => resolve());
-      socket.once("error", (error) => reject(error));
-    });
-
-    socket.on("message", (chunk) => {
-      const str = chunk.toString();
-      if (/^\s*\{"cursor"\s*:\s*\d+\}\s*%?\s*$/.test(str)) {
-        return;
-      }
-      this.emit({
-        type: "pty.output",
-        payload: {
-          ptyID,
-          directory,
-          chunk: str,
-        },
-      });
-    });
-
-    socket.on("close", () => {
-      this.ptySockets.delete(key);
-      this.emit({
-        type: "pty.closed",
-        payload: {
-          ptyID,
-          directory,
-        },
-      });
-    });
-
-    socket.on("error", (error) => {
-      this.emitRuntimeError(`PTY socket error: ${sanitizeError(error)}`);
-    });
-
-    this.ptySockets.set(key, socket);
-
-    return {
-      ptyID,
-      directory,
-      connected: true,
-    };
-  }
-
-  async writePty(directory: string, ptyID: string, data: string) {
-    const socket = this.ptySockets.get(this.ptyKey(directory, ptyID));
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return false;
-    }
-
-    socket.send(data);
-    return true;
-  }
-
-  async resizePty(directory: string, ptyID: string, cols: number, rows: number) {
-    await this.client(directory).pty.update({
-      directory,
-      ptyID,
-      size: { cols, rows },
-    });
-    return true;
-  }
-
-  async closePty(directory: string, ptyID: string) {
-    const socketKey = this.ptyKey(directory, ptyID);
-    const socket = this.ptySockets.get(socketKey);
-    if (socket) {
-      socket.close();
-      this.ptySockets.delete(socketKey);
-    }
-
-    await this.client(directory).pty.remove({ directory, ptyID }).catch(() => undefined);
-    return true;
-  }
-
   private async syncSessionExecutionArtifacts(directory: string, sessionID: string) {
     const syncKey = `${directory}::${sessionID}`;
     const inFlight = this.sessionSyncInFlight.get(syncKey);
@@ -2029,18 +1904,6 @@ export class OpencodeService {
     return this.baseUrl(this.requireProfile());
   }
 
-  private baseWsUrl() {
-    if (this.managedBaseUrl && this.managedProcess) {
-      const managedUrl = new URL(this.managedBaseUrl);
-      managedUrl.protocol = managedUrl.protocol === "https:" ? "wss:" : "ws:";
-      return managedUrl;
-    }
-
-    const active = this.requireProfile();
-    const protocol = active.https ? "wss" : "ws";
-    return new URL(`${protocol}://${active.host}:${active.port}`);
-  }
-
   private requireProfile() {
     if (this.activeProfile) {
       return this.activeProfile;
@@ -2189,10 +2052,6 @@ export class OpencodeService {
       connected: [...authenticatedIDs].sort((a, b) => a.localeCompare(b)),
       default: nextDefault,
     };
-  }
-
-  private ptyKey(directory: string, ptyID: string) {
-    return `${directory}::${ptyID}`;
   }
 
   private stopGlobalStream() {

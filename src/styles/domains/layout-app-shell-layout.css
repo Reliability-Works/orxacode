@@ -47,19 +47,16 @@
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  font-family: var(--font-mono);
 }
 
 .startup-card p {
   margin: 0;
   color: var(--text-muted);
   font-size: 11px;
-  font-family: var(--font-mono);
 }
 
 .startup-card small {
   color: var(--text-muted);
-  font-family: var(--font-mono);
   font-size: 10px;
 }
 
@@ -86,7 +83,7 @@
   grid-template-columns:
     calc(48px + (var(--left-pane-width, 260px) - 48px) * var(--left-pane-visible, 1))
     calc(4px * var(--left-pane-visible, 1))
-    minmax(20vw, 1fr)
+    minmax(380px, 1fr)
     calc(4px * var(--browser-pane-visible, 0))
     calc(var(--browser-pane-width, 380px) * var(--browser-pane-visible, 0))
     calc(4px * var(--right-pane-visible, 1))
@@ -120,7 +117,6 @@
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
-  font-family: var(--font-mono);
 }
 
 .pane-heading-link:hover,
@@ -141,7 +137,6 @@
   color: var(--text-tertiary);
   min-width: 0;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .project-select span.project-label-text {
@@ -289,7 +284,6 @@
   gap: 8px;
   min-width: 0;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
   font-size: 12px;
 }
 
@@ -387,7 +381,6 @@ body.is-resizing * {
   white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
-  font-family: var(--font-mono);
   line-height: 1.2;
 }
 
@@ -451,7 +444,6 @@ body.is-resizing * {
   background: transparent;
   padding: 8px 12px;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .title-overflow-menu button:hover {
@@ -510,9 +502,9 @@ body.is-resizing * {
 
 .composer-input-wrap {
   position: relative;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-surface);
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: var(--bg-input);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -718,9 +710,23 @@ body.is-resizing * {
 .composer-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+  gap: 10px;
+  flex-wrap: nowrap;
+  margin-top: 10px;
+  container-type: inline-size;
+  container-name: composer-controls;
+}
+
+.composer-pill-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@container composer-controls (max-width: 480px) {
+  .composer-pill-label {
+    display: none;
+  }
 }
 
 .composer-compaction-indicator {
@@ -758,7 +764,6 @@ body.is-resizing * {
 .composer-compaction-label {
   font-size: 9px;
   color: var(--text-muted);
-  font-family: var(--font-mono);
   white-space: nowrap;
 }
 
@@ -798,12 +803,11 @@ body.is-resizing * {
   min-height: 0;
   background: var(--bg-input);
   color: var(--text-tertiary);
-  min-width: 14ch;
+  min-width: 0;
   max-width: min(72vw, 56ch);
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .composer-branch-leading {
@@ -988,7 +992,6 @@ body.is-resizing * {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .composer-model-dropdown-menu {
@@ -1061,7 +1064,6 @@ body.is-resizing * {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .composer-model-dropdown-list button:hover {
@@ -1082,7 +1084,6 @@ body.is-resizing * {
   min-height: 0;
   font-size: 11px;
   line-height: 19px;
-  font-family: var(--font-mono);
   background: var(--bg-input);
   color: var(--text-tertiary);
   cursor: pointer;
@@ -1126,7 +1127,6 @@ body.is-resizing * {
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .composer-mode-toggle-icon:hover {
@@ -1140,7 +1140,6 @@ body.is-resizing * {
 
 .composer-mode-toggle-label {
   font-size: 11px;
-  font-family: var(--font-mono);
   color: inherit;
   line-height: 1;
 }
@@ -1164,7 +1163,6 @@ body.is-resizing * {
   line-height: 1;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .composer-permission-control:hover {
@@ -1177,7 +1175,6 @@ body.is-resizing * {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  font-family: var(--font-mono);
 }
 
 .composer-permission-menu {
@@ -1206,7 +1203,6 @@ body.is-resizing * {
   justify-content: space-between;
   gap: 8px;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .composer-permission-menu button:hover {
@@ -1244,7 +1240,6 @@ body.is-resizing * {
   line-height: 1;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .composer-agent-label {
@@ -1254,7 +1249,6 @@ body.is-resizing * {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
-  font-family: var(--font-mono);
 }
 
 .composer-agent-menu {
@@ -1284,7 +1278,6 @@ body.is-resizing * {
   gap: 8px;
   font-size: 12px;
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .composer-agent-menu button:hover {
@@ -1310,7 +1303,6 @@ body.is-resizing * {
   border-radius: 3px;
   background: var(--bg-input);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
   text-transform: lowercase;
 }
 
@@ -1365,44 +1357,84 @@ body.is-resizing * {
   transform: rotate(45deg);
 }
 
-/* Git sub-tab bar - Pencil spec: 30px height, pill-style active, 11px text */
+/* Git sub-tab bar */
 .ops-git-sub-tabs {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
   background: var(--bg-page);
-  padding: 0 12px;
-  gap: 2px;
+  padding: 6px 12px 8px;
+  gap: 0;
   box-sizing: border-box;
 }
 
-.ops-git-sub-tab {
+.ops-git-panel-dropdown-wrap {
+  position: relative;
+}
+
+.ops-git-panel-dropdown-btn {
   display: inline-flex;
   align-items: center;
-  height: 22px;
+  gap: 4px;
+  height: 26px;
   padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-primary);
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.ops-git-sub-tab:hover {
-  color: var(--text-primary);
-  background: var(--bg-input);
+.ops-git-panel-dropdown-btn:hover {
+  border-color: var(--border-hover);
 }
 
-.ops-git-sub-tab.active {
+.ops-git-panel-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  min-width: 120px;
+  padding: 4px 0;
   background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.ops-git-panel-dropdown-menu button {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ops-git-panel-dropdown-menu button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+}
+
+.ops-git-panel-dropdown-menu button.active {
   color: var(--text-primary);
   font-weight: 500;
+}
+
+.ops-git-panel-select:hover {
+  border-color: var(--border-secondary);
+}
+
+.ops-git-panel-select:focus {
+  outline: none;
+  border-color: var(--text-muted);
 }
 
 .ops-git-view-modes {
@@ -1436,7 +1468,6 @@ body.is-resizing * {
   font-weight: 600;
   color: var(--text-muted);
   border-bottom: none;
-  font-family: var(--font-mono);
 }
 
 .ops-section p {
@@ -1537,6 +1568,7 @@ body.is-resizing * {
   flex: 1;
   gap: var(--space-3);
   padding: 12px 16px 12px;
+  position: relative;
 }
 
 .files-panel-header {
@@ -1554,7 +1586,6 @@ body.is-resizing * {
   height: 30px;
   border-radius: 4px;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .files-panel-actions-row {
@@ -1694,5 +1725,4 @@ body.is-resizing * {
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  font-family: var(--font-mono);
 }

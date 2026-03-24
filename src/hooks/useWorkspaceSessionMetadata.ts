@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { clearPersistedClaudeChatState } from "./claude-chat-session-storage";
 import { clearPersistedCodexState } from "./codex-session-storage";
 import { usePersistedState } from "./usePersistedState";
+import { readPersistedValue } from "../lib/persistence";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import {
   buildWorkspaceSessionMetadataKey,
@@ -20,7 +21,7 @@ export function readLocalStorageRecord<T>(key: string): Record<string, T> {
     return {};
   }
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = readPersistedValue(key);
     if (!raw) {
       return {};
     }

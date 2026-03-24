@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClaudeChatSession } from "./useClaudeChatSession";
-import { clearPersistedClaudeChatState } from "./claude-chat-session-storage";
+import { clearPersistedClaudeChatState, resetPersistedClaudeChatStateForTests } from "./claude-chat-session-storage";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 const SESSION_KEY = "/workspace::claude-chat-1";
@@ -23,6 +23,8 @@ function buildEvents() {
 
 describe("useClaudeChatSession", () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    resetPersistedClaudeChatStateForTests();
     clearPersistedClaudeChatState(SESSION_KEY);
     useUnifiedRuntimeStore.setState((state) => ({
       ...state,
@@ -48,6 +50,8 @@ describe("useClaudeChatSession", () => {
   });
 
   afterEach(() => {
+    window.localStorage.clear();
+    resetPersistedClaudeChatStateForTests();
     clearPersistedClaudeChatState(SESSION_KEY);
     // @ts-expect-error test cleanup
     delete window.orxa;

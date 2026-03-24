@@ -1,7 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { CLAUDE_SESSION_PTY_TITLE_PREFIX } from "@shared/ipc";
-import type { ProjectBootstrap, SessionMessageBundle, SessionRuntimeSnapshot } from "@shared/ipc";
+import type { OrxaTerminalSession, ProjectBootstrap, SessionMessageBundle, SessionRuntimeSnapshot } from "@shared/ipc";
 import { normalizeMessageBundles } from "../lib/opencode-event-reducer";
 import { EMPTY_WORKSPACE_SESSIONS_KEY, useWorkspaceState } from "./useWorkspaceState";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
@@ -9,7 +8,7 @@ import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 function createProjectBootstrap(
   directory: string,
   sessions: Array<{ id: string; time: { updated: number } }>,
-  ptys: Array<{ id: string; title: string; command?: string; args?: string[]; cwd?: string; status?: "running" | "exited"; pid?: number }> = [],
+  ptys: OrxaTerminalSession[] = [],
 ): ProjectBootstrap {
   const sessionStatus = Object.fromEntries(sessions.map((session) => [session.id, { type: "idle" }]));
   return ({
@@ -675,29 +674,22 @@ describe("useWorkspaceState", () => {
     expect(setTerminalOpen).toHaveBeenCalledWith(false);
   });
 
-  it("filters Claude-owned PTYs out of integrated terminal hydration", async () => {
+  it("hydrates integrated terminal tabs from workspace-owned PTYs", async () => {
     const directory = "/repo/target";
     const projectBootstrap = createProjectBootstrap(
       directory,
       [],
       [
         {
-          id: "pty-claude",
-          title: `${CLAUDE_SESSION_PTY_TITLE_PREFIX}full`,
-          command: "/bin/zsh",
-          args: [],
-          cwd: directory,
-          status: "running",
-          pid: 1,
-        },
-        {
           id: "pty-shell",
           title: "shell",
-          command: "/bin/zsh",
-          args: [],
+          directory,
           cwd: directory,
+          owner: "workspace",
           status: "running",
-          pid: 2,
+          pid: 1,
+          exitCode: null,
+          createdAt: Date.now(),
         },
       ],
     );

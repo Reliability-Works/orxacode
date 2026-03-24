@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouse
 import type { Event as OpencodeEvent, Session } from "@opencode-ai/sdk/v2/client";
 import type { ProjectBootstrap, SessionMessageBundle, SessionPermissionMode } from "@shared/ipc";
 import type { TerminalTab } from "../components/TerminalPanel";
+import { readPersistedValue, removePersistedValue, writePersistedValue } from "../lib/persistence";
 import { makeUnifiedSessionKey } from "../state/unified-runtime";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
-import { filterComposerTerminalPtys, isClaudeOwnedPty } from "../lib/terminal-ownership";
 import {
   applyOpencodeProjectEvent,
   applyOpencodeSessionEvent,
@@ -88,7 +88,7 @@ function readPersistedEmptySessions() {
     return new Map<string, string>();
   }
   try {
-    const raw = window.localStorage.getItem(EMPTY_WORKSPACE_SESSIONS_KEY);
+    const raw = readPersistedValue(EMPTY_WORKSPACE_SESSIONS_KEY);
     if (!raw) {
       return new Map<string, string>();
     }
@@ -118,7 +118,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [pinnedSessions, setPinnedSessions] = useState<Record<string, string[]>>(() => {
     try {
-      const raw = window.localStorage.getItem(PINNED_SESSIONS_KEY);
+      const raw = readPersistedValue(PINNED_SESSIONS_KEY);
       if (!raw) {
         return {};
       }
@@ -171,10 +171,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     try {
       const next = Object.fromEntries(persistedEmptySessionIds.current.entries());
       if (Object.keys(next).length === 0) {
-        window.localStorage.removeItem(EMPTY_WORKSPACE_SESSIONS_KEY);
+        removePersistedValue(EMPTY_WORKSPACE_SESSIONS_KEY);
         return;
       }
-      window.localStorage.setItem(EMPTY_WORKSPACE_SESSIONS_KEY, JSON.stringify(next));
+      writePersistedValue(EMPTY_WORKSPACE_SESSIONS_KEY, JSON.stringify(next));
     } catch {
       // Ignore storage failures.
     }
@@ -408,13 +408,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           }
         }
 
-        const visiblePtys = filterComposerTerminalPtys(data.ptys);
-        const serverPtyIds = visiblePtys.map((p) => p.id);
+        const serverPtyIds = data.ptys.map((p) => p.id);
         const hasValidTab = terminalTabIds.some((id) => serverPtyIds.includes(id));
-        const hasHiddenClaudePtys = data.ptys.some((pty) => isClaudeOwnedPty(pty));
-        if (!hasValidTab && (serverPtyIds.length > 0 || hasHiddenClaudePtys)) {
-          setTerminalTabs(visiblePtys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-          setActiveTerminalId(visiblePtys[0]?.id);
+        if (!hasValidTab && serverPtyIds.length > 0) {
+          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+          setActiveTerminalId(data.ptys[0]?.id);
         }
 
         if (nextSessionID && !skipMessageLoad) {
@@ -465,9 +463,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated, lastOpenedAt: Date.now() });
 
-        const visiblePtys = filterComposerTerminalPtys(data.ptys);
-        setTerminalTabs(visiblePtys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-        setActiveTerminalId(visiblePtys[0]?.id);
+        setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+        setActiveTerminalId(data.ptys[0]?.id);
         setActiveSessionID(nextSessionID);
         setStatusLine(`Loaded ${directory}`);
       } catch (error) {
@@ -746,7 +743,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(PINNED_SESSIONS_KEY, JSON.stringify(pinnedSessions));
+    writePersistedValue(PINNED_SESSIONS_KEY, JSON.stringify(pinnedSessions));
   }, [pinnedSessions]);
 
   useEffect(() => {

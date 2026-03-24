@@ -174,10 +174,31 @@ export function UnifiedTimelineRowView({
       return (
         <div className="compaction-divider" role="separator" aria-label="context compacted">
           <span className="compaction-divider-line" />
-          <span className="compaction-divider-label">context compacted</span>
+          <span className="compaction-divider-label">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            context compacted
+          </span>
           <span className="compaction-divider-line" />
         </div>
       );
+    case "turn-divider": {
+      const timeLabel = row.timestamp
+        ? new Date(row.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : undefined;
+      const durationLabel = row.durationSeconds !== undefined && row.durationSeconds > 0
+        ? row.durationSeconds < 60
+          ? `${row.durationSeconds}s`
+          : `${Math.floor(row.durationSeconds / 60)}m ${row.durationSeconds % 60}s`
+        : undefined;
+      const badge = [timeLabel, durationLabel].filter(Boolean).join(" \u00B7 ");
+      return (
+        <div className="turn-divider" role="separator">
+          {badge ? <span className="turn-divider-badge">{badge}</span> : null}
+        </div>
+      );
+    }
     default:
       return null;
   }

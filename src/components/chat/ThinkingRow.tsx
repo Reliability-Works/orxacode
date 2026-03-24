@@ -1,4 +1,5 @@
 import { ThinkingShimmer } from "./ThinkingShimmer";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ThinkingRowProps {
   summary?: string;
@@ -28,7 +29,9 @@ export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
         <ThinkingShimmer label="Thinking" />
       </summary>
       <div className="thinking-row-content">
-        <pre className="thinking-row-text">{content}</pre>
+        <div className="thinking-content-md">
+          <MarkdownRenderer content={content} />
+        </div>
       </div>
     </details>
   );

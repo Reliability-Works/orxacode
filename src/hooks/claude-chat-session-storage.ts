@@ -1,5 +1,6 @@
 import type { ClaudeChatHistoryMessage } from "@shared/ipc";
 import type { ClaudeChatMessageItem, ClaudeChatSubagentState } from "./useClaudeChatSession";
+import { createPersistedSessionStore } from "./persisted-session-storage";
 
 export interface PersistedClaudeChatState {
   providerThreadId: string | null;
@@ -10,23 +11,21 @@ export interface PersistedClaudeChatState {
   subagents: ClaudeChatSubagentState[];
 }
 
-const persistedSessions = new Map<string, PersistedClaudeChatState>();
-
-export function getPersistedClaudeChatState(sessionKey: string): PersistedClaudeChatState {
-  const existing = persistedSessions.get(sessionKey);
-  if (existing) {
-    return existing;
-  }
-  const fresh: PersistedClaudeChatState = {
+const persistedSessions = createPersistedSessionStore<PersistedClaudeChatState>({
+  storagePrefix: "orxa:claudeChatSession:v1",
+  createDefault: () => ({
     providerThreadId: null,
     messages: [],
     historyMessages: [],
     isStreaming: false,
     messageIdCounter: 0,
     subagents: [],
-  };
-  persistedSessions.set(sessionKey, fresh);
-  return fresh;
+  }),
+  hydrate: (value) => ({ ...value, isStreaming: false }),
+});
+
+export function getPersistedClaudeChatState(sessionKey: string): PersistedClaudeChatState {
+  return persistedSessions.get(sessionKey);
 }
 
 export function setPersistedClaudeChatState(sessionKey: string, next: PersistedClaudeChatState) {
@@ -34,5 +33,9 @@ export function setPersistedClaudeChatState(sessionKey: string, next: PersistedC
 }
 
 export function clearPersistedClaudeChatState(sessionKey: string) {
-  persistedSessions.delete(sessionKey);
+  persistedSessions.clear(sessionKey);
+}
+
+export function resetPersistedClaudeChatStateForTests() {
+  persistedSessions.resetForTests();
 }

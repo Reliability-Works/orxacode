@@ -211,7 +211,6 @@
   background: transparent;
   color: var(--text-secondary);
   font-size: 11px;
-  font-family: var(--font-mono);
   cursor: pointer;
   white-space: nowrap;
   line-height: 30px;
@@ -244,7 +243,6 @@
   background: transparent;
   color: var(--text-primary);
   font-size: 11px;
-  font-family: var(--font-mono);
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
@@ -316,14 +314,12 @@
   font-size: 20px;
   font-weight: 600 !important;
   line-height: 1;
-  font-family: var(--font-mono);
 }
 
 .sidebar-logo-name {
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 500 !important;
-  font-family: var(--font-mono);
 }
 
 /* Search bar */
@@ -348,7 +344,6 @@
 .sidebar-search-placeholder {
   color: var(--text-muted);
   font-size: 12px;
-  font-family: var(--font-mono);
   flex: 1;
 }
 
@@ -368,7 +363,6 @@
   font-weight: 500 !important;
   letter-spacing: 1px;
   text-transform: uppercase;
-  font-family: var(--font-mono);
   flex-shrink: 0;
 }
 
@@ -451,7 +445,6 @@
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
-  font-family: var(--font-mono);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -512,7 +505,7 @@
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
   padding: 0;
 }
@@ -520,7 +513,7 @@
 .sidebar-mode-links button {
   border: 1px solid transparent;
   background: transparent;
-  padding: 8px 4px;
+  padding: 8px 6px;
   border-radius: 4px;
   display: flex;
   flex-direction: column;
@@ -530,7 +523,6 @@
   color: var(--text-muted);
   font-size: 10px;
   font-weight: 400;
-  font-family: var(--font-mono);
   flex: 1;
   min-width: 0;
   margin-left: 0;
@@ -551,7 +543,7 @@
 
 .sidebar-mode-links button.active {
   color: var(--accent-green);
-  background: var(--bg-input);
+  background: transparent;
   border-color: transparent;
 }
 
@@ -585,7 +577,6 @@
   letter-spacing: 1px;
   font-weight: 600;
   color: var(--text-muted);
-  font-family: var(--font-mono);
 }
 
 .project-list,
@@ -668,13 +659,11 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--accent-green);
-  font-family: var(--font-mono);
 }
 
 .sidebar-update-card-version {
   font-size: 11px;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
 }
 
 .sidebar-update-card.is-downloading .sidebar-update-card-title {
@@ -708,7 +697,6 @@
   transform: translateX(-50%);
   font-size: 10px;
   line-height: 1.2;
-  font-family: var(--font-mono);
   color: var(--text-muted);
   text-align: center;
   white-space: nowrap;
@@ -762,7 +750,6 @@
   justify-content: center;
   font-size: 10px;
   font-weight: 500 !important;
-  font-family: var(--font-mono);
   color: var(--text-primary);
   border: 0;
   cursor: default;
@@ -1000,7 +987,6 @@
   justify-content: center;
   gap: 6px;
   font-size: 11px;
-  font-family: var(--font-mono);
   line-height: 1;
   pointer-events: auto;
   -webkit-app-region: no-drag;
@@ -1106,7 +1092,6 @@
   background: transparent;
   padding: 8px 12px;
   font-size: 12px;
-  font-family: var(--font-mono);
 }
 
 .titlebar-menu button:hover {
@@ -1196,7 +1181,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
 }
 
 .titlebar-run-menu-item-preview {
@@ -1261,53 +1245,58 @@
   border-bottom: 0;
 }
 
-/* Right sidebar top-level tab bar - Pencil spec: 36px height, fill width, bottom border */
+/* Right sidebar top-level tab bar */
 .ops-panel-tabs {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
-  height: 36px;
   flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
   background: var(--bg-page);
-  padding: 0 14px;
+  padding: 10px 12px 6px;
   box-sizing: border-box;
+}
+
+.ops-panel-tab-pills {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-input);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
 }
 
 .ops-panel-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 0;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 400;
   cursor: pointer;
   position: relative;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ops-panel-tab-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 13px;
-  height: 13px;
-  min-width: 13px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
   flex-shrink: 0;
   color: inherit;
 }
 
 .ops-panel-tab-icon svg {
   display: block;
-}
-
-.ops-panel-tab-label {
-  line-height: 1;
+  width: 16px;
+  height: 16px;
 }
 
 .ops-panel-tab:hover {
@@ -1316,18 +1305,7 @@
 
 .ops-panel-tab.active {
   color: var(--text-primary);
-  font-weight: 500;
-}
-
-.ops-panel-tab.active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent-green);
-  border-radius: 1px 1px 0 0;
+  background: var(--bg-surface);
 }
 
 .ops-panel-collapse {
@@ -1658,7 +1636,6 @@
 
 .browser-owner-chip {
   font-size: 9px;
-  font-family: var(--font-mono);
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 2px 7px;
@@ -1692,7 +1669,6 @@
   color: var(--text-primary);
   padding: 0 10px;
   font-size: 10px;
-  font-family: var(--font-mono);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1724,7 +1700,6 @@
   align-items: center;
   gap: 5px;
   font-size: 10px;
-  font-family: var(--font-mono);
   color: var(--text-muted);
   white-space: nowrap;
   cursor: default;
@@ -1779,7 +1754,6 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  font-family: var(--font-mono);
 }
 
 .git-diff-mode-toggle {
@@ -1887,7 +1861,6 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  font-family: var(--font-mono);
 }
 
 .git-diff-hunk + .git-diff-hunk {
@@ -2728,7 +2701,6 @@
 
 .browser-annotations-title {
   font-size: 10px;
-  font-family: var(--font-mono);
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -2790,7 +2762,6 @@
   background: var(--bg-input);
   color: var(--text-primary);
   font-size: 11px;
-  font-family: var(--font-mono);
 }
 
 .browser-annotation-comment::placeholder {

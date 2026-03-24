@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -10,7 +11,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Bot, Check, ChevronDown, Compass, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
+import { Bot, Check, ChevronDown, Compass, Cpu, GitBranch, Plus, Search as SearchIcon, Shield, X, Zap } from "lucide-react";
 import type { Attachment } from "../hooks/useComposerState";
 import type { ModelOption } from "../lib/models";
 import type { PermissionMode } from "../types/app";
@@ -171,6 +172,147 @@ function isImageAttachment(attachment: Attachment) {
   return attachment.mime.startsWith("image/") || attachment.url.startsWith("data:image/") || attachment.url.startsWith("file:");
 }
 
+type ComposerDockStackProps = Pick<
+  ComposerPanelProps,
+  | "queuedMessages"
+  | "sendingQueuedId"
+  | "queuedActionKind"
+  | "onPrimaryQueuedAction"
+  | "onEditQueued"
+  | "onRemoveQueued"
+  | "backgroundAgents"
+  | "selectedBackgroundAgentId"
+  | "onOpenBackgroundAgent"
+  | "onCloseBackgroundAgent"
+  | "onArchiveBackgroundAgent"
+  | "backgroundAgentDetail"
+  | "backgroundAgentTaskText"
+  | "backgroundAgentDetailLoading"
+  | "backgroundAgentDetailError"
+  | "backgroundAgentTaggingHint"
+  | "todoItems"
+  | "todoOpen"
+  | "onTodoToggle"
+  | "reviewChangesFiles"
+  | "onOpenReviewChange"
+  | "pendingPlan"
+  | "pendingQuestion"
+  | "pendingPermission"
+  | "followupSuggestions"
+  | "onFollowupSelect"
+  | "onFollowupDismiss"
+>;
+
+const ComposerDockStack = memo(function ComposerDockStack({
+  queuedMessages,
+  sendingQueuedId,
+  queuedActionKind,
+  onPrimaryQueuedAction,
+  onEditQueued,
+  onRemoveQueued,
+  backgroundAgents,
+  selectedBackgroundAgentId,
+  onOpenBackgroundAgent,
+  onCloseBackgroundAgent,
+  onArchiveBackgroundAgent,
+  backgroundAgentDetail,
+  backgroundAgentTaskText,
+  backgroundAgentDetailLoading,
+  backgroundAgentDetailError,
+  backgroundAgentTaggingHint,
+  todoItems,
+  todoOpen,
+  onTodoToggle,
+  reviewChangesFiles,
+  onOpenReviewChange,
+  pendingPlan,
+  pendingQuestion,
+  pendingPermission,
+  followupSuggestions,
+  onFollowupSelect,
+  onFollowupDismiss,
+}: ComposerDockStackProps) {
+  return (
+    <div className="composer-docks-float">
+      {queuedMessages && queuedMessages.length > 0 && onPrimaryQueuedAction && onEditQueued && onRemoveQueued ? (
+        <QueuedMessagesDock
+          messages={queuedMessages}
+          sendingId={sendingQueuedId}
+          actionKind={queuedActionKind}
+          onPrimaryAction={onPrimaryQueuedAction}
+          onEdit={onEditQueued}
+          onRemove={onRemoveQueued}
+        />
+      ) : null}
+
+      {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
+        <BackgroundAgentsPanel
+          agents={backgroundAgents}
+          selectedAgentId={selectedBackgroundAgentId}
+          onOpenAgent={onOpenBackgroundAgent}
+          onBack={onCloseBackgroundAgent}
+          onArchiveAgent={onArchiveBackgroundAgent}
+          detailBody={backgroundAgentDetail}
+          detailTaskText={backgroundAgentTaskText}
+          detailLoading={backgroundAgentDetailLoading}
+          detailError={backgroundAgentDetailError}
+          taggingHint={backgroundAgentTaggingHint}
+        />
+      ) : null}
+
+      {onTodoToggle ? (
+        reviewChangesFiles && reviewChangesFiles.length > 0 ? (
+          <ReviewChangesDock
+            files={reviewChangesFiles}
+            open={todoOpen ?? false}
+            onToggle={onTodoToggle}
+            onOpenPath={onOpenReviewChange}
+          />
+        ) : todoItems && todoItems.length > 0 ? (
+          <TodoDock
+            items={todoItems}
+            open={todoOpen ?? false}
+            onToggle={onTodoToggle}
+          />
+        ) : null
+      ) : null}
+
+      {pendingPlan ? (
+        <PlanDock
+          onAccept={pendingPlan.onAccept}
+          onSubmitChanges={pendingPlan.onSubmitChanges}
+          onDismiss={pendingPlan.onDismiss}
+        />
+      ) : null}
+
+      {pendingQuestion ? (
+        <QuestionDock
+          questions={pendingQuestion.questions}
+          onSubmit={pendingQuestion.onSubmit}
+          onReject={pendingQuestion.onReject}
+        />
+      ) : null}
+
+      {pendingPermission ? (
+        <PermissionDock
+          description={pendingPermission.description}
+          filePattern={pendingPermission.filePattern}
+          command={pendingPermission.command}
+          onDecide={pendingPermission.onDecide}
+        />
+      ) : null}
+
+      {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
+        <FollowupDock
+          suggestions={followupSuggestions}
+          onSelect={onFollowupSelect}
+          onDismiss={onFollowupDismiss}
+        />
+      ) : null}
+    </div>
+  );
+});
+
 export function ComposerPanel(props: ComposerPanelProps) {
   const {
     placeholder,
@@ -207,7 +349,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
     compactionCompacted,
     branchMenuOpen,
     setBranchMenuOpen,
-    branchControlWidthCh,
     branchLoading,
     branchSwitching,
     hasActiveProject,
@@ -365,83 +506,35 @@ export function ComposerPanel(props: ComposerPanelProps) {
 
   return (
     <section ref={composerZoneRef} className="composer-zone">
-      <div className="composer-docks-float">
-        {queuedMessages && queuedMessages.length > 0 && onPrimaryQueuedAction && onEditQueued && onRemoveQueued ? (
-          <QueuedMessagesDock
-            messages={queuedMessages}
-            sendingId={sendingQueuedId}
-            actionKind={queuedActionKind}
-            onPrimaryAction={onPrimaryQueuedAction}
-            onEdit={onEditQueued}
-            onRemove={onRemoveQueued}
-          />
-        ) : null}
-
-        {backgroundAgents && backgroundAgents.length > 0 && onOpenBackgroundAgent && onCloseBackgroundAgent ? (
-          <BackgroundAgentsPanel
-            agents={backgroundAgents}
-            selectedAgentId={selectedBackgroundAgentId}
-            onOpenAgent={onOpenBackgroundAgent}
-            onBack={onCloseBackgroundAgent}
-            onArchiveAgent={onArchiveBackgroundAgent}
-            detailBody={backgroundAgentDetail}
-            detailTaskText={backgroundAgentTaskText}
-            detailLoading={backgroundAgentDetailLoading}
-            detailError={backgroundAgentDetailError}
-            taggingHint={backgroundAgentTaggingHint}
-          />
-        ) : null}
-
-        {onTodoToggle ? (
-          reviewChangesFiles && reviewChangesFiles.length > 0 ? (
-            <ReviewChangesDock
-              files={reviewChangesFiles}
-              open={todoOpen ?? false}
-              onToggle={onTodoToggle}
-              onOpenPath={onOpenReviewChange}
-            />
-          ) : todoItems && todoItems.length > 0 ? (
-            <TodoDock
-              items={todoItems}
-              open={todoOpen ?? false}
-              onToggle={onTodoToggle}
-            />
-          ) : null
-        ) : null}
-
-        {pendingPlan ? (
-          <PlanDock
-            onAccept={pendingPlan.onAccept}
-            onSubmitChanges={pendingPlan.onSubmitChanges}
-            onDismiss={pendingPlan.onDismiss}
-          />
-        ) : null}
-
-        {pendingQuestion ? (
-          <QuestionDock
-            questions={pendingQuestion.questions}
-            onSubmit={pendingQuestion.onSubmit}
-            onReject={pendingQuestion.onReject}
-          />
-        ) : null}
-
-        {pendingPermission ? (
-          <PermissionDock
-            description={pendingPermission.description}
-            filePattern={pendingPermission.filePattern}
-            command={pendingPermission.command}
-            onDecide={pendingPermission.onDecide}
-          />
-        ) : null}
-
-        {followupSuggestions && followupSuggestions.length > 0 && onFollowupSelect ? (
-          <FollowupDock
-            suggestions={followupSuggestions}
-            onSelect={onFollowupSelect}
-            onDismiss={onFollowupDismiss}
-          />
-        ) : null}
-      </div>
+      <ComposerDockStack
+        queuedMessages={queuedMessages}
+        sendingQueuedId={sendingQueuedId}
+        queuedActionKind={queuedActionKind}
+        onPrimaryQueuedAction={onPrimaryQueuedAction}
+        onEditQueued={onEditQueued}
+        onRemoveQueued={onRemoveQueued}
+        backgroundAgents={backgroundAgents}
+        selectedBackgroundAgentId={selectedBackgroundAgentId}
+        onOpenBackgroundAgent={onOpenBackgroundAgent}
+        onCloseBackgroundAgent={onCloseBackgroundAgent}
+        onArchiveBackgroundAgent={onArchiveBackgroundAgent}
+        backgroundAgentDetail={backgroundAgentDetail}
+        backgroundAgentTaskText={backgroundAgentTaskText}
+        backgroundAgentDetailLoading={backgroundAgentDetailLoading}
+        backgroundAgentDetailError={backgroundAgentDetailError}
+        backgroundAgentTaggingHint={backgroundAgentTaggingHint}
+        todoItems={todoItems}
+        todoOpen={todoOpen}
+        onTodoToggle={onTodoToggle}
+        reviewChangesFiles={reviewChangesFiles}
+        onOpenReviewChange={onOpenReviewChange}
+        pendingPlan={pendingPlan}
+        pendingQuestion={pendingQuestion}
+        pendingPermission={pendingPermission}
+        followupSuggestions={followupSuggestions}
+        onFollowupSelect={onFollowupSelect}
+        onFollowupDismiss={onFollowupDismiss}
+      />
 
       <div className="composer-input-wrap">
         <button
@@ -574,7 +667,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
               aria-haspopup="menu"
             >
               <Bot size={11} aria-hidden="true" />
-              <span className="composer-agent-label">{selectedAgent ?? "agent"}</span>
+              <span className="composer-pill-label">{selectedAgent ?? "agent"}</span>
               <ChevronDown size={10} aria-hidden="true" />
             </button>
             {agentMenuOpen ? (
@@ -613,7 +706,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
             aria-label={isPlanMode ? "Disable plan mode" : "Enable plan mode"}
           >
             <span className="plan-toggle-square" aria-hidden="true" />
-            plan mode
+            <span className="composer-pill-label">plan mode</span>
           </button>
         ) : null}
         {!hideBrowserToggle ? (
@@ -626,7 +719,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
             aria-label={browserModeEnabled ? "Disable Browser mode" : "Enable Browser mode"}
           >
             <Compass size={11} aria-hidden="true" />
-            <span className="composer-mode-toggle-label">browser</span>
+            <span className="composer-pill-label">browser</span>
           </button>
         ) : null}
         <div ref={permissionMenuRef} className={`composer-permission-wrap ${permissionMenuOpen ? "open" : ""}`.trim()}>
@@ -639,7 +732,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
             aria-haspopup="menu"
           >
             {permissionMode === "yolo-write" ? <Zap size={11} aria-hidden="true" /> : <Shield size={11} aria-hidden="true" />}
-            <span className="composer-permission-label">{permissionLabel}</span>
+            <span className="composer-pill-label">{permissionLabel}</span>
             <ChevronDown size={10} aria-hidden="true" />
           </button>
           {permissionMenuOpen ? (
@@ -683,7 +776,6 @@ export function ComposerPanel(props: ComposerPanelProps) {
           <button
             type="button"
             className="composer-branch-control"
-            style={{ width: `${branchControlWidthCh}ch` }}
             disabled={branchLoading || branchSwitching || !hasActiveProject}
             onClick={() => {
               setBranchMenuOpen((value) => {
@@ -699,7 +791,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
           >
             <span className="composer-branch-leading">
               <GitBranch size={11} aria-hidden="true" />
-              <span className="composer-branch-label">{branchDisplayValue}</span>
+              <span className="composer-pill-label">{branchDisplayValue}</span>
             </span>
             <ChevronDown size={10} aria-hidden="true" />
           </button>
@@ -764,7 +856,8 @@ export function ComposerPanel(props: ComposerPanelProps) {
               aria-haspopup="listbox"
               title={selectedModel ?? "Select model"}
             >
-              <span className="composer-model-btn-label">
+              <Cpu size={11} aria-hidden="true" />
+              <span className="composer-pill-label">
                 {(() => {
                   const sel = modelSelectOptions.find((o) => o.key === selectedModel);
                   return sel ? sel.modelName : modelSelectOptions.length === 0 ? "loading..." : "model";
@@ -920,7 +1013,8 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
         aria-label="Select model"
         title={displayLabel}
       >
-        <span className="model-btn-label">{displayLabel}</span>
+        <Cpu size={11} aria-hidden="true" />
+        <span className="composer-pill-label">{displayLabel}</span>
         <ChevronDown size={12} aria-hidden="true" />
       </button>
 

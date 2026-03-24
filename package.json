@@ -1,12 +1,13 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.20",
+  "version": "0.1.0-beta.25",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
+    "native:rebuild": "electron-builder install-app-deps",
     "dev": "vite",
     "dev:mac": "node scripts/sync-macos-dev-icon.mjs && vite",
     "build": "tsc -b && vite build",
@@ -20,6 +21,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "smoke:artifact": "node scripts/release-smoke-test.mjs",
+    "postinstall": "pnpm native:rebuild",
+    "predev": "pnpm native:rebuild",
+    "predev:mac": "pnpm native:rebuild",
+    "prebuild": "pnpm native:rebuild",
     "prepare": "husky"
   },
   "build": {
@@ -31,6 +36,10 @@
       "package.json"
     ],
     "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**",
+      "node_modules/node-pty/**"
+    ],
     "publish": [
       {
         "provider": "github",
@@ -78,6 +87,7 @@
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "@tanstack/react-virtual": "^3.13.23",
+    "better-sqlite3": "12.8.0",
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "electron-store": "^11.0.2",
@@ -85,13 +95,16 @@
     "jsonc-parser": "^3.3.1",
     "keytar": "^7.9.0",
     "lucide-react": "^0.575.0",
+    "node-pty": "1.2.0-beta.12",
     "prismjs": "^1.30.0",
     "react": "^19.2.4",
     "react-cytoscapejs": "^2.0.0",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.13.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "remark-gfm": "^4.0.1",
     "simple-icons": "^16.9.0",
-    "ws": "^8.19.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
     "zustand": "^5.0.12"
@@ -100,10 +113,12 @@
     "@eslint/js": "^9.39.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.13",
     "@types/prismjs": "^1.26.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.1.4",
     "@vitest/coverage-v8": "^4.0.18",

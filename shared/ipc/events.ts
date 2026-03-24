@@ -50,22 +50,6 @@ export type OrxaEvent =
       };
     }
   | {
-      type: "claude-terminal.output";
-      payload: {
-        processId: string;
-        directory: string;
-        chunk: string;
-      };
-    }
-  | {
-      type: "claude-terminal.closed";
-      payload: {
-        processId: string;
-        directory: string;
-        exitCode: number | null;
-      };
-    }
-  | {
       type: "updater.telemetry";
       payload: {
         phase:

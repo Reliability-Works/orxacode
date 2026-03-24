@@ -102,6 +102,7 @@ import {
   type ModelOption,
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
+import { removePersistedValue } from "./lib/persistence";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   BROWSER_MODE_TOOLS_POLICY_WITH_MCP,
@@ -118,7 +119,6 @@ import {
   shouldAutoRenameSessionTitle,
   toneForStatusLine,
 } from "./lib/app-session-utils";
-import { isClaudeOwnedPty } from "./lib/terminal-ownership";
 import {
   buildAppShellBrowserSidebarState,
   buildAppShellHomeDashboardProps,
@@ -818,10 +818,6 @@ export default function App() {
     [activeProjectDir, activeSessionID, getSessionType],
   );
   const canShowIntegratedTerminal = activeSessionType !== "claude" && activeSessionType !== "canvas";
-  const hiddenComposerPtyIds = useMemo(
-    () => new Set((projectData?.ptys ?? []).filter((pty) => isClaudeOwnedPty(pty)).map((pty) => pty.id)),
-    [projectData?.ptys],
-  );
   const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null);
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
@@ -2352,9 +2348,9 @@ export default function App() {
         // Clear canvas state for archived sessions so new canvas sessions start fresh
         try {
           const dirSuffix = directory ? `:${directory.replace(/\//g, "_")}` : "";
-          window.localStorage.removeItem(`orxa:canvasState:${sessionID}${dirSuffix}:v2`);
+          removePersistedValue(`orxa:canvasState:${sessionID}${dirSuffix}:v2`);
           // Also clear legacy v1 key
-          window.localStorage.removeItem(`orxa:canvasState:${sessionID}:v1`);
+          removePersistedValue(`orxa:canvasState:${sessionID}:v1`);
         } catch { /* non-fatal */ }
         if (archivedSessionType === "codex") {
           const codexThreadId = selectCodexSessionRuntime(sessionKey)?.thread?.id;
@@ -3102,14 +3098,6 @@ export default function App() {
       setTerminalOpen(false);
     }
   }, [canShowIntegratedTerminal]);
-
-  useEffect(() => {
-    setTerminalTabs((current) => {
-      const next = current.filter((tab) => !hiddenComposerPtyIds.has(tab.id));
-      return next.length === current.length ? current : next;
-    });
-    setActiveTerminalId((current) => (current && hiddenComposerPtyIds.has(current) ? undefined : current));
-  }, [hiddenComposerPtyIds]);
 
   const createTerminalTab = useCallback(async (): Promise<string> => {
     if (!activeProjectDir) {
@@ -4603,7 +4591,7 @@ export default function App() {
       <InfoDialog
         isOpen={memoryComingSoonOpen}
         title="Memory coming soon"
-        message="Orxa memory is being rebuilt behind a simpler, more reliable foundation. The old in-app memory system and settings have been removed while we redo it properly."
+        message="Workspace-scoped memory that lets your agents recall project context, decisions, and preferences across sessions. Coming soon."
         dismissLabel="Close"
         onDismiss={() => setMemoryComingSoonOpen(false)}
       />

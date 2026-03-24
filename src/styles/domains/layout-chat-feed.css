@@ -70,7 +70,6 @@
   line-height: 1;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
 }
 
 .plan-toggle-inline input[type="checkbox"] {
