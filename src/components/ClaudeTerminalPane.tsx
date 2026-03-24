@@ -3,6 +3,7 @@ import { Bot, ChevronDown, Columns, Plus, Rows, Shield, ShieldOff, X } from "luc
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
+import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import { consumeClaudeStartupChunk } from "../lib/claude-terminal-startup";
 
@@ -39,7 +40,7 @@ function getStorageKey(directory: string): string {
 
 function getStoredPermissionMode(directory: string): PermissionMode | null {
   try {
-    const stored = localStorage.getItem(getStorageKey(directory));
+    const stored = readPersistedValue(getStorageKey(directory));
     if (stored === "standard" || stored === "full") return stored;
   } catch {
     // localStorage may not be available
@@ -49,7 +50,7 @@ function getStoredPermissionMode(directory: string): PermissionMode | null {
 
 function storePermissionMode(directory: string, mode: "standard" | "full"): void {
   try {
-    localStorage.setItem(getStorageKey(directory), mode);
+    writePersistedValue(getStorageKey(directory), mode);
   } catch {
     // localStorage may not be available
   }

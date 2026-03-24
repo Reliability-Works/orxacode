@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { readPersistedValue as readStoredValue, writePersistedValue } from "../lib/persistence";
 
 type PersistedStateOptions<T> = {
   serialize?: (value: T) => string;
@@ -13,13 +14,13 @@ function defaultDeserialize<T>(value: string) {
   return JSON.parse(value) as T;
 }
 
-function readPersistedValue<T>(key: string, defaultValue: T, deserialize: (value: string) => T) {
+function readPersistedState<T>(key: string, defaultValue: T, deserialize: (value: string) => T) {
   if (typeof window === "undefined") {
     return defaultValue;
   }
 
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = readStoredValue(key);
     if (raw === null) {
       return defaultValue;
     }
@@ -39,7 +40,7 @@ export function usePersistedState<T>(
   const [hydratedKey, setHydratedKey] = useState(key);
 
   const [state, setState] = useState<T>(() => {
-    return readPersistedValue(key, defaultValue, deserialize);
+    return readPersistedState(key, defaultValue, deserialize);
   });
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function usePersistedState<T>(
       return;
     }
 
-    setState(readPersistedValue(key, defaultValue, deserialize));
+    setState(readPersistedState(key, defaultValue, deserialize));
     setHydratedKey(key);
   }, [defaultValue, deserialize, hydratedKey, key]);
 
@@ -61,7 +62,7 @@ export function usePersistedState<T>(
     }
 
     try {
-      window.localStorage.setItem(key, serialize(state));
+      writePersistedValue(key, serialize(state));
     } catch {
       // no-op
     }

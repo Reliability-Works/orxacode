@@ -15,6 +15,7 @@ import type {
 } from "@shared/ipc";
 import type { ModelOption } from "../lib/models";
 import type { AppPreferences } from "~/types/app";
+import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import {
   AppSettingsSection,
   ConfigSection,
@@ -157,7 +158,7 @@ export function SettingsDrawer({
       return null;
     }
     try {
-      const raw = window.localStorage.getItem(UPDATE_CHECK_STATUS_KEY);
+      const raw = readPersistedValue(UPDATE_CHECK_STATUS_KEY);
       if (!raw) {
         return null;
       }
@@ -212,7 +213,7 @@ export function SettingsDrawer({
       return;
     }
     try {
-      window.localStorage.setItem(UPDATE_CHECK_STATUS_KEY, JSON.stringify(status));
+      writePersistedValue(UPDATE_CHECK_STATUS_KEY, JSON.stringify(status));
     } catch {
       // ignore persistence failures
     }

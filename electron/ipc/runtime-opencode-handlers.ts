@@ -1,8 +1,9 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { dialog, ipcMain, type BrowserWindow } from "electron";
-import { IPC, type GitCommitRequest } from "../../shared/ipc";
+import { IPC, type GitCommitRequest, type ProjectBootstrap } from "../../shared/ipc";
 import type { OpencodeService } from "../services/opencode-service";
+import type { OrxaTerminalService } from "../services/orxa-terminal-service";
 import {
   assertBoolean,
   assertConfigPatch,
@@ -14,6 +15,7 @@ import {
 
 type RuntimeOpencodeHandlersDeps = {
   service: OpencodeService;
+  terminalService: OrxaTerminalService;
   startupBootstrap: { wait: () => Promise<void> };
   getMainWindow: () => BrowserWindow | null;
   inferMimeFromPath: (filePath: string) => string;
@@ -21,10 +23,19 @@ type RuntimeOpencodeHandlersDeps = {
 
 export function registerRuntimeOpencodeHandlers({
   service,
+  terminalService,
   startupBootstrap,
   getMainWindow,
   inferMimeFromPath,
 }: RuntimeOpencodeHandlersDeps) {
+  const attachWorkspaceTerminals = async (directory: string, loader: () => Promise<ProjectBootstrap>) => {
+    const project = await loader();
+    return {
+      ...project,
+      ptys: terminalService.listPtys(directory, "workspace"),
+    };
+  };
+
   ipcMain.handle(IPC.runtimeGetState, async () => service.runtimeState());
   ipcMain.handle(IPC.runtimeListProfiles, async () => service.listProfiles());
   ipcMain.handle(IPC.runtimeSaveProfile, async (_event, input: unknown) => service.saveProfile(assertRuntimeProfileInput(input)));
@@ -60,10 +71,10 @@ export function registerRuntimeOpencodeHandlers({
     service.removeProjectDirectory(assertString(directory, "directory")),
   );
   ipcMain.handle(IPC.opencodeSelectProject, async (_event, directory: unknown) =>
-    service.selectProject(assertString(directory, "directory")),
+    attachWorkspaceTerminals(assertString(directory, "directory"), () => service.selectProject(assertString(directory, "directory"))),
   );
   ipcMain.handle(IPC.opencodeRefreshProject, async (_event, directory: unknown) =>
-    service.refreshProject(assertString(directory, "directory")),
+    attachWorkspaceTerminals(assertString(directory, "directory"), () => service.refreshProject(assertString(directory, "directory"))),
   );
   ipcMain.handle(IPC.opencodeCreateSession, async (_event, directory: unknown, title?: unknown, permissionMode?: unknown) =>
     service.createSession(

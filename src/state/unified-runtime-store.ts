@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import {
   deriveUnifiedSessionStatus,
   makeUnifiedSessionKey,
@@ -61,7 +62,7 @@ function readJsonRecord(key: string) {
     return {};
   }
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = readPersistedValue(key);
     if (!raw) {
       return {};
     }
@@ -80,7 +81,7 @@ function debouncePersist(key: string, value: Record<string, unknown>) {
   const timers = ((debouncePersist as unknown as { timers?: Record<string, number> }).timers ??= {});
   timers[key] = window.setTimeout(() => {
     try {
-      window.localStorage.setItem(key, JSON.stringify(value));
+      writePersistedValue(key, JSON.stringify(value));
     } catch {
       // Ignore storage failures.
     }

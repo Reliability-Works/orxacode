@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import type { JobRecord, JobRunRecord, JobTemplate } from "../components/JobsBoard";
+import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   mergeModeToolPolicies,
@@ -115,7 +116,7 @@ function createDraft(projectDir?: string, template?: JobTemplate): JobRecord {
 
 function readStoredList<T>(key: string): T[] {
   try {
-    const raw = window.localStorage.getItem(key);
+    const raw = readPersistedValue(key);
     if (!raw) {
       return [];
     }
@@ -497,11 +498,11 @@ export function useJobsScheduler({ activeProjectDir, onStatus }: UseJobsSchedule
   }, [loadJobs]);
 
   useEffect(() => {
-    window.localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
+    writePersistedValue(JOBS_KEY, JSON.stringify(jobs));
   }, [jobs]);
 
   useEffect(() => {
-    window.localStorage.setItem(JOB_RUNS_KEY, JSON.stringify(jobRuns.slice(0, 300)));
+    writePersistedValue(JOB_RUNS_KEY, JSON.stringify(jobRuns.slice(0, 300)));
   }, [jobRuns]);
 
   useEffect(() => {

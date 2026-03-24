@@ -1,4 +1,4 @@
-import type { Agent, Config, ProviderListResponse, Pty, QuestionAnswer, Session } from "@opencode-ai/sdk/v2/client";
+import type { Agent, Config, ProviderListResponse, QuestionAnswer, Session } from "@opencode-ai/sdk/v2/client";
 
 import type {
   ArtifactExportBundleInput,
@@ -40,7 +40,7 @@ import type {
 } from "./opencode-core";
 import type { RuntimeDependencyReport, RuntimeProfile, RuntimeProfileInput, RuntimeState, ServerDiagnostics } from "./runtime";
 import type { BrowserAgentActionRequest, BrowserAgentActionResult, BrowserBounds, BrowserHistoryItem, BrowserState } from "./browser";
-import type { ClaudeTerminalCreateResult, ClaudeTerminalMode, TerminalConnectResult } from "./terminal";
+import type { ClaudeTerminalCreateResult, ClaudeTerminalMode, OrxaTerminalOwner, OrxaTerminalSession, TerminalConnectResult } from "./terminal";
 import type { McpDevToolsServerStatus } from "./mcp-devtools";
 import type { ProviderUsageStats, OpenFileOptions, OpenFileResult, ListeningPort, HttpRequestOptions, HttpRequestResult } from "./app";
 import type {
@@ -65,6 +65,11 @@ import type {
 import type { OrxaEvent } from "./events";
 
 export interface OrxaBridge {
+  persistence?: {
+    get: (key: string) => string | null;
+    set: (key: string, value: string) => boolean;
+    remove: (key: string) => boolean;
+  };
   app: {
     openExternal: (url: string) => Promise<boolean>;
     openFile: (options?: OpenFileOptions) => Promise<OpenFileResult | undefined>;
@@ -172,8 +177,8 @@ export interface OrxaBridge {
     repairRuntime: () => Promise<ServerDiagnostics>;
   };
   terminal: {
-    list: (directory: string) => Promise<Pty[]>;
-    create: (directory: string, cwd?: string, title?: string) => Promise<Pty>;
+    list: (directory: string) => Promise<OrxaTerminalSession[]>;
+    create: (directory: string, cwd?: string, title?: string, owner?: OrxaTerminalOwner) => Promise<OrxaTerminalSession>;
     connect: (directory: string, ptyID: string) => Promise<TerminalConnectResult>;
     write: (directory: string, ptyID: string, data: string) => Promise<boolean>;
     resize: (directory: string, ptyID: string, cols: number, rows: number) => Promise<boolean>;

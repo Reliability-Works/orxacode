@@ -1,18 +1,15 @@
-import type { ChildProcess } from "node:child_process";
 import { ipcMain } from "electron";
-import { CLAUDE_SESSION_PTY_TITLE_PREFIX, IPC, type ClaudeTerminalMode, type OrxaEvent } from "../../shared/ipc";
-import type { OpencodeService } from "../services/opencode-service";
+import { IPC, type ClaudeTerminalMode, type OrxaTerminalOwner } from "../../shared/ipc";
+import type { OrxaTerminalService } from "../services/orxa-terminal-service";
 import { assertString } from "./validators";
 
 type ClaudeTerminalState = {
-  nextId: number;
-  processes: Map<string, { directory: string; proc?: ChildProcess }>;
+  processes: Map<string, { directory: string }>;
 };
 
 type TerminalHandlersDeps = {
-  service: OpencodeService;
+  service: OrxaTerminalService;
   claudeState: ClaudeTerminalState;
-  publishEvent: (event: OrxaEvent) => void;
 };
 
 export function registerTerminalHandlers({
@@ -20,11 +17,12 @@ export function registerTerminalHandlers({
   claudeState,
 }: TerminalHandlersDeps) {
   ipcMain.handle(IPC.terminalList, async (_event, directory: unknown) => service.listPtys(assertString(directory, "directory")));
-  ipcMain.handle(IPC.terminalCreate, async (_event, directory: unknown, cwd?: unknown, title?: unknown) =>
+  ipcMain.handle(IPC.terminalCreate, async (_event, directory: unknown, cwd?: unknown, title?: unknown, owner?: unknown) =>
     service.createPty(
       assertString(directory, "directory"),
       typeof cwd === "string" ? cwd : undefined,
       typeof title === "string" ? title : undefined,
+      owner === "workspace" || owner === "canvas" || owner === "claude" ? owner as OrxaTerminalOwner : "workspace",
     ),
   );
   ipcMain.handle(IPC.terminalConnect, async (_event, directory: unknown, ptyID: unknown) =>
@@ -48,8 +46,8 @@ export function registerTerminalHandlers({
     async (_event, directory: unknown, mode: unknown, cols?: unknown, rows?: unknown) => {
       const dir = assertString(directory, "directory");
       const m = assertString(mode, "mode") as ClaudeTerminalMode;
-      const title = `${CLAUDE_SESSION_PTY_TITLE_PREFIX}${m}`;
-      const pty = await service.createPty(dir, dir, title);
+      const title = m === "full" ? "Claude Code (Full)" : "Claude Code";
+      const pty = await service.createPty(dir, dir, title, "claude");
       claudeState.processes.set(pty.id, { directory: dir });
       await service.connectPty(dir, pty.id);
       if (typeof cols === "number" && typeof rows === "number") {
@@ -62,11 +60,6 @@ export function registerTerminalHandlers({
   ipcMain.handle(IPC.claudeTerminalWrite, async (_event, processId: unknown, data: unknown) => {
     const id = assertString(processId, "processId");
     const entry = claudeState.processes.get(id);
-    if (entry?.proc) {
-      const str = typeof data === "string" ? data : "";
-      entry.proc.stdin?.write(str);
-      return true;
-    }
     if (entry?.directory) {
       return service.writePty(entry.directory, id, typeof data === "string" ? data : "");
     }
@@ -79,9 +72,6 @@ export function registerTerminalHandlers({
     if (typeof cols !== "number" || typeof rows !== "number") {
       throw new Error("cols and rows must be numbers");
     }
-    if (entry?.proc) {
-      return true;
-    }
     if (entry?.directory) {
       await service.resizePty(entry.directory, id, cols, rows);
       return true;
@@ -92,16 +82,6 @@ export function registerTerminalHandlers({
   ipcMain.handle(IPC.claudeTerminalClose, async (_event, processId: unknown) => {
     const id = assertString(processId, "processId");
     const entry = claudeState.processes.get(id);
-    if (entry?.proc) {
-      const proc = entry.proc;
-      entry.proc.kill("SIGTERM");
-      setTimeout(() => {
-        if (claudeState.processes.has(id)) {
-          proc.kill("SIGKILL");
-        }
-      }, 3000);
-      return true;
-    }
     if (entry?.directory) {
       claudeState.processes.delete(id);
       await service.closePty(entry.directory, id);

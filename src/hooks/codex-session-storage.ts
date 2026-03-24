@@ -1,5 +1,6 @@
 import type { CodexThread } from "@shared/ipc";
 import type { CodexMessageItem } from "./useCodexSession";
+import { createPersistedSessionStore } from "./persisted-session-storage";
 
 export interface PersistedCodexState {
   messages: CodexMessageItem[];
@@ -8,16 +9,14 @@ export interface PersistedCodexState {
   messageIdCounter: number;
 }
 
-const persistedSessions = new Map<string, PersistedCodexState>();
+const persistedSessions = createPersistedSessionStore<PersistedCodexState>({
+  storagePrefix: "orxa:codexSession:v1",
+  createDefault: () => ({ messages: [], thread: null, isStreaming: false, messageIdCounter: 0 }),
+  hydrate: (value) => ({ ...value, isStreaming: false }),
+});
 
 export function getPersistedCodexState(sessionKey: string): PersistedCodexState {
-  const existing = persistedSessions.get(sessionKey);
-  if (existing) {
-    return existing;
-  }
-  const fresh: PersistedCodexState = { messages: [], thread: null, isStreaming: false, messageIdCounter: 0 };
-  persistedSessions.set(sessionKey, fresh);
-  return fresh;
+  return persistedSessions.get(sessionKey);
 }
 
 export function setPersistedCodexState(sessionKey: string, next: PersistedCodexState) {
@@ -25,5 +24,9 @@ export function setPersistedCodexState(sessionKey: string, next: PersistedCodexS
 }
 
 export function clearPersistedCodexState(sessionKey: string) {
-  persistedSessions.delete(sessionKey);
+  persistedSessions.clear(sessionKey);
+}
+
+export function resetPersistedCodexStateForTests() {
+  persistedSessions.resetForTests();
 }

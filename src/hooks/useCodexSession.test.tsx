@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { useCodexSession } from "./useCodexSession";
-import { setPersistedCodexState } from "./codex-session-storage";
+import { resetPersistedCodexStateForTests, setPersistedCodexState } from "./codex-session-storage";
 
 const SESSION_KEY = "/workspace::session-1";
 
@@ -32,6 +32,8 @@ function buildOrxaEvents() {
 
 describe("useCodexSession", () => {
   beforeEach(() => {
+    window.localStorage.clear();
+    resetPersistedCodexStateForTests();
     setPersistedCodexState(SESSION_KEY, {
       messages: [],
       thread: null,
@@ -56,6 +58,8 @@ describe("useCodexSession", () => {
   });
 
   afterEach(() => {
+    window.localStorage.clear();
+    resetPersistedCodexStateForTests();
     // @ts-expect-error test teardown
     delete window.orxa;
   });

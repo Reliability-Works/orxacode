@@ -10,7 +10,6 @@ import type {
   Part,
   Path,
   PermissionRequest,
-  Pty,
   ProviderListResponse,
   QuestionRequest,
   Session,
@@ -20,6 +19,7 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 
 import type { RuntimeState } from "./runtime";
+import type { OrxaTerminalSession } from "./terminal";
 
 export type SessionMessageBundle = {
   info: Message;
@@ -41,7 +41,7 @@ export type ProjectBootstrap = {
   lsp: LspStatus[];
   formatter: FormatterStatus[];
   vcs?: VcsInfo;
-  ptys: Pty[];
+  ptys: OrxaTerminalSession[];
 };
 
 export type ProjectListItem = {

@@ -1103,25 +1103,6 @@ describe("OpencodeService managed local runtime startup", () => {
     expect(result.status).toBe("connected");
   });
 
-  it("uses the launched managed server URL for PTY websocket connections too", () => {
-    const service = Object.create(OpencodeService.prototype) as {
-      managedProcess?: unknown;
-      managedBaseUrl?: string;
-      activeProfile?: { id: string; host: string; port: number; https: boolean };
-      baseWsUrl: () => URL;
-    };
-
-    service.managedProcess = { pid: 12345 };
-    service.managedBaseUrl = "http://127.0.0.1:55555";
-    service.activeProfile = {
-      id: "local-profile",
-      host: "127.0.0.1",
-      port: 4096,
-      https: false,
-    };
-
-    expect(service.baseWsUrl().toString()).toBe("ws://127.0.0.1:55555/");
-  });
 });
 
 describe("OpencodeService session runtime snapshots", () => {

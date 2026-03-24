@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { access } from "node:fs/promises";
-import { execSync, type ChildProcess } from "node:child_process";
+import { execSync } from "node:child_process";
 import { app, BrowserWindow, Menu, nativeImage, type MenuItemConstructorOptions } from "electron";
 import type { OrxaEvent } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
@@ -9,12 +9,15 @@ import { CodexService } from "./services/codex-service";
 import { ClaudeChatService } from "./services/claude-chat-service";
 import { trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
+import { OrxaTerminalService } from "./services/orxa-terminal-service";
+import { PersistenceService } from "./services/persistence-service";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createMainWindowEventPublisher } from "./services/main-window-event-publisher";
 import { registerProviderEventBridge } from "./services/provider-event-bridge";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
 import { registerAppHandlers } from "./ipc/app-handlers";
+import { registerPersistenceHandlers } from "./ipc/persistence-handlers";
 import { registerUpdatesHandlers } from "./ipc/updates-handlers";
 import { registerRuntimeOpencodeHandlers } from "./ipc/runtime-opencode-handlers";
 import { registerArtifactHandlers } from "./ipc/artifact-handlers";
@@ -52,6 +55,8 @@ const __dirname = path.dirname(__filename);
 const service = new OpencodeService();
 const codexService = new CodexService();
 const claudeChatService = new ClaudeChatService();
+const terminalService = new OrxaTerminalService();
+let persistenceService: PersistenceService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
@@ -59,8 +64,7 @@ let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
 const SMOKE_TEST_FLAG = "--smoke-test";
 const claudeTerminalState = {
-  nextId: 0,
-  processes: new Map<string, { proc: ChildProcess; directory: string }>(),
+  processes: new Map<string, { directory: string }>(),
 };
 const eventPublisher = createMainWindowEventPublisher(() => mainWindow);
 
@@ -219,6 +223,14 @@ function inferMimeFromPath(filePath: string) {
 }
 
 function registerIpcHandlers() {
+  if (!persistenceService) {
+    throw new Error("Persistence service not initialized");
+  }
+
+  registerPersistenceHandlers({
+    service: persistenceService,
+  });
+
   registerAppHandlers({
     getMainWindow: () => mainWindow,
   });
@@ -229,6 +241,7 @@ function registerIpcHandlers() {
 
   registerRuntimeOpencodeHandlers({
     service,
+    terminalService,
     startupBootstrap,
     getMainWindow: () => mainWindow,
     inferMimeFromPath,
@@ -239,9 +252,8 @@ function registerIpcHandlers() {
   });
 
   registerTerminalHandlers({
-    service,
+    service: terminalService,
     claudeState: claudeTerminalState,
-    publishEvent,
   });
 
   registerBrowserHandlers({
@@ -275,6 +287,7 @@ function publishEvent(event: OrxaEvent) {
 
 async function boot() {
   await app.whenReady();
+  persistenceService = new PersistenceService();
   browserController = new BrowserController({
     onEvent: (event) => publishEvent(event),
   });
@@ -282,6 +295,7 @@ async function boot() {
   void initCodexUsageTracking();
 
   service.onEvent = (event) => publishEvent(event);
+  terminalService.onEvent = (event) => publishEvent(event);
 
   if (process.argv.includes(SMOKE_TEST_FLAG) || process.env.ORXA_SMOKE_TEST === "1") {
     setTimeout(() => {

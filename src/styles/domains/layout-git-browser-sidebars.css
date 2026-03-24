@@ -543,7 +543,7 @@
 
 .sidebar-mode-links button.active {
   color: var(--accent-green);
-  background: var(--bg-input);
+  background: transparent;
   border-color: transparent;
 }
 

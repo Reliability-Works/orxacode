@@ -1,5 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { ProjectBootstrap, ProjectListItem } from "@shared/ipc";
+import { removePersistedValue } from "../lib/persistence";
 import { opencodeClient } from "../lib/services/opencodeClient";
 import {
   LEGACY_SESSION_TITLES_KEY,
@@ -90,8 +91,8 @@ export function useWorkspaceSessionMetadataMigration({
       }
 
       if (fullyLoaded) {
-        window.localStorage.removeItem(LEGACY_SESSION_TYPES_KEY);
-        window.localStorage.removeItem(LEGACY_SESSION_TITLES_KEY);
+        removePersistedValue(LEGACY_SESSION_TYPES_KEY);
+        removePersistedValue(LEGACY_SESSION_TITLES_KEY);
         sessionMetadataMigrationDoneRef.current = true;
       }
     })();

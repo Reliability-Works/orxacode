@@ -5,6 +5,11 @@ import { createIpcEventHub } from "./services/ipc-event-hub";
 const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch]);
 
 const bridge: OrxaBridge = {
+  persistence: {
+    get: (key) => ipcRenderer.sendSync(IPC.persistenceGet, key),
+    set: (key, value) => ipcRenderer.sendSync(IPC.persistenceSet, key, value),
+    remove: (key) => ipcRenderer.sendSync(IPC.persistenceRemove, key),
+  },
   app: {
     openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
     openFile: (options) => ipcRenderer.invoke(IPC.appOpenFile, options),
@@ -115,7 +120,7 @@ const bridge: OrxaBridge = {
   },
   terminal: {
     list: (directory) => ipcRenderer.invoke(IPC.terminalList, directory),
-    create: (directory, cwd, title) => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title),
+    create: (directory, cwd, title, owner) => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
     connect: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
     write: (directory, ptyID, data) => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
     resize: (directory, ptyID, cols, rows) => ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
