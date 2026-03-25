@@ -2722,13 +2722,15 @@ export default function App() {
     opencodeSessionStateMap,
     sessionReadTimestamps,
   ]);
-  const activeComposerPresentation = useMemo(() => selectActiveComposerPresentation({
+  // Not memoized: this selector reads session status from projectDataByDirectory
+  // via getState() and must re-run on every render to detect busy→idle transitions.
+  const activeComposerPresentation = selectActiveComposerPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     sending: isSendingPrompt,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, isSendingPrompt, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap, claudeSessionStateMap]);
+  });
   const isSessionBusy = activeComposerPresentation.busy;
   const isSessionInProgress = isSessionBusy || isSendingPrompt;
   const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
