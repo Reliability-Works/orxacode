@@ -88,13 +88,15 @@ export function groupAdjacentToolCallRows(
 
   const nextRows: UnifiedTimelineRenderRow[] = [];
   let pendingDiffs: Extract<UnifiedTimelineRenderRow, { kind: "diff" }>[] = [];
+  let pendingTools: Extract<UnifiedTimelineRenderRow, { kind: "tool" }>[] = [];
 
   const flush = () => {
-    if (pendingDiffs.length === 0) {
+    if (pendingDiffs.length === 0 && pendingTools.length === 0) {
       return;
     }
+    const firstId = pendingDiffs[0]?.id ?? pendingTools[0]?.id ?? "tool-group";
     nextRows.push({
-      id: `${pendingDiffs[0]?.id ?? "tool-group"}:tool-calls`,
+      id: `${firstId}:tool-calls`,
       kind: "tool-group",
       title: "Tool calls",
       files: pendingDiffs.map((diff) => ({
@@ -105,8 +107,10 @@ export function groupAdjacentToolCallRows(
         insertions: diff.insertions,
         deletions: diff.deletions,
       })),
+      tools: pendingTools.length > 0 ? pendingTools : undefined,
     });
     pendingDiffs = [];
+    pendingTools = [];
   };
 
   for (const row of rows) {
@@ -114,6 +118,11 @@ export function groupAdjacentToolCallRows(
       pendingDiffs.push(row);
       continue;
     }
+    if (row.kind === "tool") {
+      pendingTools.push(row);
+      continue;
+    }
+    // Any non-tool row flushes the current group and starts a new section
     flush();
     nextRows.push(row);
   }

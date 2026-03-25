@@ -66,7 +66,7 @@ import { useAppShellStartupFlow } from "./hooks/useAppShellStartupFlow";
 import { useAppShellToasts } from "./hooks/useAppShellToasts";
 import { useAppShellUpdateFlow } from "./hooks/useAppShellUpdateFlow";
 import { useCanvasState } from "./hooks/useCanvasState";
-import { useComposerState } from "./hooks/useComposerState";
+import { useComposerState, type Attachment } from "./hooks/useComposerState";
 import { useDashboards } from "./hooks/useDashboards";
 import { useGitPanel, type CommitNextStep } from "./hooks/useGitPanel";
 import { usePersistedState } from "./hooks/usePersistedState";
@@ -186,6 +186,7 @@ const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_BROWSER_WIDTH_KEY = "orxa:browserPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
+const LAST_SELECTED_AGENT_KEY = "orxa:lastSelectedAgent:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
@@ -528,13 +529,13 @@ export default function App() {
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string | undefined>();
+  const [selectedAgent, setSelectedAgent] = usePersistedState<string | undefined>(LAST_SELECTED_AGENT_KEY, undefined);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTabs, setTerminalTabs] = useState<Array<{ id: string; label: string }>>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | undefined>();
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [followupQueue, setFollowupQueue] = useState<Array<{ id: string; text: string; timestamp: number }>>([]);
+  const [followupQueue, setFollowupQueue] = useState<Array<{ id: string; text: string; timestamp: number; attachments?: Attachment[] }>>([]);
   const [sendingQueuedId, setSendingQueuedId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -740,6 +741,7 @@ export default function App() {
   const [skillUseModal, setSkillUseModal] = useState<{ skill: SkillEntry; projectDir: string } | null>(null);
   const [memoryComingSoonOpen, setMemoryComingSoonOpen] = useState(false);
   const [composerLayoutHeight, setComposerLayoutHeight] = useState(DEFAULT_COMPOSER_LAYOUT_HEIGHT);
+  const [composerDockHeight, setComposerDockHeight] = useState(0);
   const [terminalPanelHeight, setTerminalPanelHeight] = useState(DEFAULT_TERMINAL_PANEL_HEIGHT);
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
@@ -960,7 +962,7 @@ export default function App() {
   } = useGitPanel(activeProjectDir ?? null);
 
   const resizeStateRef = useRef<null | {
-    side: "left" | "browser" | "right";
+    side: "left" | "browser" | "mobile" | "right";
     startX: number;
     startWidth: number;
     latestX: number;
@@ -1046,10 +1048,6 @@ export default function App() {
   const preferredAgentModel = useMemo(() => {
     return undefined;
   }, []);
-  const selectedAgentDefinition = useMemo(
-    () => agentOptions.find((agent) => agent.name === selectedAgent),
-    [agentOptions, selectedAgent],
-  );
   const serverAgentNames = useMemo(() => new Set(agentOptions.map((agent) => agent.name)), [agentOptions]);
   const effectiveComposerAgentOptions = useMemo(() => {
     return agentOptions.map((agent) => ({
@@ -1396,15 +1394,18 @@ export default function App() {
     }
   }, [activeProjectDir, projectDataByDirectory, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData, setProjectDataForDirectory]);
 
+  const storeMarkSessionAbortRequestedAt = useUnifiedRuntimeStore((state) => state.markSessionAbortRequestedAt);
+
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
     const now = Date.now();
     const key = buildSessionFeedNoticeKey(directory, sessionID);
     markManualSessionStopRequested(directory, sessionID, now);
+    storeMarkSessionAbortRequestedAt(key, now);
     setBrowserAutomationHaltedBySession((current) => ({
       ...current,
       [key]: now,
     }));
-  }, [buildSessionFeedNoticeKey, markManualSessionStopRequested, setBrowserAutomationHaltedBySession]);
+  }, [buildSessionFeedNoticeKey, markManualSessionStopRequested, storeMarkSessionAbortRequestedAt, setBrowserAutomationHaltedBySession]);
 
   const clearBrowserAutomationHalt = useCallback((directory: string, sessionID: string) => {
     const key = `${directory}::${sessionID}`;
@@ -1422,6 +1423,7 @@ export default function App() {
     composer,
     setComposer,
     composerAttachments,
+    setComposerAttachments,
     isSendingPrompt,
     selectedModel,
     setSelectedModel,
@@ -1532,14 +1534,16 @@ export default function App() {
     [activeProjectDir, activePromptToolsPolicy, activeSessionID, clearBrowserAutomationHalt, effectiveSystemAddendum, markSessionUsed, sendPrompt],
   );
 
-  const queueFollowupMessage = useCallback((text: string) => {
+  const queueFollowupMessage = useCallback((text: string, attachments?: Attachment[]) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const id = `fq:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-    setFollowupQueue((current) => [...current, { id, text: trimmed, timestamp: Date.now() }]);
+    setFollowupQueue((current) => [...current, { id, text: trimmed, timestamp: Date.now(), attachments: attachments?.length ? attachments : undefined }]);
     setComposer("");
-    pushToast("Message queued — will send when agent finishes", "info", 3_500);
-  }, [setComposer, pushToast]);
+    if (attachments?.length) {
+      setComposerAttachments([]);
+    }
+  }, [setComposer, setComposerAttachments]);
 
   const removeQueuedMessage = useCallback((id: string) => {
     setFollowupQueue((current) => current.filter((item) => item.id !== id));
@@ -1550,10 +1554,13 @@ export default function App() {
       const item = current.find((m) => m.id === id);
       if (item) {
         setComposer(item.text);
+        if (item.attachments?.length) {
+          setComposerAttachments(item.attachments);
+        }
       }
       return current.filter((m) => m.id !== id);
     });
-  }, [setComposer]);
+  }, [setComposer, setComposerAttachments]);
 
   const allModelOptions = settingsModelOptions;
 
@@ -1638,6 +1645,24 @@ export default function App() {
     void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(() => undefined);
   }, [refreshAgentFiles, refreshConfigModels, refreshGlobalProviders, settingsOpen]);
 
+  // Periodically refresh models/agents so the dropdown stays in sync
+  // with external config changes without needing to open settings.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(() => undefined);
+    }, 45_000);
+    return () => window.clearInterval(interval);
+  }, [refreshConfigModels, refreshGlobalProviders, refreshAgentFiles]);
+
+  // Also refresh when switching to a new active session
+  const prevActiveSessionRef = useRef(activeSessionID);
+  useEffect(() => {
+    if (activeSessionID && activeSessionID !== prevActiveSessionRef.current) {
+      void Promise.all([refreshConfigModels(), refreshGlobalProviders()]).catch(() => undefined);
+    }
+    prevActiveSessionRef.current = activeSessionID;
+  }, [activeSessionID, refreshConfigModels, refreshGlobalProviders]);
+
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
       setMessages([]);
@@ -1712,8 +1737,10 @@ export default function App() {
       setSelectedAgent(nextAgent);
     }
 
+    // Resolve the agent definition for the *current* nextAgent (not the stale selectedAgent)
+    const agentDef = agentOptions.find((agent) => agent.name === nextAgent);
     const savedModel = nextAgent ? agentModelPrefs[nextAgent] : undefined;
-    const preferredModel = savedModel ?? selectedAgentDefinition?.model ?? preferredAgentModel ?? projectData?.config.model;
+    const preferredModel = savedModel ?? agentDef?.model ?? preferredAgentModel ?? projectData?.config.model;
     const preferredVisibleModel = preferredModel && modelSelectOptions.some((item) => item.key === preferredModel)
       ? preferredModel
       : undefined;
@@ -1732,8 +1759,8 @@ export default function App() {
     preferredAgentModel,
     projectData?.config.model,
     selectedAgent,
-    selectedAgentDefinition?.model,
     selectedModel,
+    setSelectedAgent,
     setSelectedModel,
     serverAgentNames,
     effectiveComposerAgentOptions,
@@ -2636,7 +2663,7 @@ export default function App() {
       const nonPlanAgent = agentOptions.find((a) => a.name !== "plan");
       setSelectedAgent(nonPlanAgent?.name ?? agentOptions[0]?.name);
     },
-    [agentOptions, hasPlanAgent],
+    [agentOptions, hasPlanAgent, setSelectedAgent],
   );
 
   const activeSession = useMemo(
@@ -2817,7 +2844,7 @@ export default function App() {
 
 
   const composerOffsetLift = Math.max(0, composerLayoutHeight - DEFAULT_COMPOSER_LAYOUT_HEIGHT);
-  const messageFeedBottomClearance = useMemo(() => Math.max(24, 24 + composerOffsetLift), [composerOffsetLift]);
+  const messageFeedBottomClearance = useMemo(() => Math.max(24, 24 + composerOffsetLift + composerDockHeight), [composerOffsetLift, composerDockHeight]);
   const composerAnchorBottom = useMemo(
     () =>
       Math.max(0, composerLayoutHeight - COMPOSER_DRAWER_ATTACH_OFFSET) +
@@ -3475,11 +3502,23 @@ export default function App() {
     const isBusy = isSessionInProgress;
     const wasBusy = prevSessionBusyForQueue.current;
     prevSessionBusyForQueue.current = isBusy;
-    if (wasBusy && !isBusy && followupQueue.length > 0) {
-      // Session just went idle — show the dock so user can choose to send
-      // (The dock is already visible; no auto-send to keep user in control)
+    if (wasBusy && !isBusy && followupQueue.length > 0 && !sendingQueuedId) {
+      const first = followupQueue[0];
+      if (first) {
+        setSendingQueuedId(first.id);
+        void sendPrompt({
+          textOverride: first.text,
+          attachmentOverride: first.attachments ?? [],
+          systemAddendum: effectiveSystemAddendum,
+          promptSource: "user",
+          tools: activePromptToolsPolicy,
+        }).finally(() => {
+          setSendingQueuedId(undefined);
+        });
+        setFollowupQueue((current) => current.filter((m) => m.id !== first.id));
+      }
     }
-  }, [isSessionInProgress, followupQueue.length]);
+  }, [isSessionInProgress, followupQueue.length, sendingQueuedId, sendPrompt, effectiveSystemAddendum, activePromptToolsPolicy, followupQueue]);
 
   // Clear queue when active session changes
   useEffect(() => {
@@ -3547,6 +3586,10 @@ export default function App() {
 
   const handleComposerLayoutHeightChange = useCallback((height: number) => {
     setComposerLayoutHeight((current) => (current === height ? current : height));
+  }, []);
+
+  const handleDockHeightChange = useCallback((height: number) => {
+    setComposerDockHeight((current) => (current === height ? current : height));
   }, []);
 
   const openPendingPullRequest = useCallback(() => {
@@ -4077,6 +4120,7 @@ export default function App() {
                     variantOptions={variantOptions}
                     placeholder={composerPlaceholder}
                     onLayoutHeightChange={handleComposerLayoutHeightChange}
+                    onDockHeightChange={handleDockHeightChange}
                     backgroundAgents={visibleBackgroundAgents}
                     selectedBackgroundAgentId={selectedBackgroundAgentId}
                     onOpenBackgroundAgent={setSelectedBackgroundAgentId}
@@ -4126,6 +4170,7 @@ export default function App() {
                       setSendingQueuedId(id);
                       void sendPrompt({
                         textOverride: item.text,
+                        attachmentOverride: item.attachments ?? [],
                         systemAddendum: effectiveSystemAddendum,
                         promptSource: "user",
                         tools: activePromptToolsPolicy,

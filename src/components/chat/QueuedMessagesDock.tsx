@@ -1,10 +1,12 @@
-import { Clock, CornerDownRight, Send, X } from "lucide-react";
+import { Clock, CornerDownRight, Image, Send, X } from "lucide-react";
 import { DockSurface } from "./DockSurface";
+import type { Attachment } from "../../hooks/useComposerState";
 
 export interface QueuedMessage {
   id: string;
   text: string;
   timestamp: number;
+  attachments?: Attachment[];
 }
 
 interface QueuedMessagesDockProps {
@@ -62,6 +64,12 @@ export function QueuedMessagesDock({
                 className="queued-message-text"
                 title={msg.text.length > MAX_TEXT_LENGTH ? msg.text : undefined}
               >
+                {msg.attachments && msg.attachments.length > 0 ? (
+                  <span className="queued-message-attachment-badge" title={`${msg.attachments.length} image${msg.attachments.length > 1 ? "s" : ""} attached`}>
+                    <Image size={11} aria-hidden="true" />
+                    {msg.attachments.length}
+                  </span>
+                ) : null}
                 {truncate(msg.text, MAX_TEXT_LENGTH)}
               </span>
               <span className="queued-message-time">{formatTimestamp(msg.timestamp)}</span>

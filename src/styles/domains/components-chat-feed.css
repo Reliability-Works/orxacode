@@ -11,6 +11,8 @@
   scrollbar-gutter: stable both-edges;
   position: relative;
   isolation: isolate;
+  /* Clip scrolled content so it doesn't show behind the transparent top bar */
+  clip-path: inset(44px 0 0 0);
 }
 
 .messages-virtual-row {
@@ -30,12 +32,14 @@
 .message-card {
   display: grid;
   gap: 4px;
-  max-width: min(74%, 780px);
+  max-width: min(92%, 900px);
   width: fit-content;
+  min-width: 0;
 }
 
 .message-user.message-card {
-  max-width: min(74%, 480px);
+  max-width: min(88%, 720px);
+  overflow-wrap: anywhere;
 }
 
 .message-user {
@@ -96,6 +100,7 @@
   display: grid;
   gap: 4px;
   padding: 0;
+  min-width: 0;
 }
 
 .message-copy-btn {
@@ -152,13 +157,15 @@
   padding: 10px 14px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .message-user .message-part {
   border-radius: 16px 16px 4px 16px;
   padding: 12px 16px;
-  border: 1px solid var(--border-secondary);
-  background: var(--bg-input);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
 }
 
 .message-assistant .message-part {
@@ -167,6 +174,56 @@
   border-radius: 0;
   padding: 4px 0;
   color: var(--text-secondary);
+}
+
+.message-part-image {
+  /* No bubble styling — image sits inline within the message card */
+  padding: 0;
+}
+
+.part-image {
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 220px;
+  cursor: pointer;
+}
+
+.part-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 160px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.part-image:hover {
+  opacity: 0.85;
+}
+
+/* ── Image lightbox ──────────────────────────────────── */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+  -webkit-app-region: no-drag;
+}
+
+.image-lightbox-img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.part-file {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
 }
 
 /* Thinking, live events, and status parts should not have card styling */
@@ -2865,6 +2922,21 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.queued-message-attachment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 10px;
+  flex-shrink: 0;
 }
 
 .queued-message-time {

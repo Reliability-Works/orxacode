@@ -352,12 +352,6 @@
   background: var(--accent-green);
 }
 
-/* Glass: user message bubble */
-[data-theme="glass"] .message-user .message-part {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.10);
-}
-
 /* Glass: composer control pills */
 [data-theme="glass"] .plan-toggle-inline,
 [data-theme="glass"] .composer-mode-toggle-icon,
@@ -432,6 +426,12 @@
 [data-theme="glass"] .message-timeline-disclosure-summary {
   background: transparent !important;
   border-color: transparent !important;
+}
+
+/* Glass: restore user message bubble (must come AFTER the blanket transparent reset above) */
+[data-theme="glass"] .message-user .message-part {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
 }
 
 /* Glass: keep expanded diff content with a subtle background so it's distinct */

@@ -24,6 +24,7 @@ export type ModelPayload = {
 
 export type SendPromptInput = {
   textOverride?: string;
+  attachmentOverride?: Attachment[];
   systemAddendum?: string;
   promptSource?: "user" | "job" | "machine";
   tools?: Record<string, boolean>;
@@ -223,7 +224,8 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
       ? { systemAddendum: input }
       : input ?? {};
     const text = (promptInput.textOverride ?? composer).trim();
-    if (!text && composerAttachments.length === 0) {
+    const effectiveAttachments = promptInput.attachmentOverride ?? composerAttachments;
+    if (!text && effectiveAttachments.length === 0) {
       return;
     }
     const normalizedSystemAddendum = promptInput.systemAddendum?.trim() ?? "";
@@ -231,13 +233,13 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
     const toolsKey = promptInput.tools
       ? JSON.stringify(Object.entries(promptInput.tools).sort(([left], [right]) => left.localeCompare(right)))
       : "";
-    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${composerAttachments.map((item) => item.url).join(",")}:${normalizedSystemAddendum}:${promptSource}:${toolsKey}`;
+    const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${effectiveAttachments.map((item) => item.url).join(",")}:${normalizedSystemAddendum}:${promptSource}:${toolsKey}`;
     if (lastSendRef.current && lastSendRef.current.token === sendToken && Date.now() - lastSendRef.current.at < 6_000) {
       return;
     }
     lastSendRef.current = { token: sendToken, at: Date.now() };
 
-    const capturedAttachments = [...composerAttachments];
+    const capturedAttachments = [...effectiveAttachments];
     setComposer("");
     setComposerAttachments([]);
 
@@ -263,10 +265,10 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         system: normalizedSystemAddendum.length > 0 ? normalizedSystemAddendum : undefined,
         promptSource,
         tools: promptInput.tools,
-        attachments: capturedAttachments.map((attachment) => ({
+        attachments: capturedAttachments.map((attachment, index) => ({
           url: attachment.url,
           mime: attachment.mime,
-          filename: attachment.filename,
+          filename: `image${index + 1}`,
         })),
         agent: supportsSelectedAgent ? options.selectedAgent : undefined,
         model: selectedModelPayload,

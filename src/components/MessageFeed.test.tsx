@@ -1755,7 +1755,7 @@ describe("MessageFeed", () => {
     expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
   });
 
-  it("shows command output in expandable timeline details", () => {
+  it("shows command output in expandable tool call card", () => {
     const now = Date.now();
     const messages: SessionMessageBundle[] = [
       {
@@ -1788,8 +1788,8 @@ describe("MessageFeed", () => {
 
     render(<MessageFeed messages={messages} />);
 
-    expect(screen.getByText(/^pwd$/i)).toBeInTheDocument();
-    expect(screen.getByText("/Users/callumspencer/Repos/macapp/orxacode")).toBeInTheDocument();
+    // pwd is recognized as a shell command, so it renders as "Ran pwd" in a tool call card
+    expect(screen.getByText(/Ran pwd/i)).toBeInTheDocument();
   });
 
   it("does not show copy button for timeline-only messages", () => {

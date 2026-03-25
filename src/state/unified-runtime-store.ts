@@ -113,6 +113,8 @@ type UnifiedRuntimeStoreState = {
   claudeChatSessions: Record<string, UnifiedClaudeChatSessionRuntime>;
   claudeSessions: Record<string, UnifiedClaudeSessionRuntime>;
   sessionReadTimestamps: Record<string, number>;
+  /** Timestamp of most recent abort request per opencode session key, used to suppress stale busy state after abort. */
+  sessionAbortRequestedAt: Record<string, number>;
   collapsedProjects: Record<string, boolean>;
   setActiveWorkspaceDirectory: (directory?: string) => void;
   setActiveSession: (sessionID?: string, provider?: UnifiedProvider) => void;
@@ -128,6 +130,7 @@ type UnifiedRuntimeStoreState = {
   replaceCollapsedProjects: (next: Record<string, boolean>) => void;
   setSessionReadAt: (sessionKey: string, timestamp: number) => void;
   clearSessionReadAt: (sessionKey: string) => void;
+  markSessionAbortRequestedAt: (sessionKey: string, timestamp: number) => void;
   initClaudeChatSession: (sessionKey: string, directory: string) => void;
   setClaudeChatConnectionState: (
     sessionKey: string,
@@ -286,6 +289,7 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
   sessionReadTimestamps: Object.fromEntries(
     Object.entries(readJsonRecord(SESSION_READ_TIMESTAMPS_KEY)).filter(([, value]) => typeof value === "number"),
   ) as Record<string, number>,
+  sessionAbortRequestedAt: {},
   collapsedProjects: Object.fromEntries(
     Object.entries(readJsonRecord(COLLAPSED_PROJECTS_KEY)).filter(([, value]) => typeof value === "boolean"),
   ) as Record<string, boolean>,
@@ -403,6 +407,10 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
       debouncePersist(SESSION_READ_TIMESTAMPS_KEY, next);
       return { sessionReadTimestamps: next };
     }),
+  markSessionAbortRequestedAt: (sessionKey, timestamp) =>
+    set((state) => ({
+      sessionAbortRequestedAt: { ...state.sessionAbortRequestedAt, [sessionKey]: timestamp },
+    })),
   initClaudeChatSession: (sessionKey, directory) =>
     set((state) => ({
       claudeChatSessions: {
@@ -843,12 +851,19 @@ export function buildOpencodeSessionStatus(
     latestAssistantMessageAt >= latestUserMessageAt &&
     latestAssistantMessageAt > 0 &&
     Date.now() - latestAssistantMessageAt < 45_000;
-  const busy = Boolean(
-    sessionStatus?.type === "busy" ||
-    sessionStatus?.type === "retry" ||
-    hasRunningPart ||
-    inferredActiveTurnBusy,
-  );
+
+  // If the user recently requested an abort, suppress inferred/stale busy state
+  // for up to 15 seconds to give the backend time to actually stop.
+  const abortRequestedAt = state.sessionAbortRequestedAt[sessionKey] ?? 0;
+  const recentlyAborted = abortRequestedAt > 0 && Date.now() - abortRequestedAt < 15_000;
+  const busy = recentlyAborted
+    ? Boolean(sessionStatus?.type === "busy" || sessionStatus?.type === "retry")
+    : Boolean(
+        sessionStatus?.type === "busy" ||
+        sessionStatus?.type === "retry" ||
+        hasRunningPart ||
+        inferredActiveTurnBusy,
+      );
 
   return deriveUnifiedSessionStatus({
     busy,

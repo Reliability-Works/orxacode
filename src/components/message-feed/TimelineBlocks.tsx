@@ -1,5 +1,16 @@
-import type { DelegationEventBlock, TimelineBlock } from "../../lib/message-feed-timeline";
+import type { DelegationEventBlock, TimelineBlock, TimelineEvent } from "../../lib/message-feed-timeline";
+import { pluralize } from "../../lib/message-feed-timeline";
 import { parseFileReference } from "../../lib/markdown";
+
+function recomputeExplorationSummary(entries: readonly (TimelineEvent | { kind?: string })[]) {
+  const reads = entries.filter((e) => e.kind === "read").length;
+  const searches = entries.filter((e) => e.kind === "search" || e.kind === "list").length;
+  const parts: string[] = [];
+  if (reads > 0) parts.push(pluralize(reads, "file"));
+  if (searches > 0) parts.push(pluralize(searches, "search", "searches"));
+  if (parts.length === 0) parts.push(pluralize(entries.length, "step"));
+  return `Explored ${parts.join(", ")}`;
+}
 
 function groupAdjacentExplorationBlocks<T extends TimelineBlock | DelegationEventBlock>(blocks: T[]): T[] {
   const next: T[] = [];
@@ -25,10 +36,12 @@ function groupAdjacentExplorationBlocks<T extends TimelineBlock | DelegationEven
       continue;
     }
 
+    const mergedEntries = [...pending.entries, ...block.entries];
     pending = {
       ...pending,
       id: `${pending.id}:${block.id}`,
-      entries: [...pending.entries, ...block.entries],
+      summary: recomputeExplorationSummary(mergedEntries),
+      entries: mergedEntries,
     } as T;
   }
 

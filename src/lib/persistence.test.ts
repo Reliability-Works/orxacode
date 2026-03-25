@@ -36,4 +36,25 @@ describe("persistence helpers", () => {
     expect(set).toHaveBeenCalledWith("persist:key", "next");
     expect(remove).toHaveBeenCalledWith("persist:key");
   });
+
+  it("silently ignores non-string values instead of crashing", () => {
+    const get = vi.fn(() => null);
+    const set = vi.fn(() => true);
+    const remove = vi.fn(() => true);
+    window.orxa = {
+      persistence: { get, set, remove },
+    } as unknown as typeof window.orxa;
+
+    // JSON.stringify(undefined) returns undefined (not a string)
+    writePersistedValue("persist:key", undefined as unknown as string);
+    expect(set).not.toHaveBeenCalled();
+
+    // null would also be non-string
+    writePersistedValue("persist:key", null as unknown as string);
+    expect(set).not.toHaveBeenCalled();
+
+    // A valid string should still work
+    writePersistedValue("persist:key", "valid");
+    expect(set).toHaveBeenCalledWith("persist:key", "valid");
+  });
 });

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useCallback } from "react";
 import { ToolCallCard } from "./ToolCallCard";
 import { CommandOutput } from "./CommandOutput";
 import { DiffBlock } from "./DiffBlock";
@@ -29,7 +29,29 @@ function renderMessageSection(
     );
   }
 
+  if (section.type === "image") {
+    return <ClickableImage url={section.url} label={section.label} />;
+  }
+
   return <div className="part-file">Attached file: {section.label}</div>;
+}
+
+function ClickableImage({ url, label }: { url: string; label: string }) {
+  const [enlarged, setEnlarged] = useState(false);
+  const close = useCallback(() => setEnlarged(false), []);
+
+  return (
+    <>
+      <div className="part-image" role="button" tabIndex={0} onClick={() => setEnlarged(true)} onKeyDown={(e) => { if (e.key === "Enter") setEnlarged(true); }}>
+        <img src={url} alt={label} loading="lazy" />
+      </div>
+      {enlarged ? (
+        <div className="image-lightbox" onClick={close} onKeyDown={(e) => { if (e.key === "Escape") close(); }} role="dialog" aria-label="Enlarged image">
+          <img src={url} alt={label} className="image-lightbox-img" />
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export function UnifiedTimelineRowView({
@@ -51,11 +73,17 @@ export function UnifiedTimelineRowView({
             copyText={row.copyText}
             copyLabel={row.copyLabel}
           >
-            {row.sections.map((section) => (
-              <section key={section.id} className="message-part">
-                {renderMessageSection(section, row.role, onOpenFileReference)}
-              </section>
-            ))}
+            {row.sections.map((section) =>
+              section.type === "image" ? (
+                <div key={section.id} className="message-part-image">
+                  {renderMessageSection(section, row.role, onOpenFileReference)}
+                </div>
+              ) : (
+                <section key={section.id} className="message-part">
+                  {renderMessageSection(section, row.role, onOpenFileReference)}
+                </section>
+              )
+            )}
           </MessageCardFrame>
         </MessageTurn>
       );
@@ -115,25 +143,52 @@ export function UnifiedTimelineRowView({
         </article>
       );
     case "tool-group":
-      return (
-        <article className="message-card message-assistant">
-          <ToolGroup
-            label={row.title}
-            count={row.files.length}
-            items={row.files.map((file) => (
-              <DiffBlock
-                key={file.id}
-                path={file.path}
-                type={file.type}
-                diff={file.diff}
-                insertions={file.insertions}
-                deletions={file.deletions}
-                onOpenPath={onOpenFileReference}
-              />
-            ))}
-          />
-        </article>
-      );
+      {
+        const toolGroupItems = [
+          ...row.files.map((file) => (
+            <DiffBlock
+              key={file.id}
+              path={file.path}
+              type={file.type}
+              diff={file.diff}
+              insertions={file.insertions}
+              deletions={file.deletions}
+              onOpenPath={onOpenFileReference}
+            />
+          )),
+          ...(row.tools ?? []).map((tool) => (
+            <ToolCallCard
+              key={tool.id}
+              title={tool.title}
+              expandedTitle={tool.expandedTitle}
+              subtitle={tool.subtitle}
+              status={tool.status}
+              defaultExpanded={tool.defaultExpanded}
+            >
+              {tool.command !== undefined ? (
+                <CommandOutput
+                  command={tool.command}
+                  output={tool.output ?? tool.error ?? ""}
+                  exitCode={tool.status === "error" ? 1 : 0}
+                />
+              ) : tool.output ? (
+                <pre className="tool-call-card-output">{tool.output}</pre>
+              ) : tool.error ? (
+                <pre className="tool-call-card-output">{tool.error}</pre>
+              ) : null}
+            </ToolCallCard>
+          )),
+        ];
+        return (
+          <article className="message-card message-assistant">
+            <ToolGroup
+              label={row.title}
+              count={toolGroupItems.length}
+              items={toolGroupItems}
+            />
+          </article>
+        );
+      }
     case "context":
       return (
         <article className="message-card message-assistant">

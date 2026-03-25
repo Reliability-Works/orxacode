@@ -433,6 +433,23 @@ export function CodexPane({
     setCodexQueue((current) => current.filter((item) => item.id !== id));
   }, []);
 
+  // Auto-send first queued message when Codex session becomes idle
+  const prevCodexStreamingRef = useRef(false);
+  useEffect(() => {
+    const wasBusy = prevCodexStreamingRef.current;
+    prevCodexStreamingRef.current = isStreaming;
+    if (wasBusy && !isStreaming && codexQueue.length > 0 && !codexSendingId) {
+      const first = codexQueue[0];
+      if (first) {
+        setCodexSendingId(first.id);
+        void sendMessage(first.text).then(() => {
+          setCodexSendingId(undefined);
+        });
+        setCodexQueue((current) => current.filter((m) => m.id !== first.id));
+      }
+    }
+  }, [isStreaming, codexQueue, codexSendingId, sendMessage]);
+
   const editCodexQueued = useCallback((id: string) => {
     setCodexQueue((current) => {
       const item = current.find((m) => m.id === id);
