@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { Camera, PanelRightClose, Play, Power, Smartphone } from "lucide-react";
 import type { SimulatorDevice, SimulatorState } from "../../shared/ipc/simulator";
 
@@ -44,8 +44,7 @@ export const SimulatorSidebar = memo(function SimulatorSidebar({
   onRefreshDevices,
   onCollapse,
 }: SimulatorSidebarProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   const selectedDevice = simulatorState.devices.find(
@@ -61,15 +60,10 @@ export const SimulatorSidebar = memo(function SimulatorSidebar({
     onRefreshDevices();
   }, [onRefreshDevices]);
 
-  // Start/stop live capture when selected device changes
+  // Poll screenshots for live preview when device is booted
   useEffect(() => {
     if (!isBooted || !simulatorState.activeDeviceUdid) {
-      // Stop any existing stream
-      if (streamRef.current) {
-        for (const track of streamRef.current.getTracks()) track.stop();
-        streamRef.current = null;
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
+      setFrameUrl(null);
       setCaptureError(null);
       return;
     }
@@ -77,42 +71,23 @@ export const SimulatorSidebar = memo(function SimulatorSidebar({
     let cancelled = false;
     const udid = simulatorState.activeDeviceUdid;
 
-    (async () => {
-      try {
-        const sourceId = await window.orxa.simulator.getCaptureSourceId(udid);
-        if (cancelled || !sourceId) {
-          if (!cancelled && !sourceId) setCaptureError("Could not find Simulator window");
-          return;
+    const poll = async () => {
+      while (!cancelled) {
+        try {
+          const screenshot = await window.orxa.simulator.takeScreenshot(udid);
+          if (cancelled) break;
+          setFrameUrl(screenshot.dataUrl);
+          setCaptureError(null);
+        } catch {
+          if (!cancelled) setCaptureError("Failed to capture simulator screen");
         }
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            mandatory: {
-              chromeMediaSource: "desktop",
-              chromeMediaSourceId: sourceId,
-              maxFrameRate: 15,
-            },
-          } as unknown as MediaTrackConstraints,
-        });
-        if (cancelled) {
-          for (const track of stream.getTracks()) track.stop();
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setCaptureError(null);
-      } catch {
-        if (!cancelled) setCaptureError("Screen recording permission required");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      if (streamRef.current) {
-        for (const track of streamRef.current.getTracks()) track.stop();
-        streamRef.current = null;
+        // Wait ~1.2s between frames
+        await new Promise((r) => setTimeout(r, 1200));
       }
     };
+    void poll();
+
+    return () => { cancelled = true; };
   }, [isBooted, simulatorState.activeDeviceUdid]);
 
   const handleDeviceChange = useCallback(
@@ -234,13 +209,18 @@ export const SimulatorSidebar = memo(function SimulatorSidebar({
 
       <div className="simulator-viewport-pane">
         {isBooted ? (
-          captureError ? (
+          captureError && !frameUrl ? (
             <div className="simulator-viewport-placeholder">
               <Smartphone size={28} />
               <span>{captureError}</span>
             </div>
+          ) : frameUrl ? (
+            <img src={frameUrl} alt="Simulator screen" draggable={false} />
           ) : (
-            <video ref={videoRef} autoPlay muted playsInline />
+            <div className="simulator-viewport-placeholder">
+              <Smartphone size={28} />
+              <span>Capturing…</span>
+            </div>
           )
         ) : (
           <div className="simulator-viewport-placeholder">
