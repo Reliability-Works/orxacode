@@ -141,7 +141,7 @@ export const MessageFeed = memo(function MessageFeed({
                 </section>
               </div>
             </MessageCardFrame>
-            <WorkingIndicator active />
+            <WorkingIndicator active startTimestamp={placeholderTimestamp || undefined} />
           </>
         ) : undefined
       }

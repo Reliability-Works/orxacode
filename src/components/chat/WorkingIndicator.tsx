@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 function formatElapsed(seconds: number): string {
   if (seconds < 60) {
@@ -9,23 +9,17 @@ function formatElapsed(seconds: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
-export function WorkingIndicator({ active }: { active: boolean }) {
-  const [elapsed, setElapsed] = useState(0);
-  const prevActiveRef = useRef(false);
-
-  useEffect(() => {
-    if (active && !prevActiveRef.current) {
-      setElapsed(0);
-    }
-    prevActiveRef.current = active;
-  }, [active]);
+export function WorkingIndicator({ active, startTimestamp }: { active: boolean; startTimestamp?: number }) {
+  const [now, setNow] = useState(0);
 
   useEffect(() => {
     if (!active) {
       return;
     }
+    // Sync immediately on mount so we don't show 0s for a full second
+    setNow(Date.now());
     const id = setInterval(() => {
-      setElapsed((prev) => prev + 1);
+      setNow(Date.now());
     }, 1000);
     return () => clearInterval(id);
   }, [active]);
@@ -33,6 +27,10 @@ export function WorkingIndicator({ active }: { active: boolean }) {
   if (!active) {
     return null;
   }
+
+  const elapsed = startTimestamp && startTimestamp > 0
+    ? Math.max(0, Math.floor((now - startTimestamp) / 1000))
+    : 0;
 
   return (
     <div className="working-indicator" role="status" aria-label={`Working for ${formatElapsed(elapsed)}`}>
