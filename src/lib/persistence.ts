@@ -47,6 +47,9 @@ export function writePersistedValue(key: string, value: string) {
   if (typeof window === "undefined") {
     return;
   }
+  if (typeof value !== "string") {
+    return;
+  }
   const bridge = window.orxa?.persistence;
   if (bridge) {
     bridge.set(key, value);

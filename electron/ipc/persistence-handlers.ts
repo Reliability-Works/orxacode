@@ -16,10 +16,14 @@ export function registerPersistenceHandlers({ service }: PersistenceHandlersDeps
 
   ipcMain.on(IPC.persistenceSet, (event, key: unknown, value: unknown) => {
     if (typeof key !== "string") {
-      throw new Error("key must be a string");
+      console.warn("[persistence] set called with non-string key, ignoring");
+      event.returnValue = false;
+      return;
     }
     if (typeof value !== "string") {
-      throw new Error("value must be a string");
+      console.warn(`[persistence] set called with non-string value for key "${key}", ignoring`);
+      event.returnValue = false;
+      return;
     }
     service.setRendererValue(key, value);
     event.returnValue = true;
