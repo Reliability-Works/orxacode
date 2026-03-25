@@ -21,6 +21,7 @@ import {
   extractVisibleText,
   getVisibleParts,
   isLikelyTelemetryJson,
+  isLikelyThinkingText,
   isProgressUpdateText,
   parseJsonObject,
   shouldHideAssistantText,
@@ -916,6 +917,17 @@ function classifyAssistantParts(parts: Part[], workspaceDirectory?: string | nul
     }
 
     if (part.type === "text") {
+      // Detect chain-of-thought text that leaked as a regular text part and
+      // render it as a collapsed thinking row instead of visible output.
+      if (isLikelyThinkingText(part.text)) {
+        const snippet = part.text.trim().slice(0, 80);
+        timeline.push({
+          id: `${part.id}:thinking-detected`,
+          label: `Thinking: ${snippet}${part.text.trim().length > 80 ? "..." : ""}`,
+          kind: "read" as TimelineKind,
+        });
+        continue;
+      }
       if (shouldHideAssistantText(part.text)) {
         const telemetryEvent = summarizeAssistantTelemetryPart(part, currentActor);
         if (telemetryEvent) {

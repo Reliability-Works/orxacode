@@ -47,6 +47,7 @@ import { BrowserSidebar } from "./components/BrowserSidebar";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
+import { GlobalSearchModal } from "./components/GlobalSearchModal";
 import { MessageFeed } from "./components/MessageFeed";
 import { UnifiedTimelineRowView } from "./components/chat/UnifiedTimelineRow";
 import { GitSidebar } from "./components/GitSidebar";
@@ -75,6 +76,7 @@ import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import { useWorkspaceSessionMetadata } from "./hooks/useWorkspaceSessionMetadata";
 import { useWorkspaceSessionMetadataMigration } from "./hooks/useWorkspaceSessionMetadataMigration";
 import { useAppShellSessionCollections } from "./hooks/useAppShellSessionCollections";
+import { useStreamingBuffer } from "./hooks/useStreamingBuffer";
 import { useBackgroundSessionDescriptors } from "./hooks/useBackgroundSessionDescriptors";
 import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
@@ -178,6 +180,7 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   notifyOnTaskComplete: false,
   collaborationModesEnabled: true,
   subagentSystemNotificationsEnabled: true,
+  enableAssistantStreaming: true,
 };
 
 const APP_PREFERENCES_KEY = "orxa:appPreferences:v1";
@@ -652,7 +655,7 @@ export default function App() {
   );
 
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
-  const [projectSearchQuery, setProjectSearchQuery] = useState("");
+  const projectSearchQuery = "";
   const [projectSortOpen, setProjectSortOpen] = useState(false);
   const [projectSortMode, setProjectSortMode] = usePersistedState<ProjectSortMode>("orxa:projectSortMode:v1", "updated", {
     deserialize: (raw) => {
@@ -662,6 +665,7 @@ export default function App() {
     serialize: (value) => value,
   });
   const [allSessionsModalOpen, setAllSessionsModalOpen] = useState(false);
+  const [globalSearchModalOpen, setGlobalSearchModalOpen] = useState(false);
   const [projectCacheVersion, setProjectCacheVersion] = useState(0);
   const canvasState = useCanvasState(activeSessionID ?? "__none__", activeProjectDir ?? undefined);
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true);
@@ -1378,10 +1382,11 @@ export default function App() {
         setActiveSessionID(undefined);
         setMessages([]);
       }
-      // Pre-load session data for all projects in background (for sidebar display)
+      // Pre-load session data for all projects in background (for sidebar display).
+      // Always refresh from the server even if we have cached data — the cache only
+      // provides immediate sidebar display while the server starts up.
       for (const project of result.projects) {
         if (project.worktree === activeProjectDir) continue; // Active project already loaded
-        if (projectDataByDirectory[project.worktree]) continue; // Already cached
         window.orxa.opencode.selectProject(project.worktree)
           .then((data) => {
             setProjectDataForDirectory(project.worktree, data);
@@ -1392,7 +1397,7 @@ export default function App() {
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, [activeProjectDir, projectDataByDirectory, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData, setProjectDataForDirectory]);
+  }, [activeProjectDir, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData, setProjectDataForDirectory]);
 
   const storeMarkSessionAbortRequestedAt = useUnifiedRuntimeStore((state) => state.markSessionAbortRequestedAt);
 
@@ -2003,6 +2008,19 @@ export default function App() {
     });
     return withIndex.map((item) => item.project);
   }, [projectSearchQuery, projectSortMode, projects, workspaceMetaByDirectory]);
+
+  const allProjectSessions = useMemo(() => {
+    const map: Record<string, Array<{ id: string; title?: string; slug: string }>> = {};
+    const allData = { ...projectDataByDirectory };
+    if (projectData?.directory) {
+      allData[projectData.directory] = projectData;
+    }
+    for (const [directory, data] of Object.entries(allData)) {
+      map[directory] = data.sessions.map((s) => ({ id: s.id, title: s.title, slug: s.slug }));
+    }
+    return map;
+  }, [projectData, projectDataByDirectory]);
+
   const setSessionReadTimestamp = useCallback((directory: string, sessionID: string, nextReadAt: number) => {
     const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
     setSessionReadAt(sessionKey, nextReadAt);
@@ -2703,32 +2721,37 @@ export default function App() {
     opencodeSessionStateMap,
     sessionReadTimestamps,
   ]);
-  const activeComposerPresentation = selectActiveComposerPresentation({
+  const activeComposerPresentation = useMemo(() => selectActiveComposerPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     sending: isSendingPrompt,
-  });
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, isSendingPrompt, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap, claudeSessionStateMap]);
   const isSessionBusy = activeComposerPresentation.busy;
   const isSessionInProgress = isSessionBusy || isSendingPrompt;
   const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
-  const activeTodoPresentation = selectActiveTaskListPresentation({
+  const activeTodoPresentation = useMemo(() => selectActiveTaskListPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
-  });
-  const activeSessionPresentation = selectSessionPresentation({
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
+  const activeSessionPresentationRaw = useMemo(() => selectSessionPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     assistantLabel,
-  });
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
+  const activeSessionPresentation = useStreamingBuffer(
+    activeSessionPresentationRaw,
+    isSessionInProgress,
+    appPreferences.enableAssistantStreaming,
+  );
   const activeReviewChangesFiles = useMemo(
     () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
     [activeSessionPresentation],
@@ -3850,15 +3873,10 @@ export default function App() {
             onCheckForUpdates={checkForUpdates}
             onDownloadAndInstallUpdate={downloadAndInstallUpdate}
             openWorkspaceDashboard={openWorkspaceDashboard}
-            projectSearchOpen={projectSearchOpen}
-            setProjectSearchOpen={setProjectSearchOpen}
             projectSortOpen={projectSortOpen}
             setProjectSortOpen={setProjectSortOpen}
             projectSortMode={projectSortMode}
             setProjectSortMode={setProjectSortMode}
-            projectSearchInputRef={projectSearchInputRef}
-            projectSearchQuery={projectSearchQuery}
-            setProjectSearchQuery={setProjectSearchQuery}
             filteredProjects={filteredProjects}
             activeProjectDir={activeProjectDir}
             collapsedProjects={collapsedProjects}
@@ -3876,6 +3894,7 @@ export default function App() {
             openProjectContextMenu={openProjectContextMenu}
             openSessionContextMenu={openSessionContextMenu}
             addProjectDirectory={() => addProjectDirectory()}
+            onOpenSearchModal={() => setGlobalSearchModalOpen(true)}
             onOpenMemoryModal={() => setMemoryComingSoonOpen(true)}
             onOpenDebugLogs={() => setDebugModalOpen(true)}
             setSettingsOpen={setSettingsOpen}
@@ -4587,6 +4606,16 @@ export default function App() {
           await Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshGlobalAgents(), refreshAgentFiles()]);
           setStatusLine("Local server stopped");
         }}
+      />
+
+      <GlobalSearchModal
+        open={globalSearchModalOpen}
+        onClose={() => setGlobalSearchModalOpen(false)}
+        projects={projects}
+        projectSessions={allProjectSessions}
+        getSessionTitle={getSessionTitle}
+        getSessionType={getSessionType}
+        openSession={openSession}
       />
 
       <SettingsDrawer

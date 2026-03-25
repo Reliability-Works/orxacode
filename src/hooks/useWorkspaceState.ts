@@ -10,6 +10,7 @@ import {
   applyOpencodeSessionEvent,
   normalizeMessageBundles,
 } from "../lib/opencode-event-reducer";
+import { getPersistedOpencodeState, mergeOpencodeMessages } from "./opencode-session-storage";
 
 const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 export const EMPTY_WORKSPACE_SESSIONS_KEY = "orxa:emptyWorkspaceSessions:v1";
@@ -499,6 +500,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       }
       const runtime = await loadOpencodeRuntimeSnapshot(activeProjectDir, sessionAtStart);
         const normalized = normalizeMessageBundles(runtime.messages);
+        // Merge server messages with locally persisted messages to recover
+        // any that the server may not have retained.
+        const persistKey = makeUnifiedSessionKey("opencode", activeProjectDir, sessionAtStart);
+        const persisted = getPersistedOpencodeState(persistKey);
+        const merged = mergeOpencodeMessages(normalized, persisted.messages);
         if (getRuntimeState().activeSessionID === sessionAtStart) {
           const runtimeProject = buildRuntimeProjectSlice(activeProjectDir, runtime);
           setOpencodeRuntimeSnapshot(activeProjectDir, sessionAtStart, {
@@ -507,7 +513,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
             permissions: runtimeProject.permissions,
             questions: runtimeProject.questions,
             commands: runtimeProject.commands,
-            messages: normalized,
+            messages: merged,
           });
         }
       return runtime;

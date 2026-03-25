@@ -115,6 +115,17 @@ export function AppSettingsSection({
             onChange={(e) => onAppPreferencesChange({ ...appPreferences, subagentSystemNotificationsEnabled: e.target.checked })}
           />
         </label>
+        <label className="settings-inline-toggle">
+          stream assistant responses
+          <input
+            type="checkbox"
+            checked={appPreferences.enableAssistantStreaming}
+            onChange={(e) => onAppPreferencesChange({ ...appPreferences, enableAssistantStreaming: e.target.checked })}
+          />
+        </label>
+        <p className="settings-inline-note">
+          Show output token-by-token while agent is responding. When off, messages appear all at once when complete.
+        </p>
       </div>
 
       <div className="settings-divider" />

@@ -116,6 +116,63 @@ export function isProgressUpdateText(text: string) {
   return /^(i(?:'ll| will| need to| am going to| can)|let me|now i|first|next|then|before)/i.test(text);
 }
 
+const THINKING_HEDGE_PATTERN =
+  /\b(maybe|actually|wait|need to|could be|but if|probably|perhaps|hmm|let me think|i think|should i|not sure|might be|would be)\b/gi;
+
+/**
+ * Detects chain-of-thought / internal reasoning text that some models emit as
+ * regular `type: "text"` parts instead of `type: "reasoning"` parts.
+ *
+ * These blocks are characterised by:
+ *  - Long, unstructured text with no paragraph breaks
+ *  - High density of hedging / self-questioning phrases
+ *  - Multiple rhetorical question marks in quick succession
+ *  - Missing sentence structure (no capitalisation after periods)
+ */
+export function isLikelyThinkingText(value: string): boolean {
+  const text = value.trim();
+
+  // Short text is almost certainly not thinking bleed
+  if (text.length < 200) {
+    return false;
+  }
+
+  // If the text contains markdown structure (headers, lists, code fences) it's
+  // intentional output, not thinking.
+  if (/^#{1,3}\s|^\s*[-*]\s|```/m.test(text)) {
+    return false;
+  }
+
+  // Count hedging phrases — thinking text is dense with them
+  THINKING_HEDGE_PATTERN.lastIndex = 0;
+  const hedgeMatches = text.match(THINKING_HEDGE_PATTERN);
+  const hedgeCount = hedgeMatches?.length ?? 0;
+  const hedgeDensity = hedgeCount / (text.length / 100); // per 100 chars
+
+  // Count question marks — thinking text has many rhetorical questions
+  const questionMarks = (text.match(/\?/g) ?? []).length;
+  const questionDensity = questionMarks / (text.length / 100);
+
+  // No paragraph breaks in a long block is a strong signal
+  const hasParagraphs = /\n\s*\n/.test(text);
+
+  // Scoring: need multiple signals to trigger
+  let score = 0;
+  if (hedgeDensity > 1.5) score += 2;
+  else if (hedgeDensity > 0.8) score += 1;
+
+  if (questionDensity > 0.5) score += 2;
+  else if (questionDensity > 0.25) score += 1;
+
+  if (!hasParagraphs && text.length > 400) score += 1;
+
+  // Sentences that don't start with capitals after periods (stream-of-consciousness)
+  const lowercaseAfterPeriod = (text.match(/\.\s+[a-z]/g) ?? []).length;
+  if (lowercaseAfterPeriod > 3) score += 1;
+
+  return score >= 3;
+}
+
 export function shouldHideAssistantText(value: string) {
   const text = value.trim();
   if (text.length === 0) {
@@ -134,6 +191,9 @@ export function shouldHideAssistantText(value: string) {
     return true;
   }
   if (isProgressUpdateText(text)) {
+    return true;
+  }
+  if (isLikelyThinkingText(text)) {
     return true;
   }
   return false;
