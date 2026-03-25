@@ -1257,13 +1257,47 @@ function normalizeFileLookupPath(value: string) {
 function buildPseudoUnifiedDiff(diff: FileDiff) {
   const beforeLines = diff.before.split("\n");
   const afterLines = diff.after.split("\n");
-  const lines = [`@@ -1,${beforeLines.length} +1,${afterLines.length} @@`];
-  if (diff.before.length > 0) {
-    lines.push(...beforeLines.map((line) => `-${line}`));
+
+  // Find common prefix lines
+  let prefix = 0;
+  while (prefix < beforeLines.length && prefix < afterLines.length && beforeLines[prefix] === afterLines[prefix]) {
+    prefix += 1;
   }
-  if (diff.after.length > 0) {
-    lines.push(...afterLines.map((line) => `+${line}`));
+
+  // Find common suffix lines
+  let beforeEnd = beforeLines.length - 1;
+  let afterEnd = afterLines.length - 1;
+  while (beforeEnd >= prefix && afterEnd >= prefix && beforeLines[beforeEnd] === afterLines[afterEnd]) {
+    beforeEnd -= 1;
+    afterEnd -= 1;
   }
+
+  const removedLines = beforeLines.slice(prefix, beforeEnd + 1);
+  const addedLines = afterLines.slice(prefix, afterEnd + 1);
+
+  if (removedLines.length === 0 && addedLines.length === 0) {
+    return "";
+  }
+
+  // Include a few lines of context around the change
+  const contextSize = 3;
+  const contextStart = Math.max(0, prefix - contextSize);
+  const contextEnd = Math.min(afterLines.length, afterEnd + 1 + contextSize);
+  const contextBefore = beforeLines.slice(contextStart, prefix);
+  const contextAfter = afterLines.slice(afterEnd + 1, contextEnd);
+
+  const oldStart = contextStart + 1;
+  const oldCount = contextBefore.length + removedLines.length + contextAfter.length;
+  const newStart = contextStart + 1;
+  const newCount = contextBefore.length + addedLines.length + contextAfter.length;
+
+  const lines = [
+    `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
+    ...contextBefore.map((line) => ` ${line}`),
+    ...removedLines.map((line) => `-${line}`),
+    ...addedLines.map((line) => `+${line}`),
+    ...contextAfter.map((line) => ` ${line}`),
+  ];
   return lines.join("\n");
 }
 
