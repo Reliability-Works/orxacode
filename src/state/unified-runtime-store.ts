@@ -53,9 +53,74 @@ import { projectCodexSessionPresentation } from "../lib/session-presentation";
 import { projectOpencodeSessionPresentation } from "../lib/opencode-session-presentation";
 import { projectClaudeChatProjectedSessionPresentation } from "../lib/claude-chat-session-presentation";
 import type { ClaudeChatMessageItem, ClaudeChatSubagentState } from "../hooks/useClaudeChatSession";
+import { clearPersistedOpencodeState, setPersistedOpencodeState } from "../hooks/opencode-session-storage";
 
 const SESSION_READ_TIMESTAMPS_KEY = "orxa:sessionReadTimestamps:v2";
 const COLLAPSED_PROJECTS_KEY = "orxa:collapsedProjects:v1";
+const CACHED_PROJECT_SESSIONS_KEY = "orxa:cachedProjectSessions:v1";
+
+type CachedSessionEntry = {
+  id: string;
+  title?: string;
+  slug: string;
+  time: { created: number; updated: number; archived?: number };
+};
+
+function readCachedProjectSessions(): Record<string, CachedSessionEntry[]> {
+  try {
+    const raw = readPersistedValue(CACHED_PROJECT_SESSIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, CachedSessionEntry[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistProjectSessions(directory: string, sessions: Array<{ id: string; title?: string; slug: string; time: { created: number; updated: number; archived?: number } }>) {
+  try {
+    const existing = readCachedProjectSessions();
+    const lightweight = sessions.map((s) => ({
+      id: s.id,
+      title: s.title,
+      slug: s.slug,
+      time: { created: s.time.created, updated: s.time.updated, archived: s.time.archived },
+    }));
+    existing[directory] = lightweight;
+    writePersistedValue(CACHED_PROJECT_SESSIONS_KEY, JSON.stringify(existing));
+  } catch {
+    // Best-effort persistence only.
+  }
+}
+
+/**
+ * Build stub ProjectBootstrap entries from cached session data so the sidebar
+ * can display sessions immediately on startup before the server is ready.
+ */
+function hydrateProjectDataFromCache(): Record<string, ProjectBootstrap> {
+  const cached = readCachedProjectSessions();
+  const result: Record<string, ProjectBootstrap> = {};
+  for (const [directory, sessions] of Object.entries(cached)) {
+    if (!sessions || sessions.length === 0) continue;
+    result[directory] = {
+      directory,
+      path: { cwd: directory } as unknown as ProjectBootstrap["path"],
+      sessions: sessions as unknown as ProjectBootstrap["sessions"],
+      sessionStatus: {},
+      providers: { providers: [] } as unknown as ProjectBootstrap["providers"],
+      agents: [],
+      config: {} as unknown as ProjectBootstrap["config"],
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    };
+  }
+  return result;
+}
 
 function readJsonRecord(key: string) {
   if (typeof window === "undefined") {
@@ -280,7 +345,7 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
   activeSessionID: undefined,
   pendingSessionId: undefined,
   activeProvider: undefined,
-  projectDataByDirectory: {},
+  projectDataByDirectory: hydrateProjectDataFromCache(),
   workspaceMetaByDirectory: {},
   opencodeSessions: {},
   codexSessions: {},
@@ -297,13 +362,22 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
   setActiveSession: (sessionID, provider) => set({ activeSessionID: sessionID, activeProvider: provider }),
   setPendingSessionId: (sessionID) => set({ pendingSessionId: sessionID }),
   setProjectData: (directory, project) =>
-    set((state) => ({
-      projectDataByDirectory: { ...state.projectDataByDirectory, [directory]: project },
-    })),
+    set((state) => {
+      persistProjectSessions(directory, project.sessions);
+      return {
+        projectDataByDirectory: { ...state.projectDataByDirectory, [directory]: project },
+      };
+    }),
   removeProjectData: (directory) =>
     set((state) => {
       const next = { ...state.projectDataByDirectory };
       delete next[directory];
+      // Clean up cached sessions
+      try {
+        const cached = readCachedProjectSessions();
+        delete cached[directory];
+        writePersistedValue(CACHED_PROJECT_SESSIONS_KEY, JSON.stringify(cached));
+      } catch { /* best-effort */ }
       return { projectDataByDirectory: next };
     }),
   setWorkspaceMeta: (directory, meta) =>
@@ -323,6 +397,8 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
     set((state) => {
       const key = buildOpencodeKey(directory, sessionID);
       const existing = state.opencodeSessions[key];
+      // Persist to SQLite so messages survive restarts
+      setPersistedOpencodeState(key, { messages });
       return {
         opencodeSessions: {
           ...state.opencodeSessions,
@@ -341,6 +417,8 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
     set((state) => {
       const key = buildOpencodeKey(directory, sessionID);
       const existing = state.opencodeSessions[key];
+      // Persist to SQLite so messages survive restarts
+      setPersistedOpencodeState(key, { messages: snapshot.messages });
       return {
         opencodeSessions: {
           ...state.opencodeSessions,
@@ -378,6 +456,7 @@ export const useUnifiedRuntimeStore = create<UnifiedRuntimeStoreState>((set) => 
       const key = buildOpencodeKey(directory, sessionID);
       const next = { ...state.opencodeSessions };
       delete next[key];
+      clearPersistedOpencodeState(key);
       return { opencodeSessions: next };
     }),
   setCollapsedProject: (directory, collapsed) =>

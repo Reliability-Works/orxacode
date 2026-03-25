@@ -22,6 +22,7 @@ export type AppPreferences = {
   notifyOnTaskComplete: boolean;
   collaborationModesEnabled: boolean;
   subagentSystemNotificationsEnabled: boolean;
+  enableAssistantStreaming: boolean;
 };
 
 export type CodeFontOption = {

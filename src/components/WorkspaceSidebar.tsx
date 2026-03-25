@@ -1,5 +1,6 @@
-import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type RefObject, type SetStateAction } from "react";
+import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction } from "react";
 import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
+
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
 import type { AppShellUpdateStatusMessage } from "../hooks/useAppShellUpdateFlow";
@@ -30,15 +31,10 @@ export type WorkspaceSidebarProps = {
   onCheckForUpdates: () => Promise<void> | void;
   onDownloadAndInstallUpdate: () => Promise<void> | void;
   openWorkspaceDashboard: () => void;
-  projectSearchOpen: boolean;
-  setProjectSearchOpen: Dispatch<SetStateAction<boolean>>;
   projectSortOpen: boolean;
   setProjectSortOpen: Dispatch<SetStateAction<boolean>>;
   projectSortMode: ProjectSortMode;
   setProjectSortMode: Dispatch<SetStateAction<ProjectSortMode>>;
-  projectSearchInputRef: RefObject<HTMLInputElement | null>;
-  projectSearchQuery: string;
-  setProjectSearchQuery: Dispatch<SetStateAction<string>>;
   filteredProjects: ProjectListItem[];
   activeProjectDir?: string;
   collapsedProjects: Record<string, boolean>;
@@ -57,6 +53,7 @@ export type WorkspaceSidebarProps = {
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
   onOpenMemoryModal: () => void;
+  onOpenSearchModal: () => void;
   onOpenDebugLogs: () => void;
   setSettingsOpen: Dispatch<SetStateAction<boolean>>;
 };
@@ -72,15 +69,10 @@ export function WorkspaceSidebar({
   onCheckForUpdates,
   onDownloadAndInstallUpdate,
   openWorkspaceDashboard,
-  projectSearchOpen,
-  setProjectSearchOpen,
   projectSortOpen,
   setProjectSortOpen,
   projectSortMode,
   setProjectSortMode,
-  projectSearchInputRef,
-  projectSearchQuery,
-  setProjectSearchQuery,
   filteredProjects,
   activeProjectDir,
   collapsedProjects,
@@ -99,6 +91,7 @@ export function WorkspaceSidebar({
   openSessionContextMenu,
   addProjectDirectory,
   onOpenMemoryModal,
+  onOpenSearchModal,
   onOpenDebugLogs,
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
@@ -145,18 +138,19 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
+            onClick={onOpenSearchModal}
+          >
+            <Search size={16} aria-hidden="true" />
+            Search
+          </button>
+          <button
+            type="button"
             onClick={onOpenMemoryModal}
           >
             <Brain size={16} aria-hidden="true" />
             Memory
           </button>
         </nav>
-
-        {/* Search bar */}
-        <div className="sidebar-search" onClick={() => { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { setProjectSearchOpen((v) => !v); setProjectSortOpen(false); } }}>
-          <Search size={14} aria-hidden="true" />
-          <span className="sidebar-search-placeholder">search...</span>
-        </div>
 
         {/* Workspaces section */}
         <div className="sidebar-workspaces-section">
@@ -169,7 +163,6 @@ export function WorkspaceSidebar({
                 label={projectSortOpen ? "Close sort options" : "Sort workspaces"}
                 onClick={() => {
                   setProjectSortOpen((value) => !value);
-                  setProjectSearchOpen(false);
                 }}
               />
               <IconButton icon="folderPlus" className="pane-action-icon" label="Add workspace folder" onClick={() => void addProjectDirectory()} />
@@ -218,39 +211,6 @@ export function WorkspaceSidebar({
               >
                 Alphabetical (Z-A)
               </button>
-            </div>
-          ) : null}
-
-          {projectSearchOpen ? (
-            <div className="project-search-popover">
-              <input
-                ref={projectSearchInputRef}
-                placeholder="Search workspaces..."
-                value={projectSearchQuery}
-                onChange={(event) => setProjectSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setProjectSearchOpen(false);
-                    setProjectSearchQuery("");
-                  }
-                }}
-              />
-              <div className="project-search-results">
-                {filteredProjects.map((project) => (
-                  <button
-                    key={`search-${project.id}`}
-                    type="button"
-                    onClick={() => {
-                      void selectProject(project.worktree);
-                      setProjectSearchOpen(false);
-                    }}
-                    title={project.name || project.worktree.split("/").at(-1) || project.worktree}
-                  >
-                    {project.name || project.worktree.split("/").at(-1) || project.worktree}
-                  </button>
-                ))}
-                {filteredProjects.length === 0 ? <p>No matching workspaces</p> : null}
-              </div>
             </div>
           ) : null}
 
@@ -446,6 +406,7 @@ export function WorkspaceSidebar({
         <LayoutDashboard size={18} />
         <CirclePlay size={18} />
         <Zap size={18} />
+        <Search size={18} />
         <Brain size={18} />
       </div>
 

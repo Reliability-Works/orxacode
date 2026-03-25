@@ -331,7 +331,7 @@ const ComposerDockStack = memo(function ComposerDockStack({
   );
 });
 
-export function ComposerPanel(props: ComposerPanelProps) {
+export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelProps) {
   const {
     placeholder,
     composer,
@@ -1003,7 +1003,7 @@ export function ComposerPanel(props: ComposerPanelProps) {
       ) : null}
     </section>
   );
-}
+});
 
 type ModelPickerProps = {
   modelSelectOptions: ModelOption[];

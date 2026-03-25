@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import { MessageCardFrame } from "./chat/MessageCardFrame";
 import { ThinkingRow } from "./chat/ThinkingRow";
@@ -28,7 +28,7 @@ type SessionFeedNotice = {
   tone?: "info" | "error";
 };
 
-export function MessageFeed({
+export const MessageFeed = memo(function MessageFeed({
   messages = [],
   presentation,
   sessionNotices = [],
@@ -147,4 +147,4 @@ export function MessageFeed({
       }
     />
   );
-}
+});
