@@ -188,6 +188,7 @@ const SIDEBAR_LEFT_WIDTH_KEY = "orxa:leftPaneWidth:v1";
 const SIDEBAR_BROWSER_WIDTH_KEY = "orxa:browserPaneWidth:v1";
 const SIDEBAR_RIGHT_WIDTH_KEY = "orxa:rightPaneWidth:v1";
 const AGENT_MODEL_PREFS_KEY = "orxa:agentModelPrefs:v1";
+const LAST_SELECTED_AGENT_KEY = "orxa:lastSelectedAgent:v1";
 const CUSTOM_RUN_COMMANDS_KEY = "orxa:customRunCommands:v1";
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132;
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12;
@@ -530,7 +531,7 @@ export default function App() {
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [projects, setProjects] = useState<ProjectListItem[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string | undefined>();
+  const [selectedAgent, setSelectedAgent] = usePersistedState<string | undefined>(LAST_SELECTED_AGENT_KEY, undefined);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalTabs, setTerminalTabs] = useState<Array<{ id: string; label: string }>>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | undefined>();
@@ -1052,10 +1053,6 @@ export default function App() {
   const preferredAgentModel = useMemo(() => {
     return undefined;
   }, []);
-  const selectedAgentDefinition = useMemo(
-    () => agentOptions.find((agent) => agent.name === selectedAgent),
-    [agentOptions, selectedAgent],
-  );
   const serverAgentNames = useMemo(() => new Set(agentOptions.map((agent) => agent.name)), [agentOptions]);
   const effectiveComposerAgentOptions = useMemo(() => {
     return agentOptions.map((agent) => ({
@@ -1692,6 +1689,24 @@ export default function App() {
     void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(() => undefined);
   }, [refreshAgentFiles, refreshConfigModels, refreshGlobalProviders, settingsOpen]);
 
+  // Periodically refresh models/agents so the dropdown stays in sync
+  // with external config changes without needing to open settings.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(() => undefined);
+    }, 45_000);
+    return () => window.clearInterval(interval);
+  }, [refreshConfigModels, refreshGlobalProviders, refreshAgentFiles]);
+
+  // Also refresh when switching to a new active session
+  const prevActiveSessionRef = useRef(activeSessionID);
+  useEffect(() => {
+    if (activeSessionID && activeSessionID !== prevActiveSessionRef.current) {
+      void Promise.all([refreshConfigModels(), refreshGlobalProviders()]).catch(() => undefined);
+    }
+    prevActiveSessionRef.current = activeSessionID;
+  }, [activeSessionID, refreshConfigModels, refreshGlobalProviders]);
+
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
       setMessages([]);
@@ -1766,8 +1781,10 @@ export default function App() {
       setSelectedAgent(nextAgent);
     }
 
+    // Resolve the agent definition for the *current* nextAgent (not the stale selectedAgent)
+    const agentDef = agentOptions.find((agent) => agent.name === nextAgent);
     const savedModel = nextAgent ? agentModelPrefs[nextAgent] : undefined;
-    const preferredModel = savedModel ?? selectedAgentDefinition?.model ?? preferredAgentModel ?? projectData?.config.model;
+    const preferredModel = savedModel ?? agentDef?.model ?? preferredAgentModel ?? projectData?.config.model;
     const preferredVisibleModel = preferredModel && modelSelectOptions.some((item) => item.key === preferredModel)
       ? preferredModel
       : undefined;
@@ -1786,7 +1803,6 @@ export default function App() {
     preferredAgentModel,
     projectData?.config.model,
     selectedAgent,
-    selectedAgentDefinition?.model,
     selectedModel,
     setSelectedModel,
     serverAgentNames,
