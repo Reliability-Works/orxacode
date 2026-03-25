@@ -65,6 +65,22 @@ export class SimulatorController {
     };
   }
 
+  async refreshState(): Promise<SimulatorState> {
+    if (process.platform !== "darwin") {
+      return this.getState();
+    }
+    // Re-check xcrun availability
+    try {
+      await execFile("which", ["xcrun"]);
+      this.available = true;
+    } catch {
+      this.available = false;
+      return this.getState();
+    }
+    await this.listDevices();
+    return this.getState();
+  }
+
   async listDevices(): Promise<SimulatorDevice[]> {
     if (!this.available) {
       return [];

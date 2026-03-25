@@ -17,7 +17,7 @@ function requireController(get: () => SimulatorController | null): SimulatorCont
 export function registerSimulatorHandlers({ getSimulatorController, assertSender }: SimulatorHandlersDeps) {
   ipcMain.handle(IPC.simulatorGetState, async (event) => {
     assertSender(event);
-    return requireController(getSimulatorController).getState();
+    return requireController(getSimulatorController).refreshState();
   });
 
   ipcMain.handle(IPC.simulatorListDevices, async (event) => {

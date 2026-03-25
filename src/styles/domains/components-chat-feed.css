@@ -11,6 +11,8 @@
   scrollbar-gutter: stable both-edges;
   position: relative;
   isolation: isolate;
+  /* Clip scrolled content so it doesn't show behind the transparent top bar */
+  clip-path: inset(44px 0 0 0);
 }
 
 .messages-virtual-row {
