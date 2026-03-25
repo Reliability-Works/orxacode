@@ -44,8 +44,6 @@ import { ComposerPanel } from "./components/ComposerPanel";
 import type { AgentQuestion } from "./components/chat/QuestionDock";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { BrowserSidebar } from "./components/BrowserSidebar";
-import { SimulatorSidebar } from "./components/SimulatorSidebar";
-import type { SimulatorState } from "@shared/ipc/simulator";
 import { ContentTopBar, type CustomRunCommandInput, type CustomRunCommandPreset } from "./components/ContentTopBar";
 import { GlobalModalsHost } from "./components/GlobalModalsHost";
 import type { SkillPromptTarget } from "./components/GlobalModalsHost";
@@ -748,9 +746,6 @@ export default function App() {
   const [configModelOptions, setConfigModelOptions] = useState<ModelOption[]>([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"git" | "files">("git");
   const [browserSidebarOpen, setBrowserSidebarOpen] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [mobilePaneWidth, setMobilePaneWidth] = useState(360);
-  const [simulatorState, setSimulatorState] = useState<SimulatorState>({ available: false, devices: [], activeDeviceUdid: null, capturing: false });
   const [browserModeBySession, setBrowserModeBySession] = usePersistedState<Record<string, boolean>>(
     BROWSER_MODE_BY_SESSION_KEY,
     {},
@@ -1285,45 +1280,6 @@ export default function App() {
     await runBrowserStateCommand(() => window.orxa.browser.reload());
   }, [runBrowserStateCommand]);
 
-  const simulatorRefreshDevices = useCallback(async () => {
-    try {
-      const state = await window.orxa.simulator.getState();
-      setSimulatorState(state);
-    } catch { /* ignore on non-macOS */ }
-  }, []);
-
-  const simulatorSelectDevice = useCallback(async (udid: string) => {
-    try {
-      const state = await window.orxa.simulator.selectDevice(udid);
-      setSimulatorState(state);
-    } catch { /* ignore */ }
-  }, []);
-
-  const simulatorBootDevice = useCallback(async (udid: string) => {
-    try {
-      const state = await window.orxa.simulator.bootDevice(udid);
-      setSimulatorState(state);
-    } catch { /* ignore */ }
-  }, []);
-
-  const simulatorShutdownDevice = useCallback(async (udid: string) => {
-    try {
-      const state = await window.orxa.simulator.shutdownDevice(udid);
-      setSimulatorState(state);
-    } catch { /* ignore */ }
-  }, []);
-
-  const simulatorTakeScreenshot = useCallback(async (udid: string) => {
-    try {
-      const screenshot = await window.orxa.simulator.takeScreenshot(udid);
-      if (screenshot?.dataUrl) {
-        await navigator.clipboard.write([
-          new ClipboardItem({ "image/png": await fetch(screenshot.dataUrl).then((r) => r.blob()) }),
-        ]);
-      }
-    } catch { /* ignore */ }
-  }, []);
-
   const browserSelectTab = useCallback(async (tabID: string) => {
     await runBrowserStateCommand(() => window.orxa.browser.switchTab(tabID));
   }, [runBrowserStateCommand]);
@@ -1846,10 +1802,6 @@ export default function App() {
 
       if (event.type === "browser.state") {
         setBrowserRuntimeState(event.payload);
-      }
-
-      if (event.type === "simulator.state") {
-        setSimulatorState(event.payload as SimulatorState);
       }
 
       if (event.type === "mcp.devtools.status") {
@@ -2594,12 +2546,12 @@ export default function App() {
     };
   }, [setBranchMenuOpen]);
 
-  const startSidebarResize = useCallback((side: "left" | "browser" | "mobile" | "right", event: ReactMouseEvent) => {
+  const startSidebarResize = useCallback((side: "left" | "browser" | "right", event: ReactMouseEvent) => {
     event.preventDefault();
-    const startWidth = side === "left" ? leftPaneWidth : side === "browser" ? browserPaneWidth : side === "mobile" ? mobilePaneWidth : rightPaneWidth;
+    const startWidth = side === "left" ? leftPaneWidth : side === "browser" ? browserPaneWidth : rightPaneWidth;
     document.body.classList.add("is-resizing");
     resizeStateRef.current = { side, startX: event.clientX, startWidth, latestX: event.clientX };
-  }, [browserPaneWidth, leftPaneWidth, mobilePaneWidth, rightPaneWidth]);
+  }, [browserPaneWidth, leftPaneWidth, rightPaneWidth]);
 
   const MIN_LEFT_PANE_WIDTH = 280;
   const MAX_LEFT_PANE_WIDTH = 520;
@@ -2642,12 +2594,6 @@ export default function App() {
           const next = Math.max(MIN_BROWSER_PANE_WIDTH, Math.min(Math.max(MIN_BROWSER_PANE_WIDTH, Math.min(MAX_BROWSER_PANE_WIDTH, maxBrowser)), s.startWidth - (s.latestX - s.startX)));
           el?.style.setProperty("--browser-pane-width", `${next}px`);
           s.currentWidth = next;
-        } else if (s.side === "mobile") {
-          const MIN_MOBILE_PANE_WIDTH = 300;
-          const MAX_MOBILE_PANE_WIDTH = 600;
-          const next = Math.max(MIN_MOBILE_PANE_WIDTH, Math.min(MAX_MOBILE_PANE_WIDTH, s.startWidth - (s.latestX - s.startX)));
-          el?.style.setProperty("--mobile-pane-width", `${next}px`);
-          s.currentWidth = next;
         } else {
           const workspaceWidth = el?.offsetWidth ?? window.innerWidth;
           const leftWidth = parseFloat(document.documentElement.style.getPropertyValue("--left-pane-width") || "300");
@@ -2675,8 +2621,6 @@ export default function App() {
           setLeftPaneWidth(state.currentWidth);
         } else if (state.side === "browser") {
           setBrowserPaneWidth(state.currentWidth);
-        } else if (state.side === "mobile") {
-          setMobilePaneWidth(state.currentWidth);
         } else {
           setRightPaneWidth(state.currentWidth);
         }
@@ -3155,10 +3099,9 @@ export default function App() {
       ({
         "--left-pane-visible": showProjectsPane ? 1 : 0,
         "--browser-pane-visible": hasProjectContext && browserSidebarOpen ? 1 : 0,
-        "--mobile-pane-visible": hasProjectContext && mobileSidebarOpen ? 1 : 0,
         "--right-pane-visible": showGitPane ? 1 : 0,
       }) as CSSProperties,
-    [browserSidebarOpen, hasProjectContext, mobileSidebarOpen, showGitPane, showProjectsPane],
+    [browserSidebarOpen, hasProjectContext, showGitPane, showProjectsPane],
   );
 
   useLayoutEffect(() => {
@@ -3173,12 +3116,6 @@ export default function App() {
       workspaceRef.current?.style.setProperty("--browser-pane-width", `${browserPaneWidth}px`);
     }
   }, [browserPaneWidth]);
-
-  useLayoutEffect(() => {
-    if (!resizeStateRef.current) {
-      workspaceRef.current?.style.setProperty("--mobile-pane-width", `${mobilePaneWidth}px`);
-    }
-  }, [mobilePaneWidth]);
 
   useLayoutEffect(() => {
     if (!resizeStateRef.current) {
@@ -3826,8 +3763,6 @@ export default function App() {
           }
           browserSidebarOpen={browserSidebarOpen}
           toggleBrowserSidebar={() => setBrowserSidebarOpen((current) => !current)}
-          mobileSidebarOpen={mobileSidebarOpen}
-          toggleMobileSidebar={() => setMobileSidebarOpen((current) => !current)}
           gitDiffStats={gitDiffStats}
           contentPaneTitle={contentPaneTitle}
           activeProjectDir={activeProjectDir ?? null}
@@ -4309,30 +4244,6 @@ export default function App() {
                 onStatusChange={setStatusLine}
                 onSendAnnotations={(text) => setComposer((prev) => prev ? `${prev}\n\n${text}` : text)}
                 mcpDevToolsState={mcpDevToolsState}
-              />
-            ) : null}
-          </div>
-        ) : null}
-        {hasProjectContext ? (
-          <button
-            type="button"
-            className={`sidebar-resizer sidebar-resizer-mobile ${mobileSidebarOpen ? "" : "is-collapsed"}`.trim()}
-            aria-label="Resize mobile simulator"
-            onMouseDown={(event) => startSidebarResize("mobile", event)}
-            disabled={!mobileSidebarOpen}
-          />
-        ) : null}
-        {hasProjectContext ? (
-          <div className={`workspace-mobile-pane ${mobileSidebarOpen ? "open" : "collapsed"}`}>
-            {mobileSidebarOpen ? (
-              <SimulatorSidebar
-                simulatorState={simulatorState}
-                onSelectDevice={simulatorSelectDevice}
-                onBootDevice={simulatorBootDevice}
-                onShutdownDevice={simulatorShutdownDevice}
-                onTakeScreenshot={simulatorTakeScreenshot}
-                onRefreshDevices={simulatorRefreshDevices}
-                onCollapse={() => setMobileSidebarOpen(false)}
               />
             ) : null}
           </div>

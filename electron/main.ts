@@ -9,7 +9,6 @@ import { CodexService } from "./services/codex-service";
 import { ClaudeChatService } from "./services/claude-chat-service";
 import { trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
-import { SimulatorController } from "./services/simulator-controller";
 import { OrxaTerminalService } from "./services/orxa-terminal-service";
 import { PersistenceService } from "./services/persistence-service";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
@@ -24,7 +23,6 @@ import { registerRuntimeOpencodeHandlers } from "./ipc/runtime-opencode-handlers
 import { registerArtifactHandlers } from "./ipc/artifact-handlers";
 import { registerTerminalHandlers } from "./ipc/terminal-handlers";
 import { registerBrowserHandlers } from "./ipc/browser-handlers";
-import { registerSimulatorHandlers } from "./ipc/simulator-handlers";
 import { registerClaudeChatHandlers } from "./ipc/claude-chat-handlers";
 import { registerCodexHandlers } from "./ipc/codex-handlers";
 import { createAssertBrowserSender } from "./ipc/validators";
@@ -61,7 +59,6 @@ const terminalService = new OrxaTerminalService();
 let persistenceService: PersistenceService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
-let simulatorController: SimulatorController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
 let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
@@ -267,11 +264,6 @@ function registerIpcHandlers() {
     publishEvent,
   });
 
-  registerSimulatorHandlers({
-    getSimulatorController: () => simulatorController,
-    assertSender: createAssertBrowserSender(() => mainWindow),
-  });
-
   registerCodexHandlers({
     codexService,
   });
@@ -297,9 +289,6 @@ async function boot() {
   await app.whenReady();
   persistenceService = new PersistenceService();
   browserController = new BrowserController({
-    onEvent: (event) => publishEvent(event),
-  });
-  simulatorController = new SimulatorController({
     onEvent: (event) => publishEvent(event),
   });
   registerIpcHandlers();
