@@ -1760,6 +1760,7 @@ export default function App() {
     projectData?.config.model,
     selectedAgent,
     selectedModel,
+    setSelectedAgent,
     setSelectedModel,
     serverAgentNames,
     effectiveComposerAgentOptions,
@@ -2662,7 +2663,7 @@ export default function App() {
       const nonPlanAgent = agentOptions.find((a) => a.name !== "plan");
       setSelectedAgent(nonPlanAgent?.name ?? agentOptions[0]?.name);
     },
-    [agentOptions, hasPlanAgent],
+    [agentOptions, hasPlanAgent, setSelectedAgent],
   );
 
   const activeSession = useMemo(
