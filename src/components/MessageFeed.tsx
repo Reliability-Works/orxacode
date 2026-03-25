@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import { MessageCardFrame } from "./chat/MessageCardFrame";
 import { ThinkingRow } from "./chat/ThinkingRow";
@@ -98,6 +98,27 @@ export const MessageFeed = memo(function MessageFeed({
       el.removeEventListener("scroll", handleScroll);
     };
   }, []);
+
+  // When switching sessions (or workspaces), snap scroll to the bottom instantly
+  // so the user doesn't see the top of a long conversation flash by. We detect
+  // a session switch by checking if the first message ID changed (new session)
+  // vs the array just growing (new messages in the same session).
+  const prevFirstMessageIdRef = useRef(messages[0]?.info?.id);
+  const prevPresentationRef = useRef(presentation);
+  useLayoutEffect(() => {
+    const firstId = messages[0]?.info?.id;
+    const sessionChanged = prevFirstMessageIdRef.current !== firstId;
+    const presentationChanged = prevPresentationRef.current !== presentation;
+    prevFirstMessageIdRef.current = firstId;
+    prevPresentationRef.current = presentation;
+    if (sessionChanged || presentationChanged) {
+      const el = messageFeedRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+      isAtBottomRef.current = true;
+    }
+  }, [messages, presentation]);
 
   useEffect(() => {
     if (!isAtBottomRef.current) {

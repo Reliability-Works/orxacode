@@ -154,7 +154,14 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       return EMPTY_MESSAGE_BUNDLES;
     }
     const key = makeUnifiedSessionKey("opencode", activeProjectDir, activeSessionID);
-    return state.opencodeSessions[key]?.messages ?? EMPTY_MESSAGE_BUNDLES;
+    const storeMessages = state.opencodeSessions[key]?.messages;
+    if (storeMessages && storeMessages.length > 0) {
+      return storeMessages;
+    }
+    // Fall back to persisted (SQLite) messages so sessions that haven't been
+    // loaded into the runtime store yet still show cached content instantly.
+    const persisted = getPersistedOpencodeState(key);
+    return persisted.messages.length > 0 ? persisted.messages : EMPTY_MESSAGE_BUNDLES;
   });
 
   const refreshTimer = useRef<number | undefined>(undefined);
@@ -537,6 +544,16 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       }
       setActiveProjectDir(targetDirectory);
       setActiveSessionID(sessionID);
+      // Pre-populate the store from persisted cache so messages show instantly
+      // while the server load happens in the background.
+      const storeKey = makeUnifiedSessionKey("opencode", targetDirectory, sessionID);
+      const existing = useUnifiedRuntimeStore.getState().opencodeSessions[storeKey];
+      if (!existing?.messages?.length) {
+        const persisted = getPersistedOpencodeState(storeKey);
+        if (persisted.messages.length > 0) {
+          setOpencodeMessages(targetDirectory, sessionID, persisted.messages);
+        }
+      }
       void loadOpencodeRuntimeSnapshot(targetDirectory, sessionID)
         .then((runtime) => {
           const normalized = normalizeMessageBundles(runtime.messages);
@@ -554,7 +571,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         })
         .catch(() => undefined);
     },
-    [buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setOpencodeRuntimeSnapshot],
+    [buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setOpencodeMessages, setOpencodeRuntimeSnapshot],
   );
 
   const stopResponsePolling = useCallback(() => {
@@ -585,7 +602,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       // Clean up previous empty session before creating a new one
       await cleanupEmptySession(getRuntimeState().activeSessionID);
 
-      setMessages([]);
+      // Don't call setMessages([]) here — activeSessionID still points to the
+      // old session, so it would destroy that session's cached messages.
       stopResponsePolling();
 
       try {
