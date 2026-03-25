@@ -1675,7 +1675,9 @@ export default function App() {
       return;
     }
 
-    setMessages([]);
+    // Don't clear messages before refresh — the Zustand store caches messages
+    // per session key, so showing cached data instantly avoids the empty flash.
+    // refreshMessages() will update with fresh server data in the background.
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
 
@@ -3930,7 +3932,7 @@ export default function App() {
               onUseSkill={openSkillUseModal}
             />
           ) : activeProjectDir ? (
-            <Fragment key={activeSessionKey ?? activeSessionType ?? "workspace-landing"}>
+            <Fragment>
               {!activeSessionID ? (
                 pendingSessionId ? (
                   <div className="workspace-session-transition" aria-live="polite">
