@@ -249,13 +249,26 @@ function isLikelyShellCommand(value: string) {
   if (!trimmed) {
     return false;
   }
+  // Reject known narrative prefixes
   if (/^loaded skill:/i.test(trimmed)) {
     return false;
   }
+  // Shell metacharacters are a strong signal
   if (/[;&|><`$]/.test(trimmed)) {
     return true;
   }
-  return /^(npx|pnpm|npm|yarn|bun|node|git|ls|cat|sed|rg|grep|find|mkdir|touch|mv|cp|rm|echo|printf|bash|zsh|sh|python|python3|pip|pip3|cargo|go|make|cmake|docker|kubectl|curl|wget)\b/i.test(trimmed);
+  // Reject strings that look like natural language descriptions:
+  // starts with a capital letter followed by a space and more words, no flags/paths
+  if (/^[A-Z][a-z]+ [a-z]/.test(trimmed) && !trimmed.includes("/") && !trimmed.includes("-")) {
+    return false;
+  }
+  // If it starts with a word that looks like a binary (lowercase or @/_/. prefix),
+  // treat it as a command. This catches npx, cargo, any CLI tool.
+  // Must NOT use /i flag — uppercase starts indicate narrative titles like "Read ."
+  if (/^[a-z@._/][^\s]*\s/.test(trimmed) || /^[a-z@._/][^\s]*$/.test(trimmed)) {
+    return true;
+  }
+  return false;
 }
 
 function isTaskToolName(toolName: string) {
