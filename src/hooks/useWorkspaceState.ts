@@ -450,7 +450,8 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(`Loading workspace ${directory}`);
         const cached = getRuntimeState().projectDataByDirectory[directory];
         setProjectData(cached ?? null);
-        setMessages([]);
+        // Don't clear messages — setMessages writes to the *current* active
+        // session which we're leaving, destroying its cached messages.
         setActiveSessionID(nextSessionID);
         setTerminalOpen(false);
         setTerminalTabs([]);
