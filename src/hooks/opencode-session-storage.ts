@@ -11,11 +11,35 @@ const persistedSessions = createPersistedSessionStore<PersistedOpencodeState>({
 });
 
 export function getPersistedOpencodeState(sessionKey: string): PersistedOpencodeState {
+  // Check pending (debounced) writes first — they're more recent than what's on disk
+  const pending = pendingWrites.get(sessionKey);
+  if (pending) return pending;
   return persistedSessions.get(sessionKey);
 }
 
+const persistTimers: Record<string, number> = {};
+const pendingWrites = new Map<string, PersistedOpencodeState>();
+
+/**
+ * Debounced persistence write. During streaming, snapshot updates fire on every
+ * delta — writing synchronously to SQLite on each would block the main thread.
+ * We debounce at 500ms so writes batch up during active streaming but still
+ * persist promptly once the turn slows down or completes.
+ */
 export function setPersistedOpencodeState(sessionKey: string, next: PersistedOpencodeState) {
-  persistedSessions.set(sessionKey, next);
+  pendingWrites.set(sessionKey, next);
+  if (typeof window === "undefined") {
+    persistedSessions.set(sessionKey, next);
+    return;
+  }
+  window.clearTimeout(persistTimers[sessionKey]);
+  persistTimers[sessionKey] = window.setTimeout(() => {
+    const latest = pendingWrites.get(sessionKey);
+    if (latest) {
+      persistedSessions.set(sessionKey, latest);
+      pendingWrites.delete(sessionKey);
+    }
+  }, 500);
 }
 
 export function clearPersistedOpencodeState(sessionKey: string) {
