@@ -79,6 +79,14 @@ export type CodexApprovalRequest = {
   }>;
 };
 
+export type CodexUserInputQuestion = {
+  id: string;
+  header: string;
+  question: string;
+  isOther?: boolean;
+  options?: { id: string; label: string; value: string }[];
+};
+
 export type CodexUserInputRequest = {
   id: number;
   method: string;
@@ -86,4 +94,5 @@ export type CodexUserInputRequest = {
   turnId: string;
   itemId: string;
   message: string;
+  questions?: CodexUserInputQuestion[];
 };

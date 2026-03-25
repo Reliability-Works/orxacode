@@ -2245,12 +2245,12 @@ export function useCodexSession(
     }
   }, [pendingApproval, recordLastError, setPendingApprovalState]);
 
-  // Respond to user input request
+  // Respond to user input request — answers keyed by question ID
   const respondToUserInput = useCallback(
-    async (response: string) => {
+    async (answers: Record<string, { answers: string[] }>) => {
       if (!window.orxa?.codex || !pendingUserInput) return;
       try {
-        await window.orxa.codex.respondToUserInput(pendingUserInput.id, response);
+        await window.orxa.codex.respondToUserInput(pendingUserInput.id, answers);
         setPendingUserInputState(null);
       } catch (err) {
         recordLastError(err);
@@ -2262,8 +2262,12 @@ export function useCodexSession(
   const rejectUserInput = useCallback(async () => {
     if (!window.orxa?.codex || !pendingUserInput) return;
     try {
-      // Respond with empty string to indicate rejection
-      await window.orxa.codex.respondToUserInput(pendingUserInput.id, "");
+      // Send empty answers for all questions to indicate dismissal
+      const emptyAnswers: Record<string, { answers: string[] }> = {};
+      for (const q of pendingUserInput.questions ?? []) {
+        emptyAnswers[q.id] = { answers: [] };
+      }
+      await window.orxa.codex.respondToUserInput(pendingUserInput.id, emptyAnswers);
       setPendingUserInputState(null);
     } catch (err) {
       recordLastError(err);
@@ -2300,12 +2304,13 @@ export function useCodexSession(
     }
   }, [recordLastError, setStreamingState, thread, updateMessages]);
 
-  // Plan acceptance: switch to default mode and send implementation prompt
+  // Plan acceptance: switch to default/code mode and send implementation prompt
   // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
   const acceptPlan = useCallback(async (planItemId?: string) => {
     if (planItemId) {
       setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
+    // No collaborationMode → reverts to default (code) mode for implementation
     await sendMessage("Implement this plan.", { model: undefined });
   }, [sendMessage, setDismissedPlanIdsState]);
 

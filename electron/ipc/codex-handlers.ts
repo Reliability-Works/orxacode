@@ -154,9 +154,10 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
     return codexService.respondToApproval(requestId, "decline");
   });
 
-  ipcMain.handle(IPC.codexRespondToUserInput, async (_event, requestId: unknown, response: unknown) => {
+  ipcMain.handle(IPC.codexRespondToUserInput, async (_event, requestId: unknown, answers: unknown) => {
     if (typeof requestId !== "number") throw new Error("requestId must be a number");
-    return codexService.respondToUserInput(requestId, assertString(response, "response"));
+    if (!answers || typeof answers !== "object") throw new Error("answers must be an object");
+    return codexService.respondToUserInput(requestId, answers as Record<string, { answers: string[] }>);
   });
 
   ipcMain.handle(IPC.codexInterruptTurn, async (_event, threadId: unknown, turnId: unknown) => {

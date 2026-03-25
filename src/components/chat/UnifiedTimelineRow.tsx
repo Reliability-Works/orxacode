@@ -254,6 +254,15 @@ export function UnifiedTimelineRowView({
         </div>
       );
     }
+    case "plan-card":
+      return (
+        <article className="plan-card-bubble">
+          <div className="plan-card-bubble-header">Plan</div>
+          <div className="plan-card-bubble-body">
+            <TextPart content={row.content} role="assistant" showCopy={false} onOpenFileReference={onOpenFileReference} />
+          </div>
+        </article>
+      );
     default:
       return null;
   }

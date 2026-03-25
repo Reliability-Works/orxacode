@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ClipboardList } from "lucide-react";
 import { DockSurface } from "./DockSurface";
 
@@ -9,107 +9,52 @@ export interface PlanDockProps {
 }
 
 export function PlanDock({ onAccept, onSubmitChanges, onDismiss }: PlanDockProps) {
-  const [selectedOption, setSelectedOption] = useState<0 | 1>(0);
-  const [showInput, setShowInput] = useState(false);
   const [changes, setChanges] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  useEffect(() => {
-    if (!showInput) {
-      return;
-    }
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [showInput]);
+  const footer = (
+    <div className="plan-dock-footer">
+      <button
+        type="button"
+        className="plan-dock-btn plan-dock-btn--accept"
+        onClick={onAccept}
+      >
+        Implement this plan
+      </button>
+      {changes.trim() ? (
+        <button
+          type="button"
+          className="plan-dock-btn plan-dock-btn--send"
+          onClick={() => {
+            onSubmitChanges(changes.trim());
+            setChanges("");
+          }}
+        >
+          Send changes
+        </button>
+      ) : null}
+    </div>
+  );
 
   return (
     <DockSurface
-      title={showInput ? "Revise plan" : "Plan ready"}
+      title="Plan ready"
       icon={<ClipboardList size={13} />}
       onClose={onDismiss}
+      footer={footer}
     >
-      <div className="plan-dock">
-        {showInput ? (
-          <>
-            <p className="plan-dock-description">Tell the agent what to do differently.</p>
-            <textarea
-              ref={inputRef}
-              className="plan-dock-input"
-              value={changes}
-              onChange={(event) => setChanges(event.target.value)}
-              placeholder="Describe what should change..."
-              rows={3}
-            />
-            <div className="plan-dock-actions">
-              <button
-                type="button"
-                className="plan-dock-btn plan-dock-btn--secondary"
-                onClick={() => {
-                  setShowInput(false);
-                  setChanges("");
-                }}
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                className="plan-dock-btn plan-dock-btn--primary"
-                disabled={!changes.trim()}
-                onClick={() => {
-                  const trimmed = changes.trim();
-                  if (!trimmed) {
-                    return;
-                  }
-                  onSubmitChanges(trimmed);
-                }}
-              >
-                Submit changes
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="plan-dock-description">Review the proposed plan before the agent continues.</p>
-            <div className="plan-dock-options" role="radiogroup" aria-label="Plan review">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selectedOption === 0}
-                className={`plan-dock-option ${selectedOption === 0 ? "is-selected" : ""}`.trim()}
-                onClick={() => setSelectedOption(0)}
-              >
-                Yes, implement this plan
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={selectedOption === 1}
-                className={`plan-dock-option ${selectedOption === 1 ? "is-selected" : ""}`.trim()}
-                onClick={() => setSelectedOption(1)}
-              >
-                No, I want to change it
-              </button>
-            </div>
-            <div className="plan-dock-actions">
-              <button type="button" className="plan-dock-btn plan-dock-btn--secondary" onClick={onDismiss}>
-                Dismiss
-              </button>
-              <button
-                type="button"
-                className="plan-dock-btn plan-dock-btn--primary"
-                onClick={() => {
-                  if (selectedOption === 0) {
-                    onAccept();
-                    return;
-                  }
-                  setShowInput(true);
-                }}
-              >
-                Continue
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      <input
+        type="text"
+        className="plan-dock-input"
+        value={changes}
+        onChange={(e) => setChanges(e.target.value)}
+        placeholder="No, tell Codex what to do differently..."
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && changes.trim()) {
+            onSubmitChanges(changes.trim());
+            setChanges("");
+          }
+        }}
+      />
     </DockSurface>
   );
 }

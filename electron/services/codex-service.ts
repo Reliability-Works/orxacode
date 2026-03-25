@@ -752,7 +752,20 @@ export class CodexService extends EventEmitter {
     };
     if (params.model) turnParams.model = params.model;
     if (params.effort) turnParams.effort = params.effort;
-    if (params.collaborationMode) turnParams.collaborationMode = params.collaborationMode;
+    if (params.collaborationMode) {
+      // The Codex CLI expects collaborationMode as an object with mode + settings,
+      // not a plain string. Build the object from the cached mode metadata.
+      const modeId = params.collaborationMode;
+      const modeMeta = this._collaborationModes.find((m) => m.id === modeId);
+      const settings: Record<string, unknown> = {};
+      if (params.model) settings.model = params.model;
+      if (params.effort) settings.reasoning_effort = params.effort;
+      if (modeMeta?.developerInstructions) settings.developer_instructions = modeMeta.developerInstructions;
+      turnParams.collaborationMode = {
+        mode: modeMeta?.mode || modeId,
+        settings,
+      };
+    }
 
     await this.request("turn/start", turnParams);
   }
@@ -836,8 +849,8 @@ export class CodexService extends EventEmitter {
     this.sendResponse(requestId, { decision });
   }
 
-  async respondToUserInput(requestId: number, response: string): Promise<void> {
-    this.sendResponse(requestId, { response });
+  async respondToUserInput(requestId: number, answers: Record<string, { answers: string[] }>): Promise<void> {
+    this.sendResponse(requestId, { answers });
   }
 
   // -----------------------------------------------------------------------
@@ -1069,13 +1082,28 @@ export class CodexService extends EventEmitter {
       };
       this.emit("approval", approval);
     } else if (method === "item/tool/requestUserInput") {
+      const rawQuestions = Array.isArray(params.questions) ? params.questions : [];
+      const questions = rawQuestions.map((q: Record<string, unknown>) => ({
+        id: String(q.id ?? ""),
+        header: String(q.header ?? ""),
+        question: String(q.question ?? ""),
+        isOther: Boolean(q.isOther ?? q.is_other),
+        options: Array.isArray(q.options)
+          ? q.options.map((o: Record<string, unknown>) => ({
+              id: String(o.id ?? ""),
+              label: String(o.label ?? ""),
+              value: String(o.value ?? o.label ?? ""),
+            }))
+          : undefined,
+      }));
       this.emit("userInput", {
         id,
         method,
-        threadId: (params.threadId as string) ?? "",
-        turnId: (params.turnId as string) ?? "",
-        itemId: (params.itemId as string) ?? "",
+        threadId: (params.threadId ?? params.thread_id as string) ?? "",
+        turnId: (params.turnId ?? params.turn_id as string) ?? "",
+        itemId: (params.itemId ?? params.item_id as string) ?? "",
         message: (params.message as string) ?? "",
+        questions: questions.length > 0 ? questions : undefined,
       });
     } else {
       // Unknown server request — auto-acknowledge

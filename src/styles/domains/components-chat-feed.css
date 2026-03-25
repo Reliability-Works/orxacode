@@ -2348,73 +2348,89 @@
   padding: 12px;
 }
 
-.plan-dock {
-  display: grid;
-  gap: 10px;
-}
-
-.plan-dock-description {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.plan-dock-options {
-  display: grid;
-  gap: 8px;
-}
-
-.plan-dock-option {
-  width: 100%;
-  text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 10px 12px;
-}
-
-.plan-dock-option:hover,
-.plan-dock-option.is-selected {
-  transform: none;
-  border-color: var(--accent-border-subtle);
-  background: var(--accent-bg-light);
-  color: var(--text-primary);
-}
-
 .plan-dock-input {
   width: 100%;
-  min-height: 92px;
-  border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-input);
+  border-radius: 6px;
+  background: var(--bg-input, rgba(255,255,255,0.03));
   color: var(--text-primary);
-  padding: 10px 12px;
-  resize: vertical;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
-.plan-dock-actions {
+.plan-dock-input::placeholder {
+  color: var(--text-muted);
+}
+
+.plan-dock-footer {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 8px;
 }
 
 .plan-dock-btn {
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.plan-dock-btn--secondary {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-}
-
-.plan-dock-btn--primary {
+.plan-dock-btn--accept {
   border: 1px solid var(--accent-border-subtle);
   background: var(--accent-bg-medium);
   color: var(--accent-green);
+}
+
+.plan-dock-btn--send {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+/* ─── Plan card bubble ───────────────────────────────────────────────────── */
+
+.plan-card-bubble {
+  border: 1px solid var(--border-secondary, var(--border));
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.plan-card-bubble-header {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-green, var(--text-muted));
+  border-bottom: 1px solid var(--border-secondary, var(--border));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.plan-card-bubble-body {
+  padding: 16px 18px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.plan-card-bubble-body h1,
+.plan-card-bubble-body h2,
+.plan-card-bubble-body h3 {
+  margin-top: 0.8em;
+  margin-bottom: 0.4em;
+}
+
+.plan-card-bubble-body h1:first-child,
+.plan-card-bubble-body h2:first-child,
+.plan-card-bubble-body h3:first-child {
+  margin-top: 0;
 }
 
 /* ─── QuestionDock (structured question UI) ──────────────────────────────── */
@@ -2442,6 +2458,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
 /* Card header: question text + pagination */

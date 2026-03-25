@@ -20,7 +20,7 @@ import {
   projectCodexSessionPresentation,
 } from "../lib/session-presentation";
 import { extractReviewChangesFiles } from "../lib/timeline-row-grouping";
-import { selectPendingPermissionDockData, selectPendingPlanDockData, selectPendingQuestionDockData, useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+import { selectPendingPermissionDockData, selectPendingQuestionDockData, useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 interface Props {
   directory: string;
@@ -603,23 +603,27 @@ export function CodexPane({
   const questionDockProps = pendingQuestionData
     ? {
         questions: pendingQuestionData.questions,
-        onSubmit: (answers: Record<string, string | string[]>) => {
-          const firstAnswer = Object.values(answers)[0];
-          const response = Array.isArray(firstAnswer) ? firstAnswer.join(", ") : (firstAnswer ?? "");
-          void respondToUserInput(response);
+        onSubmit: (rawAnswers: Record<string, string | string[]>) => {
+          // Convert QuestionDock answers to the Codex CLI format: { [questionId]: { answers: string[] } }
+          const codexAnswers: Record<string, { answers: string[] }> = {};
+          for (const [qId, val] of Object.entries(rawAnswers)) {
+            codexAnswers[qId] = { answers: Array.isArray(val) ? val : [val] };
+          }
+          void respondToUserInput(codexAnswers);
         },
         onReject: () => {
           void rejectUserInput();
         },
       }
     : null;
-  const pendingPlanData = selectPendingPlanDockData({
-    provider: "codex",
-    sessionKey: sessionStorageKey,
-  });
-  const pendingPlanProps = planReady && pendingPlanData
+  const pendingPlanProps = planReady
     ? {
-        onAccept: () => void acceptPlan(activePlanItem?.id),
+        onAccept: () => {
+          // Switch out of plan mode for implementation
+          setIsPlanMode(false);
+          setSelectedCollabMode(undefined);
+          void acceptPlan(activePlanItem?.id);
+        },
         onSubmitChanges: (changes: string) => void submitPlanChanges(changes, activePlanItem?.id),
         onDismiss: () => dismissPlan(activePlanItem?.id),
       }
@@ -828,7 +832,13 @@ export function CodexPane({
             <select
               className="codex-collab-mode-select"
               value={selectedCollabMode ?? ""}
-              onChange={(e) => setSelectedCollabMode(e.target.value || undefined)}
+              onChange={(e) => {
+                const modeId = e.target.value || undefined;
+                setSelectedCollabMode(modeId);
+                // Sync plan mode toggle with dropdown selection
+                const mode = modeId ? collaborationModes.find((m) => m.id === modeId) : undefined;
+                setIsPlanMode(mode?.mode === "plan" || mode?.id === "plan");
+              }}
             >
               <option value="">(default)</option>
               {collaborationModes.map((m) => (
@@ -866,7 +876,15 @@ export function CodexPane({
           hasActiveSession={connectionStatus === "connected" && thread !== null}
           isPlanMode={isPlanMode}
           hasPlanAgent={true}
-          togglePlanMode={(enabled) => setIsPlanMode(enabled)}
+          togglePlanMode={(enabled) => {
+            setIsPlanMode(enabled);
+            if (enabled) {
+              const planMode = collaborationModes.find((m) => m.mode === "plan" || m.id === "plan");
+              setSelectedCollabMode(planMode?.id ?? "plan");
+            } else {
+              setSelectedCollabMode(undefined);
+            }
+          }}
           browserModeEnabled={browserModeEnabled}
           setBrowserModeEnabled={setBrowserModeEnabled ?? (() => undefined)}
           hideBrowserToggle={!setBrowserModeEnabled}
