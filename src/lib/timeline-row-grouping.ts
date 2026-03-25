@@ -113,8 +113,6 @@ export function groupAdjacentToolCallRows(
     pendingTools = [];
   };
 
-  let deferredNonToolRows: UnifiedTimelineRenderRow[] = [];
-
   for (const row of rows) {
     if (row.kind === "diff") {
       pendingDiffs.push(row);
@@ -124,19 +122,12 @@ export function groupAdjacentToolCallRows(
       pendingTools.push(row);
       continue;
     }
-    // These lightweight rows shouldn't break tool grouping
-    if ((row.kind === "explore" || row.kind === "context" || row.kind === "timeline") && (pendingDiffs.length > 0 || pendingTools.length > 0)) {
-      deferredNonToolRows.push(row);
-      continue;
-    }
+    // Any non-tool row flushes the current group and starts a new section
     flush();
-    for (const deferred of deferredNonToolRows) nextRows.push(deferred);
-    deferredNonToolRows = [];
     nextRows.push(row);
   }
 
   flush();
-  for (const deferred of deferredNonToolRows) nextRows.push(deferred);
   return nextRows;
 }
 

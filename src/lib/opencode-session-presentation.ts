@@ -255,7 +255,7 @@ function isLikelyShellCommand(value: string) {
   if (/[;&|><`$]/.test(trimmed)) {
     return true;
   }
-  return /^(pnpm|npm|yarn|bun|node|git|ls|cat|sed|rg|grep|find|mkdir|touch|mv|cp|rm|echo|printf|bash|zsh|sh)\b/i.test(trimmed);
+  return /^(npx|pnpm|npm|yarn|bun|node|git|ls|cat|sed|rg|grep|find|mkdir|touch|mv|cp|rm|echo|printf|bash|zsh|sh|python|python3|pip|pip3|cargo|go|make|cmake|docker|kubectl|curl|wget)\b/i.test(trimmed);
 }
 
 function isTaskToolName(toolName: string) {
