@@ -76,7 +76,8 @@ import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import { useWorkspaceSessionMetadata } from "./hooks/useWorkspaceSessionMetadata";
 import { useWorkspaceSessionMetadataMigration } from "./hooks/useWorkspaceSessionMetadataMigration";
 import { useAppShellSessionCollections } from "./hooks/useAppShellSessionCollections";
-import { useStreamingBuffer } from "./hooks/useStreamingBuffer";
+// TODO: streaming buffer removed — needs reimplementation at the message-part delta
+// level rather than the presentation layer to avoid blocking tool calls and diffs
 import { useBackgroundSessionDescriptors } from "./hooks/useBackgroundSessionDescriptors";
 import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
@@ -2740,18 +2741,13 @@ export default function App() {
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
   }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
-  const activeSessionPresentationRaw = useMemo(() => selectSessionPresentation({
+  const activeSessionPresentation = useMemo(() => selectSessionPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     assistantLabel,
   }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
-  const activeSessionPresentation = useStreamingBuffer(
-    activeSessionPresentationRaw,
-    isSessionInProgress,
-    appPreferences.enableAssistantStreaming,
-  );
   const activeReviewChangesFiles = useMemo(
     () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
     [activeSessionPresentation],
