@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useCallback } from "react";
 import { ToolCallCard } from "./ToolCallCard";
 import { CommandOutput } from "./CommandOutput";
 import { DiffBlock } from "./DiffBlock";
@@ -30,14 +30,28 @@ function renderMessageSection(
   }
 
   if (section.type === "image") {
-    return (
-      <div className="part-image">
-        <img src={section.url} alt={section.label} loading="lazy" />
-      </div>
-    );
+    return <ClickableImage url={section.url} label={section.label} />;
   }
 
   return <div className="part-file">Attached file: {section.label}</div>;
+}
+
+function ClickableImage({ url, label }: { url: string; label: string }) {
+  const [enlarged, setEnlarged] = useState(false);
+  const close = useCallback(() => setEnlarged(false), []);
+
+  return (
+    <>
+      <div className="part-image" role="button" tabIndex={0} onClick={() => setEnlarged(true)} onKeyDown={(e) => { if (e.key === "Enter") setEnlarged(true); }}>
+        <img src={url} alt={label} loading="lazy" />
+      </div>
+      {enlarged ? (
+        <div className="image-lightbox" onClick={close} onKeyDown={(e) => { if (e.key === "Escape") close(); }} role="dialog" aria-label="Enlarged image">
+          <img src={url} alt={label} className="image-lightbox-img" />
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export function UnifiedTimelineRowView({
@@ -59,11 +73,17 @@ export function UnifiedTimelineRowView({
             copyText={row.copyText}
             copyLabel={row.copyLabel}
           >
-            {row.sections.map((section) => (
-              <section key={section.id} className="message-part">
-                {renderMessageSection(section, row.role, onOpenFileReference)}
-              </section>
-            ))}
+            {row.sections.map((section) =>
+              section.type === "image" ? (
+                <div key={section.id} className="message-part-image">
+                  {renderMessageSection(section, row.role, onOpenFileReference)}
+                </div>
+              ) : (
+                <section key={section.id} className="message-part">
+                  {renderMessageSection(section, row.role, onOpenFileReference)}
+                </section>
+              )
+            )}
           </MessageCardFrame>
         </MessageTurn>
       );
