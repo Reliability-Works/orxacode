@@ -106,6 +106,7 @@ Docs live in [`docs/`](docs/):
 
 - [Architecture](docs/architecture.md) — process model, IPC, event flow
 - [Session types](docs/sessions.md) — OpenCode, Codex, Claude Code (Chat), Claude Code (Terminal), Canvas
+- [Upstream references](docs/upstream-references.md) — canonical provider docs/repos for OpenCode, Codex, and Claude
 - [Chat UI](docs/chat-ui.md) — message components, docks, message queue
 - [Browser integration](docs/browser.md) — agent automation, control handoff, annotations
 - [Theming](docs/theming.md) — creating custom themes and tweaking Glass mode

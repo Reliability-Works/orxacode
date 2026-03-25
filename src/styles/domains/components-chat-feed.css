@@ -1,8 +1,10 @@
 /* Generated from src/styles/components.css; domain: chat-feed. */
 
 .messages-scroll {
+  --center-pane-rail-max-width: 980px;
+  --center-pane-rail-gutter: clamp(20px, 4vw, 40px);
   overflow: auto;
-  padding: 80px 32px 24px;
+  padding: 80px var(--center-pane-rail-gutter) 24px;
   padding-bottom: var(--message-feed-bottom-clearance, 120px);
   display: flex;
   flex-direction: column;
@@ -15,6 +17,31 @@
   clip-path: inset(44px 0 0 0);
 }
 
+.center-pane-rail {
+  width: min(100%, var(--center-pane-rail-max-width));
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.center-pane-rail--row {
+  display: block;
+}
+
+.center-pane-rail--row > .message-card {
+  max-width: 100%;
+  width: 100%;
+}
+
+.center-pane-rail--row > .message-user.message-card {
+  max-width: min(100%, 720px);
+  width: fit-content;
+}
+
+.center-pane-rail--row > .message-system {
+  max-width: 100%;
+  width: 100%;
+}
+
 .messages-virtual-row {
   position: absolute;
   left: 0;
@@ -23,6 +50,7 @@
 }
 
 .messages-empty {
+  width: 100%;
   padding: var(--space-6);
   color: var(--text-muted);
   overflow: auto;
@@ -32,7 +60,7 @@
 .message-card {
   display: grid;
   gap: 4px;
-  max-width: min(92%, 900px);
+  max-width: 100%;
   width: fit-content;
   min-width: 0;
 }
@@ -55,7 +83,7 @@
 .message-system {
   margin-right: auto;
   align-items: start;
-  max-width: min(74%, 780px);
+  max-width: 100%;
 }
 
 .message-system .message-timeline-row {
@@ -113,7 +141,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: hsl(151 30% 40%);
+  color: var(--accent-border-medium);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -130,16 +158,16 @@
 
 .message-copy-btn:hover {
   color: var(--accent-green);
-  border-color: hsl(151 40% 30% / 0.6);
-  background: hsl(151 30% 15% / 0.4);
+  border-color: var(--accent-border-medium);
+  background: var(--accent-bg-medium);
 }
 
 .message-copy-btn:focus-visible {
   opacity: 1;
   pointer-events: auto;
   outline: none;
-  border-color: hsl(151 40% 30% / 0.7);
-  background: hsl(151 30% 15% / 0.3);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-bg-light);
 }
 
 .message-copy-btn[aria-label="Copied"] {
@@ -1334,21 +1362,23 @@
 
 .copy-button:hover {
   color: var(--accent-green);
-  border-color: hsl(151 40% 30% / 0.6);
-  background: hsl(151 30% 15% / 0.4);
+  border-color: var(--accent-border-medium);
+  background: var(--accent-bg-medium);
 }
 
 .copy-button:focus-visible {
   opacity: 1;
   pointer-events: auto;
   outline: none;
-  border-color: hsl(151 40% 30% / 0.7);
-  background: hsl(151 30% 15% / 0.3);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-bg-light);
 }
 
 /* Confirmed-copy state */
 .copy-button[aria-label="Copied"] {
   color: var(--accent-green);
+  border-color: var(--accent-border-medium);
+  background: var(--accent-bg-medium);
   opacity: 1;
   pointer-events: auto;
 }
@@ -1782,8 +1812,8 @@
 .composer-docks-float {
   position: absolute;
   bottom: 100%;
-  left: 40px;
-  right: 40px;
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   pointer-events: none;
@@ -1811,6 +1841,11 @@
 }
 
 .composer-docks-float .dock-surface.dock-surface--collapsed-inline .dock-surface-panel {
+  width: calc(100% - 72px);
+  margin: 0 auto;
+}
+
+.composer-docks-float .dock-surface .dock-surface-panel {
   width: calc(100% - 72px);
   margin: 0 auto;
 }
@@ -2390,7 +2425,7 @@
   margin-left: auto;
 }
 
-/* ─── Plan card bubble ───────────────────────────────────────────────────── */
+/* ─── Plan card bubble (collapsible) ─────────────────────────────────────── */
 
 .plan-card-bubble {
   border: 1px solid var(--border-secondary, var(--border));
@@ -2401,36 +2436,122 @@
 }
 
 .plan-card-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 8px 14px;
+  border-bottom: 1px solid var(--border-secondary, var(--border));
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.plan-card-bubble-label {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--accent-green, var(--text-muted));
-  border-bottom: 1px solid var(--border-secondary, var(--border));
-  background: rgba(255, 255, 255, 0.02);
+}
+
+.plan-card-bubble-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.plan-card-bubble-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.plan-card-bubble-action-btn:hover {
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-color: var(--border-secondary);
 }
 
 .plan-card-bubble-body {
-  padding: 16px 18px;
+  padding: 12px 16px;
+  max-height: 320px;
+  overflow: hidden;
+  position: relative;
+}
+
+.plan-card-bubble--expanded .plan-card-bubble-body {
+  max-height: none;
+  overflow: visible;
+}
+
+.plan-card-bubble--collapsible:not(.plan-card-bubble--expanded) .plan-card-bubble-body::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 56px;
+  background: linear-gradient(to bottom, transparent, rgba(18, 18, 18, 0.95));
+  pointer-events: none;
+}
+
+.plan-card-bubble-body .text-part,
+.plan-card-bubble-body .text-part-body,
+.plan-card-bubble-body .part-text-md,
+.plan-card-bubble-body .part-text-md :where(*) {
+  -webkit-text-fill-color: currentColor;
+}
+
+.plan-card-bubble-body .part-text-md {
+  color: var(--text-primary);
+}
+
+.plan-card-bubble-fallback {
+  margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: var(--text-primary);
-  max-height: 500px;
-  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary, #E5E5E5);
+  -webkit-text-fill-color: currentColor;
+  opacity: 1;
+  visibility: visible;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
-.plan-card-bubble-body h1,
-.plan-card-bubble-body h2,
-.plan-card-bubble-body h3 {
-  margin-top: 0.8em;
-  margin-bottom: 0.4em;
+.plan-card-bubble-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  border-top: 1px solid var(--border-secondary, var(--border));
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease;
 }
 
-.plan-card-bubble-body h1:first-child,
-.plan-card-bubble-body h2:first-child,
-.plan-card-bubble-body h3:first-child {
-  margin-top: 0;
+.plan-card-bubble-toggle:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.plan-card-bubble-chevron {
+  transition: transform 200ms ease;
+}
+
+.plan-card-bubble-chevron--up {
+  transform: rotate(180deg);
 }
 
 /* ─── QuestionDock (structured question UI) ──────────────────────────────── */
@@ -3124,4 +3245,198 @@
 .turn-divider-badge {
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* ─── InteractionCard (replaces composer for questions / plan-implement) ── */
+
+.interaction-card {
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: var(--bg-input);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 12px;
+}
+
+.interaction-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.interaction-card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.interaction-card-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.interaction-card-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.interaction-card-option:hover {
+  background: var(--bg-hover);
+}
+
+.interaction-card-option--selected {
+  border-color: var(--accent-green, #22c55e);
+  background: var(--accent-bg-light);
+  color: var(--text-primary);
+}
+
+.interaction-card-option--custom {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.interaction-card-option--selected.interaction-card-option--custom {
+  color: var(--text-primary);
+  font-style: normal;
+}
+
+.interaction-card-option-number {
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 18px;
+  flex-shrink: 0;
+}
+
+.interaction-card-option--selected .interaction-card-option-number {
+  color: var(--accent-green, #22c55e);
+}
+
+.interaction-card-option-label {
+  flex: 1;
+}
+
+.interaction-card-option-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border-secondary);
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.interaction-card-option--selected .interaction-card-option-radio {
+  border-color: var(--accent-green, #22c55e);
+  background: var(--accent-green, #22c55e);
+  box-shadow: inset 0 0 0 3px var(--bg-input);
+}
+
+.interaction-card-textarea-wrap {
+  width: 100%;
+}
+
+.interaction-card-textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  outline: none;
+  min-height: 56px;
+  box-sizing: border-box;
+  transition: border-color 150ms ease;
+}
+
+.interaction-card-textarea:focus {
+  border-color: var(--accent-green, #22c55e);
+}
+
+.interaction-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.interaction-card-dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.interaction-card-dismiss:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.interaction-card-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.interaction-card-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.interaction-card-submit.is-ready {
+  border-color: var(--accent-green, #22c55e);
+  background: var(--accent-bg-medium);
+  color: var(--accent-green, #22c55e);
+}
+
+.interaction-card-submit.is-ready:hover {
+  background: color-mix(in srgb, var(--accent-green) 20%, transparent);
+}
+
+.interaction-card-dismiss kbd,
+.interaction-card-submit kbd {
+  font-size: 10px;
+  padding: 1px 4px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
 }

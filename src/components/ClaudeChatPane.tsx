@@ -253,126 +253,140 @@ export function ClaudeChatPane({
         virtualize={false}
         sessionId={sessionStorageKey}
         emptyState={(
-          <div className="codex-empty">
-            <Bot size={24} color="var(--text-muted)" />
-            <span>Send a prompt to start chatting with Claude.</span>
+          <div className="center-pane-rail">
+            <div className="codex-empty">
+              <Bot size={24} color="var(--text-muted)" />
+              <span>Send a prompt to start chatting with Claude.</span>
+            </div>
           </div>
         )}
-        renderRow={(row) => <UnifiedTimelineRowView key={row.id} row={row} />}
-        footer={<div ref={messagesEndRef} />}
-      />
-      <ComposerPanel
-        placeholder="Send to Claude..."
-        composer={composer}
-        setComposer={setComposer}
-        composerAttachments={[]}
-        removeAttachment={() => {}}
-        slashMenuOpen={false}
-        filteredSlashCommands={[]}
-        slashSelectedIndex={0}
-        insertSlashCommand={() => {}}
-        handleSlashKeyDown={() => {}}
-        addComposerAttachments={() => {}}
-        sendPrompt={() => {
-          const trimmed = composer.trim();
-          if (!trimmed) {
-            return;
-          }
-          onFirstMessage?.();
-          if (!hasUserMessages) {
-            onTitleChange?.(deriveSessionTitleFromPrompt(trimmed));
-          }
-          setComposer("");
-          void startTurn(promptEffort, {
-            model: selectedModelId,
-            permissionMode: isPlanMode ? "plan" : permissionMode,
-            effort,
-            fastMode,
-            thinking,
-          });
-        }}
-        abortActiveSession={() => void interruptTurn()}
-        isSessionBusy={isStreaming}
-        isSendingPrompt={false}
-        pickImageAttachment={() => {}}
-        hasActiveSession={true}
-        isPlanMode={isPlanMode}
-        hasPlanAgent
-        togglePlanMode={setIsPlanMode}
-        browserModeEnabled={browserModeEnabled}
-        setBrowserModeEnabled={setBrowserModeEnabled}
-        agentOptions={[]}
-        onAgentChange={() => {}}
-        permissionMode={permissionMode}
-        onPermissionModeChange={onPermissionModeChange}
-        compactionProgress={0}
-        compactionHint="Context usage"
-        compactionCompacted={false}
-        branchMenuOpen={branchMenuOpen}
-        setBranchMenuOpen={setBranchMenuOpen}
-        branchControlWidthCh={branchControlWidthCh}
-        branchLoading={branchLoading}
-        branchSwitching={branchSwitching}
-        hasActiveProject={hasActiveProject}
-        branchCurrent={branchCurrent}
-        branchDisplayValue={branchDisplayValue}
-        branchSearchInputRef={branchSearchInputRef}
-        branchQuery={branchQuery}
-        setBranchQuery={setBranchQuery}
-        branchActionError={branchActionError}
-        clearBranchActionError={clearBranchActionError}
-        checkoutBranch={checkoutBranch}
-        filteredBranches={filteredBranches}
-        openBranchCreateModal={openBranchCreateModal}
-        modelSelectOptions={modelOptions}
-        selectedModel={selectedModel}
-        setSelectedModel={setSelectedModel}
-        selectedVariant={undefined}
-        setSelectedVariant={() => {}}
-        variantOptions={[]}
-        customControls={(
-          <ClaudeTraitsPicker
-            model={selectedModelId}
-            effort={effort}
-            thinking={thinking}
-            fastMode={fastMode}
-            onEffortChange={setEffort}
-            onThinkingChange={setThinking}
-            onFastModeChange={setFastMode}
-          />
+        renderRow={(row) => (
+          <div className="center-pane-rail center-pane-rail--row">
+            <UnifiedTimelineRowView key={row.id} row={row} />
+          </div>
         )}
-        backgroundAgents={visibleBackgroundAgents}
-        selectedBackgroundAgentId={selectedBackgroundAgentId}
-        onOpenBackgroundAgent={(id) => setSelectedBackgroundAgentId(id)}
-        onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
-        onArchiveBackgroundAgent={async (agent) => {
-          const sessionID = agent.sessionID;
-          if (sessionID) {
-            await archiveProviderSession(sessionID);
-          }
-          setArchivedBackgroundAgentIds((current) => {
-            const next = new Set(current);
-            next.add(agent.id);
-            if (sessionID) {
-              next.add(sessionID);
-            }
-            return [...next];
-          });
-          if (selectedBackgroundAgentId === agent.id) {
-            setSelectedBackgroundAgentId(null);
-          }
-        }}
-        backgroundAgentDetail={
-          subagentDetailPresentation
-            ? subagentDetailPresentation.map((row) => <UnifiedTimelineRowView key={row.id} row={row} />)
-            : null
-        }
-        backgroundAgentTaskText={activeSubagent?.taskText ?? null}
-        backgroundAgentDetailLoading={activeSubagent ? (subagentLoading[activeSubagent.id] ?? false) : false}
-        backgroundAgentDetailError={activeSubagent ? (subagentErrors[activeSubagent.id] ?? null) : null}
-        pendingQuestion={pendingQuestion}
-        pendingPermission={pendingPermission}
+        footer={(
+          <div className="center-pane-rail center-pane-rail--row">
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       />
+      <div className="codex-composer-area">
+      <div className="center-pane-rail center-pane-rail--composer">
+          <ComposerPanel
+            placeholder="Send to Claude..."
+            composer={composer}
+            setComposer={setComposer}
+            composerAttachments={[]}
+            removeAttachment={() => {}}
+            slashMenuOpen={false}
+            filteredSlashCommands={[]}
+            slashSelectedIndex={0}
+            insertSlashCommand={() => {}}
+            handleSlashKeyDown={() => {}}
+            addComposerAttachments={() => {}}
+            sendPrompt={() => {
+              const trimmed = composer.trim();
+              if (!trimmed) {
+                return;
+              }
+              onFirstMessage?.();
+              if (!hasUserMessages) {
+                onTitleChange?.(deriveSessionTitleFromPrompt(trimmed));
+              }
+              setComposer("");
+              void startTurn(promptEffort, {
+                model: selectedModelId,
+                permissionMode: isPlanMode ? "plan" : permissionMode,
+                effort,
+                fastMode,
+                thinking,
+              });
+            }}
+            abortActiveSession={() => void interruptTurn()}
+            isSessionBusy={isStreaming}
+            isSendingPrompt={false}
+            pickImageAttachment={() => {}}
+            hasActiveSession={true}
+            isPlanMode={isPlanMode}
+            hasPlanAgent
+            togglePlanMode={setIsPlanMode}
+            browserModeEnabled={browserModeEnabled}
+            setBrowserModeEnabled={setBrowserModeEnabled}
+            agentOptions={[]}
+            onAgentChange={() => {}}
+            permissionMode={permissionMode}
+            onPermissionModeChange={onPermissionModeChange}
+            compactionProgress={0}
+            compactionHint="Context usage"
+            compactionCompacted={false}
+            branchMenuOpen={branchMenuOpen}
+            setBranchMenuOpen={setBranchMenuOpen}
+            branchControlWidthCh={branchControlWidthCh}
+            branchLoading={branchLoading}
+            branchSwitching={branchSwitching}
+            hasActiveProject={hasActiveProject}
+            branchCurrent={branchCurrent}
+            branchDisplayValue={branchDisplayValue}
+            branchSearchInputRef={branchSearchInputRef}
+            branchQuery={branchQuery}
+            setBranchQuery={setBranchQuery}
+            branchActionError={branchActionError}
+            clearBranchActionError={clearBranchActionError}
+            checkoutBranch={checkoutBranch}
+            filteredBranches={filteredBranches}
+            openBranchCreateModal={openBranchCreateModal}
+            modelSelectOptions={modelOptions}
+            selectedModel={selectedModel}
+            setSelectedModel={setSelectedModel}
+            selectedVariant={undefined}
+            setSelectedVariant={() => {}}
+            variantOptions={[]}
+            customControls={(
+              <ClaudeTraitsPicker
+                model={selectedModelId}
+                effort={effort}
+                thinking={thinking}
+                fastMode={fastMode}
+                onEffortChange={setEffort}
+                onThinkingChange={setThinking}
+                onFastModeChange={setFastMode}
+              />
+            )}
+            backgroundAgents={visibleBackgroundAgents}
+            selectedBackgroundAgentId={selectedBackgroundAgentId}
+            onOpenBackgroundAgent={(id) => setSelectedBackgroundAgentId(id)}
+            onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
+            onArchiveBackgroundAgent={async (agent) => {
+              const sessionID = agent.sessionID;
+              if (sessionID) {
+                await archiveProviderSession(sessionID);
+              }
+              setArchivedBackgroundAgentIds((current) => {
+                const next = new Set(current);
+                next.add(agent.id);
+                if (sessionID) {
+                  next.add(sessionID);
+                }
+                return [...next];
+              });
+              if (selectedBackgroundAgentId === agent.id) {
+                setSelectedBackgroundAgentId(null);
+              }
+            }}
+            backgroundAgentDetail={
+              subagentDetailPresentation
+                ? subagentDetailPresentation.map((row) => <UnifiedTimelineRowView key={row.id} row={row} />)
+                : null
+            }
+            backgroundAgentTaskText={activeSubagent?.taskText ?? null}
+            backgroundAgentDetailLoading={activeSubagent ? (subagentLoading[activeSubagent.id] ?? false) : false}
+            backgroundAgentDetailError={activeSubagent ? (subagentErrors[activeSubagent.id] ?? null) : null}
+            pendingQuestion={pendingQuestion}
+            pendingPermission={pendingPermission}
+          />
+        </div>
+      </div>
     </>
   );
 }

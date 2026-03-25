@@ -182,6 +182,35 @@ describe("useCodexSession", () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
 
+  it("acceptPlan starts an explicit default-mode implementation turn", async () => {
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    await act(async () => {
+      await result.current.connect();
+    });
+    await act(async () => {
+      await result.current.startThread();
+    });
+    await act(async () => {
+      await result.current.acceptPlan({
+        collaborationMode: "default",
+        model: "gpt-5.4",
+        effort: "medium",
+        planItemId: "plan-tool-1",
+      });
+    });
+
+    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith(
+      "thr-1",
+      "Implement the plan.",
+      "/workspace",
+      "gpt-5.4",
+      "medium",
+      "default",
+    );
+    expect(result.current.dismissedPlanIds.has("plan-tool-1")).toBe(true);
+  });
+
   it("keeps persisted state isolated per session key", async () => {
     const sessionOne = "/workspace::session-1";
     const sessionTwo = "/workspace::session-2";

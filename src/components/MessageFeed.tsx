@@ -100,24 +100,36 @@ export const MessageFeed = memo(function MessageFeed({
       sessionId={sessionId}
       emptyState={
         renderedRows.length === 0 && !(showAssistantPlaceholder && messages.length > 0)
-          ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div>
+          ? (
+            <div className="center-pane-rail">
+              <div className="messages-empty">No messages yet. Start by sending a prompt.</div>
+            </div>
+          )
           : undefined
       }
       estimateSize={estimateUnifiedTimelineRowHeight}
-      renderRow={(row) => <UnifiedTimelineRowView key={row.id} row={row} onOpenFileReference={onOpenFileReference} />}
+      renderRow={(row) => (
+        <div className="center-pane-rail center-pane-rail--row">
+          <UnifiedTimelineRowView key={row.id} row={row} onOpenFileReference={onOpenFileReference} />
+        </div>
+      )}
       footer={
         showAssistantPlaceholder && (messages.length > 0 || renderedRows.length > 0) ? (
           <>
-            <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
-              <div className="message-parts">
-                <section className="message-part thinking-panel">
-                  <div className="message-thinking">
-                    <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
-                  </div>
-                </section>
-              </div>
-            </MessageCardFrame>
-            <WorkingIndicator active startTimestamp={placeholderTimestamp || undefined} />
+            <div className="center-pane-rail center-pane-rail--row">
+              <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
+                <div className="message-parts">
+                  <section className="message-part thinking-panel">
+                    <div className="message-thinking">
+                      <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
+                    </div>
+                  </section>
+                </div>
+              </MessageCardFrame>
+            </div>
+            <div className="center-pane-rail center-pane-rail--row">
+              <WorkingIndicator active startTimestamp={placeholderTimestamp || undefined} />
+            </div>
           </>
         ) : undefined
       }

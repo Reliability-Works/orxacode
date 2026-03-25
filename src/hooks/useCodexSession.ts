@@ -46,6 +46,9 @@ import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 export { agentColor, agentColorForId } from "./codex-subagent-helpers";
 export type { SubagentInfo } from "./codex-subagent-helpers";
 
+const DEFAULT_CODEX_COLLABORATION_MODE_ID = "default";
+const PLAN_IMPLEMENTATION_PROMPT = "Implement the plan.";
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -2191,6 +2194,7 @@ export function useCodexSession(
         clearLastError();
         await window.orxa.codex.startTurn(thread.id, prompt, directory, options?.model, options?.effort, options?.collaborationMode);
       } catch (err) {
+        console.error("[useCodexSession] codex.startTurn failed", err);
         recordLastError(err);
       }
     },
@@ -2306,12 +2310,22 @@ export function useCodexSession(
 
   // Plan acceptance: switch to default/code mode and send implementation prompt
   // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
-  const acceptPlan = useCallback(async (planItemId?: string) => {
+  const acceptPlan = useCallback(async (options?: {
+    collaborationMode?: string;
+    model?: string;
+    effort?: string;
+    planItemId?: string;
+  }) => {
+    const collaborationMode = options?.collaborationMode ?? DEFAULT_CODEX_COLLABORATION_MODE_ID;
+    const planItemId = options?.planItemId;
     if (planItemId) {
       setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
-    // No collaborationMode → reverts to default (code) mode for implementation
-    await sendMessage("Implement this plan.", { model: undefined });
+    await sendMessage(PLAN_IMPLEMENTATION_PROMPT, {
+      model: options?.model,
+      effort: options?.effort,
+      collaborationMode,
+    });
   }, [sendMessage, setDismissedPlanIdsState]);
 
   // Check if a thread is a subagent thread

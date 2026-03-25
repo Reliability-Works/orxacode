@@ -481,7 +481,7 @@ body.is-resizing * {
 
 .composer-zone {
   border-top: 0;
-  padding: 0 40px 12px 40px;
+  padding: 0 0 12px;
   display: grid;
   gap: 0;
   position: relative;
@@ -1115,8 +1115,8 @@ body.is-resizing * {
 
 .composer-variant-select {
   width: auto;
-  min-width: 12ch;
-  max-width: min(24ch, 42vw);
+  min-width: 0;
+  max-width: min(20ch, 28vw);
 }
 
 .composer-model-btn {
@@ -1126,6 +1126,16 @@ body.is-resizing * {
   max-width: min(42ch, 48vw);
   cursor: pointer;
   overflow: hidden;
+}
+
+.composer-variant-btn {
+  max-width: min(18ch, 24vw);
+  padding-right: 6px;
+}
+
+.composer-variant-dropdown-menu {
+  min-width: 140px;
+  max-width: min(22ch, 30vw);
 }
 
 .composer-mode-toggle-icon {

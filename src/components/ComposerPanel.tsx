@@ -19,10 +19,8 @@ import { TodoDock } from "./chat/TodoDock";
 import type { TodoItem } from "./chat/TodoDock";
 import { ReviewChangesDock } from "./chat/ReviewChangesDock";
 import type { ReviewChangeItem } from "./chat/ReviewChangesDock";
-import { QuestionDock } from "./chat/QuestionDock";
 import type { AgentQuestion } from "./chat/QuestionDock";
 import { PermissionDock } from "./chat/PermissionDock";
-import { PlanDock } from "./chat/PlanDock";
 import { FollowupDock } from "./chat/FollowupDock";
 import { QueuedMessagesDock } from "./chat/QueuedMessagesDock";
 import { BackgroundAgentsPanel } from "./chat/BackgroundAgentsPanel";
@@ -99,6 +97,8 @@ type ComposerPanelProps = {
   selectedVariant?: string;
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
+  variantLabel?: string;
+  variantEmptyLabel?: string;
   customControls?: ReactNode;
   onLayoutHeightChange?: (height: number) => void;
   /** When true, always use the compact dropdown model selector instead of the full modal picker.
@@ -196,8 +196,6 @@ type ComposerDockStackProps = Pick<
   | "onTodoToggle"
   | "reviewChangesFiles"
   | "onOpenReviewChange"
-  | "pendingPlan"
-  | "pendingQuestion"
   | "pendingPermission"
   | "followupSuggestions"
   | "onFollowupSelect"
@@ -228,8 +226,6 @@ const ComposerDockStack = memo(function ComposerDockStack({
   onTodoToggle,
   reviewChangesFiles,
   onOpenReviewChange,
-  pendingPlan,
-  pendingQuestion,
   pendingPermission,
   followupSuggestions,
   onFollowupSelect,
@@ -293,22 +289,6 @@ const ComposerDockStack = memo(function ComposerDockStack({
             onToggle={onTodoToggle}
           />
         ) : null
-      ) : null}
-
-      {pendingPlan ? (
-        <PlanDock
-          onAccept={pendingPlan.onAccept}
-          onSubmitChanges={pendingPlan.onSubmitChanges}
-          onDismiss={pendingPlan.onDismiss}
-        />
-      ) : null}
-
-      {pendingQuestion ? (
-        <QuestionDock
-          questions={pendingQuestion.questions}
-          onSubmit={pendingQuestion.onSubmit}
-          onReject={pendingQuestion.onReject}
-        />
       ) : null}
 
       {pendingPermission ? (
@@ -386,6 +366,8 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
     selectedVariant,
     setSelectedVariant,
     variantOptions,
+    variantLabel,
+    variantEmptyLabel,
     customControls,
     onLayoutHeightChange,
     simpleModelPicker,
@@ -404,8 +386,6 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
     backgroundAgentDetailLoading,
     backgroundAgentDetailError,
     backgroundAgentTaggingHint,
-    pendingPlan,
-    pendingQuestion,
     pendingPermission,
     followupSuggestions,
     onFollowupSelect,
@@ -422,7 +402,9 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
   const [permissionMenuOpen, setPermissionMenuOpen] = useState(false);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [variantDropdownOpen, setVariantDropdownOpen] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const variantDropdownRef = useRef<HTMLDivElement | null>(null);
   const useDropdownModels = simpleModelPicker || modelSelectOptions.length <= 10;
   const agentMenuRef = useRef<HTMLDivElement | null>(null);
   const { composerHeight, composerResizeActive, startComposerResize } = useComposerResize({
@@ -446,6 +428,7 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
   useDismissibleLayer(permissionMenuOpen, permissionMenuRef, () => setPermissionMenuOpen(false));
   useDismissibleLayer(agentMenuOpen, agentMenuRef, () => setAgentMenuOpen(false));
   useDismissibleLayer(modelDropdownOpen, modelDropdownRef, () => setModelDropdownOpen(false));
+  useDismissibleLayer(variantDropdownOpen, variantDropdownRef, () => setVariantDropdownOpen(false));
 
   useLayoutEffect(() => {
     if (!onLayoutHeightChange) {
@@ -595,8 +578,6 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
         onTodoToggle={onTodoToggle}
         reviewChangesFiles={reviewChangesFiles}
         onOpenReviewChange={onOpenReviewChange}
-        pendingPlan={pendingPlan}
-        pendingQuestion={pendingQuestion}
         pendingPermission={pendingPermission}
         followupSuggestions={followupSuggestions}
         onFollowupSelect={onFollowupSelect}
@@ -917,53 +898,109 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
           ) : null}
         </div>
         {useDropdownModels ? (
-          <div ref={modelDropdownRef} className={`composer-model-dropdown-wrap ${modelDropdownOpen ? "open" : ""}`.trim()}>
-            <button
-              type="button"
-              className="composer-select composer-model-btn"
-              onClick={() => setModelDropdownOpen((v) => !v)}
-              aria-expanded={modelDropdownOpen}
-              aria-haspopup="listbox"
-              title={selectedModel ?? "Select model"}
-            >
-              <Cpu size={11} aria-hidden="true" />
-              <span className="composer-pill-label">
-                {(() => {
-                  const sel = modelSelectOptions.find((o) => o.key === selectedModel);
-                  return sel ? sel.modelName : modelSelectOptions.length === 0 ? "loading..." : "model";
-                })()}
-              </span>
-              <ChevronDown size={10} aria-hidden="true" />
-            </button>
-            {modelDropdownOpen ? (
-              <div className="composer-model-dropdown-menu" role="listbox" aria-label="Select model">
-                <small>Models</small>
-                <div className="composer-model-dropdown-list">
-                  {modelSelectOptions.length === 0 ? (
-                    <p>No models available</p>
-                  ) : (
-                    modelSelectOptions.map((opt) => (
+          <>
+            <div ref={modelDropdownRef} className={`composer-model-dropdown-wrap ${modelDropdownOpen ? "open" : ""}`.trim()}>
+              <button
+                type="button"
+                className="composer-select composer-model-btn"
+                onClick={() => setModelDropdownOpen((v) => !v)}
+                aria-expanded={modelDropdownOpen}
+                aria-haspopup="listbox"
+                title={selectedModel ?? "Select model"}
+              >
+                <Cpu size={11} aria-hidden="true" />
+                <span className="composer-pill-label">
+                  {(() => {
+                    const sel = modelSelectOptions.find((o) => o.key === selectedModel);
+                    return sel ? sel.modelName : modelSelectOptions.length === 0 ? "loading..." : "model";
+                  })()}
+                </span>
+                <ChevronDown size={10} aria-hidden="true" />
+              </button>
+              {modelDropdownOpen ? (
+                <div className="composer-model-dropdown-menu" role="listbox" aria-label="Select model">
+                  <small>Models</small>
+                  <div className="composer-model-dropdown-list">
+                    {modelSelectOptions.length === 0 ? (
+                      <p>No models available</p>
+                    ) : (
+                      modelSelectOptions.map((opt) => (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          role="option"
+                          aria-selected={opt.key === selectedModel}
+                          onClick={() => {
+                            setSelectedModel(opt.key);
+                            setModelDropdownOpen(false);
+                          }}
+                        >
+                          <span className="composer-model-dropdown-item-main">
+                            <span>{opt.modelName}</span>
+                          </span>
+                          {opt.key === selectedModel ? <Check size={13} aria-hidden="true" /> : null}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            {variantOptions.length > 0 ? (
+              <div ref={variantDropdownRef} className={`composer-model-dropdown-wrap ${variantDropdownOpen ? "open" : ""}`.trim()}>
+                <button
+                  type="button"
+                  className="composer-select composer-model-btn composer-variant-btn"
+                  onClick={() => setVariantDropdownOpen((value) => !value)}
+                  aria-label={variantLabel ?? "Variant"}
+                  aria-expanded={variantDropdownOpen}
+                  aria-haspopup="listbox"
+                  title={variantLabel ?? "Variant"}
+                >
+                  <span className="composer-pill-label">{selectedVariant ?? variantEmptyLabel ?? "(default)"}</span>
+                  <ChevronDown size={10} aria-hidden="true" />
+                </button>
+                {variantDropdownOpen ? (
+                  <div className="composer-model-dropdown-menu composer-variant-dropdown-menu" role="listbox" aria-label={variantLabel ?? "Variant"}>
+                    <small>{variantLabel ?? "Variant"}</small>
+                    <div className="composer-model-dropdown-list">
                       <button
-                        key={opt.key}
                         type="button"
                         role="option"
-                        aria-selected={opt.key === selectedModel}
+                        aria-selected={!selectedVariant}
                         onClick={() => {
-                          setSelectedModel(opt.key);
-                          setModelDropdownOpen(false);
+                          setSelectedVariant(undefined);
+                          setVariantDropdownOpen(false);
                         }}
                       >
                         <span className="composer-model-dropdown-item-main">
-                          <span>{opt.modelName}</span>
+                          <span>{variantEmptyLabel ?? "(default)"}</span>
                         </span>
-                        {opt.key === selectedModel ? <Check size={13} aria-hidden="true" /> : null}
+                        {!selectedVariant ? <Check size={13} aria-hidden="true" /> : null}
                       </button>
-                    ))
-                  )}
-                </div>
+                      {variantOptions.map((variant) => (
+                        <button
+                          key={variant}
+                          type="button"
+                          role="option"
+                          aria-selected={variant === selectedVariant}
+                          onClick={() => {
+                            setSelectedVariant(variant);
+                            setVariantDropdownOpen(false);
+                          }}
+                        >
+                          <span className="composer-model-dropdown-item-main">
+                            <span>{variant}</span>
+                          </span>
+                          {variant === selectedVariant ? <Check size={13} aria-hidden="true" /> : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
-          </div>
+          </>
         ) : (
           <ModelPicker
             modelSelectOptions={modelSelectOptions}
@@ -972,6 +1009,8 @@ export const ComposerPanel = memo(function ComposerPanel(props: ComposerPanelPro
             selectedVariant={selectedVariant}
             setSelectedVariant={setSelectedVariant}
             variantOptions={variantOptions}
+            variantLabel={variantLabel}
+            variantEmptyLabel={variantEmptyLabel}
           />
         )}
         {customControls}
@@ -1012,9 +1051,20 @@ type ModelPickerProps = {
   selectedVariant: string | undefined;
   setSelectedVariant: (value: string | undefined) => void;
   variantOptions: string[];
+  variantLabel?: string;
+  variantEmptyLabel?: string;
 };
 
-function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, selectedVariant, setSelectedVariant, variantOptions }: ModelPickerProps) {
+function ModelPicker({
+  modelSelectOptions,
+  selectedModel,
+  setSelectedModel,
+  selectedVariant,
+  setSelectedVariant,
+  variantOptions,
+  variantLabel,
+  variantEmptyLabel,
+}: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1091,11 +1141,11 @@ function ModelPicker({ modelSelectOptions, selectedModel, setSelectedModel, sele
       {variantOptions.length > 0 ? (
         <select
           className="composer-select composer-variant-select"
-          aria-label="Variant"
+          aria-label={variantLabel ?? "Variant"}
           value={selectedVariant ?? ""}
           onChange={(event) => setSelectedVariant(event.target.value || undefined)}
         >
-          <option value="">(default)</option>
+          <option value="">{variantEmptyLabel ?? "(default)"}</option>
           {variantOptions.map((variant) => (
             <option key={variant} value={variant}>
               {variant}

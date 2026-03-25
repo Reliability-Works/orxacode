@@ -80,6 +80,119 @@ describe("CodexService archive semantics", () => {
 });
 
 describe("CodexService turn steering", () => {
+  it("parses collaboration modes when app-server omits ids", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({
+      data: [
+        { name: "Plan", mode: "plan", model: null, reasoning_effort: "medium" },
+        { name: "Default", mode: "default", model: null, reasoning_effort: null },
+      ],
+    }));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      process: {} as object,
+      request,
+    });
+
+    await expect(service.listCollaborationModes()).resolves.toEqual([
+      {
+        id: "plan",
+        label: "Plan",
+        mode: "plan",
+        model: "",
+        reasoningEffort: "medium",
+        developerInstructions: "",
+      },
+      {
+        id: "default",
+        label: "Default",
+        mode: "default",
+        model: "",
+        reasoningEffort: "",
+        developerInstructions: "",
+      },
+    ]);
+  });
+
+  it("includes required collaboration mode settings when starting a turn", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({}));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      request,
+      _collaborationModes: [
+        {
+          id: "default",
+          label: "Default",
+          mode: "default",
+          model: "gpt-5.4",
+          reasoningEffort: "high",
+          developerInstructions: "",
+        },
+      ],
+    });
+
+    await service.startTurn({
+      threadId: "thread-1",
+      prompt: "Implement the plan.",
+      collaborationMode: "default",
+    });
+
+    expect(request).toHaveBeenCalledWith("turn/start", {
+      threadId: "thread-1",
+      input: [{ type: "text", text: "Implement the plan.", text_elements: [] }],
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.4",
+          reasoning_effort: "high",
+          developer_instructions: null,
+        },
+      },
+    });
+  });
+
+  it("falls back to stored thread settings when plan acceptance omits model and effort", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({}));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      request,
+      _collaborationModes: [
+        {
+          id: "default",
+          label: "Default",
+          mode: "default",
+          model: "",
+          reasoningEffort: "",
+          developerInstructions: "",
+        },
+      ],
+      threadSettings: new Map([
+        ["thread-1", { model: "gpt-5.4", reasoningEffort: "medium" }],
+      ]),
+    });
+
+    await service.startTurn({
+      threadId: "thread-1",
+      prompt: "Implement the plan.",
+      collaborationMode: "default",
+    });
+
+    expect(request).toHaveBeenCalledWith("turn/start", {
+      threadId: "thread-1",
+      input: [{ type: "text", text: "Implement the plan.", text_elements: [] }],
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.4",
+          reasoning_effort: "medium",
+          developer_instructions: null,
+        },
+      },
+    });
+  });
+
   it("sends turn/steer with expectedTurnId and text input", async () => {
     const service = new CodexService();
     const request = vi.fn(async () => ({}));

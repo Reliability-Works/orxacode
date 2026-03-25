@@ -111,13 +111,14 @@ function parseModeListResponse(response: unknown): CodexCollaborationMode[] {
     .map((item: unknown) => {
       if (!item || typeof item !== "object") return null;
       const m = item as Record<string, unknown>;
+      const id = asString(m.id ?? m.mode ?? m.name).trim();
       return {
-        id: String(m.id ?? ""),
-        label: String(m.label ?? m.name ?? m.id ?? ""),
-        mode: String(m.mode ?? ""),
-        model: String(m.model ?? ""),
-        reasoningEffort: String(m.reasoningEffort ?? m.reasoning_effort ?? ""),
-        developerInstructions: String(m.developerInstructions ?? m.developer_instructions ?? ""),
+        id,
+        label: asString(m.label ?? m.name ?? m.mode ?? id).trim(),
+        mode: asString(m.mode).trim(),
+        model: asString(m.model).trim(),
+        reasoningEffort: asString(m.reasoningEffort ?? m.reasoning_effort).trim(),
+        developerInstructions: asString(m.developerInstructions ?? m.developer_instructions).trim(),
       };
     })
     .filter((m): m is CodexCollaborationMode => m !== null && m.id.length > 0);
@@ -410,6 +411,7 @@ export class CodexService extends EventEmitter {
   private readonly hiddenThreadListeners = new Map<string, Set<(notification: CodexNotification) => void>>();
   private readonly itemThreadIds = new Map<string, string>();
   private readonly turnThreadIds = new Map<string, string>();
+  private readonly threadSettings = new Map<string, { model?: string; reasoningEffort?: string | null }>();
 
   get state(): CodexState {
     return { ...this._state };
@@ -556,7 +558,16 @@ export class CodexService extends EventEmitter {
     if (params.model) threadParams.model = params.model;
     if (params.cwd) threadParams.cwd = params.cwd;
 
-    const result = (await this.request("thread/start", threadParams)) as { thread: CodexThread };
+    const result = (await this.request("thread/start", threadParams)) as {
+      thread: CodexThread;
+      model?: string;
+      reasoningEffort?: string | null;
+      reasoning_effort?: string | null;
+    };
+    this.threadSettings.set(result.thread.id, {
+      model: typeof result.model === "string" ? result.model : undefined,
+      reasoningEffort: asString(result.reasoningEffort ?? result.reasoning_effort).trim() || null,
+    });
     return result.thread;
   }
 
@@ -600,6 +611,12 @@ export class CodexService extends EventEmitter {
     await this.ensureConnected();
     const result = await this.request("thread/resume", { threadId: normalizedThreadId });
     const record = asRecord(result);
+    const resumedThread = asRecord(record?.thread);
+    const resumedThreadId = asString(resumedThread?.id ?? record?.threadId ?? record?.thread_id).trim() || normalizedThreadId;
+    this.threadSettings.set(resumedThreadId, {
+      model: asString(record?.model).trim() || undefined,
+      reasoningEffort: asString(record?.reasoningEffort ?? record?.reasoning_effort).trim() || null,
+    });
     return record ?? {};
   }
 
@@ -753,14 +770,30 @@ export class CodexService extends EventEmitter {
     if (params.model) turnParams.model = params.model;
     if (params.effort) turnParams.effort = params.effort;
     if (params.collaborationMode) {
-      // The Codex CLI expects collaborationMode as an object with mode + settings,
-      // not a plain string. Build the object from the cached mode metadata.
+      // The Codex app-server expects collaborationMode as an object with mode + settings.
+      // When using a built-in preset, developer_instructions must be null so Codex
+      // applies the preset instructions instead of reusing a previous turn's mode state.
       const modeId = params.collaborationMode;
       const modeMeta = this._collaborationModes.find((m) => m.id === modeId);
-      const settings: Record<string, unknown> = {};
-      if (params.model) settings.model = params.model;
-      if (params.effort) settings.reasoning_effort = params.effort;
-      if (modeMeta?.developerInstructions) settings.developer_instructions = modeMeta.developerInstructions;
+      const threadSettings = this.threadSettings.get(params.threadId);
+      const modeModel = modeMeta?.model?.trim() || undefined;
+      const modeReasoningEffort = modeMeta?.reasoningEffort?.trim() || null;
+      const model = params.model
+        ?? modeModel
+        ?? threadSettings?.model
+        ?? this._models.find((entry) => entry.isDefault)?.model
+        ?? "";
+      const reasoningEffort = (
+        params.effort
+        ?? modeReasoningEffort
+        ?? threadSettings?.reasoningEffort
+        ?? ""
+      ) || null;
+      const settings: Record<string, unknown> = {
+        model,
+        reasoning_effort: reasoningEffort,
+        developer_instructions: modeMeta?.developerInstructions || null,
+      };
       turnParams.collaborationMode = {
         mode: modeMeta?.mode || modeId,
         settings,
@@ -1050,6 +1083,7 @@ export class CodexService extends EventEmitter {
   }
 
   private cleanupThreadMappings(threadId: string) {
+    this.threadSettings.delete(threadId);
     for (const [itemId, ownerThreadId] of this.itemThreadIds.entries()) {
       if (ownerThreadId === threadId) {
         this.itemThreadIds.delete(itemId);

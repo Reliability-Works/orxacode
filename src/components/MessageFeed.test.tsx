@@ -167,6 +167,28 @@ describe("MessageFeed", () => {
     expect(screen.queryByText(/todowrite/i)).not.toBeInTheDocument();
   });
 
+  it("wraps transcript rows in the shared centered rail", () => {
+    const messages: SessionMessageBundle[] = [
+      createSessionMessageBundle({
+        id: "msg-assistant-rail",
+        role: "assistant",
+        sessionID: "session-1",
+        parts: [
+          createTextPart({
+            id: "part-assistant-rail",
+            sessionID: "session-1",
+            messageID: "msg-assistant-rail",
+            text: "Rail-wrapped transcript row",
+          }),
+        ],
+      }),
+    ];
+
+    render(<MessageFeed messages={messages} />);
+
+    expect(screen.getByText("Rail-wrapped transcript row").closest(".center-pane-rail")).toBeInTheDocument();
+  });
+
   it("hides internal ORXA browser machine-result user prompts", () => {
     const messages: SessionMessageBundle[] = [
       createSessionMessageBundle({

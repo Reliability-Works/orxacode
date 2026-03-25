@@ -481,7 +481,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setMessages, setPendingSessionId, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
+    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setPendingSessionId, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
   );
 
   const openWorkspaceDashboard = useCallback(async () => {

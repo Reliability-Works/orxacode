@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from "vitest";
+import type { CodexCollaborationMode, CodexModelEntry } from "@shared/ipc";
 import { CodexPane } from "./CodexPane";
 import { setPersistedCodexState } from "../hooks/codex-session-storage";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
@@ -15,8 +16,8 @@ function buildOrxaCodex() {
     getThreadRuntime: vi.fn(async () => ({ thread: null, childThreads: [] })),
     resumeThread: vi.fn(async () => ({ thread: null })) as ReturnType<typeof vi.fn>,
     listThreads: vi.fn(async () => ({ threads: [], nextCursor: undefined })),
-    listModels: vi.fn(async () => []),
-    listCollaborationModes: vi.fn(async () => []),
+    listModels: vi.fn<() => Promise<CodexModelEntry[]>>(async () => []),
+    listCollaborationModes: vi.fn<() => Promise<CodexCollaborationMode[]>>(async () => []),
     archiveThreadTree: vi.fn(async () => undefined),
     setThreadName: vi.fn(async () => undefined),
     generateRunMetadata: vi.fn(async () => ({ title: "Fix Workspace Session Naming", worktreeName: "fix/workspace-session-naming" })),
@@ -99,9 +100,10 @@ describe("CodexPane", () => {
       events: buildOrxaEvents(),
     } as unknown as typeof window.orxa;
 
-    render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
+    const { container } = render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
 
     expect(screen.getByPlaceholderText(/connecting to codex/i)).toBeInTheDocument();
+    expect(container.querySelector(".codex-composer-area .center-pane-rail .composer-zone")).toBeInTheDocument();
   });
 
   it("shows a dedicated usage alert when Codex reports exhausted quota", async () => {
@@ -125,12 +127,13 @@ describe("CodexPane", () => {
       createdAt: Date.now(),
     });
 
-    render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
+    const { container } = render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent(/codex usage unavailable/i);
       expect(screen.getByRole("alert")).toHaveTextContent(/no remaining codex credits or usage/i);
     });
+    expect(container.querySelector(".codex-composer-area .center-pane-rail .codex-session-alert")).toBeInTheDocument();
   });
 
   it("renders the send button", () => {
@@ -142,6 +145,58 @@ describe("CodexPane", () => {
     render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
 
     expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
+  });
+
+  it("shows Codex reasoning effort beside the model selector and sends it with the turn", async () => {
+    const codex = buildOrxaCodex();
+    codex.listModels = vi.fn(async () => ([
+      {
+        id: "gpt-5.4",
+        model: "gpt-5.4",
+        name: "GPT-5.4",
+        isDefault: true,
+        supportedReasoningEfforts: ["low", "medium", "high"],
+        defaultReasoningEffort: "high",
+      },
+    ]));
+    window.orxa = {
+      codex,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    render(
+      <CodexPane
+        directory="/workspace/project"
+        sessionStorageKey="/workspace/project::session-1"
+        onExit={mockOnExit}
+        defaultReasoningEffort="medium"
+        {...buildDefaultBranchProps()}
+      />,
+    );
+
+    const effortButton = await screen.findByRole("button", { name: /reasoning effort/i });
+    expect(effortButton).toHaveTextContent("medium");
+
+    const composer = screen.getByRole("textbox");
+    await act(async () => {
+      fireEvent.click(effortButton);
+    });
+    fireEvent.click(await screen.findByRole("option", { name: "low" }));
+    await act(async () => {
+      fireEvent.change(composer, { target: { value: "Ship the implementation." } });
+      fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    });
+
+    await waitFor(() => {
+      expect(codex.startTurn).toHaveBeenCalledWith(
+        "thr-1",
+        "Ship the implementation.",
+        "/workspace/project",
+        "gpt-5.4",
+        "low",
+        undefined,
+      );
+    });
   });
 
   it("renders the conversation log area", () => {
@@ -179,6 +234,7 @@ describe("CodexPane", () => {
     await waitFor(() => {
       expect(screen.getByText("Transcript rows stay in normal flow.")).toBeInTheDocument();
     });
+    expect(container.querySelector(".codex-messages .center-pane-rail .message-card.message-assistant")).toBeInTheDocument();
     expect(container.querySelector(".messages-virtual-row")).toBeNull();
     expect(container.querySelector(".messages-virtual-spacer")).toBeNull();
   });
@@ -234,6 +290,72 @@ describe("CodexPane", () => {
     await waitFor(() => {
       expect(screen.getByText(/page\.tsx$/)).toBeInTheDocument();
       expect(screen.getByText("Edited")).toBeInTheDocument();
+    });
+  });
+
+  it("accepting a plan switches the next Codex turn to explicit default mode", async () => {
+    const codex = buildOrxaCodex();
+    codex.listModels = vi.fn(async () => ([
+      {
+        id: "gpt-5.4",
+        model: "gpt-5.4",
+        name: "GPT-5.4",
+        isDefault: true,
+        supportedReasoningEfforts: ["low", "medium", "high"],
+        defaultReasoningEffort: "high",
+      },
+    ]));
+    codex.listCollaborationModes = vi.fn(async () => ([
+      { id: "default", label: "Default", mode: "default", model: "", reasoningEffort: "", developerInstructions: "" },
+      { id: "plan", label: "Plan", mode: "plan", model: "", reasoningEffort: "", developerInstructions: "" },
+    ]));
+
+    window.orxa = {
+      codex,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    setPersistedCodexState("/workspace/project::session-1", {
+      messages: [{
+        id: "plan-tool-1",
+        kind: "tool",
+        toolType: "plan",
+        title: "plan",
+        status: "completed",
+        output: "## Plan\n\n- First step",
+        timestamp: Date.now(),
+      }],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: false,
+      messageIdCounter: 1,
+    });
+
+    render(
+      <CodexPane
+        directory="/workspace/project"
+        sessionStorageKey="/workspace/project::session-1"
+        onExit={mockOnExit}
+        defaultReasoningEffort="medium"
+        {...buildDefaultBranchProps()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Implement this plan?")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /yes, implement this plan/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit/i }));
+
+    await waitFor(() => {
+      expect(codex.startTurn).toHaveBeenCalledWith(
+        "thr-1",
+        "Implement the plan.",
+        "/workspace/project",
+        undefined,
+        undefined,
+        "default",
+      );
     });
   });
 

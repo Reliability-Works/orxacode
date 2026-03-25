@@ -2744,14 +2744,14 @@ export default function App() {
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider]);
   const activeSessionPresentation = useMemo(() => selectSessionPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     assistantLabel,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider]);
   const activeReviewChangesFiles = useMemo(
     () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
     [activeSessionPresentation],
@@ -4046,6 +4046,7 @@ export default function App() {
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
                   codexAccessMode={appPreferences.codexAccessMode}
+                  defaultReasoningEffort={appPreferences.codexReasoningEffort}
                   permissionMode={appPreferences.permissionMode}
                   onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                   codexPath={appPreferences.codexPath}
@@ -4084,124 +4085,126 @@ export default function App() {
                     sessionId={activeSessionKey ?? undefined}
                   />
 
-                  <ComposerPanel
-                    composer={composer}
-                    setComposer={handleComposerChange}
-                    composerAttachments={composerAttachments}
-                    removeAttachment={removeAttachment}
-                    slashMenuOpen={slashMenuOpen}
-                    filteredSlashCommands={filteredSlashCommands}
-                    slashSelectedIndex={slashSelectedIndex}
-                    insertSlashCommand={insertSlashCommand}
-                    handleSlashKeyDown={handleSlashKeyDown}
-                    addComposerAttachments={addComposerAttachments}
-                    sendPrompt={sendComposerPrompt}
-                    abortActiveSession={abortActiveSession}
-                    isSessionBusy={isSessionInProgress}
-                    isSendingPrompt={isSendingPrompt}
-                    pickImageAttachment={pickImageAttachment}
-                    hasActiveSession={Boolean(activeSessionID)}
-                    isPlanMode={isPlanMode}
-                    hasPlanAgent={hasPlanAgent}
-                    togglePlanMode={togglePlanMode}
-                    browserModeEnabled={browserModeEnabled}
-                    setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
-                    hideBrowserToggle={false}
-                    hidePlanToggle
-                    agentOptions={effectiveComposerAgentOptions}
-                    selectedAgent={selectedAgent}
-                    onAgentChange={setSelectedAgent}
-                    permissionMode={appPreferences.permissionMode}
-                    onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
-                    compactionProgress={compactionMeter.progress}
-                    compactionHint={compactionMeter.hint}
-                    compactionCompacted={compactionMeter.compacted}
-                    branchMenuOpen={branchMenuOpen}
-                    setBranchMenuOpen={setBranchMenuOpen}
-                    branchControlWidthCh={branchControlWidthCh}
-                    branchLoading={branchLoading}
-                    branchSwitching={branchSwitching}
-                    hasActiveProject={Boolean(activeProjectDir)}
-                    branchCurrent={branchState?.current}
-                    branchDisplayValue={branchDisplayValue}
-                    branchSearchInputRef={branchSearchInputRef}
-                    branchQuery={branchQuery}
-                    setBranchQuery={setBranchQuery}
-                    branchActionError={branchActionError}
-                    clearBranchActionError={() => setBranchActionError(null)}
-                    checkoutBranch={checkoutBranch}
-                    filteredBranches={filteredBranches}
-                    openBranchCreateModal={openBranchCreateModal}
-                    modelSelectOptions={modelSelectOptions}
-                    selectedModel={selectedModel}
-                    setSelectedModel={setSelectedModel}
-                    selectedVariant={selectedVariant}
-                    setSelectedVariant={setSelectedVariant}
-                    variantOptions={variantOptions}
-                    placeholder={composerPlaceholder}
-                    onLayoutHeightChange={handleComposerLayoutHeightChange}
-                    onDockHeightChange={handleDockHeightChange}
-                    backgroundAgents={visibleBackgroundAgents}
-                    selectedBackgroundAgentId={selectedBackgroundAgentId}
-                    onOpenBackgroundAgent={setSelectedBackgroundAgentId}
-                    onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
-                    onArchiveBackgroundAgent={async (agent) => {
-                      if (!activeProjectDir || !agent.sessionID) {
-                        return;
-                      }
-                      try {
-                        await window.orxa.opencode.abortSession(activeProjectDir, agent.sessionID).catch(() => false);
-                        await window.orxa.opencode.archiveSession(activeProjectDir, agent.sessionID);
-                        setArchivedBackgroundAgentIds((current) => {
-                          const next = { ...current };
-                          const existing = new Set(next[activeProjectDir] ?? []);
-                          existing.add(agent.id);
-                          existing.add(agent.sessionID!);
-                          next[activeProjectDir] = [...existing];
-                          return next;
-                        });
-                        if (selectedBackgroundAgentId === agent.id) {
-                          setSelectedBackgroundAgentId(null);
+                  <div className="center-pane-rail center-pane-rail--composer">
+                    <ComposerPanel
+                      composer={composer}
+                      setComposer={handleComposerChange}
+                      composerAttachments={composerAttachments}
+                      removeAttachment={removeAttachment}
+                      slashMenuOpen={slashMenuOpen}
+                      filteredSlashCommands={filteredSlashCommands}
+                      slashSelectedIndex={slashSelectedIndex}
+                      insertSlashCommand={insertSlashCommand}
+                      handleSlashKeyDown={handleSlashKeyDown}
+                      addComposerAttachments={addComposerAttachments}
+                      sendPrompt={sendComposerPrompt}
+                      abortActiveSession={abortActiveSession}
+                      isSessionBusy={isSessionInProgress}
+                      isSendingPrompt={isSendingPrompt}
+                      pickImageAttachment={pickImageAttachment}
+                      hasActiveSession={Boolean(activeSessionID)}
+                      isPlanMode={isPlanMode}
+                      hasPlanAgent={hasPlanAgent}
+                      togglePlanMode={togglePlanMode}
+                      browserModeEnabled={browserModeEnabled}
+                      setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
+                      hideBrowserToggle={false}
+                      hidePlanToggle
+                      agentOptions={effectiveComposerAgentOptions}
+                      selectedAgent={selectedAgent}
+                      onAgentChange={setSelectedAgent}
+                      permissionMode={appPreferences.permissionMode}
+                      onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
+                      compactionProgress={compactionMeter.progress}
+                      compactionHint={compactionMeter.hint}
+                      compactionCompacted={compactionMeter.compacted}
+                      branchMenuOpen={branchMenuOpen}
+                      setBranchMenuOpen={setBranchMenuOpen}
+                      branchControlWidthCh={branchControlWidthCh}
+                      branchLoading={branchLoading}
+                      branchSwitching={branchSwitching}
+                      hasActiveProject={Boolean(activeProjectDir)}
+                      branchCurrent={branchState?.current}
+                      branchDisplayValue={branchDisplayValue}
+                      branchSearchInputRef={branchSearchInputRef}
+                      branchQuery={branchQuery}
+                      setBranchQuery={setBranchQuery}
+                      branchActionError={branchActionError}
+                      clearBranchActionError={() => setBranchActionError(null)}
+                      checkoutBranch={checkoutBranch}
+                      filteredBranches={filteredBranches}
+                      openBranchCreateModal={openBranchCreateModal}
+                      modelSelectOptions={modelSelectOptions}
+                      selectedModel={selectedModel}
+                      setSelectedModel={setSelectedModel}
+                      selectedVariant={selectedVariant}
+                      setSelectedVariant={setSelectedVariant}
+                      variantOptions={variantOptions}
+                      placeholder={composerPlaceholder}
+                      onLayoutHeightChange={handleComposerLayoutHeightChange}
+                      onDockHeightChange={handleDockHeightChange}
+                      backgroundAgents={visibleBackgroundAgents}
+                      selectedBackgroundAgentId={selectedBackgroundAgentId}
+                      onOpenBackgroundAgent={setSelectedBackgroundAgentId}
+                      onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
+                      onArchiveBackgroundAgent={async (agent) => {
+                        if (!activeProjectDir || !agent.sessionID) {
+                          return;
                         }
-                        await refreshProject(activeProjectDir);
-                      } catch (error) {
-                        setStatusLine(error instanceof Error ? error.message : String(error));
-                      }
-                    }}
-                    backgroundAgentDetail={backgroundAgentDetail}
-                    backgroundAgentTaskText={backgroundAgentTaskText}
-                    backgroundAgentDetailLoading={selectedBackgroundAgentLoading}
-                    backgroundAgentDetailError={selectedBackgroundAgentError}
-                    backgroundAgentTaggingHint={null}
-                    todoItems={activeTodoPresentation?.items}
-                    todoOpen={dockTodosOpen}
-                    onTodoToggle={() => setDockTodosOpen((v) => !v)}
-                    reviewChangesFiles={showReviewChangesDrawer ? activeReviewChangesFiles : undefined}
-                    onOpenReviewChange={(path) => void openReferencedFile(path)}
-                    pendingPermission={dockPendingPermission}
-                    pendingQuestion={dockPendingQuestion}
-                    queuedMessages={followupQueue}
-                    sendingQueuedId={sendingQueuedId}
-                    onQueueMessage={queueFollowupMessage}
-                    queuedActionKind="send"
-                    onPrimaryQueuedAction={(id: string) => {
-                      const item = followupQueue.find((m) => m.id === id);
-                      if (!item || sendingQueuedId) return;
-                      setSendingQueuedId(id);
-                      void sendPrompt({
-                        textOverride: item.text,
-                        attachmentOverride: item.attachments ?? [],
-                        systemAddendum: effectiveSystemAddendum,
-                        promptSource: "user",
-                        tools: activePromptToolsPolicy,
-                      }).finally(() => {
-                        setSendingQueuedId(undefined);
-                      });
-                      removeQueuedMessage(id);
-                    }}
-                    onEditQueued={editQueuedMessage}
-                    onRemoveQueued={removeQueuedMessage}
-                  />
+                        try {
+                          await window.orxa.opencode.abortSession(activeProjectDir, agent.sessionID).catch(() => false);
+                          await window.orxa.opencode.archiveSession(activeProjectDir, agent.sessionID);
+                          setArchivedBackgroundAgentIds((current) => {
+                            const next = { ...current };
+                            const existing = new Set(next[activeProjectDir] ?? []);
+                            existing.add(agent.id);
+                            existing.add(agent.sessionID!);
+                            next[activeProjectDir] = [...existing];
+                            return next;
+                          });
+                          if (selectedBackgroundAgentId === agent.id) {
+                            setSelectedBackgroundAgentId(null);
+                          }
+                          await refreshProject(activeProjectDir);
+                        } catch (error) {
+                          setStatusLine(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                      backgroundAgentDetail={backgroundAgentDetail}
+                      backgroundAgentTaskText={backgroundAgentTaskText}
+                      backgroundAgentDetailLoading={selectedBackgroundAgentLoading}
+                      backgroundAgentDetailError={selectedBackgroundAgentError}
+                      backgroundAgentTaggingHint={null}
+                      todoItems={activeTodoPresentation?.items}
+                      todoOpen={dockTodosOpen}
+                      onTodoToggle={() => setDockTodosOpen((v) => !v)}
+                      reviewChangesFiles={showReviewChangesDrawer ? activeReviewChangesFiles : undefined}
+                      onOpenReviewChange={(path) => void openReferencedFile(path)}
+                      pendingPermission={dockPendingPermission}
+                      pendingQuestion={dockPendingQuestion}
+                      queuedMessages={followupQueue}
+                      sendingQueuedId={sendingQueuedId}
+                      onQueueMessage={queueFollowupMessage}
+                      queuedActionKind="send"
+                      onPrimaryQueuedAction={(id: string) => {
+                        const item = followupQueue.find((m) => m.id === id);
+                        if (!item || sendingQueuedId) return;
+                        setSendingQueuedId(id);
+                        void sendPrompt({
+                          textOverride: item.text,
+                          attachmentOverride: item.attachments ?? [],
+                          systemAddendum: effectiveSystemAddendum,
+                          promptSource: "user",
+                          tools: activePromptToolsPolicy,
+                        }).finally(() => {
+                          setSendingQueuedId(undefined);
+                        });
+                        removeQueuedMessage(id);
+                      }}
+                      onEditQueued={editQueuedMessage}
+                      onRemoveQueued={removeQueuedMessage}
+                    />
+                  </div>
 
                 </>
               )}
