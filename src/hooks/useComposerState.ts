@@ -265,10 +265,10 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
         system: normalizedSystemAddendum.length > 0 ? normalizedSystemAddendum : undefined,
         promptSource,
         tools: promptInput.tools,
-        attachments: capturedAttachments.map((attachment) => ({
+        attachments: capturedAttachments.map((attachment, index) => ({
           url: attachment.url,
           mime: attachment.mime,
-          filename: attachment.filename,
+          filename: `image${index + 1}`,
         })),
         agent: supportsSelectedAgent ? options.selectedAgent : undefined,
         model: selectedModelPayload,

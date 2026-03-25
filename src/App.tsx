@@ -1441,15 +1441,18 @@ export default function App() {
     }
   }, [activeProjectDir, projectDataByDirectory, setActiveProjectDir, setActiveSessionID, setMessages, setProjectData, setProjectDataForDirectory]);
 
+  const storeMarkSessionAbortRequestedAt = useUnifiedRuntimeStore((state) => state.markSessionAbortRequestedAt);
+
   const markSessionAbortRequested = useCallback((directory: string, sessionID: string) => {
     const now = Date.now();
     const key = buildSessionFeedNoticeKey(directory, sessionID);
     markManualSessionStopRequested(directory, sessionID, now);
+    storeMarkSessionAbortRequestedAt(key, now);
     setBrowserAutomationHaltedBySession((current) => ({
       ...current,
       [key]: now,
     }));
-  }, [buildSessionFeedNoticeKey, markManualSessionStopRequested, setBrowserAutomationHaltedBySession]);
+  }, [buildSessionFeedNoticeKey, markManualSessionStopRequested, storeMarkSessionAbortRequestedAt, setBrowserAutomationHaltedBySession]);
 
   const clearBrowserAutomationHalt = useCallback((directory: string, sessionID: string) => {
     const key = `${directory}::${sessionID}`;

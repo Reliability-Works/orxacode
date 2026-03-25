@@ -34,6 +34,14 @@ export function ToolGroup({ items, count, label, defaultCollapsed = true }: Tool
           >
             show all ({hiddenCount} more)
           </button>
+        ) : items.length > 3 ? (
+          <button
+            type="button"
+            className="tool-group-show-all"
+            onClick={() => setShowAll(false)}
+          >
+            show less
+          </button>
         ) : null}
       </div>
     </div>

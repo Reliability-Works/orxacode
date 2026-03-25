@@ -32,10 +32,12 @@
   gap: 4px;
   max-width: min(92%, 900px);
   width: fit-content;
+  min-width: 0;
 }
 
 .message-user.message-card {
   max-width: min(88%, 720px);
+  overflow-wrap: anywhere;
 }
 
 .message-user {
@@ -96,6 +98,8 @@
   display: grid;
   gap: 4px;
   padding: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .message-copy-btn {
@@ -152,6 +156,8 @@
   padding: 10px 14px;
   border: 1px solid var(--border);
   background: var(--bg-surface);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .message-user .message-part {
@@ -172,14 +178,15 @@
 .part-image {
   border-radius: 8px;
   overflow: hidden;
+  max-width: 220px;
 }
 
 .part-image img {
   display: block;
   max-width: 100%;
-  max-height: 400px;
+  max-height: 160px;
   border-radius: 8px;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .part-file {

@@ -139,7 +139,10 @@ export function assertPromptRequestInput(value: unknown): PromptRequest {
       const item = entry as { url?: unknown; mime?: unknown; filename?: unknown };
       const url = assertString(item.url, `attachments[${index}].url`);
       const mime = assertString(item.mime, `attachments[${index}].mime`);
-      if (url.length > 4096) {
+      // data: URLs contain base64-encoded image content and can be very large;
+      // file: URLs are local paths and should stay under a reasonable limit.
+      const urlMaxLength = url.startsWith("data:") ? 20_000_000 : 8192;
+      if (url.length > urlMaxLength) {
         throw new Error(`attachments[${index}].url is too long`);
       }
       if (mime.length > 256) {
