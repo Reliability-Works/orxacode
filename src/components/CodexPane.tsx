@@ -130,6 +130,7 @@ const CodexConversationView = memo(function CodexConversationView({
   handleScroll,
   showEmptyState,
   onOpenFileReference,
+  sessionId,
 }: {
   visibleMessages: CodexMessageItem[];
   trailingReasoning?: CodexMessageItem;
@@ -139,6 +140,7 @@ const CodexConversationView = memo(function CodexConversationView({
   handleScroll: () => void;
   showEmptyState: boolean;
   onOpenFileReference?: (reference: string) => void;
+  sessionId?: string;
 }) {
   const rows = useMemo<UnifiedTimelineRenderRow[]>(() => {
     const nextMessages = trailingReasoning ? [...visibleMessages, trailingReasoning] : visibleMessages;
@@ -154,6 +156,7 @@ const CodexConversationView = memo(function CodexConversationView({
       onScroll={handleScroll}
       estimateSize={estimateUnifiedTimelineRowHeight}
       virtualize={false}
+      sessionId={sessionId}
       emptyState={
         showEmptyState ? (
           <div className="codex-empty">
@@ -289,8 +292,6 @@ export function CodexPane({
   const [selectedCollabMode, setSelectedCollabMode] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const isUserNearBottomRef = useRef(true);
-  const SCROLL_THRESHOLD_PX = 120;
   // Track when the current turn started for notification delay
   const turnStartedAt = useRef<number>(0);
   const titleLockedRef = useRef(titleLocked);
@@ -345,30 +346,10 @@ export function CodexPane({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionStatus]);
 
-  // Track whether the user is near the bottom for smart auto-scroll
-  const handleScroll = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    isUserNearBottomRef.current = distanceFromBottom < SCROLL_THRESHOLD_PX;
-  }, []);
-
-  // Auto-scroll on new messages — only when user is near the bottom
-  // Throttled to one scroll per animation frame to avoid glitching during fast streaming
-  const scrollFrameRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!isUserNearBottomRef.current) return;
-    if (scrollFrameRef.current !== null) return;
-    scrollFrameRef.current = requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      messagesEndRef.current?.scrollIntoView?.({ behavior: "smooth" });
-    });
-  }, [messages]);
-
-  // Reset auto-scroll to active when thread changes
-  useEffect(() => {
-    isUserNearBottomRef.current = true;
-  }, [thread]);
+  // Scroll tracking & auto-scroll are now handled universally by
+  // VirtualizedTimeline via the sessionId prop. Keep a no-op callback
+  // for the onScroll slot so external scroll listeners still attach.
+  const handleScroll = useCallback(() => {}, []);
 
   useEffect(() => {
     titleLockedRef.current = titleLocked;
@@ -836,6 +817,7 @@ export function CodexPane({
         handleScroll={handleScroll}
         showEmptyState={messages.length === 0 && connectionStatus === "connected" && thread !== null}
         onOpenFileReference={onOpenFileReference}
+        sessionId={sessionStorageKey}
       />
 
       {/* Collaboration mode selector */}

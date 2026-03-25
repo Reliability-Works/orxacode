@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, useMemo, useRef, type CSSProperties } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import { MessageCardFrame } from "./chat/MessageCardFrame";
 import { ThinkingRow } from "./chat/ThinkingRow";
@@ -18,6 +18,7 @@ type Props = {
   workspaceDirectory?: string | null;
   bottomClearance?: number;
   onOpenFileReference?: (reference: string) => void;
+  sessionId?: string;
 };
 
 type SessionFeedNotice = {
@@ -37,9 +38,9 @@ export const MessageFeed = memo(function MessageFeed({
   workspaceDirectory,
   bottomClearance = 24,
   onOpenFileReference,
+  sessionId,
 }: Props) {
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
-  const isAtBottomRef = useRef(true);
   const messageFeedStyle = useMemo(
     () =>
       ({
@@ -85,55 +86,8 @@ export const MessageFeed = memo(function MessageFeed({
     return result;
   }, [renderedRows, sessionNotices]);
 
-  useEffect(() => {
-    const el = messageFeedRef.current;
-    if (!el) {
-      return;
-    }
-    const handleScroll = () => {
-      isAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
-    };
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
-
-  // When switching sessions (or workspaces), snap scroll to the bottom instantly
-  // so the user doesn't see the top of a long conversation flash by. We detect
-  // a session switch by checking if the first message ID changed (new session)
-  // vs the array just growing (new messages in the same session).
-  const prevFirstMessageIdRef = useRef(messages[0]?.info?.id);
-  const prevPresentationRef = useRef(presentation);
-  useLayoutEffect(() => {
-    const firstId = messages[0]?.info?.id;
-    const sessionChanged = prevFirstMessageIdRef.current !== firstId;
-    const presentationChanged = prevPresentationRef.current !== presentation;
-    prevFirstMessageIdRef.current = firstId;
-    prevPresentationRef.current = presentation;
-    if (sessionChanged || presentationChanged) {
-      const el = messageFeedRef.current;
-      if (el) {
-        el.scrollTop = el.scrollHeight;
-      }
-      isAtBottomRef.current = true;
-    }
-  }, [messages, presentation]);
-
-  useEffect(() => {
-    if (!isAtBottomRef.current) {
-      return;
-    }
-    const el = messageFeedRef.current;
-    if (!el) {
-      return;
-    }
-    if (typeof el.scrollTo === "function") {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages, renderedRows.length, sessionNotices.length, showAssistantPlaceholder]);
+  // Scroll-snap on session switch and auto-scroll on new messages are now
+  // handled universally inside VirtualizedTimeline via the sessionId prop.
 
   return (
     <VirtualizedTimeline
@@ -143,6 +97,7 @@ export const MessageFeed = memo(function MessageFeed({
       onScroll={undefined}
       style={messageFeedStyle}
       virtualize={false}
+      sessionId={sessionId}
       emptyState={
         renderedRows.length === 0 && !(showAssistantPlaceholder && messages.length > 0)
           ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div>

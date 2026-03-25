@@ -4081,6 +4081,7 @@ export default function App() {
                     workspaceDirectory={activeProjectDir ?? null}
                     bottomClearance={messageFeedBottomClearance}
                     onOpenFileReference={(reference) => void openReferencedFile(reference)}
+                    sessionId={activeSessionKey ?? undefined}
                   />
 
                   <ComposerPanel

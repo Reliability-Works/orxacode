@@ -251,6 +251,7 @@ export function ClaudeChatPane({
         ariaLabel="claude conversation"
         estimateSize={estimateUnifiedTimelineRowHeight}
         virtualize={false}
+        sessionId={sessionStorageKey}
         emptyState={(
           <div className="codex-empty">
             <Bot size={24} color="var(--text-muted)" />
