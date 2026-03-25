@@ -2,11 +2,13 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useBackgroundSessionDescriptors } from "./useBackgroundSessionDescriptors";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+import { resetPersistedCodexStateForTests, setPersistedCodexState } from "./codex-session-storage";
 
 describe("useBackgroundSessionDescriptors", () => {
   const sessionKey = "/repo/project::session-1";
 
   beforeEach(() => {
+    resetPersistedCodexStateForTests();
     useUnifiedRuntimeStore.setState({
       opencodeSessions: {},
       codexSessions: {},
@@ -19,6 +21,131 @@ describe("useBackgroundSessionDescriptors", () => {
       activeProvider: undefined,
       pendingSessionId: undefined,
     });
+  });
+
+  it("does not background-supervise idle Codex sessions just because they have persisted messages", () => {
+    const idleSessionKey = "/repo/project::session-2";
+    setPersistedCodexState(idleSessionKey, {
+      messages: [
+        {
+          id: "assistant-1",
+          kind: "message",
+          role: "assistant",
+          content: "Historical output",
+          timestamp: 1,
+        },
+      ],
+      thread: { id: "thread-2", preview: "Idle Codex thread", modelProvider: "openai", createdAt: 1 },
+      isStreaming: false,
+      messageIdCounter: 1,
+    });
+
+    const { result } = renderHook(() =>
+      useBackgroundSessionDescriptors({
+        activeProjectDir: "/repo/project",
+        activeSessionID: "active-session",
+        activeSessionKey: "/repo/project::active-session",
+        activeSessionType: "opencode",
+        cachedProjects: {
+          "/repo/project": {
+            directory: "/repo/project",
+            path: {} as never,
+            sessions: [{
+              id: "session-2",
+              projectID: "proj-1",
+              directory: "/repo/project",
+              slug: "idle-codex",
+              title: "Idle Codex",
+              version: "1",
+              time: { created: 1, updated: 2 },
+            }],
+            sessionStatus: {},
+            providers: {} as never,
+            agents: [],
+            config: {} as never,
+            permissions: [],
+            questions: [],
+            commands: [],
+            mcp: {},
+            lsp: [],
+            formatter: [],
+            ptys: [],
+          },
+        },
+        archivedBackgroundAgentIds: {},
+        getSessionType: () => "codex",
+        normalizePresentationProvider: (sessionType) =>
+          sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat"
+            ? sessionType
+            : sessionType
+              ? "opencode"
+              : undefined,
+      }),
+    );
+
+    expect(result.current.backgroundSessionDescriptors).toEqual([]);
+  });
+
+  it("still background-supervises busy Codex sessions", () => {
+    const busySessionKey = "/repo/project::session-3";
+    setPersistedCodexState(busySessionKey, {
+      messages: [],
+      thread: { id: "thread-3", preview: "Busy Codex thread", modelProvider: "openai", createdAt: 1 },
+      isStreaming: true,
+      messageIdCounter: 0,
+    });
+
+    const { result } = renderHook(() =>
+      useBackgroundSessionDescriptors({
+        activeProjectDir: "/repo/project",
+        activeSessionID: "active-session",
+        activeSessionKey: "/repo/project::active-session",
+        activeSessionType: "opencode",
+        cachedProjects: {
+          "/repo/project": {
+            directory: "/repo/project",
+            path: {} as never,
+            sessions: [{
+              id: "session-3",
+              projectID: "proj-1",
+              directory: "/repo/project",
+              slug: "busy-codex",
+              title: "Busy Codex",
+              version: "1",
+              time: { created: 1, updated: 2 },
+            }],
+            sessionStatus: {},
+            providers: {} as never,
+            agents: [],
+            config: {} as never,
+            permissions: [],
+            questions: [],
+            commands: [],
+            mcp: {},
+            lsp: [],
+            formatter: [],
+            ptys: [],
+          },
+        },
+        archivedBackgroundAgentIds: {},
+        getSessionType: () => "codex",
+        normalizePresentationProvider: (sessionType) =>
+          sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat"
+            ? sessionType
+            : sessionType
+              ? "opencode"
+              : undefined,
+      }),
+    );
+
+    expect(result.current.backgroundSessionDescriptors).toEqual([
+      {
+        key: "codex:/repo/project::session-3",
+        provider: "codex",
+        directory: "/repo/project",
+        sessionStorageKey: "/repo/project::session-3",
+      },
+    ]);
   });
 
   it("recomputes active background agents when codex runtime state changes without changing session identity", async () => {

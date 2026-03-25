@@ -1285,6 +1285,46 @@ describe("useCodexSession", () => {
     });
   });
 
+  it("pauses runtime polling while a plan is awaiting review", async () => {
+    vi.useFakeTimers();
+    const codex = buildOrxaCodex();
+    codex.getThreadRuntime = vi.fn(async () => ({
+      thread: { id: "thr-1", preview: "Main thread", modelProvider: "openai", createdAt: Date.now() },
+      childThreads: [],
+    }));
+    window.orxa = {
+      codex,
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    setPersistedCodexState(SESSION_KEY, {
+      messages: [{
+        id: "plan-tool-1",
+        kind: "tool",
+        toolType: "plan",
+        title: "plan",
+        status: "completed",
+        output: "## Plan\n\n- First step",
+        timestamp: Date.now(),
+      }],
+      thread: { id: "thr-1", preview: "", modelProvider: "openai", createdAt: Date.now() },
+      isStreaming: false,
+      messageIdCounter: 1,
+    });
+
+    renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+
+    const initialCallCount = codex.getThreadRuntime.mock.calls.length;
+
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+      await Promise.resolve();
+    });
+
+    expect(codex.getThreadRuntime).toHaveBeenCalledTimes(initialCallCount);
+    vi.useRealTimers();
+  });
+
   it("preserves provisional subagents across transient empty runtime snapshots", async () => {
     let notify: ((event: unknown) => void) | undefined;
     const codex = buildOrxaCodex();

@@ -390,20 +390,67 @@ export function useCodexSession(
   const setCodexSubagents = useUnifiedRuntimeStore((state) => state.setCodexSubagents);
   const setCodexActiveSubagentThreadId = useUnifiedRuntimeStore((state) => state.setCodexActiveSubagentThreadId);
   const setCodexRuntimeSnapshot = useUnifiedRuntimeStore((state) => state.setCodexRuntimeSnapshot);
+  const hasHydratedCodexRuntime = Boolean(
+    codexRuntime
+    && (
+      codexRuntime.connectionStatus !== "disconnected"
+      || codexRuntime.serverInfo
+      || codexRuntime.lastError
+      || codexRuntime.thread
+      || codexRuntime.runtimeSnapshot
+      || codexRuntime.messages.length > 0
+      || codexRuntime.pendingApproval
+      || codexRuntime.pendingUserInput
+      || codexRuntime.isStreaming
+      || codexRuntime.planItems.length > 0
+      || codexRuntime.dismissedPlanIds.length > 0
+      || codexRuntime.subagents.length > 0
+      || codexRuntime.activeSubagentThreadId
+      || codexRuntime.threadName !== undefined
+    ),
+  );
+  const runtimeState = hasHydratedCodexRuntime ? codexRuntime : null;
 
-  const connectionStatus = codexRuntime?.connectionStatus ?? "disconnected";
-  const serverInfo = codexRuntime?.serverInfo;
-  const thread = codexRuntime?.thread ?? persisted.thread;
-  const messages = codexRuntime?.messages ?? persisted.messages;
-  const pendingApproval = codexRuntime?.pendingApproval ?? null;
-  const pendingUserInput = codexRuntime?.pendingUserInput ?? null;
-  const isStreaming = codexRuntime?.isStreaming ?? persisted.isStreaming;
-  const lastError = codexRuntime?.lastError;
-  const threadName = codexRuntime?.threadName;
-  const planItems = codexRuntime?.planItems ?? [];
-  const dismissedPlanIds = useMemo(() => new Set(codexRuntime?.dismissedPlanIds ?? []), [codexRuntime?.dismissedPlanIds]);
-  const subagents = useMemo(() => codexRuntime?.subagents ?? [], [codexRuntime?.subagents]);
-  const activeSubagentThreadId = codexRuntime?.activeSubagentThreadId ?? null;
+  const connectionStatus = runtimeState?.connectionStatus ?? "disconnected";
+  const serverInfo = runtimeState?.serverInfo;
+  const thread = runtimeState?.thread ?? persisted.thread;
+  const messages = runtimeState?.messages ?? persisted.messages;
+  const pendingApproval = runtimeState?.pendingApproval ?? null;
+  const pendingUserInput = runtimeState?.pendingUserInput ?? null;
+  const isStreaming = runtimeState?.isStreaming ?? persisted.isStreaming;
+  const lastError = runtimeState?.lastError;
+  const threadName = runtimeState?.threadName;
+  const planItems = runtimeState?.planItems ?? [];
+  const dismissedPlanIds = useMemo(() => new Set(runtimeState?.dismissedPlanIds ?? []), [runtimeState?.dismissedPlanIds]);
+  const subagents = useMemo(() => runtimeState?.subagents ?? [], [runtimeState?.subagents]);
+  const activeSubagentThreadId = runtimeState?.activeSubagentThreadId ?? null;
+  const hasPendingPlanReview = useMemo(() => {
+    if (isStreaming) {
+      return false;
+    }
+    let lastPlanIdx = -1;
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index];
+      if (message.kind === "tool" && message.toolType === "plan") {
+        lastPlanIdx = index;
+        break;
+      }
+    }
+    if (lastPlanIdx < 0) {
+      return false;
+    }
+    const planMessage = messages[lastPlanIdx];
+    if (planMessage.kind !== "tool") {
+      return false;
+    }
+    if (!planMessage.output || planMessage.output.trim().length === 0 || planMessage.status === "error") {
+      return false;
+    }
+    if (dismissedPlanIds.has(planMessage.id)) {
+      return false;
+    }
+    return !messages.slice(lastPlanIdx + 1).some((message) => message.kind === "message" && message.role === "user");
+  }, [dismissedPlanIds, isStreaming, messages]);
 
   // Track the current assistant message being streamed
   const streamingItemIdRef = useRef<string | null>(null);
@@ -2071,13 +2118,17 @@ export function useCodexSession(
       return;
     }
 
-    void syncCodexThreadRuntime();
+    const hasBlockingInteraction = hasPendingPlanReview || Boolean(pendingApproval) || Boolean(pendingUserInput);
+    if (!hasBlockingInteraction) {
+      void syncCodexThreadRuntime();
+    }
     const hasActiveBackgroundWork =
       isStreaming ||
-      Boolean(pendingApproval) ||
-      Boolean(pendingUserInput) ||
       subagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction");
-    const pollIntervalMs = hasActiveBackgroundWork ? 1500 : 8000;
+    if (!hasActiveBackgroundWork || hasBlockingInteraction) {
+      return;
+    }
+    const pollIntervalMs = 1500;
     const timer = window.setInterval(() => {
       void syncCodexThreadRuntime();
     }, pollIntervalMs);
@@ -2085,7 +2136,7 @@ export function useCodexSession(
     return () => {
       window.clearInterval(timer);
     };
-  }, [isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
+  }, [hasPendingPlanReview, isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
 
   // Derive subagent messages reactively from current messages
   const subagentMessages = useMemo(() => {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { flushSync } from "react-dom";
 
 export interface InteractionCardOption {
   id: string;
@@ -17,15 +18,43 @@ export interface InteractionCardProps {
 export function InteractionCard({ title, options, onSubmit, onDismiss }: InteractionCardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [customText, setCustomText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const submitTimerRef = useRef<number | null>(null);
 
   const selectedOption = options.find((o) => o.id === selectedId);
   const isCustomSelected = selectedOption?.isCustomInput === true;
-  const canSubmit = selectedId !== null && (!isCustomSelected || customText.trim().length > 0);
+  const canSubmit = !isSubmitting && selectedId !== null && (!isCustomSelected || customText.trim().length > 0);
+
+  const handleOptionSelect = useCallback((optionId: string) => {
+    if (selectedId === optionId && !isSubmitting) {
+      return;
+    }
+    flushSync(() => {
+      setSelectedId(optionId);
+      setIsSubmitting(false);
+    });
+  }, [isSubmitting, selectedId]);
 
   const handleSubmit = useCallback(() => {
     if (!canSubmit || !selectedId) return;
-    onSubmit(selectedId, isCustomSelected ? customText.trim() : undefined);
+    const nextCustomText = isCustomSelected ? customText.trim() : undefined;
+    flushSync(() => {
+      setIsSubmitting(true);
+    });
+    if (submitTimerRef.current !== null) {
+      window.clearTimeout(submitTimerRef.current);
+    }
+    submitTimerRef.current = window.setTimeout(() => {
+      submitTimerRef.current = null;
+      try {
+        onSubmit(selectedId, nextCustomText);
+      } catch {
+        flushSync(() => {
+          setIsSubmitting(false);
+        });
+      }
+    }, 0);
   }, [canSubmit, customText, isCustomSelected, onSubmit, selectedId]);
 
   // Focus textarea when custom option is selected
@@ -34,6 +63,12 @@ export function InteractionCard({ title, options, onSubmit, onDismiss }: Interac
       textareaRef.current.focus();
     }
   }, [isCustomSelected]);
+
+  useEffect(() => () => {
+    if (submitTimerRef.current !== null) {
+      window.clearTimeout(submitTimerRef.current);
+    }
+  }, []);
 
   // Keyboard handler: ESC to dismiss, Enter to submit, number keys to select
   useEffect(() => {
@@ -59,13 +94,13 @@ export function InteractionCard({ title, options, onSubmit, onDismiss }: Interac
       const num = parseInt(e.key, 10);
       if (num >= 1 && num <= options.length) {
         e.preventDefault();
-        setSelectedId(options[num - 1].id);
+        handleOptionSelect(options[num - 1].id);
       }
     };
 
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [canSubmit, handleSubmit, onDismiss, options]);
+  }, [canSubmit, handleOptionSelect, handleSubmit, onDismiss, options]);
 
   return (
     <div className="interaction-card">
@@ -79,7 +114,8 @@ export function InteractionCard({ title, options, onSubmit, onDismiss }: Interac
             key={option.id}
             type="button"
             className={`interaction-card-option${selectedId === option.id ? " interaction-card-option--selected" : ""}${option.isCustomInput ? " interaction-card-option--custom" : ""}`}
-            onClick={() => setSelectedId(option.id)}
+            onMouseDown={() => handleOptionSelect(option.id)}
+            onClick={() => handleOptionSelect(option.id)}
           >
             <span className="interaction-card-option-number">{index + 1}.</span>
             <span className="interaction-card-option-label">{option.label}</span>
@@ -105,6 +141,7 @@ export function InteractionCard({ title, options, onSubmit, onDismiss }: Interac
         <button
           type="button"
           className="interaction-card-dismiss"
+          disabled={isSubmitting}
           onClick={onDismiss}
         >
           Dismiss <kbd>ESC</kbd>
