@@ -58,4 +58,35 @@ describe("claude-chat-session-storage", () => {
       subagents: [],
     });
   });
+
+  it("preserves a legacy provider thread id while runtime snapshots rewrite the persisted state", () => {
+    window.localStorage.setItem(
+      `orxa:claudeChatSession:v1:${SESSION_KEY}`,
+      JSON.stringify({
+        providerThreadId: "thread-legacy",
+        messages: [],
+        historyMessages: [],
+        isStreaming: false,
+        messageIdCounter: 0,
+        subagents: [],
+      }),
+    );
+
+    setPersistedClaudeChatState(SESSION_KEY, {
+      messages: [{ id: "msg-2", kind: "message", role: "assistant", content: "Updated", timestamp: 2 }],
+      historyMessages: [],
+      isStreaming: false,
+      messageIdCounter: 1,
+      subagents: [],
+    });
+
+    expect(
+      JSON.parse(window.localStorage.getItem(`orxa:claudeChatSession:v1:${SESSION_KEY}`) ?? "{}"),
+    ).toEqual(
+      expect.objectContaining({
+        providerThreadId: "thread-legacy",
+        messages: [{ id: "msg-2", kind: "message", role: "assistant", content: "Updated", timestamp: 2 }],
+      }),
+    );
+  });
 });

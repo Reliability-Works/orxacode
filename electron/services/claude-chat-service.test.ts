@@ -181,6 +181,7 @@ describe("ClaudeChatService", () => {
       expect.objectContaining({
         options: expect.objectContaining({
           permissionMode: "plan",
+          settingSources: ["user", "project", "local"],
         }),
       }),
     );

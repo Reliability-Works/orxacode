@@ -102,6 +102,7 @@ const CLAUDE_MODELS: ClaudeChatModelEntry[] = [
 ];
 const CLAUDE_HEALTH_CACHE_TTL_MS = 10_000;
 const CLAUDE_SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+const CLAUDE_SETTING_SOURCES = ["user", "project", "local"] as const;
 
 function supportsClaudeFastMode(model: string | null | undefined) {
   return model?.trim() === "claude-opus-4-6";
@@ -493,6 +494,7 @@ export class ClaudeChatService extends EventEmitter {
       includePartialMessages: true,
       env: process.env,
       additionalDirectories: [directory],
+      settingSources: [...CLAUDE_SETTING_SOURCES],
       ...(effectiveEffort ? { effort: effectiveEffort } : {}),
       ...(permissionMode ? { permissionMode } : {}),
       ...(permissionMode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),

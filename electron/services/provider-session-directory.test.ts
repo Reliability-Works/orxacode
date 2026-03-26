@@ -13,7 +13,10 @@ async function createDirectory() {
   const dir = await mkdtemp(path.join(os.tmpdir(), "orxa-provider-runtime-"));
   tempDirs.push(dir);
   const persistence = new PersistenceService(path.join(dir, "state.sqlite"));
-  return new ProviderSessionDirectory(persistence);
+  return {
+    persistence,
+    directory: new ProviderSessionDirectory(persistence),
+  };
 }
 
 afterEach(async () => {
@@ -22,7 +25,7 @@ afterEach(async () => {
 
 describe("ProviderSessionDirectory", () => {
   it("persists and reloads bindings", async () => {
-    const directory = await createDirectory();
+    const { directory } = await createDirectory();
 
     directory.upsert({
       provider: "claude-chat",
@@ -44,7 +47,7 @@ describe("ProviderSessionDirectory", () => {
   });
 
   it("merges runtime payload across upserts", async () => {
-    const directory = await createDirectory();
+    const { directory } = await createDirectory();
 
     directory.upsert({
       provider: "codex",
@@ -69,7 +72,7 @@ describe("ProviderSessionDirectory", () => {
   });
 
   it("ignores wrong-provider lookups and removes exact provider matches", async () => {
-    const directory = await createDirectory();
+    const { directory, persistence } = await createDirectory();
 
     directory.upsert({
       provider: "opencode",
@@ -83,5 +86,29 @@ describe("ProviderSessionDirectory", () => {
 
     directory.remove("opencode::1", "opencode");
     expect(directory.getBinding("opencode::1", "opencode")).toBeNull();
+
+    persistence.setValue("provider-runtime:v1", "shared-key", JSON.stringify({
+      provider: "claude-chat",
+      sessionKey: "shared-key",
+      status: "running",
+      resumeCursor: { resume: "claude-thread" },
+      runtimePayload: { stale: true },
+      updatedAt: new Date().toISOString(),
+    }));
+
+    const updated = directory.upsert({
+      provider: "codex",
+      sessionKey: "shared-key",
+      resumeCursor: { threadId: "codex-thread" },
+      runtimePayload: { directory: "/workspace" },
+    });
+
+    expect(updated).toEqual(
+      expect.objectContaining({
+        provider: "codex",
+        resumeCursor: { threadId: "codex-thread" },
+        runtimePayload: { directory: "/workspace" },
+      }),
+    );
   });
 });

@@ -1,6 +1,7 @@
 import type { ClaudeChatHistoryMessage } from "@shared/ipc";
 import type { ClaudeChatMessageItem, ClaudeChatSubagentState } from "./useClaudeChatSession";
 import { createPersistedSessionStore } from "./persisted-session-storage";
+import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 
 export interface PersistedClaudeChatState {
   messages: ClaudeChatMessageItem[];
@@ -28,12 +29,36 @@ const persistedSessions = createPersistedSessionStore<PersistedClaudeChatState>(
   }),
 });
 
+function claudeChatSessionStorageKey(sessionKey: string) {
+  return `orxa:claudeChatSession:v1:${sessionKey}`;
+}
+
 export function getPersistedClaudeChatState(sessionKey: string): PersistedClaudeChatState {
   return persistedSessions.get(sessionKey);
 }
 
 export function setPersistedClaudeChatState(sessionKey: string, next: PersistedClaudeChatState) {
+  // Preserve a legacy resume cursor until the main-process migration path
+  // explicitly clears it. Otherwise opening a legacy Claude chat session can
+  // erase the only persisted provider session id before the first resumed turn.
+  const raw = readPersistedValue(claudeChatSessionStorageKey(sessionKey));
   persistedSessions.set(sessionKey, next);
+  if (!raw) {
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw) as { providerThreadId?: unknown };
+    const providerThreadId = typeof parsed.providerThreadId === "string" ? parsed.providerThreadId.trim() : "";
+    if (!providerThreadId) {
+      return;
+    }
+    writePersistedValue(
+      claudeChatSessionStorageKey(sessionKey),
+      JSON.stringify({ ...next, providerThreadId }),
+    );
+  } catch {
+    // Ignore malformed legacy persistence blobs.
+  }
 }
 
 export function clearPersistedClaudeChatState(sessionKey: string) {

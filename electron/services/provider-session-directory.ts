@@ -116,7 +116,7 @@ export class ProviderSessionDirectory {
     if (!normalizedSessionKey) {
       throw new Error("sessionKey is required");
     }
-    const existing = this.getBinding(normalizedSessionKey);
+    const existing = this.getBinding(normalizedSessionKey, input.provider);
     const next: ProviderRuntimeBinding = {
       provider: input.provider,
       sessionKey: normalizedSessionKey,
