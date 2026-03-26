@@ -8,6 +8,7 @@ import {
   MAX_CANVAS_ZOOM,
   MIN_CANVAS_ZOOM,
 } from "../types/canvas";
+import { arrangeCanvasTilesInGrid, sortCanvasTilesForLayout, type CanvasTileSortMode } from "../lib/canvas-layout";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { CanvasTileComponent } from "./CanvasTile";
 import { TerminalTile } from "./tiles/TerminalTile";
@@ -20,6 +21,9 @@ import { ApiTesterTile } from "./tiles/ApiTesterTile";
 
 const TILE_DIMENSIONS: Record<CanvasTile["type"], { width: number; height: number }> = {
   terminal: { width: 560, height: 380 },
+  claude_code: { width: 560, height: 380 },
+  codex_cli: { width: 560, height: 380 },
+  opencode_cli: { width: 560, height: 380 },
   browser: { width: 548, height: 380 },
   file_editor: { width: 380, height: 380 },
   dev_server: { width: 728, height: 380 },
@@ -31,6 +35,7 @@ const TILE_DIMENSIONS: Record<CanvasTile["type"], { width: number; height: numbe
 const CASCADE_OFFSET = 30;
 const INITIAL_X = 40;
 const INITIAL_Y = 40;
+const GRID_ARRANGE_PADDING = 48;
 
 function computeNewTilePosition(tiles: CanvasTile[]): { x: number; y: number } {
   if (tiles.length === 0) {
@@ -44,6 +49,7 @@ export type CanvasPaneCanvasState = CanvasSessionState & {
   addTile: (tile: Omit<CanvasTile, "zIndex">) => void;
   removeTile: (tileId: string) => void;
   updateTile: (tileId: string, updates: Partial<Omit<CanvasTile, "id">>) => void;
+  setTiles: (tiles: CanvasTile[]) => void;
   bringToFront: (tileId: string) => void;
   toggleSnap: () => void;
   setTheme: (theme: Partial<CanvasSessionState["theme"]>) => void;
@@ -68,8 +74,21 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
   );
   const baseWorldSize = CANVAS_WORLD_SIZE;
   const scaledWorldSize = baseWorldSize * viewportZoom;
+  const viewportStateRef = useRef({
+    zoom: viewportZoom,
+    scrollLeft: canvasState.viewport.scrollLeft,
+    scrollTop: canvasState.viewport.scrollTop,
+  });
   const standardTiles = useMemo(() => canvasState.tiles.filter((tile) => !tile.maximized), [canvasState.tiles]);
   const maximizedTiles = useMemo(() => canvasState.tiles.filter((tile) => tile.maximized), [canvasState.tiles]);
+
+  useEffect(() => {
+    viewportStateRef.current = {
+      zoom: viewportZoom,
+      scrollLeft: canvasState.viewport.scrollLeft,
+      scrollTop: canvasState.viewport.scrollTop,
+    };
+  }, [canvasState.viewport.scrollLeft, canvasState.viewport.scrollTop, viewportZoom]);
 
   const centerViewportOnRect = useCallback(
     (rect: { x: number; y: number; width: number; height: number }, zoom = viewportZoom) => {
@@ -120,15 +139,25 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       const focusZoom = canvasState.tiles.length === 0 || viewportZoom < 0.2
         ? DEFAULT_CANVAS_ZOOM
         : viewportZoom;
+      const createdAt = Date.now();
 
       const metaByType: Record<CanvasTile["type"], Record<string, unknown>> = {
-        terminal: { directory, cwd: directory },
-        browser: { url: "about:blank" },
-        file_editor: { directory, filePath: "" },
-        dev_server: { directory, port: 3000, status: "stopped" },
-        markdown_preview: { directory, filePath: "", content: "" },
-        image_viewer: { filePath: "" },
-        api_tester: { method: "GET", url: "" },
+        terminal: { directory, cwd: directory, createdAt },
+        claude_code: {
+          directory,
+          cwd: directory,
+          createdAt,
+          startupCommand: "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n",
+          startupFilter: "claude",
+        },
+        codex_cli: { directory, cwd: directory, createdAt, startupCommand: "codex\n" },
+        opencode_cli: { directory, cwd: directory, createdAt, startupCommand: "opencode\n" },
+        browser: { url: "about:blank", createdAt },
+        file_editor: { directory, filePath: "", createdAt },
+        dev_server: { directory, port: 3000, status: "stopped", createdAt },
+        markdown_preview: { directory, filePath: "", content: "", createdAt },
+        image_viewer: { filePath: "", createdAt },
+        api_tester: { method: "GET", url: "", createdAt },
       };
 
       canvasState.addTile({
@@ -181,7 +210,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
         height: tile.height,
         minimized: false,
         maximized: false,
-        meta: { ...tile.meta },
+        meta: { ...tile.meta, createdAt: Date.now() },
       });
     },
     [canvasState],
@@ -212,6 +241,8 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
     syncingScrollRef.current = true;
     viewport.scrollLeft = nextScrollLeft;
     viewport.scrollTop = nextScrollTop;
+    viewportStateRef.current.scrollLeft = nextScrollLeft;
+    viewportStateRef.current.scrollTop = nextScrollTop;
     const rafId = window.requestAnimationFrame(() => {
       syncingScrollRef.current = false;
     });
@@ -247,6 +278,27 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
     centerViewportOnRect({ x: tile.x, y: tile.y, width: tile.width, height: tile.height });
   }, [centerViewportOnRect]);
 
+  const handleSortTiles = useCallback((mode: CanvasTileSortMode) => {
+    const viewport = viewportRef.current;
+    const logicalLeft = viewport
+      ? viewportStateRef.current.scrollLeft / viewportStateRef.current.zoom - CANVAS_WORLD_ORIGIN + GRID_ARRANGE_PADDING
+      : INITIAL_X;
+    const logicalTop = viewport
+      ? viewportStateRef.current.scrollTop / viewportStateRef.current.zoom - CANVAS_WORLD_ORIGIN + GRID_ARRANGE_PADDING
+      : INITIAL_Y;
+    const availableWidth = viewport
+      ? viewport.clientWidth / viewportStateRef.current.zoom - GRID_ARRANGE_PADDING * 2
+      : 1280;
+
+    const sortedTiles = sortCanvasTilesForLayout(standardTiles, mode);
+    const arrangedTiles = arrangeCanvasTilesInGrid(sortedTiles, logicalLeft, logicalTop, availableWidth);
+    const arrangedById = new Map(arrangedTiles.map((tile) => [tile.id, tile]));
+
+    canvasState.setTiles(
+      canvasState.tiles.map((tile) => arrangedById.get(tile.id) ?? tile),
+    );
+  }, [canvasState, standardTiles]);
+
   useEffect(() => {
     function handleMouseMove(event: MouseEvent) {
       const panState = panStateRef.current;
@@ -257,6 +309,8 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
 
       viewport.scrollLeft = panState.scrollLeft - (event.clientX - panState.pointerX);
       viewport.scrollTop = panState.scrollTop - (event.clientY - panState.pointerY);
+      viewportStateRef.current.scrollLeft = viewport.scrollLeft;
+      viewportStateRef.current.scrollTop = viewport.scrollTop;
     }
 
     function handleMouseUp() {
@@ -281,6 +335,8 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       return;
     }
 
+    viewportStateRef.current.scrollLeft = viewport.scrollLeft;
+    viewportStateRef.current.scrollTop = viewport.scrollTop;
     canvasState.setViewport({
       scrollLeft: viewport.scrollLeft,
       scrollTop: viewport.scrollTop,
@@ -292,6 +348,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       const clampedZoom = Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, nextZoom));
       const viewport = viewportRef.current;
       if (!viewport) {
+        viewportStateRef.current.zoom = clampedZoom;
         canvasState.setViewport({ zoom: clampedZoom });
         return;
       }
@@ -299,33 +356,40 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       const rect = viewport.getBoundingClientRect();
       const anchorX = anchor ? anchor.clientX - rect.left : viewport.clientWidth / 2;
       const anchorY = anchor ? anchor.clientY - rect.top : viewport.clientHeight / 2;
-      const logicalX = (viewport.scrollLeft + anchorX) / viewportZoom;
-      const logicalY = (viewport.scrollTop + anchorY) / viewportZoom;
+      const currentZoom = viewportStateRef.current.zoom;
+      const currentScrollLeft = viewportStateRef.current.scrollLeft;
+      const currentScrollTop = viewportStateRef.current.scrollTop;
+      const logicalX = (currentScrollLeft + anchorX) / currentZoom;
+      const logicalY = (currentScrollTop + anchorY) / currentZoom;
       const maxScrollLeft = Math.max(0, baseWorldSize * clampedZoom - viewport.clientWidth);
       const maxScrollTop = Math.max(0, baseWorldSize * clampedZoom - viewport.clientHeight);
+      const scrollLeft = Math.min(maxScrollLeft, Math.max(0, logicalX * clampedZoom - anchorX));
+      const scrollTop = Math.min(maxScrollTop, Math.max(0, logicalY * clampedZoom - anchorY));
+
+      viewportStateRef.current.zoom = clampedZoom;
+      viewportStateRef.current.scrollLeft = scrollLeft;
+      viewportStateRef.current.scrollTop = scrollTop;
 
       canvasState.setViewport({
         zoom: clampedZoom,
-        scrollLeft: Math.min(maxScrollLeft, Math.max(0, logicalX * clampedZoom - anchorX)),
-        scrollTop: Math.min(maxScrollTop, Math.max(0, logicalY * clampedZoom - anchorY)),
+        scrollLeft,
+        scrollTop,
       });
     },
-    [baseWorldSize, canvasState, viewportZoom],
+    [baseWorldSize, canvasState],
   );
 
   const handleZoomIn = useCallback(() => {
-    applyZoom(viewportZoom * 1.12);
-  }, [applyZoom, viewportZoom]);
+    applyZoom(viewportStateRef.current.zoom * 1.12);
+  }, [applyZoom]);
 
   const handleZoomOut = useCallback(() => {
-    applyZoom(viewportZoom / 1.12);
-  }, [applyZoom, viewportZoom]);
+    applyZoom(viewportStateRef.current.zoom / 1.12);
+  }, [applyZoom]);
 
   // Attach wheel handler as non-passive native event so preventDefault() stops the scroll
   const applyZoomRef = useRef(applyZoom);
-  const viewportZoomRef = useRef(viewportZoom);
   useEffect(() => { applyZoomRef.current = applyZoom; }, [applyZoom]);
-  useEffect(() => { viewportZoomRef.current = viewportZoom; }, [viewportZoom]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -335,7 +399,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       if (!(event.ctrlKey || event.metaKey)) return;
       event.preventDefault();
       const multiplier = Math.exp(-event.deltaY * 0.0015);
-      applyZoomRef.current(viewportZoomRef.current * multiplier, { clientX: event.clientX, clientY: event.clientY });
+      applyZoomRef.current(viewportStateRef.current.zoom * multiplier, { clientX: event.clientX, clientY: event.clientY });
     }
 
     viewport.addEventListener("wheel", handleWheel, { passive: false });
@@ -379,7 +443,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
       viewportScale: inViewportOverlay ? 1 : viewportZoom,
     };
 
-    if (tile.type === "terminal") {
+    if (tile.type === "terminal" || tile.type === "claude_code" || tile.type === "codex_cli" || tile.type === "opencode_cli") {
       return <TerminalTile key={tile.id} {...commonProps} />;
     }
 
@@ -454,6 +518,7 @@ export function CanvasPane({ canvasState, directory = "", onTheme, mcpDevToolsSt
         onToggleSnap={canvasState.toggleSnap}
         onReset={handleReset}
         onJumpToTile={handleJumpToTile}
+        onSortTiles={handleSortTiles}
         onDuplicateTile={handleDuplicateTile}
         onRemoveTile={handleTileRemove}
       />

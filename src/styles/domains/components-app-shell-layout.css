@@ -1366,6 +1366,12 @@ button.primary {
   height: 10px;
 }
 
+.session-type-icon--opencode {
+  color: #6C7BFF;
+  width: 10px;
+  height: 10px;
+}
+
 /* ============================================================
    Canvas pane
    ============================================================ */

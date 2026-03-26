@@ -10,7 +10,11 @@ export type OpenFileResult = {
 };
 
 export type ProviderUsageStats = {
+  totalThreads: number;
+  sessions7d: number;
+  sessions30d: number;
   totalSessions: number;
+  modelCount: number;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;

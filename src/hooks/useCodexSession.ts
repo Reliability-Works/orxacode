@@ -1,5 +1,5 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef } from "react";
-import type { CodexApprovalRequest, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
+import type { CodexApprovalRequest, CodexAttachment, CodexNotification, CodexState, CodexThread, CodexUserInputRequest } from "@shared/ipc";
 import type { TodoItem } from "../components/chat/TodoDock";
 import { getPersistedCodexState } from "./codex-session-storage";
 import {
@@ -2232,18 +2232,36 @@ export function useCodexSession(
   );
 
   const sendMessage = useCallback(
-    async (prompt: string, options?: { model?: string; effort?: string; collaborationMode?: string }) => {
+    async (
+      prompt: string,
+      options?: {
+        model?: string;
+        effort?: string;
+        collaborationMode?: string;
+        attachments?: CodexAttachment[];
+        displayPrompt?: string;
+      },
+    ) => {
       if (!window.orxa?.codex || !thread) return;
 
       const userMsgId = `codex-user-${messageIdCounter.current++}`;
+      const displayPrompt = options?.displayPrompt ?? prompt;
       setMessagesState((prev) => [
         ...prev,
-        { id: userMsgId, kind: "message", role: "user", content: prompt, timestamp: Date.now() },
+        { id: userMsgId, kind: "message", role: "user", content: displayPrompt, timestamp: Date.now() },
       ]);
 
       try {
         clearLastError();
-        await window.orxa.codex.startTurn(thread.id, prompt, directory, options?.model, options?.effort, options?.collaborationMode);
+        await window.orxa.codex.startTurn(
+          thread.id,
+          prompt,
+          directory,
+          options?.model,
+          options?.effort,
+          options?.collaborationMode,
+          options?.attachments,
+        );
       } catch (err) {
         console.error("[useCodexSession] codex.startTurn failed", err);
         recordLastError(err);

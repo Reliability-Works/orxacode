@@ -120,7 +120,7 @@ const bridge: OrxaBridge = {
     repairRuntime: () => ipcRenderer.invoke(IPC.opencodeRepairRuntime),
   },
   terminal: {
-    list: (directory) => ipcRenderer.invoke(IPC.terminalList, directory),
+    list: (directory, owner) => ipcRenderer.invoke(IPC.terminalList, directory, owner),
     create: (directory, cwd, title, owner) => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
     connect: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
     write: (directory, ptyID, data) => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
@@ -143,6 +143,7 @@ const bridge: OrxaBridge = {
     approve: (requestId, decision) => ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
     respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
     getSessionMessages: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+    renameProviderSession: (sessionId, title, directory) => ipcRenderer.invoke(IPC.claudeChatRenameProviderSession, sessionId, title, directory),
     archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
     archiveProviderSession: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
   },
@@ -188,7 +189,8 @@ const bridge: OrxaBridge = {
     archiveThreadTree: (threadId) => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
     setThreadName: (threadId, name) => ipcRenderer.invoke(IPC.codexSetThreadName, threadId, name),
     generateRunMetadata: (cwd, prompt) => ipcRenderer.invoke(IPC.codexGenerateRunMetadata, cwd, prompt),
-    startTurn: (threadId, prompt, cwd, model, effort, collaborationMode) => ipcRenderer.invoke(IPC.codexStartTurn, threadId, prompt, cwd, model, effort, collaborationMode),
+    startTurn: (threadId, prompt, cwd, model, effort, collaborationMode, attachments) =>
+      ipcRenderer.invoke(IPC.codexStartTurn, threadId, prompt, cwd, model, effort, collaborationMode, attachments),
     steerTurn: (threadId, turnId, prompt) => ipcRenderer.invoke(IPC.codexSteerTurn, threadId, turnId, prompt),
     approve: (requestId, decision) => ipcRenderer.invoke(IPC.codexApprove, requestId, decision),
     deny: (requestId) => ipcRenderer.invoke(IPC.codexDeny, requestId),

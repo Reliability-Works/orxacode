@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Terminal as TerminalIcon } from "lucide-react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
+import { SerializeAddon } from "xterm-addon-serialize";
 import "xterm/css/xterm.css";
+import type { OrxaTerminalSession } from "@shared/ipc";
 import { CanvasTileComponent } from "../CanvasTile";
 import type { CanvasTileComponentProps } from "./tile-shared";
+import { consumeClaudeStartupChunk } from "../../lib/claude-terminal-startup";
+import { createManagedTerminal, type ManagedTerminal } from "../../lib/xterm-terminal";
 
 const TERMINAL_THEME = {
   background: "#000000",
@@ -33,6 +35,17 @@ const TERMINAL_THEME = {
 type TerminalTileProps = CanvasTileComponentProps;
 
 type TerminalLoadState = "connecting" | "ready" | "error";
+
+function getCanvasTerminalMeta(tile: CanvasTileComponentProps["tile"]) {
+  const directory = typeof tile.meta.directory === "string" ? tile.meta.directory : "";
+  const cwd = typeof tile.meta.cwd === "string" ? tile.meta.cwd : directory;
+  const ptyId = typeof tile.meta.ptyId === "string" ? tile.meta.ptyId : null;
+  const serializedOutput = typeof tile.meta.serializedOutput === "string" ? tile.meta.serializedOutput : "";
+  const startupCommand = typeof tile.meta.startupCommand === "string" ? tile.meta.startupCommand : "";
+  const startupFilter = tile.meta.startupFilter === "claude" ? "claude" : null;
+
+  return { directory, cwd, ptyId, serializedOutput, startupCommand, startupFilter };
+}
 
 function sanitizeTerminalChunk(chunk: string) {
   const sanitized = chunk.replace(/\{"cursor":\d+\}/g, "");
@@ -67,6 +80,26 @@ async function connectTerminalWithRetry(
   throw lastError ?? new Error("Failed to connect terminal");
 }
 
+async function resolveCanvasPty(
+  tile: CanvasTileComponentProps["tile"],
+  onUpdate: TerminalTileProps["onUpdate"],
+): Promise<{ session: OrxaTerminalSession; created: boolean }> {
+  const { directory, cwd, ptyId } = getCanvasTerminalMeta(tile);
+  if (!directory) {
+    throw new Error("Terminal tile is missing a working directory.");
+  }
+
+  const list = await window.orxa.terminal.list(directory, "canvas");
+  const existing = ptyId ? list.find((entry) => entry.id === ptyId) : undefined;
+  if (existing && existing.status === "running") {
+    return { session: existing, created: false };
+  }
+
+  const nextPty = await window.orxa.terminal.create(directory, cwd, undefined, "canvas");
+  onUpdate(tile.id, { meta: { ...tile.meta, directory, cwd, ptyId: nextPty.id } });
+  return { session: nextPty, created: true };
+}
+
 export function TerminalTile({
   tile,
   canvasTheme,
@@ -83,15 +116,64 @@ export function TerminalTile({
   const [loadState, setLoadState] = useState<TerminalLoadState>("connecting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+  const terminalRef = useRef<ManagedTerminal | null>(null);
+  const serializeAddonRef = useRef<SerializeAddon | null>(null);
   const ptyIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<Array<() => void>>([]);
+  const startupBufferRef = useRef<string[]>([]);
+  const startupReadyRef = useRef(true);
 
   // Resolve directory and cwd from tile meta
-  const directory = typeof tile.meta.directory === "string" ? tile.meta.directory : "";
-  const cwd = typeof tile.meta.cwd === "string" ? tile.meta.cwd : directory;
+  const { directory, cwd, serializedOutput, startupCommand, startupFilter } = getCanvasTerminalMeta(tile);
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSerializedOutputRef = useRef(serializedOutput);
   const metaLabel = cwd || directory || "terminal";
+  const tileLabel =
+    tile.type === "claude_code"
+      ? "claude code"
+      : tile.type === "codex_cli"
+        ? "codex cli"
+        : tile.type === "opencode_cli"
+          ? "opencode"
+          : "terminal";
+  const iconColor =
+    tile.type === "claude_code"
+      ? "#D97706"
+      : tile.type === "codex_cli"
+        ? "#6C7BFF"
+        : tile.type === "opencode_cli"
+          ? "#22D3EE"
+          : "#22C55E";
+
+  const persistSerializedOutput = (nextSerializedOutput: string) => {
+    if (!nextSerializedOutput || nextSerializedOutput === lastSerializedOutputRef.current) {
+      return;
+    }
+    lastSerializedOutputRef.current = nextSerializedOutput;
+    onUpdate(tile.id, {
+      meta: {
+        ...tile.meta,
+        directory,
+        cwd,
+        ptyId: typeof tile.meta.ptyId === "string" ? tile.meta.ptyId : ptyIdRef.current,
+        serializedOutput: nextSerializedOutput,
+      },
+    });
+  };
+
+  const scheduleSnapshotPersist = () => {
+    if (snapshotTimerRef.current) {
+      clearTimeout(snapshotTimerRef.current);
+    }
+    snapshotTimerRef.current = setTimeout(() => {
+      snapshotTimerRef.current = null;
+      const serializeAddon = serializeAddonRef.current;
+      if (!serializeAddon) {
+        return;
+      }
+      persistSerializedOutput(serializeAddon.serialize());
+    }, 120);
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -105,26 +187,32 @@ export function TerminalTile({
     }
 
     let cancelled = false;
-    const terminal = new Terminal({
-      fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
-      fontSize: 13,
-      lineHeight: 1.45,
+    startupBufferRef.current = [];
+    startupReadyRef.current = startupFilter !== "claude";
+    const managed = createManagedTerminal(container, {
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: 12,
+      fontWeight: "300",
+      fontWeightBold: "500",
+      lineHeight: 1.4,
       cursorBlink: true,
       theme: TERMINAL_THEME,
     });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(container);
-    fit.fit();
+    const terminal = managed.terminal;
+    const serializeAddon = new SerializeAddon();
+    terminal.loadAddon(serializeAddon);
+    if (serializedOutput) {
+      terminal.write(serializedOutput);
+    }
 
-    terminalRef.current = terminal;
-    fitAddonRef.current = fit;
+    terminalRef.current = managed;
+    serializeAddonRef.current = serializeAddon;
 
     const cleanups: Array<() => void> = [];
     cleanupRef.current = cleanups;
 
     const resizeTerminal = () => {
-      fit.fit();
+      managed.refit();
       if (ptyIdRef.current) {
         void window.orxa.terminal.resize(directory, ptyIdRef.current, terminal.cols, terminal.rows);
       }
@@ -143,25 +231,40 @@ export function TerminalTile({
         setLoadState("connecting");
         setErrorMessage(null);
 
-        const pty = await window.orxa.terminal.create(directory, cwd, undefined, "canvas");
+        const pty = await resolveCanvasPty(tile, onUpdate);
         if (cancelled) {
           return;
         }
 
-        ptyIdRef.current = pty.id;
-        await connectTerminalWithRetry(directory, pty.id);
+        ptyIdRef.current = pty.session.id;
+        await connectTerminalWithRetry(directory, pty.session.id);
         if (cancelled) {
           return;
+        }
+
+        if (pty.created && startupCommand) {
+          await window.orxa.terminal.write(directory, pty.session.id, startupCommand);
         }
 
         const unsubscribe = window.orxa.events.subscribe((event) => {
-          if (event.type === "pty.output" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
+          if (event.type === "pty.output" && event.payload.ptyID === pty.session.id && event.payload.directory === directory) {
             const sanitizedChunk = sanitizeTerminalChunk(event.payload.chunk);
             if (sanitizedChunk) {
-              terminal.write(sanitizedChunk);
+              const displayChunk = startupFilter === "claude"
+                ? (() => {
+                    const next = consumeClaudeStartupChunk(startupBufferRef.current, sanitizedChunk, startupReadyRef.current);
+                    startupReadyRef.current = next.startupReady;
+                    startupBufferRef.current = next.startupBuffer;
+                    return next.displayChunk;
+                  })()
+                : sanitizedChunk;
+              if (displayChunk) {
+                managed.writeBuffered(displayChunk);
+                scheduleSnapshotPersist();
+              }
             }
           }
-          if (event.type === "pty.closed" && event.payload.ptyID === pty.id && event.payload.directory === directory) {
+          if (event.type === "pty.closed" && event.payload.ptyID === pty.session.id && event.payload.directory === directory) {
             terminal.writeln("\r\n\u001b[33m[terminal closed]\u001b[0m");
           }
         });
@@ -200,30 +303,38 @@ export function TerminalTile({
       cancelled = true;
       for (const cleanup of cleanupRef.current) cleanup();
       cleanupRef.current = [];
-
-      terminal.dispose();
-      terminalRef.current = null;
-      fitAddonRef.current = null;
-
-      if (ptyIdRef.current && window.orxa?.terminal) {
-        void window.orxa.terminal.close(directory, ptyIdRef.current);
-        ptyIdRef.current = null;
+      if (snapshotTimerRef.current) {
+        clearTimeout(snapshotTimerRef.current);
+        snapshotTimerRef.current = null;
       }
+
+      managed.dispose();
+      terminalRef.current = null;
+      serializeAddonRef.current = null;
+      ptyIdRef.current = null;
     };
     // Mount once only — the tile ID is stable for this instance
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleRemove = () => {
+    const ptyId = typeof tile.meta.ptyId === "string" ? tile.meta.ptyId : ptyIdRef.current;
+    if (ptyId && window.orxa?.terminal && directory) {
+      void window.orxa.terminal.close(directory, ptyId).catch(() => undefined);
+    }
+    onRemove(tile.id);
+  };
 
   return (
     <CanvasTileComponent
       tile={tile}
       canvasTheme={canvasTheme}
       onUpdate={onUpdate}
-      onRemove={onRemove}
+      onRemove={handleRemove}
       onBringToFront={onBringToFront}
       icon={<TerminalIcon size={12} />}
-      label="terminal"
-      iconColor="#22C55E"
+      label={tileLabel}
+      iconColor={iconColor}
       metadata={metaLabel}
       snapToGrid={snapToGrid}
       gridSize={gridSize}

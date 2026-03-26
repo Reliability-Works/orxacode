@@ -150,6 +150,7 @@ export const IPC = {
   claudeChatApprove: "orxa:claude-chat:approve",
   claudeChatRespondToUserInput: "orxa:claude-chat:respondToUserInput",
   claudeChatGetSessionMessages: "orxa:claude-chat:getSessionMessages",
+  claudeChatRenameProviderSession: "orxa:claude-chat:renameProviderSession",
   claudeChatArchiveSession: "orxa:claude-chat:archiveSession",
   claudeChatArchiveProviderSession: "orxa:claude-chat:archiveProviderSession",
   getClaudeUsageStats: "orxa:usage:claudeStats",

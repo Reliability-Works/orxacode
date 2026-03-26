@@ -1,8 +1,7 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 import { Plus, X } from "lucide-react";
+import { createManagedTerminal, type ManagedTerminal } from "../lib/xterm-terminal";
 
 export type TerminalTab = {
   id: string;
@@ -10,8 +9,7 @@ export type TerminalTab = {
 };
 
 type TerminalInstance = {
-  terminal: Terminal;
-  fit: FitAddon;
+  managed: ManagedTerminal;
   cleanups: Array<() => void>;
 };
 
@@ -79,23 +77,22 @@ export function TerminalPanel({
     const existing = instancesRef.current.get(activeTabId);
     if (existing) {
       requestAnimationFrame(() => {
-        existing.fit.fit();
-        existing.terminal.focus();
+        existing.managed.refit();
+        existing.managed.terminal.focus();
       });
       return;
     }
 
-    const terminal = new Terminal({
-      fontFamily: '"IBM Plex Mono", "SF Mono", Menlo, monospace',
-      fontSize: 13,
-      lineHeight: 1.45,
+    const managed = createManagedTerminal(container, {
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: 12,
+      fontWeight: "300",
+      fontWeightBold: "500",
+      lineHeight: 1.4,
       cursorBlink: true,
       theme: TERMINAL_THEME,
     });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(container);
-    fit.fit();
+    const { terminal } = managed;
 
     const cleanups: Array<() => void> = [];
 
@@ -108,7 +105,7 @@ export function TerminalPanel({
         if (event.type === "pty.output" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
           const sanitizedChunk = sanitizeTerminalChunk(event.payload.chunk);
           if (sanitizedChunk) {
-            terminal.write(sanitizedChunk);
+            managed.writeBuffered(sanitizedChunk);
           }
         }
         if (event.type === "pty.closed" && event.payload.ptyID === activeTabId && event.payload.directory === directory) {
@@ -124,13 +121,13 @@ export function TerminalPanel({
     cleanups.push(() => disposeInput.dispose());
 
     const resizeObs = new ResizeObserver(() => {
-      fit.fit();
+      managed.refit();
       void window.orxa.terminal.resize(directory, activeTabId, terminal.cols, terminal.rows);
     });
     resizeObs.observe(container);
     cleanups.push(() => resizeObs.disconnect());
 
-    instancesRef.current.set(activeTabId, { terminal, fit, cleanups });
+    instancesRef.current.set(activeTabId, { managed, cleanups });
 
     requestAnimationFrame(() => terminal.focus());
   }, [open, activeTabId, directory]);
@@ -144,8 +141,8 @@ export function TerminalPanel({
       return;
     }
     requestAnimationFrame(() => {
-      instance.fit.fit();
-      void window.orxa.terminal.resize(directory, activeTabId, instance.terminal.cols, instance.terminal.rows);
+      instance.managed.refit();
+      void window.orxa.terminal.resize(directory, activeTabId, instance.managed.terminal.cols, instance.managed.terminal.rows);
     });
   }, [activeTabId, directory, height, open]);
 
@@ -154,7 +151,7 @@ export function TerminalPanel({
     for (const [id, inst] of instancesRef.current.entries()) {
       if (!activeIds.has(id)) {
         for (const c of inst.cleanups) c();
-        inst.terminal.dispose();
+        inst.managed.dispose();
         instancesRef.current.delete(id);
       }
     }
@@ -165,7 +162,7 @@ export function TerminalPanel({
     return () => {
       for (const inst of instances.values()) {
         for (const c of inst.cleanups) c();
-        inst.terminal.dispose();
+        inst.managed.dispose();
       }
       instances.clear();
     };

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Zap } from "lucide-react";
 import { useCodexSession } from "../hooks/useCodexSession";
+import type { Attachment } from "../hooks/useComposerState";
 import { ComposerPanel } from "./ComposerPanel";
 import { InteractionCard } from "./chat/InteractionCard";
 import { VirtualizedTimeline } from "./chat/VirtualizedTimeline";
@@ -90,6 +91,30 @@ function cleanPromptForAutoTitle(prompt: string) {
 function normalizeGeneratedTitle(title: string | undefined) {
   const cleaned = title?.replace(/\s+/g, " ").trim() ?? "";
   return cleaned || null;
+}
+
+function addCodexComposerAttachments(current: Attachment[], attachments: Attachment[]) {
+  if (attachments.length === 0) {
+    return current;
+  }
+  const seen = new Set(current.map((item) => item.url));
+  const next: Attachment[] = [];
+  for (const attachment of attachments) {
+    if (!attachment.url || seen.has(attachment.url)) {
+      continue;
+    }
+    seen.add(attachment.url);
+    next.push(attachment);
+  }
+  return next.length > 0 ? [...current, ...next] : current;
+}
+
+function buildCodexDisplayPrompt(prompt: string, attachmentCount: number) {
+  if (attachmentCount <= 0) {
+    return prompt;
+  }
+  const imageLabel = attachmentCount === 1 ? "[image]" : `[image x${attachmentCount}]`;
+  return prompt.trim().length > 0 ? `${imageLabel} ${prompt}` : imageLabel;
 }
 
 type CodexUsageAlert = {
@@ -289,6 +314,7 @@ export function CodexPane({
   const planReady = activePlanItem !== null;
 
   const [input, setInput] = useState("");
+  const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [codexModels, setCodexModels] = useState<CodexModelEntry[]>([]);
   const [modelSelectOptions, setModelSelectOptions] = useState<ModelOption[]>([]);
@@ -569,9 +595,33 @@ export function CodexPane({
     return opts;
   }, [onFirstMessage, selectedCollabMode, selectedModelID, selectedReasoningEffort]);
 
-  const sendTextNow = useCallback(async (text: string, options?: { interruptIfBusy?: boolean }) => {
+  const addComposerAttachments = useCallback((attachments: Attachment[]) => {
+    setComposerAttachments((current) => addCodexComposerAttachments(current, attachments));
+  }, []);
+
+  const removeAttachment = useCallback((url: string) => {
+    setComposerAttachments((current) => current.filter((item) => item.url !== url));
+  }, []);
+
+  const pickImageAttachment = useCallback(async () => {
+    try {
+      const selection = await window.orxa.opencode.pickImage();
+      if (!selection) {
+        return;
+      }
+      addComposerAttachments([selection]);
+    } catch {
+      // Image picking is optional and should not break the composer surface.
+    }
+  }, [addComposerAttachments]);
+
+  const sendTurnNow = useCallback(async (
+    text: string,
+    attachments: Attachment[],
+    options?: { interruptIfBusy?: boolean },
+  ) => {
     const trimmed = text.trim();
-    if (!trimmed || !thread) {
+    if ((!trimmed && attachments.length === 0) || !thread) {
       return false;
     }
     if (isStreaming) {
@@ -580,22 +630,38 @@ export function CodexPane({
       }
       await interruptTurn();
     }
-    queueAutoTitleGeneration(trimmed, thread.id);
+    if (trimmed) {
+      queueAutoTitleGeneration(trimmed, thread.id);
+    }
     const opts = buildTurnOptions();
     turnStartedAt.current = Date.now();
-    await sendMessage(trimmed, Object.keys(opts).length > 0 ? opts : undefined);
+    await sendMessage(trimmed, {
+      ...(Object.keys(opts).length > 0 ? opts : {}),
+      ...(attachments.length > 0
+        ? {
+            attachments: attachments.map((attachment) => ({
+              type: "image" as const,
+              url: attachment.url,
+            })),
+          }
+        : {}),
+      displayPrompt: buildCodexDisplayPrompt(trimmed, attachments.length),
+    });
     return true;
   }, [buildTurnOptions, interruptTurn, isStreaming, queueAutoTitleGeneration, sendMessage, thread]);
 
   const sendPrompt = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    const attachmentsToSend = [...composerAttachments];
+    if (!trimmed && attachmentsToSend.length === 0) return;
     setInput("");
-    const sent = await sendTextNow(trimmed);
+    setComposerAttachments([]);
+    const sent = await sendTurnNow(trimmed, attachmentsToSend);
     if (!sent) {
       setInput(trimmed);
+      setComposerAttachments(attachmentsToSend);
     }
-  }, [input, sendTextNow]);
+  }, [composerAttachments, input, sendTurnNow]);
 
   const abortActiveSession = useCallback(async () => {
     await interruptTurn();
@@ -932,19 +998,19 @@ export function CodexPane({
             <ComposerPanel
               composer={input}
               setComposer={setInput}
-              composerAttachments={[]}
-              removeAttachment={() => undefined}
+              composerAttachments={composerAttachments}
+              removeAttachment={removeAttachment}
               slashMenuOpen={false}
               filteredSlashCommands={[]}
               slashSelectedIndex={0}
               insertSlashCommand={() => undefined}
               handleSlashKeyDown={() => undefined}
-              addComposerAttachments={() => undefined}
+              addComposerAttachments={addComposerAttachments}
               sendPrompt={sendPrompt}
               abortActiveSession={abortActiveSession}
               isSessionBusy={isStreaming}
               isSendingPrompt={false}
-              pickImageAttachment={() => undefined}
+              pickImageAttachment={pickImageAttachment}
               hasActiveSession={connectionStatus === "connected" && thread !== null}
               isPlanMode={isPlanMode}
               hasPlanAgent={true}

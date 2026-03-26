@@ -263,19 +263,19 @@ export function HomeDashboard({
             {codexUsage ? (
               <div className="dashboard-metric-grid">
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{codexUsage.totalSessions || codexSessionCount}</strong>
+                  <strong className="dashboard-metric-value">{codexUsage.totalThreads || codexSessionCount}</strong>
                   <span className="dashboard-metric-label">total threads</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{codexUsage.totalSessions}</strong>
+                  <strong className="dashboard-metric-value">{codexUsage.sessions7d}</strong>
                   <span className="dashboard-metric-label">sessions, 7d</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{codexUsage.totalSessions}</strong>
+                  <strong className="dashboard-metric-value">{codexUsage.sessions30d}</strong>
                   <span className="dashboard-metric-label">sessions, 30d</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{codexUsage.topModels.length}</strong>
+                  <strong className="dashboard-metric-value">{codexUsage.modelCount}</strong>
                   <span className="dashboard-metric-label">models used</span>
                 </article>
                 <article className="dashboard-metric">
@@ -336,19 +336,19 @@ export function HomeDashboard({
             {claudeUsage ? (
               <div className="dashboard-metric-grid">
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{claudeUsage.totalSessions || claudeSessionCount}</strong>
+                  <strong className="dashboard-metric-value">{claudeUsage.totalThreads || claudeSessionCount}</strong>
                   <span className="dashboard-metric-label">total sessions</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{claudeUsage.totalSessions}</strong>
+                  <strong className="dashboard-metric-value">{claudeUsage.sessions7d}</strong>
                   <span className="dashboard-metric-label">sessions, 7d</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{claudeUsage.totalSessions}</strong>
+                  <strong className="dashboard-metric-value">{claudeUsage.sessions30d}</strong>
                   <span className="dashboard-metric-label">sessions, 30d</span>
                 </article>
                 <article className="dashboard-metric">
-                  <strong className="dashboard-metric-value">{claudeUsage.topModels.length}</strong>
+                  <strong className="dashboard-metric-value">{claudeUsage.modelCount}</strong>
                   <span className="dashboard-metric-label">models used</span>
                 </article>
                 <article className="dashboard-metric">

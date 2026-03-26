@@ -5,6 +5,7 @@ import { readdirSync, accessSync, constants } from "node:fs";
 import path from "node:path";
 import type {
   CodexApprovalRequest,
+  CodexAttachment,
   CodexCollaborationMode,
   CodexModelEntry,
   CodexNotification,
@@ -761,8 +762,24 @@ export class CodexService extends EventEmitter {
     model?: string;
     effort?: string;
     collaborationMode?: string;
+    attachments?: CodexAttachment[];
   }): Promise<void> {
-    const input = [{ type: "text", text: params.prompt, text_elements: [] }];
+    const input: Array<
+      | { type: "text"; text: string; text_elements: [] }
+      | { type: "image"; url: string }
+    > = [];
+    if (params.prompt.trim()) {
+      input.push({ type: "text", text: params.prompt, text_elements: [] });
+    }
+    for (const attachment of params.attachments ?? []) {
+      if (attachment.type !== "image" || !attachment.url.trim()) {
+        continue;
+      }
+      input.push({ type: "image", url: attachment.url });
+    }
+    if (input.length === 0) {
+      throw new Error("prompt or image attachment is required");
+    }
     const turnParams: Record<string, unknown> = {
       threadId: params.threadId,
       input,

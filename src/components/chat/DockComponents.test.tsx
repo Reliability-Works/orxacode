@@ -201,8 +201,8 @@ describe("BackgroundAgentsPanel", () => {
             id: "agent-1",
             provider: "opencode",
             name: "build",
-            status: "thinking",
-            statusText: "thinking",
+            status: "idle",
+            statusText: "idle",
             sessionID: "child-1",
           },
         ]}
@@ -214,6 +214,73 @@ describe("BackgroundAgentsPanel", () => {
 
     expect(screen.getByText("1 background agent")).toBeInTheDocument();
     expect(screen.getAllByText("1 background agent")).toHaveLength(1);
+  });
+
+  it("shows active counts only when at least one background agent is active", () => {
+    const { rerender } = render(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "idle",
+            statusText: "idle",
+            sessionID: "child-1",
+          },
+          {
+            id: "agent-2",
+            provider: "codex",
+            name: "review",
+            status: "completed",
+            statusText: "completed",
+            sessionID: "child-2",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("2 background agents")).toBeInTheDocument();
+    expect(screen.queryByText(/active\)/i)).toBeNull();
+
+    rerender(
+      <BackgroundAgentsPanel
+        agents={[
+          {
+            id: "agent-1",
+            provider: "opencode",
+            name: "build",
+            status: "idle",
+            statusText: "idle",
+            sessionID: "child-1",
+          },
+          {
+            id: "agent-2",
+            provider: "claude-chat",
+            name: "research",
+            status: "thinking",
+            statusText: "is running",
+            sessionID: "child-2",
+          },
+          {
+            id: "agent-3",
+            provider: "codex",
+            name: "qa",
+            status: "awaiting_instruction",
+            statusText: "awaiting input",
+            sessionID: "child-3",
+          },
+        ]}
+        selectedAgentId={null}
+        onOpenAgent={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("3 background agents (2 active)")).toBeInTheDocument();
   });
 
   it("renders selected agent details inside a modal overlay instead of inline", () => {

@@ -7,7 +7,6 @@ import type { OrxaEvent } from "../shared/ipc";
 import { OpencodeService } from "./services/opencode-service";
 import { CodexService } from "./services/codex-service";
 import { ClaudeChatService } from "./services/claude-chat-service";
-import { trackCodexTokenUsage, trackCodexThread, initCodexUsageTracking } from "./services/usage-stats-service";
 import { BrowserController } from "./services/browser-controller";
 import { OrxaTerminalService } from "./services/orxa-terminal-service";
 import { PersistenceService } from "./services/persistence-service";
@@ -276,8 +275,6 @@ function registerIpcHandlers() {
     codexService,
     claudeChatService,
     publishEvent,
-    trackCodexTokenUsage,
-    trackCodexThread,
   });
 }
 
@@ -292,7 +289,6 @@ async function boot() {
     onEvent: (event) => publishEvent(event),
   });
   registerIpcHandlers();
-  void initCodexUsageTracking();
 
   service.onEvent = (event) => publishEvent(event);
   terminalService.onEvent = (event) => publishEvent(event);

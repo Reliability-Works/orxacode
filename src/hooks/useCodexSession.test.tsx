@@ -138,7 +138,7 @@ describe("useCodexSession", () => {
     if (item?.kind !== "message") throw new Error("Expected a message item");
     expect(item.role).toBe("user");
     expect(item.content).toBe("hello world");
-    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined);
+    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined, undefined);
   });
 
   it("sets lastError when codex bridge is missing", async () => {
@@ -163,7 +163,7 @@ describe("useCodexSession", () => {
       await result.current.sendMessage("hello world");
     });
 
-    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined);
+    expect(window.orxa!.codex.startTurn).toHaveBeenCalledWith("thr-1", "hello world", "/workspace", undefined, undefined, undefined, undefined);
     expect(result.current.lastError).toBeUndefined();
   });
 
@@ -207,6 +207,7 @@ describe("useCodexSession", () => {
       "gpt-5.4",
       "medium",
       "default",
+      undefined,
     );
     expect(result.current.dismissedPlanIds.has("plan-tool-1")).toBe(true);
   });

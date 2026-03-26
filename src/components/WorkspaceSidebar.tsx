@@ -1,11 +1,12 @@
-import { useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction } from "react";
+import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search, Archive, Pin } from "lucide-react";
 
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
 import type { AppShellUpdateStatusMessage } from "../hooks/useAppShellUpdateFlow";
 import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
+import { AnthropicLogo, CanvasLogo, OpenAILogo, OpenCodeLogo } from "./ProviderLogos";
 
 type SidebarMode = "projects" | "jobs" | "skills";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
@@ -16,6 +17,7 @@ type SessionListItem = {
   title?: string;
   slug: string;
   time: {
+    created: number;
     updated: number;
   };
 };
@@ -42,13 +44,17 @@ export type WorkspaceSidebarProps = {
   sessions: SessionListItem[];
   cachedSessionsByProject?: Record<string, SessionListItem[]>;
   hiddenSessionIDsByProject?: Record<string, string[]>;
+  pinnedSessionsByProject?: Record<string, string[]>;
   activeSessionID?: string;
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>;
   getSessionTitle: (sessionID: string, directory?: string, fallbackTitle?: string) => string | undefined;
+  getSessionType: (sessionID: string, directory?: string) => SessionType | undefined;
   getSessionIndicator: (sessionID: string, directory: string, updatedAt: number) => SessionSidebarIndicator;
   selectProject: (directory: string) => Promise<void> | void;
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void;
   openSession: (directory: string, sessionID: string) => Promise<void> | void;
+  togglePinSession: (directory: string, sessionID: string) => void;
+  archiveSession: (directory: string, sessionID: string) => Promise<void> | void;
   openProjectContextMenu: (event: ReactMouseEvent, directory: string, label: string) => void;
   openSessionContextMenu: (event: ReactMouseEvent, directory: string, sessionID: string, title: string) => void;
   addProjectDirectory: () => Promise<unknown> | unknown;
@@ -80,13 +86,17 @@ export function WorkspaceSidebar({
   sessions,
   cachedSessionsByProject,
   hiddenSessionIDsByProject,
+  pinnedSessionsByProject,
   activeSessionID,
   setAllSessionsModalOpen,
   getSessionTitle,
+  getSessionType,
   getSessionIndicator,
   selectProject,
   createSession,
   openSession,
+  togglePinSession,
+  archiveSession,
   openProjectContextMenu,
   openSessionContextMenu,
   addProjectDirectory,
@@ -96,6 +106,7 @@ export function WorkspaceSidebar({
   setSettingsOpen,
 }: WorkspaceSidebarProps) {
   const [pickerOpenForProject, setPickerOpenForProject] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const pickerAnchorRef = useRef<HTMLButtonElement | null>(null);
   const updateButtonLabel = isCheckingForUpdates
     ? "Checking for updates"
@@ -104,6 +115,128 @@ export function WorkspaceSidebar({
       : updateAvailableVersion
         ? `Download ${updateAvailableVersion} now`
         : "Check for updates";
+
+  const pinnedSessionRows = useMemo(() => {
+    return filteredProjects.flatMap((project) => {
+      const projectSessions = project.worktree === activeProjectDir
+        ? sessions
+        : (cachedSessionsByProject?.[project.worktree] ?? []);
+      const hiddenSessionIDs = new Set(hiddenSessionIDsByProject?.[project.worktree] ?? []);
+      const pinnedSessionIDs = pinnedSessionsByProject?.[project.worktree] ?? [];
+
+      return pinnedSessionIDs
+        .map((sessionID) => projectSessions.find((session) => session.id === sessionID))
+        .filter((session): session is SessionListItem => session !== undefined)
+        .filter((session) => !hiddenSessionIDs.has(session.id))
+        .map((session) => ({
+          directory: project.worktree,
+          session,
+        }));
+    });
+  }, [activeProjectDir, cachedSessionsByProject, filteredProjects, hiddenSessionIDsByProject, pinnedSessionsByProject, sessions]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const formatSessionAge = (createdAt: number) => {
+    const elapsedMs = Math.max(60_000, now - createdAt);
+    const minutes = Math.floor(elapsedMs / 60_000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d`;
+    const weeks = Math.floor(days / 7);
+    return `${weeks}w`;
+  };
+
+  const renderSessionTypeIcon = (sessionType: SessionType | undefined) => {
+    switch (sessionType) {
+      case "canvas":
+        return <span className="session-type-icon session-type-icon--canvas" aria-hidden="true"><CanvasLogo size={10} /></span>;
+      case "codex":
+        return <span className="session-type-icon session-type-icon--codex" aria-hidden="true"><OpenAILogo size={10} /></span>;
+      case "claude":
+      case "claude-chat":
+        return <span className="session-type-icon session-type-icon--claude" aria-hidden="true"><AnthropicLogo size={10} /></span>;
+      case "standalone":
+      default:
+        return <span className="session-type-icon session-type-icon--opencode" aria-hidden="true"><OpenCodeLogo size={10} /></span>;
+    }
+  };
+
+  const renderSessionRow = (
+    directory: string,
+    session: SessionListItem,
+    sessionTitle: string,
+  ) => {
+    const indicator = getSessionIndicator(session.id, directory, session.time.updated);
+    const sessionType = getSessionType(session.id, directory);
+    const isPinned = (pinnedSessionsByProject?.[directory] ?? []).includes(session.id);
+    const sessionAge = formatSessionAge(session.time.created);
+
+    return (
+      <div
+        key={`${directory}:${session.id}`}
+        className={`workspace-session-row ${session.id === activeSessionID ? "active" : ""}`.trim()}
+        onContextMenu={(event) => openSessionContextMenu(event, directory, session.id, sessionTitle)}
+      >
+        <span className="workspace-session-row-pin-slot">
+          <button
+            type="button"
+            className={`workspace-session-row-action${isPinned ? " is-active" : ""}`.trim()}
+            aria-label={isPinned ? `Unpin ${sessionTitle}` : `Pin ${sessionTitle}`}
+            title={isPinned ? "Unpin session" : "Pin session"}
+            onClick={(event) => {
+              event.stopPropagation();
+              togglePinSession(directory, session.id);
+            }}
+          >
+            <Pin size={11} aria-hidden="true" />
+          </button>
+        </span>
+        <button
+          type="button"
+          className={session.id === activeSessionID ? "active workspace-session-row-main-button" : "workspace-session-row-main-button"}
+          onClick={() => void openSession(directory, session.id)}
+          title={sessionTitle}
+        >
+          <span className="workspace-session-row-leading" aria-hidden="true">
+            {indicator === "none" ? renderSessionTypeIcon(sessionType) : (
+              <span
+                className={`session-status-indicator ${indicator}`}
+                aria-hidden="true"
+              >
+                {indicator === "awaiting" ? "!" : null}
+              </span>
+            )}
+          </span>
+          <span className="workspace-session-row-title-text">{sessionTitle}</span>
+        </button>
+        <span className="workspace-session-row-trailing">
+          <span className="workspace-session-row-age" aria-label={`${sessionAge} old`}>{sessionAge}</span>
+          <span className="workspace-session-row-actions">
+            <button
+              type="button"
+              className="workspace-session-row-action workspace-session-row-action--archive"
+              aria-label={`Archive ${sessionTitle}`}
+              title="Archive session"
+            onClick={(event) => {
+              event.stopPropagation();
+              void archiveSession(directory, session.id);
+              }}
+            >
+              <Archive size={11} aria-hidden="true" />
+            </button>
+          </span>
+        </span>
+      </div>
+    );
+  };
 
   return (
     <aside className="sidebar projects-pane">
@@ -214,6 +347,22 @@ export function WorkspaceSidebar({
             </div>
           ) : null}
 
+          {pinnedSessionRows.length > 0 ? (
+            <div className="sidebar-pinned-sessions-section">
+              <div className="sidebar-subsection-label">Pinned</div>
+              <div className="project-session-list project-session-list--pinned">
+                {pinnedSessionRows.map(({ directory, session }) => {
+                  const sessionTitle = getSessionTitle(
+                    session.id,
+                    directory,
+                    session.title ?? session.slug,
+                  ) ?? session.title ?? session.slug;
+                  return renderSessionRow(directory, session, sessionTitle);
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="project-list">
             {filteredProjects.map((project) => {
               const projectLabel = project.name || project.worktree.split("/").at(-1) || project.worktree;
@@ -320,29 +469,7 @@ export function WorkspaceSidebar({
                           project.worktree,
                           session.title ?? session.slug,
                         ) ?? session.title ?? session.slug;
-                        const indicator = getSessionIndicator(session.id, project.worktree, session.time.updated);
-                        return (
-                          <button
-                            type="button"
-                            key={session.id}
-                            className={session.id === activeSessionID ? "active" : ""}
-                            onClick={() => void openSession(project.worktree, session.id)}
-                            onContextMenu={(event) =>
-                              openSessionContextMenu(event, project.worktree, session.id, sessionTitle)
-                            }
-                            title={sessionTitle}
-                          >
-                            {indicator === "none" ? null : (
-                              <span
-                                className={`session-status-indicator ${indicator}`}
-                                aria-hidden="true"
-                              >
-                                {indicator === "awaiting" ? "!" : null}
-                              </span>
-                            )}
-                            <span>{sessionTitle}</span>
-                          </button>
-                        );
+                        return renderSessionRow(project.worktree, session, sessionTitle);
                       })}
                       {visibleSessions.length > 4 ? (
                         <button type="button" className="project-sessions-more" onClick={() => setAllSessionsModalOpen(true)}>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ClaudeChatHistoryMessage, ClaudeChatModelEntry } from "@shared/ipc";
+import type { ClaudeChatAttachment, ClaudeChatHistoryMessage, ClaudeChatModelEntry } from "@shared/ipc";
+import type { ExploreEntry } from "../lib/explore-utils";
 import type { ModelOption } from "../lib/models";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import { clearPersistedClaudeChatState, getPersistedClaudeChatState, setPersistedClaudeChatState } from "./claude-chat-session-storage";
@@ -21,7 +22,16 @@ export type ClaudeChatMessageItem =
   | { id: string; kind: "status"; label: string; timestamp: number }
   | {
       id: string;
+      kind: "explore";
+      source?: "main" | "delegated";
+      status: "exploring" | "explored";
+      entries: ExploreEntry[];
+      timestamp: number;
+    }
+  | {
+      id: string;
       kind: "tool";
+      source?: "main" | "delegated";
       title: string;
       toolType: string;
       status: "running" | "completed" | "error";
@@ -98,6 +108,138 @@ function appendAssistantDelta(messages: ClaudeChatMessageItem[], id: string, con
     }
   }
   return [...messages, createAssistantMessage(id, content, timestamp)];
+}
+
+const CLAUDE_READ_ONLY_TOOL_NAMES = new Set([
+  "read",
+  "grep",
+  "glob",
+  "find",
+  "ls",
+  "search",
+  "websearch",
+  "view",
+  "list",
+  "tree",
+]);
+
+function compactClaudeExploreLabel(value: string, fallback: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return normalized.length > 96 ? `${normalized.slice(0, 93).trimEnd()}...` : normalized;
+}
+
+function pickClaudeExploreKind(toolName: string | undefined, text: string) {
+  const normalizedTool = toolName?.trim().toLowerCase() ?? "";
+  const normalizedText = text.trim().toLowerCase();
+  if (
+    normalizedTool === "grep" ||
+    normalizedTool === "glob" ||
+    normalizedTool === "find" ||
+    normalizedTool === "search" ||
+    normalizedTool === "websearch" ||
+    /\b(search|grep|glob|find|look up|locate)\b/.test(normalizedText)
+  ) {
+    return "search" as const;
+  }
+  if (
+    normalizedTool === "ls" ||
+    normalizedTool === "list" ||
+    normalizedTool === "tree" ||
+    /\b(list|scan|browse|enumerate|inventory)\b/.test(normalizedText)
+  ) {
+    return "list" as const;
+  }
+  if (
+    normalizedTool === "read" ||
+    normalizedTool === "view" ||
+    /\b(read|inspect|investigat|review|check|trace|audit|examine|look into)\b/.test(normalizedText)
+  ) {
+    return "read" as const;
+  }
+  return "run" as const;
+}
+
+function isClaudeExploreCandidate(input: {
+  toolName?: string;
+  description?: string;
+  summary?: string;
+  taskType?: string;
+}) {
+  const normalizedTool = input.toolName?.trim().toLowerCase() ?? "";
+  if (normalizedTool && CLAUDE_READ_ONLY_TOOL_NAMES.has(normalizedTool)) {
+    return true;
+  }
+  const normalizedTaskType = input.taskType?.trim().toLowerCase() ?? "";
+  if (normalizedTaskType.includes("research") || normalizedTaskType.includes("explor")) {
+    return true;
+  }
+  const combined = `${input.summary ?? ""} ${input.description ?? ""}`.trim().toLowerCase();
+  if (!combined) {
+    return false;
+  }
+  return /\b(explor\w*|inspect\w*|investigat\w*|review\w*|search\w*|find\w*|read\w*|scan\w*|check\w*|trace\w*|audit\w*)\b|\blook into\b/.test(combined);
+}
+
+function buildClaudeExploreEntry(input: {
+  id: string;
+  toolName?: string;
+  description?: string;
+  summary?: string;
+  taskType?: string;
+  status: ExploreEntry["status"];
+}) {
+  const labelSource = input.summary?.trim() || input.description?.trim() || input.toolName?.trim() || "Explore";
+  return {
+    id: input.id,
+    kind: pickClaudeExploreKind(input.toolName, labelSource),
+    label: compactClaudeExploreLabel(labelSource, "Explore"),
+    detail: input.toolName?.trim() && input.toolName.trim() !== labelSource.trim() ? input.toolName.trim() : undefined,
+    status: input.status,
+  } satisfies ExploreEntry;
+}
+
+function upsertExploreRow(
+  messages: ClaudeChatMessageItem[],
+  rowId: string,
+  entry: ExploreEntry,
+  timestamp: number,
+  status: "exploring" | "explored",
+  source: "main" | "delegated",
+) {
+  const index = messages.findIndex((item) => item.id === rowId && item.kind === "explore");
+  if (index >= 0) {
+    const current = messages[index];
+    if (current?.kind === "explore") {
+      const next = [...messages];
+      next[index] = {
+        ...current,
+        source,
+        status,
+        timestamp,
+        entries: current.entries.some((candidate) => candidate.id === entry.id)
+          ? current.entries.map((candidate) => (candidate.id === entry.id ? entry : candidate))
+          : [...current.entries, entry],
+      };
+      return next;
+    }
+  }
+  return [...messages, { id: rowId, kind: "explore" as const, source, status, entries: [entry], timestamp }];
+}
+
+function upsertClaudeTool(
+  messages: ClaudeChatMessageItem[],
+  toolItem: Extract<ClaudeChatMessageItem, { kind: "tool" }>,
+) {
+  const existing = messages.findIndex((item) => item.id === toolItem.id && item.kind === "tool");
+  if (existing >= 0) {
+    const next = [...messages];
+    next[existing] = toolItem;
+    return next;
+  }
+  return [...messages, toolItem];
 }
 
 export function useClaudeChatSession(directory: string, sessionKey: string) {
@@ -220,9 +362,7 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
         const id = assistantMessageIdForTurn(turnId, fallbackId);
         const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
         const content = typeof params.content === "string" ? params.content : "";
-        updateClaudeChatMessages(sessionKey, (messages) =>
-          appendAssistantDelta(removeThinkingRow(messages, turnId), id, content, timestamp),
-        );
+        updateClaudeChatMessages(sessionKey, (messages) => appendAssistantDelta(messages, id, content, timestamp));
         setClaudeChatStreaming(sessionKey, true);
         return;
       }
@@ -232,55 +372,68 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
         const id = assistantMessageIdForTurn(turnId, fallbackId);
         const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
         const content = typeof params.content === "string" ? params.content : "";
-        updateClaudeChatMessages(sessionKey, (messages) =>
-          upsertAssistantMessage(removeThinkingRow(messages, turnId), id, content, timestamp, false),
-        );
+        updateClaudeChatMessages(sessionKey, (messages) => upsertAssistantMessage(messages, id, content, timestamp, false));
         return;
       }
       if (method === "tool/progress") {
         const id = typeof params.id === "string" ? params.id : nextClaudeMessageId(sessionKey);
         const toolName = typeof params.toolName === "string" ? params.toolName : "Tool";
+        const taskId = typeof params.taskId === "string" ? params.taskId : "";
         const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
+        const source = taskId ? "delegated" as const : "main" as const;
+        if (isClaudeExploreCandidate({ toolName })) {
+          const entry = buildClaudeExploreEntry({
+            id,
+            toolName,
+            status: "running",
+          });
+          updateClaudeChatMessages(sessionKey, (messages) => upsertExploreRow(messages, `explore:${id}`, entry, timestamp, "exploring", source));
+          return;
+        }
         updateClaudeChatMessages(sessionKey, (messages) => {
-          const existing = messages.findIndex((item) => item.id === id && item.kind === "tool");
-          const next = [...messages];
           const toolItem: ClaudeChatMessageItem = {
             id,
             kind: "tool",
+            source,
             title: toolName,
             toolType: toolName,
             status: "running",
             output: typeof params.elapsedTimeSeconds === "number" ? `Running for ${params.elapsedTimeSeconds.toFixed(1)}s` : undefined,
             timestamp,
           };
-          if (existing >= 0) {
-            next[existing] = toolItem;
-            return next;
-          }
-          return [...messages, toolItem];
+          return upsertClaudeTool(messages, toolItem);
         });
         return;
       }
       if (method === "tool/completed") {
         const id = typeof params.id === "string" ? params.id : nextClaudeMessageId(sessionKey);
         const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
+        const toolName = typeof params.toolName === "string" ? params.toolName : "Tool call";
+        const summary = typeof params.summary === "string" ? params.summary : undefined;
+        const taskId = typeof params.taskId === "string" ? params.taskId : "";
+        const source = taskId ? "delegated" as const : "main" as const;
+        if (isClaudeExploreCandidate({ toolName, summary })) {
+          const entry = buildClaudeExploreEntry({
+            id,
+            toolName,
+            summary,
+            status: "completed",
+          });
+          updateClaudeChatMessages(sessionKey, (messages) => upsertExploreRow(messages, `explore:${id}`, entry, timestamp, "explored", source));
+          return;
+        }
         updateClaudeChatMessages(sessionKey, (messages) => {
-          const existing = messages.findIndex((item) => item.id === id && item.kind === "tool");
-          const next = [...messages];
           const toolItem: ClaudeChatMessageItem = {
             id,
             kind: "tool",
-            title: typeof params.toolName === "string" ? params.toolName : "Tool call",
-            toolType: typeof params.toolName === "string" ? params.toolName : "tool",
+            source,
+            title: toolName,
+            toolType: toolName,
             status: "completed",
-            output: typeof params.summary === "string" ? params.summary : undefined,
+            output: summary,
             timestamp,
           };
-          if (existing >= 0) {
-            next[existing] = toolItem;
-            return next;
-          }
-          return [...messages, toolItem];
+          return upsertClaudeTool(messages, toolItem);
         });
         return;
       }
@@ -301,12 +454,24 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
             taskText: description,
           },
         ]);
+        if (isClaudeExploreCandidate({ description, taskType })) {
+          const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
+          const entry = buildClaudeExploreEntry({
+            id: taskId,
+            description,
+            summary: prompt,
+            taskType,
+            status: "running",
+          });
+          updateClaudeChatMessages(sessionKey, (messages) => upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, "exploring", "delegated"));
+        }
         return;
       }
       if (method === "task/progress") {
         const taskId = typeof params.taskId === "string" ? params.taskId : "";
         const description = typeof params.description === "string" ? params.description : undefined;
         const summary = typeof params.summary === "string" ? params.summary : undefined;
+        const lastToolName = typeof params.lastToolName === "string" ? params.lastToolName : undefined;
         setClaudeChatSubagents(sessionKey, (previous) => previous.map((agent) =>
           agent.id === taskId
             ? {
@@ -316,10 +481,22 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
               }
             : agent,
         ));
+        if (taskId && isClaudeExploreCandidate({ description, summary, toolName: lastToolName })) {
+          const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
+          const entry = buildClaudeExploreEntry({
+            id: taskId,
+            toolName: lastToolName,
+            description,
+            summary,
+            status: "running",
+          });
+          updateClaudeChatMessages(sessionKey, (messages) => upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, "exploring", "delegated"));
+        }
         return;
       }
       if (method === "task/completed") {
         const taskId = typeof params.taskId === "string" ? params.taskId : "";
+        const summary = typeof params.summary === "string" ? params.summary : undefined;
         setClaudeChatSubagents(sessionKey, (previous) => previous.map((agent) =>
           agent.id === taskId
             ? {
@@ -329,19 +506,32 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
               }
             : agent,
         ));
+        if (taskId && isClaudeExploreCandidate({ summary })) {
+          const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
+          const status = typeof params.status === "string" && params.status !== "completed" ? "error" as const : "completed" as const;
+          const entry = buildClaudeExploreEntry({
+            id: taskId,
+            summary,
+            status,
+          });
+          updateClaudeChatMessages(sessionKey, (messages) => upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, "explored", "delegated"));
+        }
         return;
       }
       if (method === "turn/completed") {
+        const turnId = typeof params.turnId === "string" ? params.turnId : "";
+        updateClaudeChatMessages(sessionKey, (messages) => removeThinkingRow(messages, turnId));
         setClaudeChatStreaming(sessionKey, false);
         setClaudeChatPendingApproval(sessionKey, null);
         setClaudeChatPendingUserInput(sessionKey, null);
         return;
       }
       if (method === "turn/error") {
+        const turnId = typeof params.turnId === "string" ? params.turnId : "";
         const timestamp = typeof params.timestamp === "number" ? params.timestamp : Date.now();
         const message = typeof params.message === "string" ? params.message : "Claude turn failed.";
         updateClaudeChatMessages(sessionKey, (messages) => [
-          ...messages,
+          ...removeThinkingRow(messages, turnId),
           { id: nextClaudeMessageId(sessionKey), kind: "notice", label: "Claude error", detail: message, tone: "error", timestamp },
         ]);
         setClaudeChatStreaming(sessionKey, false);
@@ -372,21 +562,26 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
       effort?: "low" | "medium" | "high" | "max" | "ultrathink";
       fastMode?: boolean;
       thinking?: boolean;
+      attachments?: ClaudeChatAttachment[];
+      displayPrompt?: string;
     },
   ) => {
     const timestamp = Date.now();
     const userId = nextClaudeMessageId(sessionKey);
+    const displayPrompt = options?.displayPrompt ?? prompt;
+    const turnOptions = { ...(options ?? {}) };
+    delete (turnOptions as { displayPrompt?: string }).displayPrompt;
     updateClaudeChatMessages(sessionKey, (messages) => [
       ...messages,
       {
         id: userId,
         kind: "message",
         role: "user",
-        content: prompt,
+        content: displayPrompt,
         timestamp,
       },
     ]);
-    await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, { cwd: directory, ...(options ?? {}) });
+    await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, { cwd: directory, ...turnOptions });
   }, [directory, sessionKey, updateClaudeChatMessages]);
 
   const interruptTurn = useCallback(async () => {

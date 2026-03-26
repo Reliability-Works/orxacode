@@ -1,12 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeChatPane } from "./ClaudeChatPane";
+import type { ImageSelection } from "@shared/ipc";
 import type { ClaudeChatSubagentState } from "../hooks/useClaudeChatSession";
 
 const startTurnMock = vi.fn();
 const archiveProviderSessionMock = vi.fn();
 const loadSubagentMessagesMock = vi.fn(async () => []);
 const onTitleChangeMock = vi.fn();
+const pickImageMock = vi.fn<() => Promise<ImageSelection | undefined>>(async () => undefined);
 let mockSubagents: ClaudeChatSubagentState[] = [];
 
 vi.mock("../hooks/useClaudeChatSession", () => ({
@@ -50,7 +52,14 @@ describe("ClaudeChatPane", () => {
     loadSubagentMessagesMock.mockReset();
     loadSubagentMessagesMock.mockResolvedValue([]);
     onTitleChangeMock.mockReset();
+    pickImageMock.mockReset();
+    pickImageMock.mockResolvedValue(undefined);
     mockSubagents = [];
+    window.orxa = {
+      opencode: {
+        pickImage: pickImageMock,
+      },
+    } as unknown as typeof window.orxa;
   });
 
   it("shows the shared plan toggle and sends Claude plan mode when enabled", () => {
@@ -206,5 +215,59 @@ describe("ClaudeChatPane", () => {
     expect(loadSubagentMessagesMock.mock.calls.length).toBeGreaterThanOrEqual(2);
 
     vi.useRealTimers();
+  });
+
+  it("passes attached images through to Claude turns", async () => {
+    pickImageMock.mockResolvedValue({
+      path: "/tmp/test.png",
+      url: "data:image/png;base64,QQ==",
+      filename: "test.png",
+      mime: "image/png",
+    });
+
+    render(
+      <ClaudeChatPane
+        directory="/tmp/project"
+        sessionStorageKey="session-1"
+        onTitleChange={onTitleChangeMock}
+        permissionMode="ask-write"
+        onPermissionModeChange={vi.fn()}
+        branchMenuOpen={false}
+        setBranchMenuOpen={vi.fn()}
+        branchControlWidthCh={14}
+        branchLoading={false}
+        branchSwitching={false}
+        hasActiveProject
+        branchCurrent="main"
+        branchDisplayValue="main"
+        branchSearchInputRef={{ current: null }}
+        branchQuery=""
+        setBranchQuery={vi.fn()}
+        branchActionError={null}
+        clearBranchActionError={vi.fn()}
+        checkoutBranch={vi.fn()}
+        filteredBranches={["main"]}
+        openBranchCreateModal={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await waitFor(() => expect(screen.getByText("test.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Send prompt" }));
+
+    await waitFor(() => {
+      expect(startTurnMock).toHaveBeenCalledWith(
+        "",
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              filename: "test.png",
+              mime: "image/png",
+            }),
+          ],
+          displayPrompt: "[image]",
+        }),
+      );
+    });
   });
 });

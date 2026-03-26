@@ -596,6 +596,21 @@
   padding-top: 0;
 }
 
+.sidebar-pinned-sessions-section {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sidebar-subsection-label {
+  margin: 0 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .project-item {
   border: 0;
   background: transparent;
@@ -630,6 +645,147 @@
 .project-item:focus-within .project-add-session {
   opacity: 1;
   pointer-events: auto;
+}
+
+.workspace-session-row {
+  position: relative;
+  width: calc(100% - 8px);
+  margin-left: 8px;
+  margin-right: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.workspace-session-row-pin-slot {
+  position: absolute;
+  top: 50%;
+  left: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 120ms ease;
+}
+
+.workspace-session-row:hover .workspace-session-row-pin-slot,
+.workspace-session-row:focus-within .workspace-session-row-pin-slot {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workspace-session-row:hover,
+.workspace-session-row:focus-within {
+  background: var(--bg-hover);
+}
+
+.workspace-session-row.active {
+  background: var(--bg-input);
+}
+
+.workspace-session-row-main-button {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 38px !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: inherit !important;
+}
+
+.workspace-session-row-leading {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspace-session-row-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.workspace-session-row-trailing {
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 18px;
+  z-index: 2;
+}
+
+.workspace-session-row-age {
+  grid-area: 1 / 1;
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1;
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.workspace-session-row-actions {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.workspace-session-row:hover .workspace-session-row-actions,
+.workspace-session-row:focus-within .workspace-session-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workspace-session-row:hover .workspace-session-row-age,
+.workspace-session-row:focus-within .workspace-session-row-age {
+  opacity: 0;
+}
+
+.workspace-session-row-action {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  min-width: 16px;
+}
+
+.workspace-session-row-action svg {
+  display: block;
+}
+
+.workspace-session-row-action:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.workspace-session-row-action.is-active {
+  color: var(--accent-warning, #F59E0B);
+}
+
+.workspace-session-row-action--archive:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .sidebar-update-card {
@@ -2855,4 +3011,3 @@
 .browser-annotations-actions .browser-control-btn.danger:hover {
   background: rgba(239, 68, 68, 0.35);
 }
-

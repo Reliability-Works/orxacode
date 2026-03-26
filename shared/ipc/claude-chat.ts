@@ -65,6 +65,13 @@ export type ClaudeChatHistoryMessage = {
   sessionId: string;
 };
 
+export type ClaudeChatAttachment = {
+  path: string;
+  url: string;
+  filename: string;
+  mime: string;
+};
+
 export type ClaudeChatTurnOptions = {
   model?: string;
   cwd?: string;
@@ -73,6 +80,7 @@ export type ClaudeChatTurnOptions = {
   fastMode?: boolean;
   thinking?: boolean;
   maxThinkingTokens?: number;
+  attachments?: ClaudeChatAttachment[];
 };
 
 export type ClaudeChatHealthStatus = {

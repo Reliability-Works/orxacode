@@ -18,6 +18,7 @@ vi.mock("xterm", () => {
       writeln: vi.fn(),
       cols: 80,
       rows: 24,
+      unicode: { activeVersion: "6" },
     };
   }
   return { Terminal };
@@ -29,6 +30,21 @@ vi.mock("xterm-addon-fit", () => {
   }
   return { FitAddon };
 });
+
+vi.mock("xterm-addon-unicode11", () => ({
+  Unicode11Addon: function Unicode11Addon() {
+    return {};
+  },
+}));
+
+vi.mock("xterm-addon-webgl", () => ({
+  WebglAddon: function WebglAddon() {
+    return {
+      onContextLoss: vi.fn(),
+      dispose: vi.fn(),
+    };
+  },
+}));
 
 vi.mock("xterm/css/xterm.css", () => ({}));
 

@@ -2,11 +2,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeChatService } from "./claude-chat-service";
-import { query, tagSession } from "@anthropic-ai/claude-agent-sdk";
+import { query, renameSession, tagSession } from "@anthropic-ai/claude-agent-sdk";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
   getSessionMessages: vi.fn(),
+  renameSession: vi.fn(),
   tagSession: vi.fn(),
 }));
 
@@ -24,6 +25,7 @@ function createQueryStream(messages: unknown[]) {
 describe("ClaudeChatService", () => {
   beforeEach(() => {
     vi.mocked(query).mockReset();
+    vi.mocked(renameSession).mockReset();
     vi.mocked(tagSession).mockReset();
   });
 
@@ -68,6 +70,15 @@ describe("ClaudeChatService", () => {
           description: "Investigate the failing flow",
           summary: "Checking logs",
           last_tool_name: "Bash",
+          tool_use_id: "toolu-task-1",
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            server_tool_use: {
+              web_search_requests: 0,
+            },
+            service_tier: "standard",
+          },
         },
         {
           type: "system",
@@ -75,6 +86,16 @@ describe("ClaudeChatService", () => {
           task_id: "task-1",
           status: "completed",
           summary: "Done",
+          tool_use_id: "toolu-task-1",
+          output_file: "/tmp/result.txt",
+          usage: {
+            input_tokens: 11,
+            output_tokens: 6,
+            server_tool_use: {
+              web_search_requests: 0,
+            },
+            service_tier: "standard",
+          },
         },
         {
           type: "assistant",
@@ -112,8 +133,37 @@ describe("ClaudeChatService", () => {
           method: "thread/started",
           params: expect.objectContaining({ providerThreadId: "child-thread", isSubagent: true, taskId: "task-1" }),
         }),
+        expect.objectContaining({
+          method: "task/progress",
+          params: expect.objectContaining({
+            taskId: "task-1",
+            lastToolName: "Bash",
+            toolUseId: "toolu-task-1",
+            usage: expect.objectContaining({
+              input_tokens: 10,
+              output_tokens: 5,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          method: "task/completed",
+          params: expect.objectContaining({
+            taskId: "task-1",
+            toolUseId: "toolu-task-1",
+            outputFile: "/tmp/result.txt",
+            usage: expect.objectContaining({
+              input_tokens: 11,
+              output_tokens: 6,
+            }),
+          }),
+        }),
       ]),
     );
+
+    const assistantIndex = notifications.findIndex((entry) => entry.method === "assistant/message");
+    const thinkingStoppedIndex = notifications.findIndex((entry) => entry.method === "thinking/stopped");
+    expect(assistantIndex).toBeGreaterThanOrEqual(0);
+    expect(thinkingStoppedIndex).toBeGreaterThan(assistantIndex);
   });
 
   it("passes Claude plan mode through to the SDK query options", async () => {
@@ -133,6 +183,53 @@ describe("ClaudeChatService", () => {
         }),
       }),
     );
+  });
+
+  it("sends attached images through the Claude SDK user-message stream", async () => {
+    const service = new ClaudeChatService();
+
+    vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
+
+    await service.startTurn("session-images", "/tmp/project", "Describe this screenshot", {
+      model: "claude-sonnet-4-6",
+      attachments: [
+        {
+          path: "/tmp/fake.png",
+          url: "data:image/png;base64,QQ==",
+          filename: "fake.png",
+          mime: "image/png",
+        },
+      ],
+    });
+
+    const promptInput = vi.mocked(query).mock.calls[0]?.[0]?.prompt;
+    expect(typeof promptInput).not.toBe("string");
+    expect(promptInput).toBeDefined();
+
+    const iterator = (promptInput as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    expect(first.done).toBe(false);
+    expect(first.value).toMatchObject({
+      type: "user",
+      parent_tool_use_id: null,
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: "QQ==",
+            },
+          },
+          {
+            type: "text",
+            text: "Describe this screenshot",
+          },
+        ],
+      },
+    });
   });
 
   it("ignores tool-use payload JSON in assistant text and keeps tool summaries structured", async () => {
@@ -216,10 +313,27 @@ describe("ClaudeChatService", () => {
             id: "toolu_1",
             toolName: "Task",
             summary: "Queued 1 background task",
+            precedingToolUseIds: ["toolu_1"],
+          }),
+        }),
+        expect.objectContaining({
+          method: "tool/progress",
+          params: expect.objectContaining({
+            id: "toolu_1",
+            toolName: "Task",
+            parentToolUseId: null,
           }),
         }),
       ]),
     );
+  });
+
+  it("renames Claude provider sessions through the SDK", async () => {
+    const service = new ClaudeChatService();
+
+    await service.renameProviderSession("claude-thread-1", "New Claude Title", "/tmp/project");
+
+    expect(vi.mocked(renameSession)).toHaveBeenCalledWith("claude-thread-1", "New Claude Title", { dir: "/tmp/project" });
   });
 
   it("dedupes and caches Claude health checks for a short TTL", async () => {

@@ -36,6 +36,14 @@ export const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   );
+  const activeAgentCount = useMemo(
+    () => agents.filter((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction").length,
+    [agents],
+  );
+  const title = useMemo(() => {
+    const base = `${agents.length} background agent${agents.length === 1 ? "" : "s"}`;
+    return activeAgentCount > 0 ? `${base} (${activeAgentCount} active)` : base;
+  }, [activeAgentCount, agents.length]);
 
   useEffect(() => {
     setPromptExpanded(false);
@@ -49,7 +57,7 @@ export const BackgroundAgentsPanel = memo(function BackgroundAgentsPanel({
   return (
     <>
       <DockSurface
-        title={`${agents.length} background agent${agents.length === 1 ? "" : "s"}`}
+        title={title}
         icon={<Bot size={13} />}
         headerAction={(
           <button

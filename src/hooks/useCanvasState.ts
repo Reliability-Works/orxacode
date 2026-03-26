@@ -166,6 +166,13 @@ export function useCanvasState(sessionId: string, directory?: string) {
     }));
   }, [setState]);
 
+  const setTiles = useCallback((tiles: CanvasTile[]) => {
+    setState((prev) => ({
+      ...prev,
+      tiles,
+    }));
+  }, [setState]);
+
   return {
     tiles: state.tiles,
     theme: state.theme,
@@ -175,6 +182,7 @@ export function useCanvasState(sessionId: string, directory?: string) {
     addTile,
     removeTile,
     updateTile,
+    setTiles,
     bringToFront,
     setTheme,
     toggleSnap,

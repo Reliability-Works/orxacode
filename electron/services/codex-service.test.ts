@@ -193,6 +193,49 @@ describe("CodexService turn steering", () => {
     });
   });
 
+  it("includes image attachments in turn/start input items", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({}));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      request,
+    });
+
+    await service.startTurn({
+      threadId: "thread-1",
+      prompt: "Inspect this image",
+      attachments: [{ type: "image", url: "data:image/png;base64,AAAA" }],
+    });
+
+    expect(request).toHaveBeenCalledWith("turn/start", {
+      threadId: "thread-1",
+      input: [
+        { type: "text", text: "Inspect this image", text_elements: [] },
+        { type: "image", url: "data:image/png;base64,AAAA" },
+      ],
+    });
+  });
+
+  it("supports image-only Codex turns", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async () => ({}));
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      request,
+    });
+
+    await service.startTurn({
+      threadId: "thread-1",
+      prompt: "",
+      attachments: [{ type: "image", url: "data:image/png;base64,BBBB" }],
+    });
+
+    expect(request).toHaveBeenCalledWith("turn/start", {
+      threadId: "thread-1",
+      input: [{ type: "image", url: "data:image/png;base64,BBBB" }],
+    });
+  });
+
   it("sends turn/steer with expectedTurnId and text input", async () => {
     const service = new CodexService();
     const request = vi.fn(async () => ({}));
