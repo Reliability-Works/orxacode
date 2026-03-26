@@ -54,24 +54,9 @@ jobs:
         if: matrix.os != 'ubuntu-latest'
         run: pnpm smoke:artifact
 
-  prepare-release:
-    needs: smoke-test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Create or update GitHub release with generated notes
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
-
   publish:
     needs:
       - smoke-test
-      - prepare-release
     runs-on: macos-latest
     permissions:
       contents: write
