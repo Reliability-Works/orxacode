@@ -76,7 +76,8 @@ import { useWorkspaceState } from "./hooks/useWorkspaceState";
 import { useWorkspaceSessionMetadata } from "./hooks/useWorkspaceSessionMetadata";
 import { useWorkspaceSessionMetadataMigration } from "./hooks/useWorkspaceSessionMetadataMigration";
 import { useAppShellSessionCollections } from "./hooks/useAppShellSessionCollections";
-import { useStreamingBuffer } from "./hooks/useStreamingBuffer";
+// TODO: streaming buffer removed — needs reimplementation at the message-part delta
+// level rather than the presentation layer to avoid blocking tool calls and diffs
 import { useBackgroundSessionDescriptors } from "./hooks/useBackgroundSessionDescriptors";
 import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
@@ -1674,7 +1675,9 @@ export default function App() {
       return;
     }
 
-    setMessages([]);
+    // Don't clear messages before refresh — the Zustand store caches messages
+    // per session key, so showing cached data instantly avoids the empty flash.
+    // refreshMessages() will update with fresh server data in the background.
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
 
@@ -2721,13 +2724,15 @@ export default function App() {
     opencodeSessionStateMap,
     sessionReadTimestamps,
   ]);
-  const activeComposerPresentation = useMemo(() => selectActiveComposerPresentation({
+  // Not memoized: this selector reads session status from projectDataByDirectory
+  // via getState() and must re-run on every render to detect busy→idle transitions.
+  const activeComposerPresentation = selectActiveComposerPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     sending: isSendingPrompt,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, isSendingPrompt, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap, claudeSessionStateMap]);
+  });
   const isSessionBusy = activeComposerPresentation.busy;
   const isSessionInProgress = isSessionBusy || isSendingPrompt;
   const contentPaneTitle = activeSession?.title?.trim() || activeSession?.slug || activeProject?.name || "Untitled session";
@@ -2739,19 +2744,14 @@ export default function App() {
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
-  const activeSessionPresentationRaw = useMemo(() => selectSessionPresentation({
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider]);
+  const activeSessionPresentation = useMemo(() => selectSessionPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     assistantLabel,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider, opencodeSessionStateMap, codexSessionStateMap, claudeChatSessionStateMap]);
-  const activeSessionPresentation = useStreamingBuffer(
-    activeSessionPresentationRaw,
-    isSessionInProgress,
-    appPreferences.enableAssistantStreaming,
-  );
+  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider]);
   const activeReviewChangesFiles = useMemo(
     () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
     [activeSessionPresentation],
@@ -3932,7 +3932,7 @@ export default function App() {
               onUseSkill={openSkillUseModal}
             />
           ) : activeProjectDir ? (
-            <Fragment key={activeSessionKey ?? activeSessionType ?? "workspace-landing"}>
+            <Fragment>
               {!activeSessionID ? (
                 pendingSessionId ? (
                   <div className="workspace-session-transition" aria-live="polite">
@@ -4046,6 +4046,7 @@ export default function App() {
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
                   codexAccessMode={appPreferences.codexAccessMode}
+                  defaultReasoningEffort={appPreferences.codexReasoningEffort}
                   permissionMode={appPreferences.permissionMode}
                   onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
                   codexPath={appPreferences.codexPath}
@@ -4081,126 +4082,129 @@ export default function App() {
                     workspaceDirectory={activeProjectDir ?? null}
                     bottomClearance={messageFeedBottomClearance}
                     onOpenFileReference={(reference) => void openReferencedFile(reference)}
+                    sessionId={activeSessionKey ?? undefined}
                   />
 
-                  <ComposerPanel
-                    composer={composer}
-                    setComposer={handleComposerChange}
-                    composerAttachments={composerAttachments}
-                    removeAttachment={removeAttachment}
-                    slashMenuOpen={slashMenuOpen}
-                    filteredSlashCommands={filteredSlashCommands}
-                    slashSelectedIndex={slashSelectedIndex}
-                    insertSlashCommand={insertSlashCommand}
-                    handleSlashKeyDown={handleSlashKeyDown}
-                    addComposerAttachments={addComposerAttachments}
-                    sendPrompt={sendComposerPrompt}
-                    abortActiveSession={abortActiveSession}
-                    isSessionBusy={isSessionInProgress}
-                    isSendingPrompt={isSendingPrompt}
-                    pickImageAttachment={pickImageAttachment}
-                    hasActiveSession={Boolean(activeSessionID)}
-                    isPlanMode={isPlanMode}
-                    hasPlanAgent={hasPlanAgent}
-                    togglePlanMode={togglePlanMode}
-                    browserModeEnabled={browserModeEnabled}
-                    setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
-                    hideBrowserToggle={false}
-                    hidePlanToggle
-                    agentOptions={effectiveComposerAgentOptions}
-                    selectedAgent={selectedAgent}
-                    onAgentChange={setSelectedAgent}
-                    permissionMode={appPreferences.permissionMode}
-                    onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
-                    compactionProgress={compactionMeter.progress}
-                    compactionHint={compactionMeter.hint}
-                    compactionCompacted={compactionMeter.compacted}
-                    branchMenuOpen={branchMenuOpen}
-                    setBranchMenuOpen={setBranchMenuOpen}
-                    branchControlWidthCh={branchControlWidthCh}
-                    branchLoading={branchLoading}
-                    branchSwitching={branchSwitching}
-                    hasActiveProject={Boolean(activeProjectDir)}
-                    branchCurrent={branchState?.current}
-                    branchDisplayValue={branchDisplayValue}
-                    branchSearchInputRef={branchSearchInputRef}
-                    branchQuery={branchQuery}
-                    setBranchQuery={setBranchQuery}
-                    branchActionError={branchActionError}
-                    clearBranchActionError={() => setBranchActionError(null)}
-                    checkoutBranch={checkoutBranch}
-                    filteredBranches={filteredBranches}
-                    openBranchCreateModal={openBranchCreateModal}
-                    modelSelectOptions={modelSelectOptions}
-                    selectedModel={selectedModel}
-                    setSelectedModel={setSelectedModel}
-                    selectedVariant={selectedVariant}
-                    setSelectedVariant={setSelectedVariant}
-                    variantOptions={variantOptions}
-                    placeholder={composerPlaceholder}
-                    onLayoutHeightChange={handleComposerLayoutHeightChange}
-                    onDockHeightChange={handleDockHeightChange}
-                    backgroundAgents={visibleBackgroundAgents}
-                    selectedBackgroundAgentId={selectedBackgroundAgentId}
-                    onOpenBackgroundAgent={setSelectedBackgroundAgentId}
-                    onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
-                    onArchiveBackgroundAgent={async (agent) => {
-                      if (!activeProjectDir || !agent.sessionID) {
-                        return;
-                      }
-                      try {
-                        await window.orxa.opencode.abortSession(activeProjectDir, agent.sessionID).catch(() => false);
-                        await window.orxa.opencode.archiveSession(activeProjectDir, agent.sessionID);
-                        setArchivedBackgroundAgentIds((current) => {
-                          const next = { ...current };
-                          const existing = new Set(next[activeProjectDir] ?? []);
-                          existing.add(agent.id);
-                          existing.add(agent.sessionID!);
-                          next[activeProjectDir] = [...existing];
-                          return next;
-                        });
-                        if (selectedBackgroundAgentId === agent.id) {
-                          setSelectedBackgroundAgentId(null);
+                  <div className="center-pane-rail center-pane-rail--composer">
+                    <ComposerPanel
+                      composer={composer}
+                      setComposer={handleComposerChange}
+                      composerAttachments={composerAttachments}
+                      removeAttachment={removeAttachment}
+                      slashMenuOpen={slashMenuOpen}
+                      filteredSlashCommands={filteredSlashCommands}
+                      slashSelectedIndex={slashSelectedIndex}
+                      insertSlashCommand={insertSlashCommand}
+                      handleSlashKeyDown={handleSlashKeyDown}
+                      addComposerAttachments={addComposerAttachments}
+                      sendPrompt={sendComposerPrompt}
+                      abortActiveSession={abortActiveSession}
+                      isSessionBusy={isSessionInProgress}
+                      isSendingPrompt={isSendingPrompt}
+                      pickImageAttachment={pickImageAttachment}
+                      hasActiveSession={Boolean(activeSessionID)}
+                      isPlanMode={isPlanMode}
+                      hasPlanAgent={hasPlanAgent}
+                      togglePlanMode={togglePlanMode}
+                      browserModeEnabled={browserModeEnabled}
+                      setBrowserModeEnabled={(enabled) => void setBrowserMode(enabled)}
+                      hideBrowserToggle={false}
+                      hidePlanToggle
+                      agentOptions={effectiveComposerAgentOptions}
+                      selectedAgent={selectedAgent}
+                      onAgentChange={setSelectedAgent}
+                      permissionMode={appPreferences.permissionMode}
+                      onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
+                      compactionProgress={compactionMeter.progress}
+                      compactionHint={compactionMeter.hint}
+                      compactionCompacted={compactionMeter.compacted}
+                      branchMenuOpen={branchMenuOpen}
+                      setBranchMenuOpen={setBranchMenuOpen}
+                      branchControlWidthCh={branchControlWidthCh}
+                      branchLoading={branchLoading}
+                      branchSwitching={branchSwitching}
+                      hasActiveProject={Boolean(activeProjectDir)}
+                      branchCurrent={branchState?.current}
+                      branchDisplayValue={branchDisplayValue}
+                      branchSearchInputRef={branchSearchInputRef}
+                      branchQuery={branchQuery}
+                      setBranchQuery={setBranchQuery}
+                      branchActionError={branchActionError}
+                      clearBranchActionError={() => setBranchActionError(null)}
+                      checkoutBranch={checkoutBranch}
+                      filteredBranches={filteredBranches}
+                      openBranchCreateModal={openBranchCreateModal}
+                      modelSelectOptions={modelSelectOptions}
+                      selectedModel={selectedModel}
+                      setSelectedModel={setSelectedModel}
+                      selectedVariant={selectedVariant}
+                      setSelectedVariant={setSelectedVariant}
+                      variantOptions={variantOptions}
+                      placeholder={composerPlaceholder}
+                      onLayoutHeightChange={handleComposerLayoutHeightChange}
+                      onDockHeightChange={handleDockHeightChange}
+                      backgroundAgents={visibleBackgroundAgents}
+                      selectedBackgroundAgentId={selectedBackgroundAgentId}
+                      onOpenBackgroundAgent={setSelectedBackgroundAgentId}
+                      onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
+                      onArchiveBackgroundAgent={async (agent) => {
+                        if (!activeProjectDir || !agent.sessionID) {
+                          return;
                         }
-                        await refreshProject(activeProjectDir);
-                      } catch (error) {
-                        setStatusLine(error instanceof Error ? error.message : String(error));
-                      }
-                    }}
-                    backgroundAgentDetail={backgroundAgentDetail}
-                    backgroundAgentTaskText={backgroundAgentTaskText}
-                    backgroundAgentDetailLoading={selectedBackgroundAgentLoading}
-                    backgroundAgentDetailError={selectedBackgroundAgentError}
-                    backgroundAgentTaggingHint={null}
-                    todoItems={activeTodoPresentation?.items}
-                    todoOpen={dockTodosOpen}
-                    onTodoToggle={() => setDockTodosOpen((v) => !v)}
-                    reviewChangesFiles={showReviewChangesDrawer ? activeReviewChangesFiles : undefined}
-                    onOpenReviewChange={(path) => void openReferencedFile(path)}
-                    pendingPermission={dockPendingPermission}
-                    pendingQuestion={dockPendingQuestion}
-                    queuedMessages={followupQueue}
-                    sendingQueuedId={sendingQueuedId}
-                    onQueueMessage={queueFollowupMessage}
-                    queuedActionKind="send"
-                    onPrimaryQueuedAction={(id: string) => {
-                      const item = followupQueue.find((m) => m.id === id);
-                      if (!item || sendingQueuedId) return;
-                      setSendingQueuedId(id);
-                      void sendPrompt({
-                        textOverride: item.text,
-                        attachmentOverride: item.attachments ?? [],
-                        systemAddendum: effectiveSystemAddendum,
-                        promptSource: "user",
-                        tools: activePromptToolsPolicy,
-                      }).finally(() => {
-                        setSendingQueuedId(undefined);
-                      });
-                      removeQueuedMessage(id);
-                    }}
-                    onEditQueued={editQueuedMessage}
-                    onRemoveQueued={removeQueuedMessage}
-                  />
+                        try {
+                          await window.orxa.opencode.abortSession(activeProjectDir, agent.sessionID).catch(() => false);
+                          await window.orxa.opencode.archiveSession(activeProjectDir, agent.sessionID);
+                          setArchivedBackgroundAgentIds((current) => {
+                            const next = { ...current };
+                            const existing = new Set(next[activeProjectDir] ?? []);
+                            existing.add(agent.id);
+                            existing.add(agent.sessionID!);
+                            next[activeProjectDir] = [...existing];
+                            return next;
+                          });
+                          if (selectedBackgroundAgentId === agent.id) {
+                            setSelectedBackgroundAgentId(null);
+                          }
+                          await refreshProject(activeProjectDir);
+                        } catch (error) {
+                          setStatusLine(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                      backgroundAgentDetail={backgroundAgentDetail}
+                      backgroundAgentTaskText={backgroundAgentTaskText}
+                      backgroundAgentDetailLoading={selectedBackgroundAgentLoading}
+                      backgroundAgentDetailError={selectedBackgroundAgentError}
+                      backgroundAgentTaggingHint={null}
+                      todoItems={activeTodoPresentation?.items}
+                      todoOpen={dockTodosOpen}
+                      onTodoToggle={() => setDockTodosOpen((v) => !v)}
+                      reviewChangesFiles={showReviewChangesDrawer ? activeReviewChangesFiles : undefined}
+                      onOpenReviewChange={(path) => void openReferencedFile(path)}
+                      pendingPermission={dockPendingPermission}
+                      pendingQuestion={dockPendingQuestion}
+                      queuedMessages={followupQueue}
+                      sendingQueuedId={sendingQueuedId}
+                      onQueueMessage={queueFollowupMessage}
+                      queuedActionKind="send"
+                      onPrimaryQueuedAction={(id: string) => {
+                        const item = followupQueue.find((m) => m.id === id);
+                        if (!item || sendingQueuedId) return;
+                        setSendingQueuedId(id);
+                        void sendPrompt({
+                          textOverride: item.text,
+                          attachmentOverride: item.attachments ?? [],
+                          systemAddendum: effectiveSystemAddendum,
+                          promptSource: "user",
+                          tools: activePromptToolsPolicy,
+                        }).finally(() => {
+                          setSendingQueuedId(undefined);
+                        });
+                        removeQueuedMessage(id);
+                      }}
+                      onEditQueued={editQueuedMessage}
+                      onRemoveQueued={removeQueuedMessage}
+                    />
+                  </div>
 
                 </>
               )}

@@ -66,3 +66,7 @@ Tiled workspace for non-linear, multi-tool workflows.
 - Theme customization per canvas
 - Snap-to-grid layout
 - Persistent tile arrangement per session
+
+## Upstream References
+
+For provider-specific protocol and SDK behavior, use [Upstream references](upstream-references.md).

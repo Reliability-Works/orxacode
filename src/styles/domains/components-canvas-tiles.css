@@ -1546,6 +1546,8 @@
 }
 
 .codex-pane {
+  --codex-content-rail-max-width: 1040px;
+  --codex-content-rail-gutter: clamp(16px, 3vw, 40px);
   display: flex;
   flex-direction: column;
   min-height: 0;

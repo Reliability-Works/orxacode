@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { ProjectBootstrap } from "@shared/ipc";
 import { getPersistedCodexState } from "./codex-session-storage";
 import {
+  buildCodexSessionStatus,
   buildClaudeChatSessionStatus,
   buildClaudeSessionStatus,
   buildOpencodeSessionStatus,
@@ -11,7 +12,11 @@ import {
 } from "../state/unified-runtime-store";
 import { buildWorkspaceSessionMetadataKey } from "../lib/workspace-session-metadata";
 import type { BackgroundSessionDescriptor } from "../lib/background-session-descriptors";
-import type { UnifiedBackgroundAgentSummary } from "../lib/session-presentation";
+import {
+  buildCodexBackgroundAgents,
+  buildCodexBackgroundAgentsFromChildThreads,
+  type UnifiedBackgroundAgentSummary,
+} from "../lib/session-presentation";
 
 type UseBackgroundSessionDescriptorsInput = {
   activeProjectDir?: string;
@@ -43,6 +48,22 @@ export function useBackgroundSessionDescriptors({
     void opencodeSessionStateMap;
     const next: BackgroundSessionDescriptor[] = [];
     const seenCodexKeys = new Set<string>();
+    const hasActiveCodexBackgroundWork = (sessionStorageKey: string) => {
+      const runtime = codexSessionStateMap[sessionStorageKey];
+      const persisted = getPersistedCodexState(sessionStorageKey);
+      if (persisted.isStreaming) {
+        return true;
+      }
+      const status = buildCodexSessionStatus(sessionStorageKey, false);
+      if (status.type === "busy" || status.type === "awaiting") {
+        return true;
+      }
+      const activeSubagents = [
+        ...buildCodexBackgroundAgents(runtime?.subagents ?? []),
+        ...buildCodexBackgroundAgentsFromChildThreads(runtime?.runtimeSnapshot?.childThreads ?? []),
+      ];
+      return activeSubagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction");
+    };
 
     for (const [directory, data] of Object.entries(cachedProjects)) {
       for (const session of data.sessions) {
@@ -56,16 +77,7 @@ export function useBackgroundSessionDescriptors({
           if (seenCodexKeys.has(sessionStorageKey)) {
             continue;
           }
-          const runtime = codexSessionStateMap[sessionStorageKey];
-          const persisted = getPersistedCodexState(sessionStorageKey);
-          const hasBackgroundRuntime =
-            Boolean(runtime?.thread) ||
-            Boolean(runtime?.isStreaming) ||
-            (runtime?.messages.length ?? 0) > 0 ||
-            Boolean(persisted.thread) ||
-            Boolean(persisted.isStreaming) ||
-            persisted.messages.length > 0;
-          if (!hasBackgroundRuntime) {
+          if (!hasActiveCodexBackgroundWork(sessionStorageKey)) {
             continue;
           }
           seenCodexKeys.add(sessionStorageKey);

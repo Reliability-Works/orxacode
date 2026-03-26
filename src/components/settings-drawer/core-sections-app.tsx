@@ -116,15 +116,16 @@ export function AppSettingsSection({
           />
         </label>
         <label className="settings-inline-toggle">
-          stream assistant responses
+          stream assistant responses (coming soon)
           <input
             type="checkbox"
             checked={appPreferences.enableAssistantStreaming}
             onChange={(e) => onAppPreferencesChange({ ...appPreferences, enableAssistantStreaming: e.target.checked })}
+            disabled
           />
         </label>
         <p className="settings-inline-note">
-          Show output token-by-token while agent is responding. When off, messages appear all at once when complete.
+          Show output token-by-token while agent is responding. This feature is under development.
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { memo, useMemo, useRef, type CSSProperties } from "react";
 import type { SessionMessageBundle } from "@shared/ipc";
 import { MessageCardFrame } from "./chat/MessageCardFrame";
 import { ThinkingRow } from "./chat/ThinkingRow";
@@ -18,6 +18,7 @@ type Props = {
   workspaceDirectory?: string | null;
   bottomClearance?: number;
   onOpenFileReference?: (reference: string) => void;
+  sessionId?: string;
 };
 
 type SessionFeedNotice = {
@@ -37,9 +38,9 @@ export const MessageFeed = memo(function MessageFeed({
   workspaceDirectory,
   bottomClearance = 24,
   onOpenFileReference,
+  sessionId,
 }: Props) {
   const messageFeedRef = useRef<HTMLDivElement | null>(null);
-  const isAtBottomRef = useRef(true);
   const messageFeedStyle = useMemo(
     () =>
       ({
@@ -85,34 +86,8 @@ export const MessageFeed = memo(function MessageFeed({
     return result;
   }, [renderedRows, sessionNotices]);
 
-  useEffect(() => {
-    const el = messageFeedRef.current;
-    if (!el) {
-      return;
-    }
-    const handleScroll = () => {
-      isAtBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 50;
-    };
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isAtBottomRef.current) {
-      return;
-    }
-    const el = messageFeedRef.current;
-    if (!el) {
-      return;
-    }
-    if (typeof el.scrollTo === "function") {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-    } else {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages, renderedRows.length, sessionNotices.length, showAssistantPlaceholder]);
+  // Scroll-snap on session switch and auto-scroll on new messages are now
+  // handled universally inside VirtualizedTimeline via the sessionId prop.
 
   return (
     <VirtualizedTimeline
@@ -122,26 +97,39 @@ export const MessageFeed = memo(function MessageFeed({
       onScroll={undefined}
       style={messageFeedStyle}
       virtualize={false}
+      sessionId={sessionId}
       emptyState={
         renderedRows.length === 0 && !(showAssistantPlaceholder && messages.length > 0)
-          ? <div className="messages-empty">No messages yet. Start by sending a prompt.</div>
+          ? (
+            <div className="center-pane-rail">
+              <div className="messages-empty">No messages yet. Start by sending a prompt.</div>
+            </div>
+          )
           : undefined
       }
       estimateSize={estimateUnifiedTimelineRowHeight}
-      renderRow={(row) => <UnifiedTimelineRowView key={row.id} row={row} onOpenFileReference={onOpenFileReference} />}
+      renderRow={(row) => (
+        <div className="center-pane-rail center-pane-rail--row">
+          <UnifiedTimelineRowView key={row.id} row={row} onOpenFileReference={onOpenFileReference} />
+        </div>
+      )}
       footer={
         showAssistantPlaceholder && (messages.length > 0 || renderedRows.length > 0) ? (
           <>
-            <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
-              <div className="message-parts">
-                <section className="message-part thinking-panel">
-                  <div className="message-thinking">
-                    <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
-                  </div>
-                </section>
-              </div>
-            </MessageCardFrame>
-            <WorkingIndicator active />
+            <div className="center-pane-rail center-pane-rail--row">
+              <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
+                <div className="message-parts">
+                  <section className="message-part thinking-panel">
+                    <div className="message-thinking">
+                      <ThinkingRow summary={latestActivity?.label ?? "Thinking"} content={latestActivityContent ?? ""} />
+                    </div>
+                  </section>
+                </div>
+              </MessageCardFrame>
+            </div>
+            <div className="center-pane-rail center-pane-rail--row">
+              <WorkingIndicator active startTimestamp={placeholderTimestamp || undefined} />
+            </div>
           </>
         ) : undefined
       }

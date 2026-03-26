@@ -124,6 +124,12 @@ export type UnifiedTimelineRenderRow =
       kind: "turn-divider";
       timestamp?: number;
       durationSeconds?: number;
+    }
+  | {
+      id: string;
+      kind: "plan-card";
+      content: string;
+      timestamp?: number;
     };
 
 export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) {
@@ -165,6 +171,8 @@ export function estimateUnifiedTimelineRowHeight(row: UnifiedTimelineRenderRow) 
       return 42;
     case "turn-divider":
       return 32;
+    case "plan-card":
+      return 60 + Math.min(400, Math.ceil(row.content.length / 72) * 20);
     default:
       return 72;
   }

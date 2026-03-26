@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrxaTerminalSession, ProjectBootstrap, SessionMessageBundle, SessionRuntimeSnapshot } from "@shared/ipc";
 import { normalizeMessageBundles } from "../lib/opencode-event-reducer";
@@ -377,6 +377,60 @@ describe("useWorkspaceState", () => {
     expect(deleteSessionMock).toHaveBeenCalledWith(directory, "session-empty");
     expect(onCleanupEmptySession).toHaveBeenCalledWith(directory, "session-empty");
     expect(window.localStorage.getItem(EMPTY_WORKSPACE_SESSIONS_KEY)).toBeNull();
+  });
+
+  it("clears stale busy status when a fresh runtime snapshot no longer confirms it", async () => {
+    const directory = "/repo";
+    const sessionID = "session-stale-busy";
+    const now = Date.now();
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) =>
+      createRuntimeSnapshot(directory, currentSessionID, []));
+
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () => ({
+            ...createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }]),
+            sessionStatus: { [sessionID]: { type: "busy" } },
+          })),
+          refreshProject: vi.fn(async () => ({
+            ...createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }]),
+            sessionStatus: { [sessionID]: { type: "busy" } },
+          })),
+          createSession: vi.fn(async () => ({ id: "unused", slug: "unused", title: "unused", time: { created: now, updated: now } })),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useWorkspaceState({
+        setStatusLine: vi.fn(),
+        terminalTabIds: [],
+        setTerminalTabs: vi.fn(),
+        setActiveTerminalId: vi.fn(),
+        setTerminalOpen: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await (result.current.selectProject as unknown as (directory: string, options?: unknown) => Promise<void>)(
+        directory,
+        { showLanding: false, sessionID },
+      );
+    });
+
+    await act(async () => {
+      await result.current.selectSession(sessionID, directory);
+    });
+
+    await waitFor(() => {
+      const runtime =
+        useUnifiedRuntimeStore.getState().opencodeSessions[`opencode::${directory}::${sessionID}`]?.runtimeSnapshot;
+      expect(runtime?.sessionStatus?.type).toBe("idle");
+    });
   });
 
   it("refreshes messages immediately after sending the initial prompt for a new session", async () => {

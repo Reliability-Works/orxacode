@@ -249,7 +249,7 @@ export interface OrxaBridge {
     steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;
     deny: (requestId: number) => Promise<void>;
-    respondToUserInput: (requestId: number, response: string) => Promise<void>;
+    respondToUserInput: (requestId: number, answers: Record<string, { answers: string[] }>) => Promise<void>;
     interruptTurn: (threadId: string, turnId: string) => Promise<void>;
     interruptThreadTree: (threadId: string, turnId?: string) => Promise<void>;
   };

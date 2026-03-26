@@ -880,6 +880,16 @@ export function projectCodexSessionPresentation(
       continue;
     }
     if (item.kind === "tool") {
+      // Plan tool output renders as a styled plan card with markdown
+      if (item.toolType === "plan" && item.output) {
+        rawRows.push({
+          id: item.id,
+          kind: "plan-card",
+          content: item.output,
+          timestamp: item.timestamp,
+        });
+        continue;
+      }
       rawRows.push({
         id: item.id,
         kind: "tool",

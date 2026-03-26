@@ -253,6 +253,62 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
   });
 
+  it("wraps the shared opencode composer path in the centered rail", async () => {
+    const now = Date.now();
+    const projectData = {
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-1",
+        slug: "booking-site",
+        title: "Create a booking site",
+        time: { created: now, updated: now },
+      }],
+      sessionStatus: { "session-1": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    };
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: vi.fn(async () => ({
+            projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+            runtime: { status: "disconnected" as const, managedServer: false },
+          })),
+          refreshProject: vi.fn(async () => projectData),
+        },
+      },
+      configurable: true,
+    });
+
+    useUnifiedRuntimeStore.setState((state) => ({
+      ...state,
+      activeWorkspaceDirectory: "/repo/marketing-websites",
+      activeSessionID: "session-1",
+      projectDataByDirectory: {
+        ...state.projectDataByDirectory,
+        "/repo/marketing-websites": projectData as never,
+      },
+    }));
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(container.querySelector(".content-pane .center-pane-rail .composer-zone")).toBeInTheDocument();
+    });
+  });
+
   it("shows preloaded sessions in the workspace list without selecting the workspace", async () => {
     const bootstrapMock = vi.fn(async () => ({
       projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],

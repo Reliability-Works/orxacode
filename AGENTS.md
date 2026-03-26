@@ -6,6 +6,10 @@ This repository is an Electron desktop frontend for Opencode.
 ## Canonical Upstream
 - Source of truth: [https://github.com/anomalyco/opencode](https://github.com/anomalyco/opencode)
 
+## Provider References
+- Use [`docs/upstream-references.md`](docs/upstream-references.md) when aligning Orxa Code behavior with upstream provider SDKs, CLIs, or app-server protocols.
+- Treat those upstream docs/repos as canonical for provider-specific semantics before introducing UI-only interpretations.
+
 ## Architecture Routing Map
 When behavior appears different between frontend labels and backend routing, follow this chain:
 1. `src/` (renderer UI behavior)

@@ -1209,15 +1209,23 @@ export function selectPendingQuestionDockData(input: {
     if (!request) {
       return null;
     }
+    const questions = request.questions?.length
+      ? request.questions.map((q) => ({
+          id: q.id || request.itemId || "user-input-q",
+          header: q.header || undefined,
+          text: q.question || request.message || "The agent is requesting your input.",
+          options: q.options?.map((o) => ({ id: o.id, label: o.label, value: o.value })),
+        }))
+      : [
+          {
+            id: request.itemId || "user-input-q",
+            text: request.message || "The agent is requesting your input.",
+          },
+        ];
     return buildQuestionDockData({
       provider: "codex",
       requestId: request.id,
-      questions: [
-        {
-          id: request.itemId || "user-input-q",
-          text: request.message || "The agent is requesting your input.",
-        },
-      ],
+      questions,
     });
   }
   if (provider === "claude-chat" && sessionKey) {

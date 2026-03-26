@@ -46,6 +46,9 @@ import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 export { agentColor, agentColorForId } from "./codex-subagent-helpers";
 export type { SubagentInfo } from "./codex-subagent-helpers";
 
+const DEFAULT_CODEX_COLLABORATION_MODE_ID = "default";
+const PLAN_IMPLEMENTATION_PROMPT = "Implement the plan.";
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -387,20 +390,67 @@ export function useCodexSession(
   const setCodexSubagents = useUnifiedRuntimeStore((state) => state.setCodexSubagents);
   const setCodexActiveSubagentThreadId = useUnifiedRuntimeStore((state) => state.setCodexActiveSubagentThreadId);
   const setCodexRuntimeSnapshot = useUnifiedRuntimeStore((state) => state.setCodexRuntimeSnapshot);
+  const hasHydratedCodexRuntime = Boolean(
+    codexRuntime
+    && (
+      codexRuntime.connectionStatus !== "disconnected"
+      || codexRuntime.serverInfo
+      || codexRuntime.lastError
+      || codexRuntime.thread
+      || codexRuntime.runtimeSnapshot
+      || codexRuntime.messages.length > 0
+      || codexRuntime.pendingApproval
+      || codexRuntime.pendingUserInput
+      || codexRuntime.isStreaming
+      || codexRuntime.planItems.length > 0
+      || codexRuntime.dismissedPlanIds.length > 0
+      || codexRuntime.subagents.length > 0
+      || codexRuntime.activeSubagentThreadId
+      || codexRuntime.threadName !== undefined
+    ),
+  );
+  const runtimeState = hasHydratedCodexRuntime ? codexRuntime : null;
 
-  const connectionStatus = codexRuntime?.connectionStatus ?? "disconnected";
-  const serverInfo = codexRuntime?.serverInfo;
-  const thread = codexRuntime?.thread ?? persisted.thread;
-  const messages = codexRuntime?.messages ?? persisted.messages;
-  const pendingApproval = codexRuntime?.pendingApproval ?? null;
-  const pendingUserInput = codexRuntime?.pendingUserInput ?? null;
-  const isStreaming = codexRuntime?.isStreaming ?? persisted.isStreaming;
-  const lastError = codexRuntime?.lastError;
-  const threadName = codexRuntime?.threadName;
-  const planItems = codexRuntime?.planItems ?? [];
-  const dismissedPlanIds = useMemo(() => new Set(codexRuntime?.dismissedPlanIds ?? []), [codexRuntime?.dismissedPlanIds]);
-  const subagents = useMemo(() => codexRuntime?.subagents ?? [], [codexRuntime?.subagents]);
-  const activeSubagentThreadId = codexRuntime?.activeSubagentThreadId ?? null;
+  const connectionStatus = runtimeState?.connectionStatus ?? "disconnected";
+  const serverInfo = runtimeState?.serverInfo;
+  const thread = runtimeState?.thread ?? persisted.thread;
+  const messages = runtimeState?.messages ?? persisted.messages;
+  const pendingApproval = runtimeState?.pendingApproval ?? null;
+  const pendingUserInput = runtimeState?.pendingUserInput ?? null;
+  const isStreaming = runtimeState?.isStreaming ?? persisted.isStreaming;
+  const lastError = runtimeState?.lastError;
+  const threadName = runtimeState?.threadName;
+  const planItems = runtimeState?.planItems ?? [];
+  const dismissedPlanIds = useMemo(() => new Set(runtimeState?.dismissedPlanIds ?? []), [runtimeState?.dismissedPlanIds]);
+  const subagents = useMemo(() => runtimeState?.subagents ?? [], [runtimeState?.subagents]);
+  const activeSubagentThreadId = runtimeState?.activeSubagentThreadId ?? null;
+  const hasPendingPlanReview = useMemo(() => {
+    if (isStreaming) {
+      return false;
+    }
+    let lastPlanIdx = -1;
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index];
+      if (message.kind === "tool" && message.toolType === "plan") {
+        lastPlanIdx = index;
+        break;
+      }
+    }
+    if (lastPlanIdx < 0) {
+      return false;
+    }
+    const planMessage = messages[lastPlanIdx];
+    if (planMessage.kind !== "tool") {
+      return false;
+    }
+    if (!planMessage.output || planMessage.output.trim().length === 0 || planMessage.status === "error") {
+      return false;
+    }
+    if (dismissedPlanIds.has(planMessage.id)) {
+      return false;
+    }
+    return !messages.slice(lastPlanIdx + 1).some((message) => message.kind === "message" && message.role === "user");
+  }, [dismissedPlanIds, isStreaming, messages]);
 
   // Track the current assistant message being streamed
   const streamingItemIdRef = useRef<string | null>(null);
@@ -2068,13 +2118,17 @@ export function useCodexSession(
       return;
     }
 
-    void syncCodexThreadRuntime();
+    const hasBlockingInteraction = hasPendingPlanReview || Boolean(pendingApproval) || Boolean(pendingUserInput);
+    if (!hasBlockingInteraction) {
+      void syncCodexThreadRuntime();
+    }
     const hasActiveBackgroundWork =
       isStreaming ||
-      Boolean(pendingApproval) ||
-      Boolean(pendingUserInput) ||
       subagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction");
-    const pollIntervalMs = hasActiveBackgroundWork ? 1500 : 8000;
+    if (!hasActiveBackgroundWork || hasBlockingInteraction) {
+      return;
+    }
+    const pollIntervalMs = 1500;
     const timer = window.setInterval(() => {
       void syncCodexThreadRuntime();
     }, pollIntervalMs);
@@ -2082,7 +2136,7 @@ export function useCodexSession(
     return () => {
       window.clearInterval(timer);
     };
-  }, [isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
+  }, [hasPendingPlanReview, isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
 
   // Derive subagent messages reactively from current messages
   const subagentMessages = useMemo(() => {
@@ -2191,6 +2245,7 @@ export function useCodexSession(
         clearLastError();
         await window.orxa.codex.startTurn(thread.id, prompt, directory, options?.model, options?.effort, options?.collaborationMode);
       } catch (err) {
+        console.error("[useCodexSession] codex.startTurn failed", err);
         recordLastError(err);
       }
     },
@@ -2245,12 +2300,12 @@ export function useCodexSession(
     }
   }, [pendingApproval, recordLastError, setPendingApprovalState]);
 
-  // Respond to user input request
+  // Respond to user input request — answers keyed by question ID
   const respondToUserInput = useCallback(
-    async (response: string) => {
+    async (answers: Record<string, { answers: string[] }>) => {
       if (!window.orxa?.codex || !pendingUserInput) return;
       try {
-        await window.orxa.codex.respondToUserInput(pendingUserInput.id, response);
+        await window.orxa.codex.respondToUserInput(pendingUserInput.id, answers);
         setPendingUserInputState(null);
       } catch (err) {
         recordLastError(err);
@@ -2262,8 +2317,12 @@ export function useCodexSession(
   const rejectUserInput = useCallback(async () => {
     if (!window.orxa?.codex || !pendingUserInput) return;
     try {
-      // Respond with empty string to indicate rejection
-      await window.orxa.codex.respondToUserInput(pendingUserInput.id, "");
+      // Send empty answers for all questions to indicate dismissal
+      const emptyAnswers: Record<string, { answers: string[] }> = {};
+      for (const q of pendingUserInput.questions ?? []) {
+        emptyAnswers[q.id] = { answers: [] };
+      }
+      await window.orxa.codex.respondToUserInput(pendingUserInput.id, emptyAnswers);
       setPendingUserInputState(null);
     } catch (err) {
       recordLastError(err);
@@ -2300,13 +2359,24 @@ export function useCodexSession(
     }
   }, [recordLastError, setStreamingState, thread, updateMessages]);
 
-  // Plan acceptance: switch to default mode and send implementation prompt
+  // Plan acceptance: switch to default/code mode and send implementation prompt
   // Sending a message adds a user message which naturally hides the overlay (user msg follows plan item)
-  const acceptPlan = useCallback(async (planItemId?: string) => {
+  const acceptPlan = useCallback(async (options?: {
+    collaborationMode?: string;
+    model?: string;
+    effort?: string;
+    planItemId?: string;
+  }) => {
+    const collaborationMode = options?.collaborationMode ?? DEFAULT_CODEX_COLLABORATION_MODE_ID;
+    const planItemId = options?.planItemId;
     if (planItemId) {
       setDismissedPlanIdsState((prev) => new Set([...prev, planItemId]));
     }
-    await sendMessage("Implement this plan.", { model: undefined });
+    await sendMessage(PLAN_IMPLEMENTATION_PROMPT, {
+      model: options?.model,
+      effort: options?.effort,
+      collaborationMode,
+    });
   }, [sendMessage, setDismissedPlanIdsState]);
 
   // Check if a thread is a subagent thread
