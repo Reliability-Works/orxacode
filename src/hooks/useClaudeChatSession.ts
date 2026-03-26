@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ClaudeChatHistoryMessage, ClaudeChatModelEntry } from "@shared/ipc";
+import type { ClaudeChatAttachment, ClaudeChatHistoryMessage, ClaudeChatModelEntry } from "@shared/ipc";
 import type { ModelOption } from "../lib/models";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import { clearPersistedClaudeChatState, getPersistedClaudeChatState, setPersistedClaudeChatState } from "./claude-chat-session-storage";
@@ -372,21 +372,26 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
       effort?: "low" | "medium" | "high" | "max" | "ultrathink";
       fastMode?: boolean;
       thinking?: boolean;
+      attachments?: ClaudeChatAttachment[];
+      displayPrompt?: string;
     },
   ) => {
     const timestamp = Date.now();
     const userId = nextClaudeMessageId(sessionKey);
+    const displayPrompt = options?.displayPrompt ?? prompt;
+    const turnOptions = { ...(options ?? {}) };
+    delete (turnOptions as { displayPrompt?: string }).displayPrompt;
     updateClaudeChatMessages(sessionKey, (messages) => [
       ...messages,
       {
         id: userId,
         kind: "message",
         role: "user",
-        content: prompt,
+        content: displayPrompt,
         timestamp,
       },
     ]);
-    await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, { cwd: directory, ...(options ?? {}) });
+    await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, { cwd: directory, ...turnOptions });
   }, [directory, sessionKey, updateClaudeChatMessages]);
 
   const interruptTurn = useCallback(async () => {

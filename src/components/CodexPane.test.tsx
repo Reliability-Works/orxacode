@@ -195,6 +195,7 @@ describe("CodexPane", () => {
         "gpt-5.4",
         "low",
         undefined,
+        undefined,
       );
     });
   });
@@ -208,6 +209,58 @@ describe("CodexPane", () => {
     render(<CodexPane directory="/workspace/project" sessionStorageKey="/workspace/project::session-1" onExit={mockOnExit} {...buildDefaultBranchProps()} />);
 
     expect(screen.getByRole("log", { name: /codex conversation/i })).toBeInTheDocument();
+  });
+
+  it("passes attached images through to Codex turns", async () => {
+    const codex = buildOrxaCodex();
+    const pickImage = vi.fn(async () => ({
+      path: "/tmp/codex.png",
+      url: "data:image/png;base64,AAAA",
+      filename: "codex.png",
+      mime: "image/png",
+    }));
+    window.orxa = {
+      codex,
+      opencode: {
+        pickImage,
+      },
+      events: buildOrxaEvents(),
+    } as unknown as typeof window.orxa;
+
+    const store = useUnifiedRuntimeStore.getState();
+    store.initCodexSession("/workspace/project::session-1", "/workspace/project");
+    store.setCodexConnectionState("/workspace/project::session-1", "connected", { name: "codex", version: "1.0.0" });
+    store.setCodexThread("/workspace/project::session-1", {
+      id: "thr-1",
+      preview: "",
+      modelProvider: "openai",
+      createdAt: Date.now(),
+    });
+
+    render(
+      <CodexPane
+        directory="/workspace/project"
+        sessionStorageKey="/workspace/project::session-1"
+        onExit={mockOnExit}
+        {...buildDefaultBranchProps()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }));
+    await waitFor(() => expect(screen.getByText("codex.png")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /send prompt/i }));
+
+    await waitFor(() => {
+      expect(codex.startTurn).toHaveBeenCalledWith(
+        "thr-1",
+        "",
+        "/workspace/project",
+        undefined,
+        undefined,
+        undefined,
+        [{ type: "image", url: "data:image/png;base64,AAAA" }],
+      );
+    });
   });
 
   it("renders the Codex transcript without virtualization", async () => {
@@ -355,6 +408,7 @@ describe("CodexPane", () => {
         undefined,
         undefined,
         "default",
+        undefined,
       );
     });
   });

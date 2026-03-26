@@ -2,11 +2,12 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeChatService } from "./claude-chat-service";
-import { query, tagSession } from "@anthropic-ai/claude-agent-sdk";
+import { query, renameSession, tagSession } from "@anthropic-ai/claude-agent-sdk";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
   getSessionMessages: vi.fn(),
+  renameSession: vi.fn(),
   tagSession: vi.fn(),
 }));
 
@@ -24,6 +25,7 @@ function createQueryStream(messages: unknown[]) {
 describe("ClaudeChatService", () => {
   beforeEach(() => {
     vi.mocked(query).mockReset();
+    vi.mocked(renameSession).mockReset();
     vi.mocked(tagSession).mockReset();
   });
 
@@ -135,6 +137,53 @@ describe("ClaudeChatService", () => {
     );
   });
 
+  it("sends attached images through the Claude SDK user-message stream", async () => {
+    const service = new ClaudeChatService();
+
+    vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
+
+    await service.startTurn("session-images", "/tmp/project", "Describe this screenshot", {
+      model: "claude-sonnet-4-6",
+      attachments: [
+        {
+          path: "/tmp/fake.png",
+          url: "data:image/png;base64,QQ==",
+          filename: "fake.png",
+          mime: "image/png",
+        },
+      ],
+    });
+
+    const promptInput = vi.mocked(query).mock.calls[0]?.[0]?.prompt;
+    expect(typeof promptInput).not.toBe("string");
+    expect(promptInput).toBeDefined();
+
+    const iterator = (promptInput as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+    const first = await iterator.next();
+    expect(first.done).toBe(false);
+    expect(first.value).toMatchObject({
+      type: "user",
+      parent_tool_use_id: null,
+      message: {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: "QQ==",
+            },
+          },
+          {
+            type: "text",
+            text: "Describe this screenshot",
+          },
+        ],
+      },
+    });
+  });
+
   it("ignores tool-use payload JSON in assistant text and keeps tool summaries structured", async () => {
     const service = new ClaudeChatService();
     const notifications: Array<{ method: string; params: Record<string, unknown> }> = [];
@@ -220,6 +269,14 @@ describe("ClaudeChatService", () => {
         }),
       ]),
     );
+  });
+
+  it("renames Claude provider sessions through the SDK", async () => {
+    const service = new ClaudeChatService();
+
+    await service.renameProviderSession("claude-thread-1", "New Claude Title", "/tmp/project");
+
+    expect(vi.mocked(renameSession)).toHaveBeenCalledWith("claude-thread-1", "New Claude Title", { dir: "/tmp/project" });
   });
 
   it("dedupes and caches Claude health checks for a short TTL", async () => {

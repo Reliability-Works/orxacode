@@ -53,6 +53,7 @@ import type {
 } from "./claude-chat";
 import type { UpdateCheckResult, UpdatePreferences } from "./updates";
 import type {
+  CodexAttachment,
   CodexCollaborationMode,
   CodexDoctorResult,
   CodexModelEntry,
@@ -200,6 +201,7 @@ export interface OrxaBridge {
     approve: (requestId: string, decision: ClaudeChatApprovalDecision) => Promise<void>;
     respondToUserInput: (requestId: string, response: string) => Promise<void>;
     getSessionMessages: (sessionId: string, directory?: string) => Promise<ClaudeChatHistoryMessage[]>;
+    renameProviderSession: (sessionId: string, title: string, directory?: string) => Promise<void>;
     archiveSession: (sessionKey: string) => Promise<void>;
     archiveProviderSession: (sessionId: string, directory?: string) => Promise<void>;
   };
@@ -245,7 +247,15 @@ export interface OrxaBridge {
     archiveThreadTree: (threadId: string) => Promise<void>;
     setThreadName: (threadId: string, name: string) => Promise<void>;
     generateRunMetadata: (cwd: string, prompt: string) => Promise<CodexRunMetadata>;
-    startTurn: (threadId: string, prompt: string, cwd?: string, model?: string, effort?: string, collaborationMode?: string) => Promise<void>;
+    startTurn: (
+      threadId: string,
+      prompt: string,
+      cwd?: string,
+      model?: string,
+      effort?: string,
+      collaborationMode?: string,
+      attachments?: CodexAttachment[],
+    ) => Promise<void>;
     steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<void>;
     approve: (requestId: number, decision: string) => Promise<void>;
     deny: (requestId: number) => Promise<void>;

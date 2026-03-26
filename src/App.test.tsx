@@ -208,6 +208,7 @@ beforeEach(() => {
         approve: vi.fn(async () => undefined),
         respondToUserInput: vi.fn(async () => undefined),
         getSessionMessages: vi.fn(async () => []),
+        renameProviderSession: vi.fn(async () => undefined),
         archiveSession: vi.fn(async () => undefined),
         archiveProviderSession: vi.fn(async () => undefined),
       },
@@ -675,6 +676,91 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(useUnifiedRuntimeStore.getState().claudeChatSessions[sessionKey]).toBeUndefined();
+    });
+  });
+
+  it("renames Claude chat provider sessions from the App shell", async () => {
+    const sessionKey = "/repo/reliabilityworks::session-claude-chat";
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ [sessionKey]: "claude-chat" }),
+    );
+
+    useUnifiedRuntimeStore.setState({
+      claudeChatSessions: {
+        [sessionKey]: {
+          key: sessionKey,
+          directory: "/repo/reliabilityworks",
+          connectionStatus: "connected",
+          providerThreadId: "claude-thread-1",
+          activeTurnId: null,
+          messages: [],
+          historyMessages: [],
+          pendingApproval: null,
+          pendingUserInput: null,
+          isStreaming: false,
+          subagents: [],
+        },
+      },
+    });
+
+    const activeSession = {
+      id: "session-claude-chat",
+      title: "Claude Code (Chat)",
+      slug: "claude-chat",
+      time: { created: Date.now(), updated: Date.now() },
+    };
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "reliabilityworks", worktree: "/repo/reliabilityworks", source: "local" as const }],
+      runtime: { status: "connected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/reliabilityworks",
+      path: {},
+      sessions: [activeSession],
+      sessionStatus: { "session-claude-chat": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+    const renameProviderSessionMock = vi.fn(async () => undefined);
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+        claudeChat: {
+          ...window.orxa!.claudeChat,
+          renameProviderSession: renameProviderSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    const sessionButton = await screen.findByText("Claude Code (Chat)");
+    fireEvent.contextMenu(sessionButton);
+    fireEvent.click(await screen.findByText("Rename Session"));
+
+    const input = await screen.findByPlaceholderText("Session title");
+    fireEvent.change(input, { target: { value: "Renamed Claude Session" } });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    await waitFor(() => {
+      expect(renameProviderSessionMock).toHaveBeenCalledWith("claude-thread-1", "Renamed Claude Session", "/repo/reliabilityworks");
     });
   });
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import { useClaudeChatSession, type ClaudeChatMessageItem } from "../hooks/useClaudeChatSession";
+import type { Attachment } from "../hooks/useComposerState";
 import { deriveSessionTitleFromPrompt } from "../lib/app-session-utils";
 import { ComposerPanel } from "./ComposerPanel";
 import { VirtualizedTimeline } from "./chat/VirtualizedTimeline";
@@ -51,6 +52,33 @@ function historyToMessageItems(messages: Awaited<ReturnType<ReturnType<typeof us
   }));
 }
 
+function addClaudeComposerAttachments(
+  current: Attachment[],
+  attachments: Attachment[],
+) {
+  if (attachments.length === 0) {
+    return current;
+  }
+  const seen = new Set(current.map((item) => item.url));
+  const next: Attachment[] = [];
+  for (const attachment of attachments) {
+    if (!attachment.url || seen.has(attachment.url)) {
+      continue;
+    }
+    seen.add(attachment.url);
+    next.push(attachment);
+  }
+  return next.length > 0 ? [...current, ...next] : current;
+}
+
+function buildClaudeDisplayPrompt(prompt: string, attachmentCount: number) {
+  if (attachmentCount <= 0) {
+    return prompt;
+  }
+  const attachmentLabel = attachmentCount === 1 ? "[image]" : `[image x${attachmentCount}]`;
+  return prompt.trim().length > 0 ? `${attachmentLabel} ${prompt}` : attachmentLabel;
+}
+
 export function ClaudeChatPane({
   directory,
   sessionStorageKey,
@@ -92,6 +120,7 @@ export function ClaudeChatPane({
     loadSubagentMessages,
   } = useClaudeChatSession(directory, sessionStorageKey);
   const [composer, setComposer] = useState("");
+  const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
   const [effort, setEffort] = useState<ClaudeChatEffort | undefined>(undefined);
   const [isPlanMode, setIsPlanMode] = useState(false);
@@ -119,6 +148,23 @@ export function ClaudeChatPane({
     () => selectedModel?.split("/")[1] ?? undefined,
     [selectedModel],
   );
+  const addComposerAttachments = (attachments: Attachment[]) => {
+    setComposerAttachments((current) => addClaudeComposerAttachments(current, attachments));
+  };
+  const removeAttachment = (url: string) => {
+    setComposerAttachments((current) => current.filter((item) => item.url !== url));
+  };
+  const pickImageAttachment = async () => {
+    try {
+      const selection = await window.orxa.opencode.pickImage();
+      if (!selection) {
+        return;
+      }
+      addComposerAttachments([selection]);
+    } catch {
+      // Keep Claude composer behavior silent for now; picker failures are non-fatal.
+    }
+  };
   const promptEffort = useMemo(
     () => (effort === "ultrathink" && !isClaudeUltrathinkPrompt(composer) ? applyClaudePromptEffortPrefix(composer, effort) : composer),
     [composer, effort],
@@ -277,36 +323,45 @@ export function ClaudeChatPane({
             placeholder="Send to Claude..."
             composer={composer}
             setComposer={setComposer}
-            composerAttachments={[]}
-            removeAttachment={() => {}}
+            composerAttachments={composerAttachments}
+            removeAttachment={removeAttachment}
             slashMenuOpen={false}
             filteredSlashCommands={[]}
             slashSelectedIndex={0}
             insertSlashCommand={() => {}}
             handleSlashKeyDown={() => {}}
-            addComposerAttachments={() => {}}
-            sendPrompt={() => {
+            addComposerAttachments={addComposerAttachments}
+            sendPrompt={async () => {
               const trimmed = composer.trim();
-              if (!trimmed) {
+              if (!trimmed && composerAttachments.length === 0) {
                 return;
               }
               onFirstMessage?.();
-              if (!hasUserMessages) {
+              if (!hasUserMessages && trimmed) {
                 onTitleChange?.(deriveSessionTitleFromPrompt(trimmed));
               }
+              const attachmentsToSend = [...composerAttachments];
               setComposer("");
-              void startTurn(promptEffort, {
-                model: selectedModelId,
-                permissionMode: isPlanMode ? "plan" : permissionMode,
-                effort,
-                fastMode,
-                thinking,
-              });
+              setComposerAttachments([]);
+              try {
+                await startTurn(promptEffort, {
+                  model: selectedModelId,
+                  permissionMode: isPlanMode ? "plan" : permissionMode,
+                  effort,
+                  fastMode,
+                  thinking,
+                  attachments: attachmentsToSend,
+                  displayPrompt: buildClaudeDisplayPrompt(trimmed, attachmentsToSend.length),
+                });
+              } catch {
+                setComposer(trimmed);
+                setComposerAttachments(attachmentsToSend);
+              }
             }}
             abortActiveSession={() => void interruptTurn()}
             isSessionBusy={isStreaming}
             isSendingPrompt={false}
-            pickImageAttachment={() => {}}
+            pickImageAttachment={pickImageAttachment}
             hasActiveSession={true}
             isPlanMode={isPlanMode}
             hasPlanAgent

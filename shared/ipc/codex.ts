@@ -61,6 +61,11 @@ export type CodexNotification = {
   params: Record<string, unknown>;
 };
 
+export type CodexAttachment = {
+  type: "image";
+  url: string;
+};
+
 export type CodexApprovalRequest = {
   id: number;
   method: string;

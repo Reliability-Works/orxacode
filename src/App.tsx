@@ -2360,6 +2360,12 @@ export default function App() {
               if (codexThreadId) {
                 await window.orxa.codex.setThreadName(codexThreadId, nextTitle);
               }
+            } else if (sessionType === "claude-chat") {
+              const claudeThreadId = selectClaudeChatSessionRuntime(scopedSessionKey)?.providerThreadId
+                ?? getPersistedClaudeChatState(scopedSessionKey).providerThreadId;
+              if (claudeThreadId) {
+                await window.orxa.claudeChat.renameProviderSession(claudeThreadId, nextTitle, directory);
+              }
             }
             setSessionTitles((prev) => ({
               ...prev,

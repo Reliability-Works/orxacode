@@ -1,8 +1,11 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import {
   getSessionMessages,
   query,
+  renameSession,
   tagSession,
   type Options as ClaudeQueryOptions,
   type ElicitationRequest,
@@ -11,9 +14,11 @@ import {
   type Query,
   type SDKAssistantMessage,
   type SDKMessage,
+  type SDKUserMessage,
   type SessionMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
+  ClaudeChatAttachment,
   ClaudeChatApprovalDecision,
   ClaudeChatApprovalRequest,
   ClaudeChatHealthStatus,
@@ -95,6 +100,7 @@ const CLAUDE_MODELS: ClaudeChatModelEntry[] = [
   },
 ];
 const CLAUDE_HEALTH_CACHE_TTL_MS = 10_000;
+const CLAUDE_SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 
 function supportsClaudeFastMode(model: string | null | undefined) {
   return model?.trim() === "claude-opus-4-6";
@@ -120,6 +126,86 @@ function mapPermissionMode(input: string | undefined): PermissionMode | undefine
     return "default";
   }
   return undefined;
+}
+
+function normalizeClaudeImageMime(mime: string | undefined) {
+  const normalized = mime?.trim().toLowerCase() ?? "";
+  return CLAUDE_SUPPORTED_IMAGE_MIME_TYPES.has(normalized) ? normalized as "image/jpeg" | "image/png" | "image/gif" | "image/webp" : null;
+}
+
+function parseImageDataUrl(url: string): { mime: "image/jpeg" | "image/png" | "image/gif" | "image/webp"; data: string } | null {
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/i.exec(url);
+  if (!match) {
+    return null;
+  }
+  const mime = normalizeClaudeImageMime(match[1]);
+  if (!mime) {
+    return null;
+  }
+  return { mime, data: match[2]!.trim() };
+}
+
+async function attachmentToClaudeImageBlock(attachment: ClaudeChatAttachment) {
+  const inlineData = parseImageDataUrl(attachment.url);
+  if (inlineData) {
+    return {
+      type: "image" as const,
+      source: {
+        type: "base64" as const,
+        media_type: inlineData.mime,
+        data: inlineData.data,
+      },
+    };
+  }
+
+  const mime = normalizeClaudeImageMime(attachment.mime);
+  if (!mime) {
+    throw new Error(`Unsupported Claude image attachment type: ${attachment.mime || "unknown"}`);
+  }
+
+  const filePath = attachment.path?.trim()
+    || (attachment.url.startsWith("file:") ? fileURLToPath(attachment.url) : "");
+  if (!filePath) {
+    throw new Error(`Claude image attachment is missing file data for ${attachment.filename}`);
+  }
+  const data = (await readFile(filePath)).toString("base64");
+  return {
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: mime,
+      data,
+    },
+  };
+}
+
+async function* buildClaudePromptStream(
+  sessionId: string,
+  prompt: string,
+  attachments: ClaudeChatAttachment[],
+): AsyncIterable<SDKUserMessage> {
+  const content: Array<
+    | Awaited<ReturnType<typeof attachmentToClaudeImageBlock>>
+    | {
+      type: "text";
+      text: string;
+    }
+  > = await Promise.all(attachments.map((attachment) => attachmentToClaudeImageBlock(attachment)));
+  if (prompt.trim().length > 0) {
+    content.push({
+      type: "text",
+      text: prompt,
+    });
+  }
+  yield {
+    type: "user",
+    session_id: sessionId,
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content,
+    },
+  };
 }
 
 function extractTextFromUnknown(value: unknown): string {
@@ -370,6 +456,7 @@ export class ClaudeChatService extends EventEmitter {
       });
     };
 
+    const providerSessionId = runtime.state.providerThreadId ?? randomUUID();
     const queryOptions: ClaudeQueryOptions = {
       cwd: directory,
       model: options?.model,
@@ -389,7 +476,7 @@ export class ClaudeChatService extends EventEmitter {
             },
           }
         : {}),
-      ...(runtime.state.providerThreadId ? { resume: runtime.state.providerThreadId } : { sessionId: randomUUID() }),
+      ...(runtime.state.providerThreadId ? { resume: runtime.state.providerThreadId } : { sessionId: providerSessionId }),
       canUseTool: async (
         toolName: string,
         toolInput: Record<string, unknown>,
@@ -428,7 +515,12 @@ export class ClaudeChatService extends EventEmitter {
       onElicitation,
     };
 
-    const activeQuery = query({ prompt, options: queryOptions });
+    const activeQuery = query({
+      prompt: options?.attachments?.length
+        ? buildClaudePromptStream(providerSessionId, prompt, options.attachments)
+        : prompt,
+      options: queryOptions,
+    });
     runtime.activeQuery = activeQuery;
 
     try {
@@ -580,6 +672,10 @@ export class ClaudeChatService extends EventEmitter {
   async getSessionMessages(sessionId: string, directory?: string): Promise<ClaudeChatHistoryMessage[]> {
     const messages = await getSessionMessages(sessionId, directory ? { dir: directory } : undefined);
     return buildHistoryMessages(messages);
+  }
+
+  async renameProviderSession(sessionId: string, title: string, directory?: string) {
+    await renameSession(sessionId, title, directory ? { dir: directory } : undefined);
   }
 
   async archiveSession(sessionKey: string) {

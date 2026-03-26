@@ -124,7 +124,7 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
 
   ipcMain.handle(
     IPC.codexStartTurn,
-    async (_event, threadId: unknown, prompt: unknown, cwd?: unknown, model?: unknown, effort?: unknown, collaborationMode?: unknown) => {
+    async (_event, threadId: unknown, prompt: unknown, cwd?: unknown, model?: unknown, effort?: unknown, collaborationMode?: unknown, attachments?: unknown) => {
       return codexService.startTurn({
         threadId: assertString(threadId, "threadId"),
         prompt: assertString(prompt, "prompt"),
@@ -132,6 +132,18 @@ export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
         model: typeof model === "string" ? model : undefined,
         effort: typeof effort === "string" ? effort : undefined,
         collaborationMode: typeof collaborationMode === "string" ? collaborationMode : undefined,
+        attachments: Array.isArray(attachments)
+          ? attachments.flatMap((entry) => {
+            if (!entry || typeof entry !== "object") {
+              return [];
+            }
+            const record = entry as { type?: unknown; url?: unknown };
+            if (record.type !== "image" || typeof record.url !== "string") {
+              return [];
+            }
+            return [{ type: "image" as const, url: record.url }];
+          })
+          : undefined,
       });
     },
   );
