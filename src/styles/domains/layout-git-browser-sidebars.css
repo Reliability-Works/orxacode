@@ -690,7 +690,7 @@
 .workspace-session-row-main-button {
   width: 100%;
   box-sizing: border-box;
-  padding-right: 38px !important;
+  padding-right: 46px !important;
   background: transparent !important;
   border-color: transparent !important;
   border-radius: inherit !important;
@@ -716,12 +716,12 @@
 .workspace-session-row-trailing {
   position: absolute;
   top: 50%;
-  right: 1px;
+  right: 2px;
   transform: translateY(-50%);
   display: inline-grid;
   place-items: center;
-  min-width: 28px;
-  height: 18px;
+  min-width: 34px;
+  height: 26px;
   z-index: 2;
 }
 
@@ -731,6 +731,7 @@
   color: var(--text-muted);
   line-height: 1;
   opacity: 1;
+  pointer-events: none;
   transition: opacity 120ms ease;
 }
 
@@ -756,8 +757,8 @@
 }
 
 .workspace-session-row-action {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -767,7 +768,7 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 0;
-  min-width: 16px;
+  min-width: 24px;
 }
 
 .workspace-session-row-action svg {
