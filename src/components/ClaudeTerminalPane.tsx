@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Bot, ChevronDown, Columns, Plus, Rows, Shield, ShieldOff, X } from "lucide-react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
 import "xterm/css/xterm.css";
 import { readPersistedValue, writePersistedValue } from "../lib/persistence";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 import { consumeClaudeStartupChunk } from "../lib/claude-terminal-startup";
+import { createManagedTerminal, type ManagedTerminal } from "../lib/xterm-terminal";
 
 const TERMINAL_THEME = {
   background: "#000000",
@@ -339,8 +338,7 @@ function ClaudeTerminalInstance({
   onOutput?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
+  const terminalRef = useRef<ManagedTerminal | null>(null);
   const processIdRef = useRef<string | null>(null);
   const cleanupRef = useRef<Array<() => void>>([]);
 
@@ -362,21 +360,19 @@ function ClaudeTerminalInstance({
     }
     container.innerHTML = "";
 
-    const terminal = new Terminal({
-      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
-      fontSize: 13,
-      lineHeight: 1.45,
+    const managed = createManagedTerminal(container, {
+      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+      fontSize: 12,
+      fontWeight: "300",
+      fontWeightBold: "500",
+      lineHeight: 1.4,
       cursorBlink: true,
       cursorStyle: "bar",
       theme: TERMINAL_THEME,
     });
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
-    terminal.open(container);
-    fit.fit();
+    const terminal = managed.terminal;
 
-    terminalRef.current = terminal;
-    fitAddonRef.current = fit;
+    terminalRef.current = managed;
 
     const cleanups: Array<() => void> = [];
     const key = sessionKey(sessionStorageKey, mode, tabId);
@@ -388,11 +384,11 @@ function ClaudeTerminalInstance({
       processIdRef.current = session.processId;
       session.outputChunks.forEach((chunk) => terminal.write(chunk));
       const listener = (event: { type: "output"; chunk: string } | { type: "closed"; exitCode: number | null }) => {
-        if (terminalRef.current !== terminal) {
+        if (terminalRef.current?.terminal !== terminal) {
           return;
         }
         if (event.type === "output") {
-          terminal.write(event.chunk);
+          managed.writeBuffered(event.chunk);
           onOutput?.();
           return;
         }
@@ -417,7 +413,7 @@ function ClaudeTerminalInstance({
     cleanups.push(() => disposeInput.dispose());
 
     const resizeObs = new ResizeObserver(() => {
-      fit.fit();
+      managed.refit();
       const pid = processIdRef.current;
       if (pid && window.orxa?.claudeTerminal) {
         void window.orxa.claudeTerminal.resize(pid, terminal.cols, terminal.rows);
@@ -440,7 +436,6 @@ function ClaudeTerminalInstance({
         terminalRef.current.dispose();
         terminalRef.current = null;
       }
-      fitAddonRef.current = null;
       processIdRef.current = null;
     };
   }, [launchTerminal]);

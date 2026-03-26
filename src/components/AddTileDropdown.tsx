@@ -20,6 +20,9 @@ type TileOption = {
 
 const TILE_OPTIONS: TileOption[] = [
   { type: "terminal", label: "terminal", icon: <Terminal size={14} aria-hidden="true" /> },
+  { type: "claude_code", label: "claude code", icon: <Terminal size={14} aria-hidden="true" /> },
+  { type: "codex_cli", label: "codex cli", icon: <Terminal size={14} aria-hidden="true" /> },
+  { type: "opencode_cli", label: "opencode", icon: <Terminal size={14} aria-hidden="true" /> },
   { type: "browser", label: "browser", icon: <Globe size={14} aria-hidden="true" /> },
   { type: "file_editor", label: "file editor", icon: <FileText size={14} aria-hidden="true" /> },
   { type: "dev_server", label: "dev server", icon: <Server size={14} aria-hidden="true" /> },

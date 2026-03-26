@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { arrangeCanvasTilesInGrid, sortCanvasTilesForLayout } from "../lib/canvas-layout";
 import { CanvasPane, type CanvasPaneCanvasState } from "./CanvasPane";
 import type { CanvasTile, CanvasTheme } from "../types/canvas";
 import { DEFAULT_CANVAS_SCROLL_LEFT, DEFAULT_CANVAS_SCROLL_TOP, DEFAULT_CANVAS_ZOOM } from "../types/canvas";
@@ -26,6 +27,7 @@ function buildCanvasState(overrides: Partial<CanvasPaneCanvasState> = {}): Canva
     removeTile: vi.fn(),
     updateTile: vi.fn(),
     bringToFront: vi.fn(),
+    setTiles: vi.fn(),
     toggleSnap: vi.fn(),
     setTheme: vi.fn(),
     setViewport: vi.fn(),
@@ -84,7 +86,7 @@ describe("CanvasPane", () => {
     expect(addTile).toHaveBeenCalledTimes(1);
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("terminal");
-    expect(call.meta).toEqual({ directory: "/workspace/project", cwd: "/workspace/project" });
+    expect(call.meta).toEqual(expect.objectContaining({ directory: "/workspace/project", cwd: "/workspace/project" }));
   });
 
   it("adds a browser tile with correct meta", () => {
@@ -97,7 +99,7 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("browser");
-    expect(call.meta).toEqual({ url: "about:blank" });
+    expect(call.meta).toEqual(expect.objectContaining({ url: "about:blank" }));
   });
 
   it("adds a file_editor tile with correct meta including directory", () => {
@@ -110,7 +112,7 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("file_editor");
-    expect(call.meta).toEqual({ directory: "/workspace/project", filePath: "" });
+    expect(call.meta).toEqual(expect.objectContaining({ directory: "/workspace/project", filePath: "" }));
   });
 
   it("adds a dev_server tile with correct meta", () => {
@@ -123,7 +125,7 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("dev_server");
-    expect(call.meta).toEqual({ directory: "/workspace/project", port: 3000, status: "stopped" });
+    expect(call.meta).toEqual(expect.objectContaining({ directory: "/workspace/project", port: 3000, status: "stopped" }));
   });
 
   it("adds a markdown_preview tile with correct meta", () => {
@@ -136,7 +138,7 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("markdown_preview");
-    expect(call.meta).toEqual({ directory: "/workspace/project", filePath: "", content: "" });
+    expect(call.meta).toEqual(expect.objectContaining({ directory: "/workspace/project", filePath: "", content: "" }));
   });
 
   it("adds an image_viewer tile with correct meta", () => {
@@ -149,7 +151,7 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("image_viewer");
-    expect(call.meta).toEqual({ filePath: "" });
+    expect(call.meta).toEqual(expect.objectContaining({ filePath: "" }));
   });
 
   it("adds an api_tester tile with correct meta", () => {
@@ -162,13 +164,109 @@ describe("CanvasPane", () => {
 
     const call = addTile.mock.calls[0][0];
     expect(call.type).toBe("api_tester");
-    expect(call.meta).toEqual({ method: "GET", url: "" });
+    expect(call.meta).toEqual(expect.objectContaining({ method: "GET", url: "" }));
+  });
+
+  it("adds a claude code tile with the expected startup command metadata", () => {
+    const addTile = vi.fn();
+    const state = buildCanvasState({ addTile });
+    render(<CanvasPane canvasState={state} directory="/workspace/project" />);
+
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
+    fireEvent.click(screen.getByText("claude code"));
+
+    const call = addTile.mock.calls[0][0];
+    expect(call.type).toBe("claude_code");
+    expect(call.meta).toEqual(expect.objectContaining({
+      directory: "/workspace/project",
+      cwd: "/workspace/project",
+      startupCommand: "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n",
+      startupFilter: "claude",
+    }));
+  });
+
+  it("adds codex and opencode CLI tiles with startup commands", () => {
+    const addTile = vi.fn();
+    const state = buildCanvasState({ addTile });
+    render(<CanvasPane canvasState={state} directory="/workspace/project" />);
+
+    const hub = screen.getByRole("button", { name: "Canvas controls" }); fireEvent.mouseDown(hub, { clientX: 0, clientY: 0 }); fireEvent.mouseUp(document, { clientX: 0, clientY: 0 }); fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
+    fireEvent.click(screen.getByText("codex cli"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add tile" }));
+    fireEvent.click(screen.getByText("opencode"));
+
+    expect(addTile.mock.calls[0][0]).toMatchObject({
+      type: "codex_cli",
+      meta: expect.objectContaining({
+        directory: "/workspace/project",
+        cwd: "/workspace/project",
+        startupCommand: "codex\n",
+      }),
+    });
+    expect(addTile.mock.calls[1][0]).toMatchObject({
+      type: "opencode_cli",
+      meta: expect.objectContaining({
+        directory: "/workspace/project",
+        cwd: "/workspace/project",
+        startupCommand: "opencode\n",
+      }),
+    });
   });
 
   it("renders zoom controls", () => {
     const state = buildCanvasState();
     render(<CanvasPane canvasState={state} />);
     expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("shows jump to control in the bottom zoom row when tiles exist", () => {
+    const state = buildCanvasState({ tiles: [makeTile()] });
+    render(<CanvasPane canvasState={state} />);
+
+    expect(screen.getByRole("button", { name: "Jump to tile" })).toBeInTheDocument();
+  });
+
+  it("shows manage control in its own bottom pill when tiles exist", () => {
+    const state = buildCanvasState({ tiles: [makeTile()] });
+    render(<CanvasPane canvasState={state} />);
+
+    expect(screen.getByRole("button", { name: "Manage tiles" })).toBeInTheDocument();
+  });
+
+  it("sorts tiles by type before arranging them", () => {
+    const tiles = [
+      makeTile({ id: "tile-2", type: "terminal", meta: { createdAt: 2 } }),
+      makeTile({ id: "tile-1", type: "browser", meta: { createdAt: 1 } }),
+    ];
+
+    const sorted = sortCanvasTilesForLayout(tiles, "type");
+
+    expect(sorted.map((tile) => tile.id)).toEqual(["tile-1", "tile-2"]);
+  });
+
+  it("sorts tiles by created time before arranging them", () => {
+    const tiles = [
+      makeTile({ id: "tile-2", type: "terminal", meta: { createdAt: 2 } }),
+      makeTile({ id: "tile-1", type: "browser", meta: { createdAt: 1 } }),
+    ];
+
+    const sorted = sortCanvasTilesForLayout(tiles, "created");
+
+    expect(sorted.map((tile) => tile.id)).toEqual(["tile-1", "tile-2"]);
+  });
+
+  it("arranges sorted tiles into a wrapped grid", () => {
+    const tiles = [
+      makeTile({ id: "tile-1", width: 400, height: 200 }),
+      makeTile({ id: "tile-2", width: 400, height: 220 }),
+      makeTile({ id: "tile-3", width: 400, height: 180 }),
+    ];
+
+    const arranged = arrangeCanvasTilesInGrid(tiles, 100, 200, 900);
+
+    expect(arranged[0]).toMatchObject({ id: "tile-1", x: 100, y: 200 });
+    expect(arranged[1]).toMatchObject({ id: "tile-2", x: 532, y: 200 });
+    expect(arranged[2]).toMatchObject({ id: "tile-3", x: 100, y: 452 });
   });
 
   it("updates viewport state when canvas is scrolled", async () => {
@@ -196,5 +294,64 @@ describe("CanvasPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
 
     expect(setViewport).toHaveBeenCalled();
+  });
+
+  it("keeps consecutive wheel zoom steps anchored to the latest cursor position state", () => {
+    const setViewport = vi.fn();
+    const state = buildCanvasState({
+      setViewport,
+      viewport: {
+        zoom: DEFAULT_CANVAS_ZOOM,
+        scrollLeft: DEFAULT_CANVAS_SCROLL_LEFT,
+        scrollTop: DEFAULT_CANVAS_SCROLL_TOP,
+      },
+    });
+    const { container } = render(<CanvasPane canvasState={state} />);
+    const viewport = container.querySelector(".canvas-area-viewport") as HTMLDivElement;
+
+    Object.defineProperty(viewport, "clientWidth", { configurable: true, value: 800 });
+    Object.defineProperty(viewport, "clientHeight", { configurable: true, value: 600 });
+    Object.defineProperty(viewport, "scrollLeft", {
+      configurable: true,
+      writable: true,
+      value: DEFAULT_CANVAS_SCROLL_LEFT,
+    });
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: DEFAULT_CANVAS_SCROLL_TOP,
+    });
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 600,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.wheel(viewport, {
+      metaKey: true,
+      deltaY: -100,
+      clientX: 560,
+      clientY: 260,
+    });
+    const firstZoomStep = setViewport.mock.calls.at(-1)?.[0];
+
+    fireEvent.wheel(viewport, {
+      metaKey: true,
+      deltaY: -100,
+      clientX: 560,
+      clientY: 260,
+    });
+    const secondZoomStep = setViewport.mock.calls.at(-1)?.[0];
+
+    expect(firstZoomStep.zoom).toBeGreaterThan(DEFAULT_CANVAS_ZOOM);
+    expect(secondZoomStep.zoom).toBeGreaterThan(firstZoomStep.zoom);
+    expect(secondZoomStep.scrollLeft).toBeGreaterThan(firstZoomStep.scrollLeft);
+    expect(secondZoomStep.scrollTop).toBeGreaterThan(firstZoomStep.scrollTop);
   });
 });

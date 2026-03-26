@@ -10,7 +10,17 @@ export const DEFAULT_CANVAS_SCROLL_TOP = CANVAS_WORLD_ORIGIN - 220;
 
 export interface CanvasTile {
   id: string;
-  type: "terminal" | "browser" | "file_editor" | "dev_server" | "markdown_preview" | "image_viewer" | "api_tester";
+  type:
+    | "terminal"
+    | "claude_code"
+    | "codex_cli"
+    | "opencode_cli"
+    | "browser"
+    | "file_editor"
+    | "dev_server"
+    | "markdown_preview"
+    | "image_viewer"
+    | "api_tester";
   x: number;
   y: number;
   width: number;

@@ -120,7 +120,7 @@ const bridge: OrxaBridge = {
     repairRuntime: () => ipcRenderer.invoke(IPC.opencodeRepairRuntime),
   },
   terminal: {
-    list: (directory) => ipcRenderer.invoke(IPC.terminalList, directory),
+    list: (directory, owner) => ipcRenderer.invoke(IPC.terminalList, directory, owner),
     create: (directory, cwd, title, owner) => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
     connect: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
     write: (directory, ptyID, data) => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),

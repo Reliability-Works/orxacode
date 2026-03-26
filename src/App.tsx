@@ -79,7 +79,7 @@ import { useAppShellSessionCollections } from "./hooks/useAppShellSessionCollect
 // TODO: streaming buffer removed — needs reimplementation at the message-part delta
 // level rather than the presentation layer to avoid blocking tool calls and diffs
 import { useBackgroundSessionDescriptors } from "./hooks/useBackgroundSessionDescriptors";
-import { clearPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
+import { clearPersistedClaudeChatState, getPersistedClaudeChatState } from "./hooks/claude-chat-session-storage";
 import { clearPersistedCodexState, getPersistedCodexState } from "./hooks/codex-session-storage";
 import {
   buildClaudeChatSessionStatus,
@@ -90,6 +90,7 @@ import {
   selectActiveTaskListPresentation,
   selectPendingPermissionDockData,
   selectPendingQuestionDockData,
+  selectClaudeChatSessionRuntime,
   selectCodexSessionRuntime,
   selectSessionPresentation,
   useUnifiedRuntimeStore,
@@ -106,6 +107,7 @@ import {
 } from "./lib/models";
 import { preferredAgentForMode } from "./lib/app-mode";
 import { removePersistedValue } from "./lib/persistence";
+import { getSessionContextActions, resolveSessionCopyIdentifier } from "./lib/session-context-menu";
 import {
   BROWSER_MODE_TOOLS_POLICY,
   BROWSER_MODE_TOOLS_POLICY_WITH_MCP,
@@ -2456,14 +2458,26 @@ export default function App() {
     ],
   );
 
-  const copySessionID = useCallback(async (sessionID: string) => {
+  const copySessionID = useCallback(async (directory: string, sessionID: string) => {
     try {
-      await navigator.clipboard.writeText(sessionID);
-      setStatusLine("Session ID copied");
+      const sessionType = getSessionType(sessionID, directory);
+      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
+      const resolved = resolveSessionCopyIdentifier({
+        sessionType,
+        workspaceSessionID: sessionID,
+        codexThreadID: selectCodexSessionRuntime(sessionKey)?.thread?.id
+          ?? getPersistedCodexState(sessionKey).thread?.id
+          ?? null,
+        claudeChatProviderThreadId: selectClaudeChatSessionRuntime(sessionKey)?.providerThreadId
+          ?? getPersistedClaudeChatState(sessionKey).providerThreadId
+          ?? null,
+      });
+      await navigator.clipboard.writeText(resolved.value);
+      setStatusLine(`${resolved.label} copied`);
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error));
     }
-  }, []);
+  }, [getSessionType]);
 
   const copyProjectPath = useCallback(async (directory: string) => {
     try {
@@ -3839,11 +3853,11 @@ export default function App() {
             void copyProjectPath(activeProjectDir);
           }}
           onCopySessionId={() => {
-            if (!activeSessionID) {
+            if (!activeProjectDir || !activeSessionID) {
               return;
             }
             setTitleMenuOpen(false);
-            void copySessionID(activeSessionID);
+            void copySessionID(activeProjectDir, activeSessionID);
           }}
           activeOpenTarget={activeOpenTarget}
           openTargets={openTargets}
@@ -3884,13 +3898,21 @@ export default function App() {
             sessions={sessions}
             cachedSessionsByProject={cachedSessionsByProject}
             hiddenSessionIDsByProject={hiddenSessionIDsByProject}
+            pinnedSessionsByProject={pinnedSessions}
             activeSessionID={activeSessionID ?? undefined}
             setAllSessionsModalOpen={setAllSessionsModalOpen}
             getSessionTitle={getSessionTitle}
+            getSessionType={getSessionType}
             getSessionIndicator={getSessionIndicator}
             selectProject={selectProject}
             createSession={createSession}
             openSession={openSession}
+            togglePinSession={(directory, sessionID) => {
+              togglePinSession(directory, sessionID);
+              const isPinned = (pinnedSessions[directory] ?? []).includes(sessionID);
+              setStatusLine(isPinned ? "Session unpinned" : "Session pinned");
+            }}
+            archiveSession={archiveSession}
             openProjectContextMenu={openProjectContextMenu}
             openSessionContextMenu={openSessionContextMenu}
             addProjectDirectory={() => addProjectDirectory()}
@@ -4345,46 +4367,58 @@ export default function App() {
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { directory, sessionID } = contextMenu;
-                    setContextMenu(null);
-                    void archiveSession(directory, sessionID);
-                  }}
-                >
-                  Archive Session
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { sessionID } = contextMenu;
-                    setContextMenu(null);
-                    void copySessionID(sessionID);
-                  }}
-                >
-                  Copy Session ID
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { directory, sessionID, title } = contextMenu;
-                    setContextMenu(null);
-                    void createWorktreeSession(directory, sessionID, title);
-                  }}
-                >
-                  Create Worktree Session
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { directory, sessionID, title } = contextMenu;
-                    setContextMenu(null);
-                    void renameSession(directory, sessionID, title);
-                  }}
-                >
-                  Rename Session
-                </button>
+                {getSessionContextActions(getSessionType(contextMenu.sessionID, contextMenu.directory)).includes("archive") ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { directory, sessionID } = contextMenu;
+                      setContextMenu(null);
+                      void archiveSession(directory, sessionID);
+                    }}
+                  >
+                    Archive Session
+                  </button>
+                ) : null}
+                {getSessionContextActions(getSessionType(contextMenu.sessionID, contextMenu.directory)).includes("copy_id") ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { directory, sessionID } = contextMenu;
+                      setContextMenu(null);
+                      void copySessionID(directory, sessionID);
+                    }}
+                  >
+                    {getSessionType(contextMenu.sessionID, contextMenu.directory) === "codex"
+                      ? "Copy Codex Thread ID"
+                      : getSessionType(contextMenu.sessionID, contextMenu.directory) === "claude-chat"
+                        ? "Copy Claude Thread ID"
+                        : "Copy Session ID"}
+                  </button>
+                ) : null}
+                {getSessionContextActions(getSessionType(contextMenu.sessionID, contextMenu.directory)).includes("create_worktree") ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { directory, sessionID, title } = contextMenu;
+                      setContextMenu(null);
+                      void createWorktreeSession(directory, sessionID, title);
+                    }}
+                  >
+                    Create Worktree Session
+                  </button>
+                ) : null}
+                {getSessionContextActions(getSessionType(contextMenu.sessionID, contextMenu.directory)).includes("rename") ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { directory, sessionID, title } = contextMenu;
+                      setContextMenu(null);
+                      void renameSession(directory, sessionID, title);
+                    }}
+                  >
+                    Rename Session
+                  </button>
+                ) : null}
               </>
             )}
           </div>

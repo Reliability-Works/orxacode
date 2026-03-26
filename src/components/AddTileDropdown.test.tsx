@@ -14,9 +14,12 @@ function renderDropdown(overrides: { onAddTile?: (type: TileType) => void; onClo
 }
 
 describe("AddTileDropdown", () => {
-  it("renders all 7 tile type options", () => {
+  it("renders all 10 tile type options", () => {
     renderDropdown();
     expect(screen.getByText("terminal")).toBeInTheDocument();
+    expect(screen.getByText("claude code")).toBeInTheDocument();
+    expect(screen.getByText("codex cli")).toBeInTheDocument();
+    expect(screen.getByText("opencode")).toBeInTheDocument();
     expect(screen.getByText("browser")).toBeInTheDocument();
     expect(screen.getByText("file editor")).toBeInTheDocument();
     expect(screen.getByText("dev server")).toBeInTheDocument();
@@ -37,8 +40,8 @@ describe("AddTileDropdown", () => {
 
   it("clicking a type calls onAddTile with correct type", () => {
     const { onAddTile } = renderDropdown();
-    fireEvent.click(screen.getByText("terminal"));
-    expect(onAddTile).toHaveBeenCalledWith("terminal");
+    fireEvent.click(screen.getByText("claude code"));
+    expect(onAddTile).toHaveBeenCalledWith("claude_code");
   });
 
   it("clicking a type also calls onClose", () => {

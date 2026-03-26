@@ -273,7 +273,8 @@
   padding-left: 28px;
 }
 
-.project-session-list button {
+.project-session-list > button,
+.project-session-list .workspace-session-row-main-button {
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
@@ -287,20 +288,21 @@
   font-size: 12px;
 }
 
-.project-session-list button:hover {
-  background: var(--bg-hover);
+.project-session-list > button:hover,
+.project-session-list .workspace-session-row-main-button:hover {
   border-color: transparent;
   color: var(--text-primary);
 }
 
-.project-session-list button.active {
+.project-session-list > button.active,
+.project-session-list .workspace-session-row-main-button.active {
   border-color: transparent;
-  background: var(--bg-input);
   color: var(--text-primary);
   font-weight: 500 !important;
 }
 
-.project-session-list button span:last-child {
+.project-session-list > button span:last-child,
+.project-session-list .workspace-session-row-main-button .workspace-session-row-title-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

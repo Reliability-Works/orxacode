@@ -6,7 +6,7 @@ type SessionListEntry = {
   id: string;
   title?: string;
   slug: string;
-  time: { updated: number };
+  time: { created: number; updated: number };
 };
 
 type UseAppShellSessionCollectionsInput = {

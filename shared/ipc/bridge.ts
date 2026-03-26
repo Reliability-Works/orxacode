@@ -178,7 +178,7 @@ export interface OrxaBridge {
     repairRuntime: () => Promise<ServerDiagnostics>;
   };
   terminal: {
-    list: (directory: string) => Promise<OrxaTerminalSession[]>;
+    list: (directory: string, owner?: OrxaTerminalOwner) => Promise<OrxaTerminalSession[]>;
     create: (directory: string, cwd?: string, title?: string, owner?: OrxaTerminalOwner) => Promise<OrxaTerminalSession>;
     connect: (directory: string, ptyID: string) => Promise<TerminalConnectResult>;
     write: (directory: string, ptyID: string, data: string) => Promise<boolean>;

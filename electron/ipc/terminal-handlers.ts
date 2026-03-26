@@ -16,7 +16,14 @@ export function registerTerminalHandlers({
   service,
   claudeState,
 }: TerminalHandlersDeps) {
-  ipcMain.handle(IPC.terminalList, async (_event, directory: unknown) => service.listPtys(assertString(directory, "directory")));
+  ipcMain.handle(IPC.terminalList, async (_event, directory: unknown, owner?: unknown) =>
+    service.listPtys(
+      assertString(directory, "directory"),
+      owner === "workspace" || owner === "canvas" || owner === "claude"
+        ? owner as OrxaTerminalOwner
+        : "workspace",
+    ),
+  );
   ipcMain.handle(IPC.terminalCreate, async (_event, directory: unknown, cwd?: unknown, title?: unknown, owner?: unknown) =>
     service.createPty(
       assertString(directory, "directory"),

@@ -1,10 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceSidebar, type WorkspaceSidebarProps } from "./WorkspaceSidebar";
+import type { SessionType } from "../types/canvas";
 
 afterEach(() => {
   cleanup();
 });
+
+const NOW = new Date("2026-03-26T10:00:00.000Z").getTime();
 
 function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSidebarProps {
   return {
@@ -27,13 +30,19 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     collapsedProjects: {},
     setCollapsedProjects: vi.fn(),
     sessions: [],
+    cachedSessionsByProject: undefined,
+    hiddenSessionIDsByProject: undefined,
+    pinnedSessionsByProject: undefined,
     activeSessionID: undefined,
     setAllSessionsModalOpen: vi.fn(),
     getSessionTitle: vi.fn((_, __, fallbackTitle) => fallbackTitle),
+    getSessionType: vi.fn<WorkspaceSidebarProps["getSessionType"]>(() => "standalone" satisfies SessionType),
     getSessionIndicator: vi.fn(() => "none" as const),
     selectProject: vi.fn(),
     createSession: vi.fn(),
     openSession: vi.fn(),
+    togglePinSession: vi.fn(),
+    archiveSession: vi.fn(),
     openProjectContextMenu: vi.fn(),
     openSessionContextMenu: vi.fn(),
     addProjectDirectory: vi.fn(),
@@ -46,6 +55,28 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
 }
 
 describe("WorkspaceSidebar update button", () => {
+  it("shows a relative age chip based on session creation time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-fresh",
+            slug: "session-fresh",
+            title: "Fresh session",
+            time: { created: NOW, updated: NOW },
+          }],
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("1m old")).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it("renders a footer check-for-updates button by default", () => {
     render(<WorkspaceSidebar {...buildProps()} />);
 
@@ -132,12 +163,12 @@ describe("WorkspaceSidebar update button", () => {
             id: "session-awaiting",
             slug: "session-awaiting",
             title: "Needs input",
-            time: { updated: 2 },
+            time: { created: NOW - 2_000, updated: 2 },
           }, {
             id: "session-unread",
             slug: "session-unread",
             title: "Unread output",
-            time: { updated: 3 },
+            time: { created: NOW - 2_000, updated: 3 },
           }],
           getSessionIndicator: vi.fn((sessionID) => {
             if (sessionID === "session-awaiting") return "awaiting";
@@ -165,7 +196,7 @@ describe("WorkspaceSidebar update button", () => {
             id: "session-1",
             slug: "session-1",
             title: "Current session",
-            time: { updated: 1 },
+            time: { created: NOW - 2_000, updated: 1 },
           }],
         })}
       />,
@@ -187,7 +218,7 @@ describe("WorkspaceSidebar update button", () => {
               id: "session-2",
               slug: "session-2",
               title: "Open me",
-              time: { updated: 2 },
+              time: { created: NOW - 2_000, updated: 2 },
             }],
           },
           openSession,
@@ -197,6 +228,93 @@ describe("WorkspaceSidebar update button", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open me" }));
     expect(openSession).toHaveBeenCalledWith("/workspace/project", "session-2");
+  });
+
+  it("renders pinned sessions in a separate section above the workspace list", () => {
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-pinned",
+            slug: "session-pinned",
+            title: "Pinned session",
+            time: { created: NOW - 2_000, updated: 2 },
+          }],
+          pinnedSessionsByProject: {
+            "/workspace/project": ["session-pinned"],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Pinned")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Pinned session/ }).length).toBeGreaterThan(0);
+  });
+
+  it("shows a session-type icon for rendered session rows", () => {
+    const { container } = render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-canvas",
+            slug: "session-canvas",
+            title: "Canvas",
+            time: { created: NOW - 2_000, updated: 2 },
+          }],
+          getSessionType: vi.fn<WorkspaceSidebarProps["getSessionType"]>(() => "canvas" satisfies SessionType),
+        })}
+      />,
+    );
+
+    expect(container.querySelector(".session-type-icon--canvas")).toBeTruthy();
+  });
+
+  it("pins a session from the hover action", () => {
+    const togglePinSession = vi.fn();
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-pin",
+            slug: "session-pin",
+            title: "Pin me",
+            time: { created: NOW - 2_000, updated: 2 },
+          }],
+          togglePinSession,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin Pin me" }));
+    expect(togglePinSession).toHaveBeenCalledWith("/workspace/project", "session-pin");
+  });
+
+  it("archives a session from the hover action", () => {
+    const archiveSession = vi.fn();
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [{ id: "project-1", worktree: "/workspace/project", name: "project", source: "local" }],
+          activeProjectDir: "/workspace/project",
+          sessions: [{
+            id: "session-archive",
+            slug: "session-archive",
+            title: "Archive me",
+            time: { created: NOW - 2_000, updated: 2 },
+          }],
+          archiveSession,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive Archive me" }));
+    expect(archiveSession).toHaveBeenCalledWith("/workspace/project", "session-archive");
   });
 
   it("hides background-agent session ids from the workspace session list", () => {
@@ -209,12 +327,12 @@ describe("WorkspaceSidebar update button", () => {
             id: "session-main",
             slug: "session-main",
             title: "Main session",
-            time: { updated: 2 },
+            time: { created: NOW - 2_000, updated: 2 },
           }, {
             id: "session-subagent",
             slug: "session-subagent",
             title: "Subagent session",
-            time: { updated: 3 },
+            time: { created: NOW - 2_000, updated: 3 },
           }],
           hiddenSessionIDsByProject: {
             "/workspace/project": ["session-subagent"],
