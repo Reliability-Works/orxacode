@@ -10,6 +10,7 @@ import { ClaudeChatService } from "./services/claude-chat-service";
 import { BrowserController } from "./services/browser-controller";
 import { OrxaTerminalService } from "./services/orxa-terminal-service";
 import { PersistenceService } from "./services/persistence-service";
+import { ProviderSessionDirectory } from "./services/provider-session-directory";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createMainWindowEventPublisher } from "./services/main-window-event-publisher";
 import { registerProviderEventBridge } from "./services/provider-event-bridge";
@@ -56,6 +57,7 @@ const codexService = new CodexService();
 const claudeChatService = new ClaudeChatService();
 const terminalService = new OrxaTerminalService();
 let persistenceService: PersistenceService | null = null;
+let providerSessionDirectory: ProviderSessionDirectory | null = null;
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
@@ -224,6 +226,12 @@ function inferMimeFromPath(filePath: string) {
 function registerIpcHandlers() {
   if (!persistenceService) {
     throw new Error("Persistence service not initialized");
+  }
+  if (!providerSessionDirectory) {
+    providerSessionDirectory = new ProviderSessionDirectory(persistenceService);
+    service.setProviderSessionDirectory(providerSessionDirectory);
+    codexService.setProviderSessionDirectory(providerSessionDirectory);
+    claudeChatService.setProviderSessionDirectory(providerSessionDirectory);
   }
 
   registerPersistenceHandlers({

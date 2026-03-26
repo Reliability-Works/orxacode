@@ -80,8 +80,19 @@ export function hydratePersistedCodexSession(
   },
 ) {
   const persistedState = getPersistedCodexState(sessionKey);
+  const inferredThreadId = persistedState.thread?.id || inferCodexThreadIdFromSessionKey(sessionKey);
   input.setMessagesState(persistedState.messages);
-  input.setThreadState(persistedState.thread);
+  input.setThreadState(
+    persistedState.thread ?? (inferredThreadId
+      ? {
+          id: inferredThreadId,
+          preview: "",
+          modelProvider: "",
+          createdAt: 0,
+          ephemeral: true,
+        }
+      : null),
+  );
   input.setStreamingState(persistedState.isStreaming);
   input.setPendingApprovalState(null);
   input.setPendingUserInputState(null);
@@ -90,4 +101,18 @@ export function hydratePersistedCodexSession(
   input.setPlanItemsState([]);
   input.setThreadNameState(undefined);
   input.resetRefs(persistedState.messageIdCounter);
+}
+
+function inferCodexThreadIdFromSessionKey(sessionKey: string) {
+  const prefix = "codex::";
+  if (!sessionKey.startsWith(prefix)) {
+    return null;
+  }
+  const remainder = sessionKey.slice(prefix.length);
+  const separatorIndex = remainder.lastIndexOf("::");
+  if (separatorIndex < 0) {
+    return null;
+  }
+  const threadId = remainder.slice(separatorIndex + 2).trim();
+  return threadId || null;
 }

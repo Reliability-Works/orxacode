@@ -137,8 +137,6 @@ const bridge: OrxaBridge = {
     health: () => ipcRenderer.invoke(IPC.claudeChatHealth),
     listModels: () => ipcRenderer.invoke(IPC.claudeChatListModels),
     getState: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
-    restoreSession: (sessionKey, directory, providerThreadId) =>
-      ipcRenderer.invoke(IPC.claudeChatRestoreSession, sessionKey, directory, providerThreadId),
     startTurn: (sessionKey, directory, prompt, options) =>
       ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
     interruptTurn: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),

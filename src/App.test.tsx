@@ -203,7 +203,6 @@ beforeEach(() => {
         health: vi.fn(async () => ({ available: true, authenticated: true, version: "2.0.25" })),
         listModels: vi.fn(async () => []),
         getState: vi.fn(async () => ({ sessionKey: "session-1", status: "disconnected" })),
-        restoreSession: vi.fn(async () => ({ sessionKey: "session-1", status: "disconnected" })),
         startTurn: vi.fn(async () => undefined),
         interruptTurn: vi.fn(async () => undefined),
         approve: vi.fn(async () => undefined),

@@ -29,6 +29,7 @@ import type {
   ClaudeChatTurnOptions,
   ClaudeChatUserInputRequest,
 } from "@shared/ipc";
+import { ProviderSessionDirectory } from "./provider-session-directory";
 
 type PendingApproval = {
   sessionKey: string;
@@ -360,6 +361,8 @@ async function runClaudeCommand(args: string[]) {
 }
 
 export class ClaudeChatService extends EventEmitter {
+  private providerSessionDirectory: ProviderSessionDirectory | null;
+
   private readonly sessions = new Map<string, ClaudeSessionRuntime>();
 
   private readonly pendingApprovals = new Map<string, PendingApproval>();
@@ -369,6 +372,15 @@ export class ClaudeChatService extends EventEmitter {
   private cachedHealth: CachedClaudeHealth | null = null;
 
   private inflightHealth: Promise<ClaudeChatHealthStatus> | null = null;
+
+  constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
+    super();
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
+
+  setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
 
   getState(sessionKey: string): ClaudeChatState {
     return (
@@ -399,24 +411,9 @@ export class ClaudeChatService extends EventEmitter {
     return CLAUDE_MODELS;
   }
 
-  restoreSession(sessionKey: string, directory: string, providerThreadId: string): ClaudeChatState {
-    const normalizedProviderThreadId = providerThreadId.trim();
-    if (!normalizedProviderThreadId) {
-      throw new Error("providerThreadId is required");
-    }
-
-    const runtime = this.getOrCreateSession(sessionKey, directory);
-    runtime.state = {
-      ...runtime.state,
-      providerThreadId: normalizedProviderThreadId,
-      lastError: undefined,
-    };
-    this.emitState(runtime.state);
-    return runtime.state;
-  }
-
   async startTurn(sessionKey: string, directory: string, prompt: string, options?: ClaudeChatTurnOptions) {
     const runtime = this.getOrCreateSession(sessionKey, directory);
+    this.hydrateClaudeBinding(runtime);
     if (runtime.activeQuery) {
       throw new Error("Claude chat session already has an active turn.");
     }
@@ -472,7 +469,7 @@ export class ClaudeChatService extends EventEmitter {
       });
     };
 
-    const resumeSessionId = options?.resumeSessionId?.trim() || runtime.state.providerThreadId?.trim() || undefined;
+    const resumeSessionId = runtime.state.providerThreadId?.trim() || undefined;
     if (resumeSessionId && runtime.state.providerThreadId !== resumeSessionId) {
       runtime.state = {
         ...runtime.state,
@@ -481,6 +478,14 @@ export class ClaudeChatService extends EventEmitter {
       this.emitState(runtime.state);
     }
     const providerSessionId = resumeSessionId ?? randomUUID();
+    this.upsertProviderBinding(runtime, {
+      status: "starting",
+      ...(resumeSessionId ? { resumeCursor: { resume: resumeSessionId } } : {}),
+      runtimePayload: {
+        directory,
+        ...(options?.model ? { model: options.model } : {}),
+      },
+    });
     const queryOptions: ClaudeQueryOptions = {
       cwd: directory,
       model: options?.model,
@@ -557,6 +562,9 @@ export class ClaudeChatService extends EventEmitter {
         status: "connected",
         activeTurnId: null,
       };
+      this.upsertProviderBinding(runtime, {
+        status: "running",
+      });
       this.emitState(runtime.state);
       this.emitNotification({
         sessionKey,
@@ -578,6 +586,9 @@ export class ClaudeChatService extends EventEmitter {
           activeTurnId: null,
           lastError: undefined,
         };
+        this.upsertProviderBinding(runtime, {
+          status: "running",
+        });
         this.emitState(runtime.state);
         this.emitNotification({
           sessionKey,
@@ -597,6 +608,9 @@ export class ClaudeChatService extends EventEmitter {
         activeTurnId: null,
         lastError: error instanceof Error ? error.message : String(error),
       };
+      this.upsertProviderBinding(runtime, {
+        status: "error",
+      });
       this.emitState(runtime.state);
       this.emitNotification({
         sessionKey,
@@ -708,6 +722,7 @@ export class ClaudeChatService extends EventEmitter {
       await runtime.activeQuery.interrupt();
     }
     this.sessions.delete(sessionKey);
+    this.providerSessionDirectory?.remove(sessionKey, "claude-chat");
     this.emitState({
       sessionKey,
       status: "disconnected",
@@ -716,6 +731,11 @@ export class ClaudeChatService extends EventEmitter {
 
   async archiveProviderSession(sessionId: string, directory?: string) {
     await tagSession(sessionId, "archived", directory ? { dir: directory } : undefined);
+    for (const binding of this.providerSessionDirectory?.list("claude-chat") ?? []) {
+      if (this.readClaudeResumeCursor(binding.resumeCursor) === sessionId) {
+        this.providerSessionDirectory?.remove(binding.sessionKey, "claude-chat");
+      }
+    }
   }
 
   private getOrCreateSession(sessionKey: string, directory: string): ClaudeSessionRuntime {
@@ -744,6 +764,80 @@ export class ClaudeChatService extends EventEmitter {
 
   private emitNotification(payload: ClaudeChatNotification) {
     this.emit("notification", payload);
+  }
+
+  private hydrateClaudeBinding(runtime: ClaudeSessionRuntime) {
+    if (runtime.state.providerThreadId?.trim()) {
+      return;
+    }
+    const binding =
+      this.providerSessionDirectory?.getBinding(runtime.state.sessionKey, "claude-chat")
+      ?? this.importLegacyClaudeBinding(runtime.state.sessionKey, runtime.directory);
+    const resumeSessionId = this.readClaudeResumeCursor(binding?.resumeCursor);
+    if (!resumeSessionId) {
+      return;
+    }
+    runtime.state = {
+      ...runtime.state,
+      providerThreadId: resumeSessionId,
+      lastError: undefined,
+    };
+  }
+
+  private importLegacyClaudeBinding(sessionKey: string, directory: string) {
+    const persistenceKey = `orxa:claudeChatSession:v1:${sessionKey}`;
+    const raw = this.providerSessionDirectory?.getLegacyRendererValue(persistenceKey);
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { providerThreadId?: unknown };
+      const providerThreadId = typeof parsed.providerThreadId === "string" ? parsed.providerThreadId.trim() : "";
+      if (!providerThreadId) {
+        return null;
+      }
+      const binding = this.providerSessionDirectory?.upsert({
+        provider: "claude-chat",
+        sessionKey,
+        status: "running",
+        resumeCursor: { resume: providerThreadId },
+        runtimePayload: { directory },
+      }) ?? null;
+      this.providerSessionDirectory?.setLegacyRendererValue(
+        persistenceKey,
+        JSON.stringify({ ...parsed, providerThreadId: null }),
+      );
+      return binding;
+    } catch {
+      return null;
+    }
+  }
+
+  private readClaudeResumeCursor(resumeCursor: unknown) {
+    if (!resumeCursor || typeof resumeCursor !== "object" || Array.isArray(resumeCursor)) {
+      return undefined;
+    }
+    const normalized = typeof (resumeCursor as { resume?: unknown }).resume === "string"
+      ? (resumeCursor as { resume: string }).resume.trim()
+      : "";
+    return normalized || undefined;
+  }
+
+  private upsertProviderBinding(
+    runtime: ClaudeSessionRuntime,
+    input: {
+      status?: "starting" | "running" | "stopped" | "error";
+      resumeCursor?: unknown | null;
+      runtimePayload?: Record<string, unknown> | null;
+    },
+  ) {
+    this.providerSessionDirectory?.upsert({
+      provider: "claude-chat",
+      sessionKey: runtime.state.sessionKey,
+      status: input.status,
+      resumeCursor: input.resumeCursor,
+      runtimePayload: input.runtimePayload ?? { directory: runtime.directory },
+    });
   }
 
   private async fetchHealth(): Promise<ClaudeChatHealthStatus> {
@@ -819,6 +913,11 @@ export class ClaudeChatService extends EventEmitter {
           status: "connected",
           providerThreadId: sessionId,
         };
+        this.upsertProviderBinding(runtime, {
+          status: "running",
+          resumeCursor: { resume: sessionId },
+          runtimePayload: { directory: runtime.directory },
+        });
         this.emitState(runtime.state);
         this.emitNotification({
           sessionKey,

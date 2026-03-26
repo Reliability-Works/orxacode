@@ -15,19 +15,21 @@ describe("claude-chat-session-storage", () => {
   });
 
   it("hydrates persisted Claude chat state from localStorage after cache reset", () => {
-    setPersistedClaudeChatState(SESSION_KEY, {
-      providerThreadId: "thread-1",
-      messages: [{ id: "msg-1", kind: "message", role: "assistant", content: "Saved", timestamp: 1 }],
-      historyMessages: [{ id: "history-1", role: "assistant", content: "Saved", timestamp: 1, sessionId: "thread-1" }],
-      isStreaming: true,
-      messageIdCounter: 4,
-      subagents: [{ id: "task-1", name: "Explorer", status: "completed", statusText: "Done", sessionID: "child-1" }],
-    });
+    window.localStorage.setItem(
+      `orxa:claudeChatSession:v1:${SESSION_KEY}`,
+      JSON.stringify({
+        providerThreadId: "thread-1",
+        messages: [{ id: "msg-1", kind: "message", role: "assistant", content: "Saved", timestamp: 1 }],
+        historyMessages: [{ id: "history-1", role: "assistant", content: "Saved", timestamp: 1, sessionId: "thread-1" }],
+        isStreaming: true,
+        messageIdCounter: 4,
+        subagents: [{ id: "task-1", name: "Explorer", status: "completed", statusText: "Done", sessionID: "child-1" }],
+      }),
+    );
 
     resetPersistedClaudeChatStateForTests();
 
     expect(getPersistedClaudeChatState(SESSION_KEY)).toEqual({
-      providerThreadId: "thread-1",
       messages: [{ id: "msg-1", kind: "message", role: "assistant", content: "Saved", timestamp: 1 }],
       historyMessages: [{ id: "history-1", role: "assistant", content: "Saved", timestamp: 1, sessionId: "thread-1" }],
       isStreaming: false,
@@ -38,7 +40,6 @@ describe("claude-chat-session-storage", () => {
 
   it("clears persisted Claude chat state from localStorage", () => {
     setPersistedClaudeChatState(SESSION_KEY, {
-      providerThreadId: "thread-1",
       messages: [{ id: "msg-1", kind: "message", role: "assistant", content: "Saved", timestamp: 1 }],
       historyMessages: [{ id: "history-1", role: "assistant", content: "Saved", timestamp: 1, sessionId: "thread-1" }],
       isStreaming: false,
@@ -50,7 +51,6 @@ describe("claude-chat-session-storage", () => {
     resetPersistedClaudeChatStateForTests();
 
     expect(getPersistedClaudeChatState(SESSION_KEY)).toEqual({
-      providerThreadId: null,
       messages: [],
       historyMessages: [],
       isStreaming: false,

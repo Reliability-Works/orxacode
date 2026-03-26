@@ -14,6 +14,7 @@ import {
   pickLatestManagedOpencodeBinary,
   resolveManagedServerLaunchPort,
 } from "./opencode-service";
+import { ProviderSessionDirectory, makeProviderRuntimeSessionKey } from "./provider-session-directory";
 import { createSessionMessageBundle, createTextPart } from "../../src/test/session-message-bundle-factory";
 
 vi.mock("electron", () => ({
@@ -1133,6 +1134,7 @@ describe("OpencodeService session runtime snapshots", () => {
         loadSnapshot: (directory: string, sessionID: string, cursor: number) => Promise<{ cursor: number; records: unknown[] }>;
       };
       syncSessionExecutionArtifacts: (directory: string, sessionID: string) => Promise<void>;
+      providerSessionDirectory: ProviderSessionDirectory | null;
     };
 
     service.ensureWorkspaceDirectory = (directory) => directory;
@@ -1154,6 +1156,7 @@ describe("OpencodeService session runtime snapshots", () => {
       loadSnapshot: async () => ({ cursor: 1, records: [{ eventID: "prov-1" }] }),
     };
     service.syncSessionExecutionArtifacts = vi.fn(() => new Promise<void>(() => undefined));
+    service.providerSessionDirectory = new ProviderSessionDirectory();
 
     const timeout = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("getSessionRuntime timed out")), 100);
@@ -1168,5 +1171,13 @@ describe("OpencodeService session runtime snapshots", () => {
     expect(runtime.sessionDiff).toEqual([{ file: "package.json", before: "", after: "{}", additions: 1, deletions: 0 }]);
     expect(runtime.executionLedger.records).toEqual([{ id: "ledger-1" }]);
     expect(runtime.changeProvenance.records).toEqual([{ eventID: "prov-1" }]);
+    expect(service.providerSessionDirectory.getBinding(
+      makeProviderRuntimeSessionKey("opencode", "/repo", "session-1"),
+      "opencode",
+    )).toEqual(
+      expect.objectContaining({
+        resumeCursor: { sessionID: "session-1", directory: "/repo" },
+      }),
+    );
   });
 });
