@@ -6,7 +6,7 @@ A desktop app for working with AI coding agents. Bring your own backend — Open
 
 ## Download
 
-Grab the latest build from the [Releases page](https://github.com/Reliability-Works/orxa-code/releases).
+Grab the latest build from the [Releases page](https://github.com/Reliability-Works/orxacode/releases).
 
 Currently shipping **macOS-only** (`dmg`, `zip`). Windows and Linux builds exist in the repo but aren't published yet — we want to run them properly before putting them out.
 
