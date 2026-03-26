@@ -948,19 +948,12 @@ describe("App", () => {
   });
 
   it("deletes an unused Codex session when navigating away", async () => {
-    const now = Date.now();
     const bootstrapMock = vi.fn(async () => ({
       projects: [
         { id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const },
         { id: "proj-2", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const },
       ],
       runtime: { status: "disconnected" as const, managedServer: false },
-    }));
-    const createSessionMock = vi.fn(async () => ({
-      id: "codex-empty",
-      slug: "codex-empty",
-      title: "Codex Session",
-      time: { created: now, updated: now },
     }));
     const deleteSessionMock = vi.fn(async () => true);
     const selectProjectMock = vi.fn(async (directory: string) => {
@@ -999,47 +992,6 @@ describe("App", () => {
         ptys: [],
       };
     });
-    const refreshProjectMock = vi.fn(async (directory: string) => {
-      if (directory === "/repo/marketing-websites") {
-        return {
-          directory,
-          path: {},
-          sessions: [{
-            id: "codex-empty",
-            slug: "codex-empty",
-            title: "Codex Session",
-            time: { created: now, updated: now },
-          }],
-          sessionStatus: { "codex-empty": { type: "idle" as const } },
-          providers: { all: [], connected: [], default: {} },
-          agents: [],
-          config: {},
-          permissions: [],
-          questions: [],
-          commands: [],
-          mcp: {},
-          lsp: [],
-          formatter: [],
-          ptys: [],
-        };
-      }
-      return {
-        directory,
-        path: {},
-        sessions: [],
-        sessionStatus: {},
-        providers: { all: [], connected: [], default: {} },
-        agents: [],
-        config: {},
-        permissions: [],
-        questions: [],
-        commands: [],
-        mcp: {},
-        lsp: [],
-        formatter: [],
-        ptys: [],
-      };
-    });
 
     Object.defineProperty(window, "orxa", {
       value: {
@@ -1048,8 +1000,6 @@ describe("App", () => {
           ...window.orxa!.opencode,
           bootstrap: bootstrapMock,
           selectProject: selectProjectMock,
-          refreshProject: refreshProjectMock,
-          createSession: createSessionMock,
           deleteSession: deleteSessionMock,
         },
       },
@@ -1064,7 +1014,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "dreamweaver" }));
 
     await waitFor(() => {
-      expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "codex-empty");
+      expect(deleteSessionMock).not.toHaveBeenCalled();
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "marketing-websites" }));
@@ -1074,19 +1024,12 @@ describe("App", () => {
   });
 
   it("deletes an unused Claude chat session when navigating away", async () => {
-    const now = Date.now();
     const bootstrapMock = vi.fn(async () => ({
       projects: [
         { id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const },
         { id: "proj-2", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const },
       ],
       runtime: { status: "disconnected" as const, managedServer: false },
-    }));
-    const createSessionMock = vi.fn(async () => ({
-      id: "claude-chat-empty",
-      slug: "claude-chat-empty",
-      title: "Claude Code (Chat)",
-      time: { created: now, updated: now },
     }));
     const deleteSessionMock = vi.fn(async () => true);
     const selectProjectMock = vi.fn(async (directory: string) => ({
@@ -1105,47 +1048,6 @@ describe("App", () => {
       formatter: [],
       ptys: [],
     }));
-    const refreshProjectMock = vi.fn(async (directory: string) => {
-      if (directory === "/repo/marketing-websites") {
-        return {
-          directory,
-          path: {},
-          sessions: [{
-            id: "claude-chat-empty",
-            slug: "claude-chat-empty",
-            title: "Claude Code (Chat)",
-            time: { created: now, updated: now },
-          }],
-          sessionStatus: { "claude-chat-empty": { type: "idle" as const } },
-          providers: { all: [], connected: [], default: {} },
-          agents: [],
-          config: {},
-          permissions: [],
-          questions: [],
-          commands: [],
-          mcp: {},
-          lsp: [],
-          formatter: [],
-          ptys: [],
-        };
-      }
-      return {
-        directory,
-        path: {},
-        sessions: [],
-        sessionStatus: {},
-        providers: { all: [], connected: [], default: {} },
-        agents: [],
-        config: {},
-        permissions: [],
-        questions: [],
-        commands: [],
-        mcp: {},
-        lsp: [],
-        formatter: [],
-        ptys: [],
-      };
-    });
 
     Object.defineProperty(window, "orxa", {
       value: {
@@ -1154,8 +1056,6 @@ describe("App", () => {
           ...window.orxa!.opencode,
           bootstrap: bootstrapMock,
           selectProject: selectProjectMock,
-          refreshProject: refreshProjectMock,
-          createSession: createSessionMock,
           deleteSession: deleteSessionMock,
         },
       },
@@ -1170,7 +1070,12 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "dreamweaver" }));
 
     await waitFor(() => {
-      expect(deleteSessionMock).toHaveBeenCalledWith("/repo/marketing-websites", "claude-chat-empty");
+      expect(deleteSessionMock).not.toHaveBeenCalled();
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "marketing-websites" }));
+    await waitFor(() => {
+      expect(screen.queryAllByText("Claude Code (Chat)")).toHaveLength(1);
     });
   });
 

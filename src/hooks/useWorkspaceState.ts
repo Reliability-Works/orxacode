@@ -44,6 +44,9 @@ type UseWorkspaceStateOptions = {
   setTerminalOpen: (open: boolean) => void;
   scheduleGitRefresh?: (delayMs?: number) => void;
   onCleanupEmptySession?: (directory: string, sessionID: string) => void | Promise<void>;
+  mergeProjectData?: (project: ProjectBootstrap) => ProjectBootstrap;
+  shouldDeleteRemoteEmptySession?: (directory: string, sessionID: string) => boolean;
+  shouldSkipRuntimeSessionLoad?: (directory: string, sessionID: string) => boolean;
 };
 
 type CreateSessionPromptOptions = {
@@ -126,6 +129,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     setActiveTerminalId,
     setTerminalOpen,
     onCleanupEmptySession,
+    mergeProjectData,
+    shouldDeleteRemoteEmptySession,
+    shouldSkipRuntimeSessionLoad,
   } = options;
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>("projects");
@@ -216,9 +222,10 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
 
   const setProjectData = useCallback((next: ProjectBootstrap | null) => {
     if (next) {
-      setProjectDataForDirectory(next.directory, next);
+      const merged = mergeProjectData ? mergeProjectData(next) : next;
+      setProjectDataForDirectory(merged.directory, merged);
     }
-  }, [setProjectDataForDirectory]);
+  }, [mergeProjectData, setProjectDataForDirectory]);
 
   const setActiveSessionID = useCallback((sessionID: string | undefined) => {
     setActiveSession(sessionID, sessionID ? "opencode" : undefined);
@@ -302,20 +309,25 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     const directory = emptySessionIds.current.get(sessionID) ?? persistedEmptySessionIds.current.get(sessionID);
     if (!directory) return;
     await finalizeEmptySessionCleanup(directory, sessionID);
+    if (shouldDeleteRemoteEmptySession?.(directory, sessionID) === false) {
+      return;
+    }
     await window.orxa.opencode.deleteSession(directory, sessionID).catch(() => undefined);
-  }, [finalizeEmptySessionCleanup]);
+  }, [finalizeEmptySessionCleanup, shouldDeleteRemoteEmptySession]);
 
   const cleanupPersistedEmptySessions = useCallback(async () => {
     const trackedSessions = [...persistedEmptySessionIds.current.entries()];
     for (const [sessionID, directory] of trackedSessions) {
       try {
-        await window.orxa.opencode.deleteSession(directory, sessionID);
+        if (shouldDeleteRemoteEmptySession?.(directory, sessionID) !== false) {
+          await window.orxa.opencode.deleteSession(directory, sessionID);
+        }
         await finalizeEmptySessionCleanup(directory, sessionID);
       } catch {
         // Keep the persisted marker so startup can retry next time.
       }
     }
-  }, [finalizeEmptySessionCleanup]);
+  }, [finalizeEmptySessionCleanup, shouldDeleteRemoteEmptySession]);
 
   // Call when a message is sent in a session — removes it from the empty set
   const markSessionUsed = useCallback((sessionID: string) => {
@@ -323,14 +335,15 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   }, [forgetEmptySession]);
 
   const commitProjectData = useCallback((directory: string, project: ProjectBootstrap) => {
-    setProjectDataForDirectory(directory, project);
+    const merged = mergeProjectData ? mergeProjectData(project) : project;
+    setProjectDataForDirectory(directory, merged);
     const runtimeState = getRuntimeState();
     if (runtimeState.activeWorkspaceDirectory === directory) {
-      setProjectData(project);
+      setProjectData(merged);
     }
-    const lastUpdated = project.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
+    const lastUpdated = merged.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
     setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated });
-  }, [getRuntimeState, setProjectData, setProjectDataForDirectory, setWorkspaceMeta]);
+  }, [getRuntimeState, mergeProjectData, setProjectData, setProjectDataForDirectory, setWorkspaceMeta]);
 
   const applyOpencodeStreamEvent = useCallback((directory: string, event: OpencodeEvent) => {
     const state = getRuntimeState();
@@ -406,19 +419,20 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     async (directory: string, skipMessageLoad = false) => {
       try {
         const data = await window.orxa.opencode.refreshProject(directory);
-        setProjectDataForDirectory(directory, data);
+        const merged = mergeProjectData ? mergeProjectData(data) : data;
+        setProjectDataForDirectory(directory, merged);
         const currentState = getRuntimeState();
         if (currentState.activeWorkspaceDirectory === directory) {
-          setProjectData(data);
+          setProjectData(merged);
         }
-        const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
+        const lastUpdated = merged.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated });
 
-        const sortedSessions = [...data.sessions].sort((a, b) => b.time.updated - a.time.updated);
+        const sortedSessions = [...merged.sessions].sort((a, b) => b.time.updated - a.time.updated);
         const staleBusySessionIDs = sortedSessions
           .map((session) => session.id)
           .filter((sessionID) => {
-            const statusType = data.sessionStatus[sessionID]?.type;
+            const statusType = merged.sessionStatus[sessionID]?.type;
             return statusType === "busy" || statusType === "retry";
           });
         const currentActiveSessionID =
@@ -436,11 +450,11 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
           }
         }
 
-        const serverPtyIds = data.ptys.map((p) => p.id);
+        const serverPtyIds = merged.ptys.map((p) => p.id);
         const hasValidTab = terminalTabIds.some((id) => serverPtyIds.includes(id));
         if (!hasValidTab && serverPtyIds.length > 0) {
-          setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-          setActiveTerminalId(data.ptys[0]?.id);
+          setTerminalTabs(merged.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+          setActiveTerminalId(merged.ptys[0]?.id);
         }
 
         if (nextSessionID && !skipMessageLoad) {
@@ -478,13 +492,13 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
             .catch(() => undefined);
         }
 
-        return data;
+        return merged;
       } catch (error) {
         setStatusLine(error instanceof Error ? error.message : String(error));
         throw error;
       }
     },
-    [buildRuntimeProjectSlice, getRuntimeState, setActiveSessionID, setActiveTerminalId, setMessages, setOpencodeRuntimeSnapshot, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalTabs, setWorkspaceMeta, terminalTabIds],
+    [buildRuntimeProjectSlice, getRuntimeState, mergeProjectData, setActiveSessionID, setActiveTerminalId, setMessages, setOpencodeRuntimeSnapshot, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalTabs, setWorkspaceMeta, terminalTabIds],
   );
 
   const selectProject = useCallback(
@@ -506,13 +520,14 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setSidebarMode("projects");
         setCollapsedProjects((current) => ({ ...current, [directory]: false }));
         const data = await window.orxa.opencode.selectProject(directory);
-        setProjectDataForDirectory(directory, data);
-        setProjectData(data);
-        const lastUpdated = data.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
+        const merged = mergeProjectData ? mergeProjectData(data) : data;
+        setProjectDataForDirectory(directory, merged);
+        setProjectData(merged);
+        const lastUpdated = merged.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated, lastOpenedAt: Date.now() });
 
-        setTerminalTabs(data.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
-        setActiveTerminalId(data.ptys[0]?.id);
+        setTerminalTabs(merged.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })));
+        setActiveTerminalId(merged.ptys[0]?.id);
         setActiveSessionID(nextSessionID);
         setStatusLine(`Loaded ${directory}`);
       } catch (error) {
@@ -520,7 +535,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setStatusLine(error instanceof Error ? error.message : String(error));
       }
     },
-    [cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setPendingSessionId, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
+    [cleanupEmptySession, getRuntimeState, mergeProjectData, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setPendingSessionId, setProjectData, setProjectDataForDirectory, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta],
   );
 
   const openWorkspaceDashboard = useCallback(async () => {
@@ -583,6 +598,9 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       }
       setActiveProjectDir(targetDirectory);
       setActiveSessionID(sessionID);
+      if (shouldSkipRuntimeSessionLoad?.(targetDirectory, sessionID)) {
+        return;
+      }
       // Pre-populate the store from persisted cache so messages show instantly
       // while the server load happens in the background.
       const storeKey = makeUnifiedSessionKey("opencode", targetDirectory, sessionID);
@@ -610,7 +628,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         })
         .catch(() => undefined);
     },
-    [buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setOpencodeMessages, setOpencodeRuntimeSnapshot],
+    [buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, setActiveProjectDir, setActiveSessionID, setOpencodeMessages, setOpencodeRuntimeSnapshot, shouldSkipRuntimeSessionLoad],
   );
 
   const stopResponsePolling = useCallback(() => {
@@ -872,6 +890,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     openProjectContextMenu,
     openSessionContextMenu,
     markSessionUsed,
+    trackEmptySession: rememberEmptySession,
     cleanupPersistedEmptySessions,
   };
 }

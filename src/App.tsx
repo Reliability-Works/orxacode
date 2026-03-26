@@ -21,6 +21,7 @@ import type {
   ChangeProvenanceRecord,
   OpenCodeAgentFile,
   ProjectListItem,
+  ClaudeChatHealthStatus,
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeDependencyReport,
@@ -134,10 +135,42 @@ import { extractReviewChangesFiles } from "./lib/timeline-row-grouping";
 import {
   buildWorkspaceSessionMetadataKey,
 } from "./lib/workspace-session-metadata";
+import {
+  LOCAL_PROVIDER_SESSIONS_KEY,
+  createLocalProviderSessionRecord,
+  isLocalProviderSessionType,
+  mergeLocalProviderSessions,
+  removeLocalProviderSessionRecord,
+  renameLocalProviderSessionRecord,
+  touchLocalProviderSessionRecord,
+  upsertLocalProviderSessionRecord,
+} from "./lib/local-provider-sessions";
 import { opencodeClient } from "./lib/services/opencodeClient";
 import type { AppPreferences } from "~/types/app";
 import type { SessionType } from "~/types/canvas";
 import { CODE_FONT_OPTIONS, UI_FONT_OPTIONS } from "~/types/app";
+
+const STRUCTURED_SESSION_LABELS: Partial<Record<SessionType, string>> = {
+  claude: "Claude Code (Terminal)",
+  "claude-chat": "Claude Code (Chat)",
+  codex: "Codex Session",
+};
+
+function describeClaudeHealthFailure(sessionLabel: string, health: ClaudeChatHealthStatus) {
+  if (!health.available) {
+    const reason = health.message?.trim();
+    return reason
+      ? `${sessionLabel} requires the local Claude Code CLI. ${reason}`
+      : `${sessionLabel} requires the local Claude Code CLI. Verify \`claude --version\`, then retry.`;
+  }
+  if (health.authenticated === false) {
+    const reason = health.message?.trim();
+    return reason
+      ? `${sessionLabel} found Claude Code, but it is not authenticated. ${reason}`
+      : `${sessionLabel} found Claude Code, but it is not authenticated. Run \`claude auth status\`, sign in if needed, then retry.`;
+  }
+  return `${sessionLabel} could not verify the local Claude Code setup.`;
+}
 import antigravityLogo from "./assets/app-icons/antigravity.png";
 import cursorLogo from "./assets/app-icons/cursor.png";
 import finderLogo from "./assets/app-icons/finder.png";
@@ -612,6 +645,33 @@ export default function App() {
     getSessionTitle,
     normalizePresentationProvider,
   } = useWorkspaceSessionMetadata();
+  const [localProviderSessions, setLocalProviderSessions] = usePersistedState<Record<string, ReturnType<typeof createLocalProviderSessionRecord>>>(
+    LOCAL_PROVIDER_SESSIONS_KEY,
+    {},
+  );
+  const mergeProjectDataWithLocalSessions = useCallback(
+    (project: Parameters<typeof mergeLocalProviderSessions>[0]) =>
+      mergeLocalProviderSessions(project, localProviderSessions, getSessionType),
+    [getSessionType, localProviderSessions],
+  );
+  const cleanupWorkspaceSession = useCallback(
+    (directory: string, sessionID: string) => {
+      const sessionType = getSessionType(sessionID, directory);
+      cleanupEmptySession(directory, sessionID);
+      if (isLocalProviderSessionType(sessionType)) {
+        setLocalProviderSessions((prev) => removeLocalProviderSessionRecord(prev, directory, sessionID));
+      }
+    },
+    [cleanupEmptySession, getSessionType, setLocalProviderSessions],
+  );
+  const shouldDeleteRemoteEmptySession = useCallback(
+    (directory: string, sessionID: string) => !isLocalProviderSessionType(getSessionType(sessionID, directory)),
+    [getSessionType],
+  );
+  const shouldSkipRuntimeSessionLoad = useCallback(
+    (directory: string, sessionID: string) => isLocalProviderSessionType(getSessionType(sessionID, directory)),
+    [getSessionType],
+  );
   const {
     sidebarMode,
     setSidebarMode,
@@ -644,6 +704,7 @@ export default function App() {
     openProjectContextMenu,
     openSessionContextMenu,
     markSessionUsed,
+    trackEmptySession,
     cleanupPersistedEmptySessions,
   } = useWorkspaceState({
     setStatusLine,
@@ -652,7 +713,10 @@ export default function App() {
     setActiveTerminalId,
     setTerminalOpen,
     scheduleGitRefresh: (delayMs) => scheduleGitRefreshRef.current?.(delayMs),
-    onCleanupEmptySession: cleanupEmptySession,
+    onCleanupEmptySession: cleanupWorkspaceSession,
+    mergeProjectData: mergeProjectDataWithLocalSessions,
+    shouldDeleteRemoteEmptySession,
+    shouldSkipRuntimeSessionLoad,
   });
 
   const openSession = useCallback(
@@ -695,10 +759,56 @@ export default function App() {
   const removeClaudeSession = useUnifiedRuntimeStore((state) => state.removeClaudeSession);
   const removeClaudeChatSession = useUnifiedRuntimeStore((state) => state.removeClaudeChatSession);
   const setProjectDataForDirectory = useUnifiedRuntimeStore((state) => state.setProjectData);
+  const setWorkspaceMeta = useUnifiedRuntimeStore((state) => state.setWorkspaceMeta);
   const initCodexSession = useUnifiedRuntimeStore((state) => state.initCodexSession);
   const setCodexThread = useUnifiedRuntimeStore((state) => state.setCodexThread);
   const setCodexStreaming = useUnifiedRuntimeStore((state) => state.setCodexStreaming);
   const replaceCodexMessages = useUnifiedRuntimeStore((state) => state.replaceCodexMessages);
+  const syncLocalProviderSessionsIntoProject = useCallback(
+    (directory: string, nextRecords: typeof localProviderSessions) => {
+      const state = useUnifiedRuntimeStore.getState();
+      const cached = state.projectDataByDirectory[directory];
+      if (!cached) {
+        return;
+      }
+      const merged = mergeLocalProviderSessions(cached, nextRecords, getSessionType);
+      setProjectDataForDirectory(directory, merged);
+      if (state.activeWorkspaceDirectory === directory) {
+        setProjectData(merged);
+      }
+      const lastUpdated = merged.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0);
+      setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated });
+    },
+    [getSessionType, setProjectData, setProjectDataForDirectory, setWorkspaceMeta],
+  );
+  const registerLocalProviderSession = useCallback(
+    (record: ReturnType<typeof createLocalProviderSessionRecord>) => {
+      const next = upsertLocalProviderSessionRecord(localProviderSessions, record);
+      setLocalProviderSessions(next);
+      syncLocalProviderSessionsIntoProject(record.directory, next);
+      return record;
+    },
+    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject],
+  );
+  const renameLocalProviderSession = useCallback(
+    (directory: string, sessionID: string, title: string) => {
+      const next = renameLocalProviderSessionRecord(localProviderSessions, directory, sessionID, title);
+      setLocalProviderSessions(next);
+      syncLocalProviderSessionsIntoProject(directory, next);
+    },
+    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject],
+  );
+  const touchLocalProviderSession = useCallback(
+    (directory: string, sessionID: string, updatedAt?: number) => {
+      const next = touchLocalProviderSessionRecord(localProviderSessions, directory, sessionID, updatedAt);
+      if (next === localProviderSessions) {
+        return;
+      }
+      setLocalProviderSessions(next);
+      syncLocalProviderSessionsIntoProject(directory, next);
+    },
+    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject],
+  );
   useWorkspaceSessionMetadataMigration({
     projects,
     projectData: projectData ?? undefined,
@@ -2123,6 +2233,60 @@ export default function App() {
         sessionTypeOrPrompt === "codex";
       const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : "standalone";
       const initialPrompt = isSessionType ? undefined : sessionTypeOrPrompt;
+      const sessionLabel = STRUCTURED_SESSION_LABELS[sessionType] ?? "Session";
+      const titleMap: Record<string, string> = {
+        claude: "Claude Code (Terminal)",
+        "claude-chat": "Claude Code (Chat)",
+        canvas: "Canvas",
+        codex: "Codex Session",
+      };
+      const targetDirectory = directory ?? activeProjectDir;
+      if (!targetDirectory) {
+        return;
+      }
+
+      try {
+        if (sessionType === "claude" || sessionType === "claude-chat") {
+          const health = await window.orxa.claudeChat.health();
+          if (!health.available || health.authenticated === false) {
+            throw new Error(describeClaudeHealthFailure(sessionLabel, health));
+          }
+        }
+      } catch (error) {
+        setStatusLine(error instanceof Error ? error.message : String(error));
+        return;
+      }
+
+      if (isLocalProviderSessionType(sessionType)) {
+        if (activeProjectDir !== targetDirectory) {
+          await selectProject(targetDirectory);
+        }
+        const record = registerLocalProviderSession(
+          createLocalProviderSessionRecord(targetDirectory, sessionType, titleMap[sessionType] ?? sessionLabel),
+        );
+        const scopedSessionKey = buildWorkspaceSessionMetadataKey(targetDirectory, record.sessionID);
+        setSessionTypes((prev) => ({ ...prev, [scopedSessionKey]: sessionType }));
+        setSessionTitles((prev) => ({ ...prev, [scopedSessionKey]: record.title }));
+        setManualSessionTitles((prev) => {
+          if (!(scopedSessionKey in prev)) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[scopedSessionKey];
+          return next;
+        });
+        setSidebarMode("projects");
+        setActiveProjectDir(targetDirectory);
+        setActiveSessionID(record.sessionID);
+        clearPendingSession();
+        if (sessionType === "claude") {
+          markSessionUsed(record.sessionID);
+        } else {
+          trackEmptySession(record.sessionID, targetDirectory);
+        }
+        setStatusLine("Session created");
+        return;
+      }
 
       const createdSessionId = await createWorkspaceSession(directory, initialPrompt, {
         permissionMode: appPreferences.permissionMode,
@@ -2133,23 +2297,13 @@ export default function App() {
       });
 
       if (sessionType !== "standalone" && createdSessionId) {
-        const targetDirectory = directory ?? activeProjectDir;
-        if (!targetDirectory) {
-          return;
-        }
         const scopedSessionKey = buildWorkspaceSessionMetadataKey(targetDirectory, createdSessionId);
         setSessionTypes((prev) => ({ ...prev, [scopedSessionKey]: sessionType }));
-        if (sessionType === "claude" || sessionType === "canvas") {
+        if (sessionType === "canvas") {
           // These surfaces do not send a first chat message, so an untouched
           // session is still intentionally "real" and should survive navigation.
           markSessionUsed(createdSessionId);
         }
-        const titleMap: Record<string, string> = {
-          claude: "Claude Code (Terminal)",
-          "claude-chat": "Claude Code (Chat)",
-          canvas: "Canvas",
-          codex: "Codex Session",
-        };
         if (titleMap[sessionType]) {
           setSessionTitles((prev) => ({ ...prev, [scopedSessionKey]: titleMap[sessionType] }));
           setManualSessionTitles((prev) => {
@@ -2163,7 +2317,7 @@ export default function App() {
         }
       }
     },
-    [activeProjectDir, appPreferences.permissionMode, availableAgentNames, createWorkspaceSession, markSessionUsed, selectedAgent, selectedModelPayload, selectedVariant, setManualSessionTitles, setSessionTypes, setSessionTitles],
+    [activeProjectDir, appPreferences.permissionMode, availableAgentNames, clearPendingSession, createWorkspaceSession, markSessionUsed, registerLocalProviderSession, selectProject, selectedAgent, selectedModelPayload, selectedVariant, setActiveProjectDir, setActiveSessionID, setManualSessionTitles, setSessionTypes, setSessionTitles, setSidebarMode, setStatusLine, trackEmptySession],
   );
 
   const addProjectDirectory = useCallback(async (options?: { select?: boolean }) => {
@@ -2372,10 +2526,12 @@ export default function App() {
               }
             } else if (sessionType === "claude-chat") {
               const claudeThreadId = resolveClaudeChatProviderThreadId(scopedSessionKey);
-              if (!claudeThreadId) {
-                throw new Error("Claude thread ID is not available for rename.");
+              if (claudeThreadId) {
+                await window.orxa.claudeChat.renameProviderSession(claudeThreadId, nextTitle, directory);
               }
-              await window.orxa.claudeChat.renameProviderSession(claudeThreadId, nextTitle, directory);
+            }
+            if (isLocalProviderSessionType(sessionType)) {
+              renameLocalProviderSession(directory, sessionID, nextTitle);
             }
             setSessionTitles((prev) => ({
               ...prev,
@@ -2392,7 +2548,7 @@ export default function App() {
         },
       });
     },
-    [getSessionType, refreshProject, setManualSessionTitles, setSessionTitles, setTextInputDialog],
+    [getSessionType, refreshProject, renameLocalProviderSession, setManualSessionTitles, setSessionTitles, setTextInputDialog],
   );
 
   const removeSessionFromLocalProjectCache = useCallback(
@@ -2425,7 +2581,10 @@ export default function App() {
       try {
         const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
         const archivedSessionType = getSessionType(sessionID, directory);
-        await window.orxa.opencode.archiveSession(directory, sessionID);
+        const localProviderSession = isLocalProviderSessionType(archivedSessionType);
+        if (!localProviderSession) {
+          await window.orxa.opencode.archiveSession(directory, sessionID);
+        }
         // Clear canvas state for archived sessions so new canvas sessions start fresh
         try {
           const dirSuffix = directory ? `:${directory.replace(/\//g, "_")}` : "";
@@ -2446,13 +2605,21 @@ export default function App() {
         } else if (archivedSessionType === "claude") {
           removeClaudeSession(sessionKey);
         }
+        let nextLocalProviderSessions = localProviderSessions;
+        if (localProviderSession) {
+          nextLocalProviderSessions = removeLocalProviderSessionRecord(localProviderSessions, directory, sessionID);
+          setLocalProviderSessions(nextLocalProviderSessions);
+          syncLocalProviderSessionsIntoProject(directory, nextLocalProviderSessions);
+        }
         clearSessionReadAt(sessionKey);
         clearSessionMetadata(sessionKey);
         removeSessionFromLocalProjectCache(directory, sessionID);
-        const next = await refreshProject(directory);
+        const next = localProviderSession
+          ? (useUnifiedRuntimeStore.getState().projectDataByDirectory[directory] ?? null)
+          : await refreshProject(directory);
         if (sessionID === activeSessionID) {
           clearPendingSession();
-          const sorted = [...next.sessions].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
+          const sorted = [...(next?.sessions ?? [])].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
           setActiveSessionID(sorted[0]?.id);
         }
         setStatusLine("Session archived");
@@ -2466,11 +2633,14 @@ export default function App() {
       clearSessionMetadata,
       clearSessionReadAt,
       getSessionType,
+      localProviderSessions,
       refreshProject,
+      setLocalProviderSessions,
       removeClaudeChatSession,
       removeClaudeSession,
       removeSessionFromLocalProjectCache,
       setActiveSessionID,
+      syncLocalProviderSessionsIntoProject,
     ],
   );
 
@@ -3990,7 +4160,13 @@ export default function App() {
                 <ClaudeChatPane
                   directory={activeProjectDir}
                   sessionStorageKey={activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)}
-                  onFirstMessage={() => activeSessionID && markSessionUsed(activeSessionID)}
+                  onFirstMessage={() => {
+                    if (!activeSessionID) {
+                      return;
+                    }
+                    markSessionUsed(activeSessionID);
+                    touchLocalProviderSession(activeProjectDir, activeSessionID);
+                  }}
                   onTitleChange={(title) => {
                     if (!activeSessionID || !activeProjectDir) {
                       return;
@@ -4016,6 +4192,7 @@ export default function App() {
                         [scopedSessionKey]: title,
                       };
                     });
+                    renameLocalProviderSession(activeProjectDir, activeSessionID, title);
                   }}
                   permissionMode={appPreferences.permissionMode}
                   onPermissionModeChange={(mode) => setAppPreferences({ ...appPreferences, permissionMode: mode })}
@@ -4048,7 +4225,13 @@ export default function App() {
                   directory={activeProjectDir}
                   sessionStorageKey={activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)}
                   onExit={openWorkspaceDashboard}
-                  onFirstInteraction={() => activeSessionID && markSessionUsed(activeSessionID)}
+                  onFirstInteraction={() => {
+                    if (!activeSessionID) {
+                      return;
+                    }
+                    markSessionUsed(activeSessionID);
+                    touchLocalProviderSession(activeProjectDir, activeSessionID);
+                  }}
                 />
               ) : activeSessionType === "codex" ? (
                 <CodexPane
@@ -4056,7 +4239,13 @@ export default function App() {
                   sessionStorageKey={activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)}
                   titleLocked={manualSessionTitles[activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)] ?? false}
                   onExit={openWorkspaceDashboard}
-                  onFirstMessage={() => activeSessionID && markSessionUsed(activeSessionID)}
+                  onFirstMessage={() => {
+                    if (!activeSessionID) {
+                      return;
+                    }
+                    markSessionUsed(activeSessionID);
+                    touchLocalProviderSession(activeProjectDir, activeSessionID);
+                  }}
                   onTitleChange={(title) => {
                     if (!activeSessionID || !activeProjectDir) {
                       return;
@@ -4082,6 +4271,7 @@ export default function App() {
                         [scopedSessionKey]: title,
                       };
                     });
+                    renameLocalProviderSession(activeProjectDir, activeSessionID, title);
                   }}
                   notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
                   subagentSystemNotificationsEnabled={appPreferences.subagentSystemNotificationsEnabled}
