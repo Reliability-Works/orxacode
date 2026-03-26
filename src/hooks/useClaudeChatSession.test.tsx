@@ -160,6 +160,92 @@ describe("useClaudeChatSession", () => {
     });
   });
 
+  it("keeps Claude thinking visible through assistant partials until the turn completes", async () => {
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+    const events = window.orxa!.events as unknown as ReturnType<typeof buildEvents>;
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "turn/started",
+          params: { turnId: "turn-thinking", timestamp: 1 },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "assistant/partial",
+          params: { id: "assistant-thinking", turnId: "turn-thinking", content: "Hello", timestamp: 2 },
+        },
+      });
+    });
+
+    expect(result.current.messages.some((item) => item.kind === "thinking")).toBe(true);
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "turn/completed",
+          params: { turnId: "turn-thinking", timestamp: 3 },
+        },
+      });
+    });
+
+    expect(result.current.messages.some((item) => item.kind === "thinking")).toBe(false);
+  });
+
+  it("normalizes read-only Claude task progress into explore rows", async () => {
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+    const events = window.orxa!.events as unknown as ReturnType<typeof buildEvents>;
+
+    await act(async () => {
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "task/started",
+          params: {
+            taskId: "task-1",
+            description: "Explore the repository for failing tests",
+            taskType: "researcher",
+            timestamp: 1,
+          },
+        },
+      });
+      events.emit({
+        type: "claude-chat.notification",
+        payload: {
+          sessionKey: SESSION_KEY,
+          method: "task/completed",
+          params: {
+            taskId: "task-1",
+            status: "completed",
+            summary: "Explored the repository and identified the failing tests",
+            timestamp: 2,
+          },
+        },
+      });
+    });
+
+    const explore = result.current.messages.find((item) => item.kind === "explore");
+    expect(explore).toMatchObject({
+      kind: "explore",
+      source: "delegated",
+      status: "explored",
+    });
+    if (!explore || explore.kind !== "explore") {
+      throw new Error("Expected an explore row");
+    }
+    expect(explore.entries[0]).toMatchObject({
+      status: "completed",
+    });
+  });
+
   it("keeps the original Claude subagent task text when progress updates arrive", async () => {
     const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
     const events = window.orxa!.events as unknown as ReturnType<typeof buildEvents>;

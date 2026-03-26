@@ -70,6 +70,15 @@ describe("ClaudeChatService", () => {
           description: "Investigate the failing flow",
           summary: "Checking logs",
           last_tool_name: "Bash",
+          tool_use_id: "toolu-task-1",
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            server_tool_use: {
+              web_search_requests: 0,
+            },
+            service_tier: "standard",
+          },
         },
         {
           type: "system",
@@ -77,6 +86,16 @@ describe("ClaudeChatService", () => {
           task_id: "task-1",
           status: "completed",
           summary: "Done",
+          tool_use_id: "toolu-task-1",
+          output_file: "/tmp/result.txt",
+          usage: {
+            input_tokens: 11,
+            output_tokens: 6,
+            server_tool_use: {
+              web_search_requests: 0,
+            },
+            service_tier: "standard",
+          },
         },
         {
           type: "assistant",
@@ -114,8 +133,37 @@ describe("ClaudeChatService", () => {
           method: "thread/started",
           params: expect.objectContaining({ providerThreadId: "child-thread", isSubagent: true, taskId: "task-1" }),
         }),
+        expect.objectContaining({
+          method: "task/progress",
+          params: expect.objectContaining({
+            taskId: "task-1",
+            lastToolName: "Bash",
+            toolUseId: "toolu-task-1",
+            usage: expect.objectContaining({
+              input_tokens: 10,
+              output_tokens: 5,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          method: "task/completed",
+          params: expect.objectContaining({
+            taskId: "task-1",
+            toolUseId: "toolu-task-1",
+            outputFile: "/tmp/result.txt",
+            usage: expect.objectContaining({
+              input_tokens: 11,
+              output_tokens: 6,
+            }),
+          }),
+        }),
       ]),
     );
+
+    const assistantIndex = notifications.findIndex((entry) => entry.method === "assistant/message");
+    const thinkingStoppedIndex = notifications.findIndex((entry) => entry.method === "thinking/stopped");
+    expect(assistantIndex).toBeGreaterThanOrEqual(0);
+    expect(thinkingStoppedIndex).toBeGreaterThan(assistantIndex);
   });
 
   it("passes Claude plan mode through to the SDK query options", async () => {
@@ -265,6 +313,15 @@ describe("ClaudeChatService", () => {
             id: "toolu_1",
             toolName: "Task",
             summary: "Queued 1 background task",
+            precedingToolUseIds: ["toolu_1"],
+          }),
+        }),
+        expect.objectContaining({
+          method: "tool/progress",
+          params: expect.objectContaining({
+            id: "toolu_1",
+            toolName: "Task",
+            parentToolUseId: null,
           }),
         }),
       ]),

@@ -1113,7 +1113,7 @@ export function selectSessionPresentation(input: {
     if (!session) {
       return null;
     }
-    return projectClaudeChatProjectedSessionPresentation(session.messages, session.isStreaming);
+    return projectClaudeChatProjectedSessionPresentation(session.messages, session.isStreaming, session.subagents);
   }
   if (provider === "opencode" && directory && sessionID) {
     const runtime = state.opencodeSessions[buildOpencodeKey(directory, sessionID)];

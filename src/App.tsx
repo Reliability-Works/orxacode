@@ -202,6 +202,16 @@ const MAX_TERMINAL_PANEL_HEIGHT = 420;
 
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 
+function resolveClaudeChatProviderThreadId(sessionKey: string) {
+  const runtime = selectClaudeChatSessionRuntime(sessionKey);
+  const persisted = getPersistedClaudeChatState(sessionKey);
+  return runtime?.providerThreadId
+    ?? persisted.providerThreadId
+    ?? runtime?.historyMessages.find((message) => message.sessionId.trim().length > 0)?.sessionId
+    ?? persisted.historyMessages.find((message) => message.sessionId.trim().length > 0)?.sessionId
+    ?? null;
+}
+
 function normalizeFileReferencePath(reference: string, workspaceDirectory?: string | null) {
   const trimmed = reference.trim();
   if (!trimmed) {
@@ -2361,11 +2371,11 @@ export default function App() {
                 await window.orxa.codex.setThreadName(codexThreadId, nextTitle);
               }
             } else if (sessionType === "claude-chat") {
-              const claudeThreadId = selectClaudeChatSessionRuntime(scopedSessionKey)?.providerThreadId
-                ?? getPersistedClaudeChatState(scopedSessionKey).providerThreadId;
-              if (claudeThreadId) {
-                await window.orxa.claudeChat.renameProviderSession(claudeThreadId, nextTitle, directory);
+              const claudeThreadId = resolveClaudeChatProviderThreadId(scopedSessionKey);
+              if (!claudeThreadId) {
+                throw new Error("Claude thread ID is not available for rename.");
               }
+              await window.orxa.claudeChat.renameProviderSession(claudeThreadId, nextTitle, directory);
             }
             setSessionTitles((prev) => ({
               ...prev,
@@ -2468,15 +2478,17 @@ export default function App() {
     try {
       const sessionType = getSessionType(sessionID, directory);
       const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
+      const claudeChatProviderThreadId = resolveClaudeChatProviderThreadId(sessionKey);
+      if (sessionType === "claude-chat" && !claudeChatProviderThreadId) {
+        throw new Error("Claude thread ID is not available to copy.");
+      }
       const resolved = resolveSessionCopyIdentifier({
         sessionType,
         workspaceSessionID: sessionID,
         codexThreadID: selectCodexSessionRuntime(sessionKey)?.thread?.id
           ?? getPersistedCodexState(sessionKey).thread?.id
           ?? null,
-        claudeChatProviderThreadId: selectClaudeChatSessionRuntime(sessionKey)?.providerThreadId
-          ?? getPersistedClaudeChatState(sessionKey).providerThreadId
-          ?? null,
+        claudeChatProviderThreadId,
       });
       await navigator.clipboard.writeText(resolved.value);
       setStatusLine(`${resolved.label} copied`);

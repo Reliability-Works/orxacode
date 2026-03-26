@@ -6,19 +6,32 @@ interface ThinkingRowProps {
   content?: string;
 }
 
+function parseThinkingLabel(summary: string) {
+  const normalized = summary.trim();
+  if (!normalized) {
+    return { label: "Thinking", detail: "" };
+  }
+
+  const matched = /^(thinking|working|delegating)(?:\.\.\.)?(?::|\s+-)?\s*(.*)$/i.exec(normalized);
+  if (matched) {
+    const rawLabel = matched[1] ?? "Thinking";
+    const label = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1).toLowerCase();
+    const detail = (matched[2] ?? "").trim();
+    return { label, detail };
+  }
+
+  return { label: "Thinking", detail: normalized };
+}
+
 export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
-  const normalizedSummary = summary
-    .replace(/^thinking(?:\.\.\.)?[:\s-]*/i, "")
-    .replace(/^working(?:\.\.\.)?[:\s-]*/i, "")
-    .trim();
-  const summaryText = normalizedSummary || "...";
+  const { label, detail } = parseThinkingLabel(summary);
   const hasContent = content.trim().length > 0;
 
   if (!hasContent) {
     return (
       <div className="thinking-inline">
-        <ThinkingShimmer label="Thinking" />
-        {normalizedSummary ? <span className="thinking-summary">{summaryText}</span> : null}
+        <ThinkingShimmer label={label} />
+        {detail ? <span className="thinking-summary">{detail}</span> : null}
       </div>
     );
   }
@@ -26,7 +39,7 @@ export function ThinkingRow({ summary = "", content = "" }: ThinkingRowProps) {
   return (
     <details className="message-exploration thinking-disclosure">
       <summary className="message-exploration-summary thinking-disclosure-summary">
-        <ThinkingShimmer label="Thinking" />
+        <ThinkingShimmer label={label} />
       </summary>
       <div className="thinking-row-content">
         <div className="thinking-content-md">

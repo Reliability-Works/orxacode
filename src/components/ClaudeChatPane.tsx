@@ -134,8 +134,8 @@ export function ClaudeChatPane({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeSessionPresentation = useMemo(
-    () => projectClaudeChatProjectedSessionPresentation(messages, isStreaming),
-    [isStreaming, messages],
+    () => projectClaudeChatProjectedSessionPresentation(messages, isStreaming, subagents),
+    [isStreaming, messages, subagents],
   );
 
   useEffect(() => {

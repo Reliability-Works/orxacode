@@ -833,11 +833,6 @@ export class ClaudeChatService extends EventEmitter {
             timestamp: Date.now(),
           },
         });
-        this.emitNotification({
-          sessionKey,
-          method: "thinking/stopped",
-          params: { turnId, timestamp: Date.now() },
-        });
       }
       return;
     }
@@ -855,11 +850,6 @@ export class ClaudeChatService extends EventEmitter {
             timestamp: Date.now(),
           },
         });
-        this.emitNotification({
-          sessionKey,
-          method: "thinking/stopped",
-          params: { turnId, timestamp: Date.now() },
-        });
       }
       return;
     }
@@ -873,6 +863,7 @@ export class ClaudeChatService extends EventEmitter {
           id: message.tool_use_id,
           turnId,
           toolName: message.tool_name,
+          parentToolUseId: message.parent_tool_use_id,
           taskId: message.task_id,
           elapsedTimeSeconds: message.elapsed_time_seconds,
           timestamp: Date.now(),
@@ -918,6 +909,7 @@ export class ClaudeChatService extends EventEmitter {
           description: message.description,
           prompt: message.prompt,
           taskType: message.task_type,
+          toolUseId: message.tool_use_id,
           timestamp: Date.now(),
         },
       });
@@ -940,6 +932,8 @@ export class ClaudeChatService extends EventEmitter {
           description: message.description,
           summary: message.summary,
           lastToolName: message.last_tool_name,
+          toolUseId: message.tool_use_id,
+          usage: message.usage,
           timestamp: Date.now(),
         },
       });
@@ -963,6 +957,9 @@ export class ClaudeChatService extends EventEmitter {
           turnId,
           status: message.status,
           summary: message.summary,
+          outputFile: message.output_file,
+          toolUseId: message.tool_use_id,
+          usage: message.usage,
           timestamp: Date.now(),
         },
       });
