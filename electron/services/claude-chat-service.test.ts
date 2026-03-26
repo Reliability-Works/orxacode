@@ -185,6 +185,23 @@ describe("ClaudeChatService", () => {
     );
   });
 
+  it("restores a persisted Claude session id and resumes it on the next turn", async () => {
+    const service = new ClaudeChatService();
+
+    service.restoreSession("session-restore", "/tmp/project", "claude-thread-restore");
+    vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
+
+    await service.startTurn("session-restore", "/tmp/project", "continue");
+
+    expect(vi.mocked(query)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          resume: "claude-thread-restore",
+        }),
+      }),
+    );
+  });
+
   it("sends attached images through the Claude SDK user-message stream", async () => {
     const service = new ClaudeChatService();
 

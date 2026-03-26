@@ -145,6 +145,7 @@ export const IPC = {
   claudeChatHealth: "orxa:claude-chat:health",
   claudeChatListModels: "orxa:claude-chat:listModels",
   claudeChatGetState: "orxa:claude-chat:getState",
+  claudeChatRestoreSession: "orxa:claude-chat:restoreSession",
   claudeChatStartTurn: "orxa:claude-chat:startTurn",
   claudeChatInterruptTurn: "orxa:claude-chat:interruptTurn",
   claudeChatApprove: "orxa:claude-chat:approve",

@@ -1,7 +1,11 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useClaudeChatSession } from "./useClaudeChatSession";
-import { clearPersistedClaudeChatState, resetPersistedClaudeChatStateForTests } from "./claude-chat-session-storage";
+import {
+  clearPersistedClaudeChatState,
+  resetPersistedClaudeChatStateForTests,
+  setPersistedClaudeChatState,
+} from "./claude-chat-session-storage";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
 const SESSION_KEY = "/workspace::claude-chat-1";
@@ -35,6 +39,7 @@ describe("useClaudeChatSession", () => {
     window.orxa = {
       claudeChat: {
         listModels: vi.fn(async () => []),
+        restoreSession: vi.fn(async () => ({ sessionKey: SESSION_KEY, status: "disconnected", providerThreadId: "restored-thread" })),
         startTurn: vi.fn(async () => undefined),
         interruptTurn: vi.fn(async () => undefined),
         approve: vi.fn(async () => undefined),
@@ -93,6 +98,37 @@ describe("useClaudeChatSession", () => {
     expect(assistantMessages[0]).toMatchObject({
       content: "Hi! How can I help you today?",
     });
+  });
+
+  it("hydrates persisted Claude provider sessions into the main-process bridge and reuses them on send", async () => {
+    setPersistedClaudeChatState(SESSION_KEY, {
+      providerThreadId: "claude-thread-1",
+      messages: [],
+      historyMessages: [],
+      isStreaming: false,
+      messageIdCounter: 0,
+      subagents: [],
+    });
+
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+
+    await waitFor(() => {
+      expect(window.orxa!.claudeChat.restoreSession).toHaveBeenCalledWith(SESSION_KEY, "/workspace", "claude-thread-1");
+    });
+
+    await act(async () => {
+      await result.current.startTurn("Continue the previous conversation");
+    });
+
+    expect(window.orxa!.claudeChat.startTurn).toHaveBeenCalledWith(
+      SESSION_KEY,
+      "/workspace",
+      "Continue the previous conversation",
+      expect.objectContaining({
+        cwd: "/workspace",
+        resumeSessionId: "claude-thread-1",
+      }),
+    );
   });
 
   it("keeps streaming active through assistant text until turn completion and updates tool rows in place", async () => {

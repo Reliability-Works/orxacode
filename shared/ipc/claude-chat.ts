@@ -81,6 +81,11 @@ export type ClaudeChatTurnOptions = {
   thinking?: boolean;
   maxThinkingTokens?: number;
   attachments?: ClaudeChatAttachment[];
+  /**
+   * Persisted Claude session UUID used to recover backend context after the app
+   * restarts. Internal to Orxa's Claude chat bridge.
+   */
+  resumeSessionId?: string;
 };
 
 export type ClaudeChatHealthStatus = {
