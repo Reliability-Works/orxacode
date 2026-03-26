@@ -105,6 +105,19 @@ function readPersistedEmptySessions() {
   }
 }
 
+function resolveRecoveredOpencodeSessionStatus(
+  runtimeStatus: ProjectBootstrap["sessionStatus"][string] | undefined,
+  cachedStatus: ProjectBootstrap["sessionStatus"][string] | undefined,
+) {
+  if (runtimeStatus) {
+    return runtimeStatus;
+  }
+  if (cachedStatus?.type === "busy" || cachedStatus?.type === "retry") {
+    return { type: "idle" } as ProjectBootstrap["sessionStatus"][string];
+  }
+  return cachedStatus ?? ({ type: "idle" } as ProjectBootstrap["sessionStatus"][string]);
+}
+
 export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   const {
     setStatusLine,
@@ -267,11 +280,12 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
       },
     ) => {
       const cachedProject = getRuntimeState().projectDataByDirectory[directory];
+      const cachedStatus = cachedProject?.sessionStatus?.[runtime.sessionID];
       return {
         directory,
         sessionStatus: {
           ...(cachedProject?.sessionStatus ?? {}),
-          [runtime.sessionID]: runtime.sessionStatus ?? cachedProject?.sessionStatus?.[runtime.sessionID] ?? { type: "idle" },
+          [runtime.sessionID]: resolveRecoveredOpencodeSessionStatus(runtime.sessionStatus, cachedStatus),
         },
         permissions: runtime.permissions ?? [],
         questions: runtime.questions ?? [],
@@ -401,6 +415,12 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated });
 
         const sortedSessions = [...data.sessions].sort((a, b) => b.time.updated - a.time.updated);
+        const staleBusySessionIDs = sortedSessions
+          .map((session) => session.id)
+          .filter((sessionID) => {
+            const statusType = data.sessionStatus[sessionID]?.type;
+            return statusType === "busy" || statusType === "retry";
+          });
         const currentActiveSessionID =
           currentState.activeWorkspaceDirectory === directory
             ? currentState.activeSessionID
@@ -437,6 +457,25 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
               messages: normalized,
             });
           }
+        }
+
+        for (const busySessionID of staleBusySessionIDs) {
+          if (busySessionID === nextSessionID && !skipMessageLoad) {
+            continue;
+          }
+          void loadOpencodeRuntimeSnapshot(directory, busySessionID)
+            .then((runtime) => {
+              const runtimeProject = buildRuntimeProjectSlice(directory, runtime);
+              setOpencodeRuntimeSnapshot(directory, busySessionID, {
+                ...runtime,
+                sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[busySessionID],
+                permissions: runtimeProject.permissions,
+                questions: runtimeProject.questions,
+                commands: runtimeProject.commands,
+                messages: normalizeMessageBundles(runtime.messages),
+              });
+            })
+            .catch(() => undefined);
         }
 
         return data;
