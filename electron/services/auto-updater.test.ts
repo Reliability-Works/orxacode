@@ -216,7 +216,7 @@ describe("createAutoUpdaterController", () => {
 
   it("auto-selects prerelease channel for a newly installed prerelease build", () => {
     const harness = createHarness({
-      appVersion: "0.1.0-beta.46",
+      appVersion: "0.1.0-beta.47",
       initial: { autoCheckEnabled: true, releaseChannel: "stable" },
     });
 
