@@ -413,6 +413,7 @@ export class CodexService extends EventEmitter {
   private readonly itemThreadIds = new Map<string, string>();
   private readonly turnThreadIds = new Map<string, string>();
   private readonly threadSettings = new Map<string, { model?: string; reasoningEffort?: string | null }>();
+  private readonly hydratedThreadIds = new Set<string>();
 
   get state(): CodexState {
     return { ...this._state };
@@ -569,6 +570,7 @@ export class CodexService extends EventEmitter {
       model: typeof result.model === "string" ? result.model : undefined,
       reasoningEffort: asString(result.reasoningEffort ?? result.reasoning_effort).trim() || null,
     });
+    this.hydratedThreadIds.add(result.thread.id);
     return result.thread;
   }
 
@@ -618,6 +620,7 @@ export class CodexService extends EventEmitter {
       model: asString(record?.model).trim() || undefined,
       reasoningEffort: asString(record?.reasoningEffort ?? record?.reasoning_effort).trim() || null,
     });
+    this.hydratedThreadIds.add(resumedThreadId);
     return record ?? {};
   }
 
@@ -764,6 +767,9 @@ export class CodexService extends EventEmitter {
     collaborationMode?: string;
     attachments?: CodexAttachment[];
   }): Promise<void> {
+    if (this.process && !this.hydratedThreadIds.has(params.threadId)) {
+      await this.resumeThread(params.threadId);
+    }
     const input: Array<
       | { type: "text"; text: string; text_elements: [] }
       | { type: "image"; url: string }
@@ -1101,6 +1107,7 @@ export class CodexService extends EventEmitter {
 
   private cleanupThreadMappings(threadId: string) {
     this.threadSettings.delete(threadId);
+    this.hydratedThreadIds.delete(threadId);
     for (const [itemId, ownerThreadId] of this.itemThreadIds.entries()) {
       if (ownerThreadId === threadId) {
         this.itemThreadIds.delete(itemId);
@@ -1190,5 +1197,6 @@ export class CodexService extends EventEmitter {
     this.hiddenThreadListeners.clear();
     this.itemThreadIds.clear();
     this.turnThreadIds.clear();
+    this.hydratedThreadIds.clear();
   }
 }

@@ -91,6 +91,7 @@ describe("CodexService turn steering", () => {
 
     Object.assign(service as unknown as Record<string, unknown>, {
       process: {} as object,
+      ensureConnected: vi.fn(async () => undefined),
       request,
     });
 
@@ -213,6 +214,33 @@ describe("CodexService turn steering", () => {
         { type: "text", text: "Inspect this image", text_elements: [] },
         { type: "image", url: "data:image/png;base64,AAAA" },
       ],
+    });
+  });
+
+  it("resumes a persisted thread before the first turn after process restart", async () => {
+    const service = new CodexService();
+    const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === "thread/resume") {
+        return { thread: { id: params.threadId } };
+      }
+      return {};
+    });
+    vi.spyOn(service as unknown as { ensureConnected: (cwd?: string) => Promise<void> }, "ensureConnected").mockResolvedValue(undefined);
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      process: {} as object,
+      request,
+    });
+
+    await service.startTurn({
+      threadId: "thread-restore",
+      prompt: "Continue the existing thread",
+    });
+
+    expect(request).toHaveBeenNthCalledWith(1, "thread/resume", { threadId: "thread-restore" });
+    expect(request).toHaveBeenNthCalledWith(2, "turn/start", {
+      threadId: "thread-restore",
+      input: [{ type: "text", text: "Continue the existing thread", text_elements: [] }],
     });
   });
 

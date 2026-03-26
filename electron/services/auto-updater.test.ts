@@ -41,6 +41,7 @@ function createMemoryStore(initial?: Partial<UpdatePreferences>) {
     autoCheckEnabled: initial?.autoCheckEnabled ?? true,
     releaseChannel: initial?.releaseChannel ?? "stable",
   };
+  let lastInstalledVersion: string | null = null;
 
   return {
     get: () => state,
@@ -51,11 +52,27 @@ function createMemoryStore(initial?: Partial<UpdatePreferences>) {
       };
       return state;
     },
+    syncInstalledVersion: (appVersion: string) => {
+      const normalizedVersion = appVersion.trim();
+      const shouldAutoSelectPrerelease =
+        /-[0-9A-Za-z]/.test(normalizedVersion)
+        && lastInstalledVersion !== normalizedVersion
+        && state.releaseChannel !== "prerelease";
+      lastInstalledVersion = normalizedVersion;
+      if (shouldAutoSelectPrerelease) {
+        state = {
+          ...state,
+          releaseChannel: "prerelease",
+        };
+      }
+      return state;
+    },
   };
 }
 
 type HarnessOptions = {
   isPackaged?: boolean;
+  appVersion?: string;
   initial?: Partial<UpdatePreferences>;
   checkForUpdates?: () => Promise<unknown>;
   downloadUpdate?: () => Promise<unknown>;
@@ -95,6 +112,7 @@ function createHarness(options: HarnessOptions = {}) {
   const controller = createAutoUpdaterController({
     deps: {
       isPackaged: options.isPackaged ?? true,
+      appVersion: options.appVersion ?? "1.0.0",
       updater,
       showMessageBox,
       now: options.now ?? (() => Date.now()),
@@ -191,6 +209,18 @@ describe("createAutoUpdaterController", () => {
     const next = harness.controller.setPreferences({ releaseChannel: "prerelease" });
 
     expect(next.releaseChannel).toBe("prerelease");
+    expect(harness.updater.allowPrerelease).toBe(true);
+
+    harness.controller.cleanup();
+  });
+
+  it("auto-selects prerelease channel for a newly installed prerelease build", () => {
+    const harness = createHarness({
+      appVersion: "0.1.0-beta.46",
+      initial: { autoCheckEnabled: true, releaseChannel: "stable" },
+    });
+
+    expect(harness.controller.getPreferences().releaseChannel).toBe("prerelease");
     expect(harness.updater.allowPrerelease).toBe(true);
 
     harness.controller.cleanup();

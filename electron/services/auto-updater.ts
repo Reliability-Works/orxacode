@@ -13,6 +13,7 @@ const DEFAULT_UPDATE_PREFERENCES: UpdatePreferences = {
 
 type PersistedUpdaterPreferences = UpdatePreferences & {
   version: 1;
+  lastInstalledVersion?: string | null;
 };
 
 type AutoUpdaterLike = {
@@ -28,6 +29,7 @@ type AutoUpdaterLike = {
 
 type AutoUpdaterDeps = {
   isPackaged: boolean;
+  appVersion: string;
   updater: AutoUpdaterLike;
   showMessageBox: (window: BrowserWindow | null, options: MessageBoxOptions) => Promise<{ response: number }>;
   now: () => number;
@@ -58,6 +60,7 @@ type TelemetryPayload = {
 type UpdatePreferencesStore = {
   get: () => UpdatePreferences;
   set: (input: Partial<UpdatePreferences>) => UpdatePreferences;
+  syncInstalledVersion?: (appVersion: string) => UpdatePreferences;
 };
 
 export type AutoUpdaterController = {
@@ -74,6 +77,7 @@ class ElectronUpdatePreferencesStore implements UpdatePreferencesStore {
     defaults: {
       ...DEFAULT_UPDATE_PREFERENCES,
       version: 1,
+      lastInstalledVersion: null,
     },
   });
 
@@ -102,10 +106,35 @@ class ElectronUpdatePreferencesStore implements UpdatePreferencesStore {
       releaseChannel: nextReleaseChannel,
     };
   }
+
+  syncInstalledVersion(appVersion: string): UpdatePreferences {
+    const normalizedVersion = appVersion.trim();
+    const lastInstalledVersion = this.store.get("lastInstalledVersion");
+    const normalizedLastInstalledVersion =
+      typeof lastInstalledVersion === "string" && lastInstalledVersion.trim().length > 0
+        ? lastInstalledVersion.trim()
+        : null;
+
+    const currentPreferences = this.get();
+    const shouldAutoSelectPrerelease =
+      isPrereleaseVersion(normalizedVersion)
+      && normalizedLastInstalledVersion !== normalizedVersion
+      && currentPreferences.releaseChannel !== "prerelease";
+
+    this.store.set("lastInstalledVersion", normalizedVersion);
+    if (!shouldAutoSelectPrerelease) {
+      return currentPreferences;
+    }
+    return this.set({ releaseChannel: "prerelease" });
+  }
 }
 
 function sanitizeReleaseChannel(value: unknown): UpdateReleaseChannel {
   return value === "prerelease" ? "prerelease" : "stable";
+}
+
+function isPrereleaseVersion(value: string): boolean {
+  return /-[0-9A-Za-z]/.test(value);
 }
 
 function formatErrorMessage(error: unknown) {
@@ -153,6 +182,7 @@ async function showMessage(
 function createDefaultDeps(): AutoUpdaterDeps {
   return {
     isPackaged: app.isPackaged,
+    appVersion: app.getVersion(),
     updater: autoUpdater as unknown as AutoUpdaterLike,
     showMessageBox: async (window, options) => {
       return window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
@@ -179,6 +209,9 @@ export function createAutoUpdaterController(options: {
   updater.autoInstallOnAppQuit = true;
 
   let preferences = store.get();
+  if (store.syncInstalledVersion) {
+    preferences = store.syncInstalledVersion(deps.appVersion);
+  }
   updater.allowPrerelease = preferences.releaseChannel === "prerelease";
 
   let initialTimer: ReturnType<typeof setTimeout> | undefined;

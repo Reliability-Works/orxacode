@@ -399,6 +399,22 @@ export class ClaudeChatService extends EventEmitter {
     return CLAUDE_MODELS;
   }
 
+  restoreSession(sessionKey: string, directory: string, providerThreadId: string): ClaudeChatState {
+    const normalizedProviderThreadId = providerThreadId.trim();
+    if (!normalizedProviderThreadId) {
+      throw new Error("providerThreadId is required");
+    }
+
+    const runtime = this.getOrCreateSession(sessionKey, directory);
+    runtime.state = {
+      ...runtime.state,
+      providerThreadId: normalizedProviderThreadId,
+      lastError: undefined,
+    };
+    this.emitState(runtime.state);
+    return runtime.state;
+  }
+
   async startTurn(sessionKey: string, directory: string, prompt: string, options?: ClaudeChatTurnOptions) {
     const runtime = this.getOrCreateSession(sessionKey, directory);
     if (runtime.activeQuery) {
@@ -456,7 +472,15 @@ export class ClaudeChatService extends EventEmitter {
       });
     };
 
-    const providerSessionId = runtime.state.providerThreadId ?? randomUUID();
+    const resumeSessionId = options?.resumeSessionId?.trim() || runtime.state.providerThreadId?.trim() || undefined;
+    if (resumeSessionId && runtime.state.providerThreadId !== resumeSessionId) {
+      runtime.state = {
+        ...runtime.state,
+        providerThreadId: resumeSessionId,
+      };
+      this.emitState(runtime.state);
+    }
+    const providerSessionId = resumeSessionId ?? randomUUID();
     const queryOptions: ClaudeQueryOptions = {
       cwd: directory,
       model: options?.model,
@@ -476,7 +500,7 @@ export class ClaudeChatService extends EventEmitter {
             },
           }
         : {}),
-      ...(runtime.state.providerThreadId ? { resume: runtime.state.providerThreadId } : { sessionId: providerSessionId }),
+      ...(resumeSessionId ? { resume: resumeSessionId } : { sessionId: providerSessionId }),
       canUseTool: async (
         toolName: string,
         toolInput: Record<string, unknown>,
