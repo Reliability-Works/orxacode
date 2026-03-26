@@ -109,6 +109,10 @@ import {
 } from "./opencode-agent-files";
 import { buildPromptDedupeKey, buildPromptParts, composeSystemPrompt } from "./opencode-prompting";
 import {
+  makeProviderRuntimeSessionKey,
+  ProviderSessionDirectory,
+} from "./provider-session-directory";
+import {
   DEFAULT_TIMEOUT_MS,
   OPENCODE_INSTALL_COMMAND,
   OPENCODE_SOURCE_URL,
@@ -479,6 +483,8 @@ function summarizeOperation(
 }
 
 export class OpencodeService {
+  private providerSessionDirectory: ProviderSessionDirectory | null;
+
   private profileStore = new ProfileStore();
   private projectStore = new ProjectStore();
   private passwordStore = new PasswordStore();
@@ -505,7 +511,30 @@ export class OpencodeService {
   private gitDiffInFlight = new Map<string, Promise<string>>();
   private gitStatusInFlight = new Map<string, Promise<string>>();
 
+  constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
+
+  setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
+
   onEvent?: (event: OrxaEvent) => void;
+
+  private upsertProviderBinding(
+    directory: string,
+    sessionID: string,
+    status: "starting" | "running" | "stopped" | "error" = "running",
+  ) {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    this.providerSessionDirectory?.upsert({
+      provider: "opencode",
+      sessionKey: makeProviderRuntimeSessionKey("opencode", normalizedDirectory, sessionID),
+      status,
+      resumeCursor: { sessionID, directory: normalizedDirectory },
+      runtimePayload: { directory: normalizedDirectory, sessionID },
+    });
+  }
 
   runtimeState() {
     return { ...this.state };
@@ -868,11 +897,18 @@ export class OpencodeService {
       title,
       permission: toSessionPermissionRules(permissionMode),
     });
-    return this.unwrap(response);
+    const session = await this.unwrap(response);
+    this.upsertProviderBinding(normalizedDirectory, session.id, "running");
+    return session;
   }
 
   async deleteSession(directory: string, sessionID: string) {
-    await this.client(directory).session.delete({ directory, sessionID });
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    await this.client(normalizedDirectory).session.delete({ directory: normalizedDirectory, sessionID });
+    this.providerSessionDirectory?.remove(
+      makeProviderRuntimeSessionKey("opencode", normalizedDirectory, sessionID),
+      "opencode",
+    );
     return true;
   }
 
@@ -900,13 +936,18 @@ export class OpencodeService {
   }
 
   async archiveSession(directory: string, sessionID: string): Promise<Session> {
-    const response = await this.client(directory).session.update({
-      directory,
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    const response = await this.client(normalizedDirectory).session.update({
+      directory: normalizedDirectory,
       sessionID,
       time: {
         archived: Date.now(),
       },
     });
+    this.providerSessionDirectory?.remove(
+      makeProviderRuntimeSessionKey("opencode", normalizedDirectory, sessionID),
+      "opencode",
+    );
     return this.unwrap(response);
   }
 
@@ -953,6 +994,7 @@ export class OpencodeService {
         title: `Worktree: ${sessionTitle}`,
       }),
     );
+    this.upsertProviderBinding(worktree.directory, session.id, "running");
 
     return { worktree, session };
   }
@@ -964,6 +1006,7 @@ export class OpencodeService {
 
   async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory);
+    this.upsertProviderBinding(normalizedDirectory, sessionID, "running");
     const client = this.client(normalizedDirectory);
     void this.syncSessionExecutionArtifacts(normalizedDirectory, sessionID).catch(() => undefined);
     const [session, sessionStatusMap, permissions, questions, commands, messages, sessionDiff, executionLedger, changeProvenance] = await Promise.all([
@@ -1092,6 +1135,7 @@ export class OpencodeService {
 
   async sendPrompt(input: PromptRequest) {
     const normalizedDirectory = this.ensureWorkspaceDirectory(input.directory);
+    this.upsertProviderBinding(normalizedDirectory, input.sessionID, "running");
     const promptSentAt = Date.now();
     const dedupeKey = buildPromptDedupeKey(input, normalizedDirectory);
     const lastAttemptAt = this.promptFence.get(dedupeKey);

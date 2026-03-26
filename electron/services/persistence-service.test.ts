@@ -34,4 +34,19 @@ describe("PersistenceService", () => {
     service.removeRendererValue("orxa:test:key");
     expect(service.getRendererValue("orxa:test:key")).toBeNull();
   });
+
+  it("stores and lists non-renderer namespace values", async () => {
+    const { dir, service } = await createService();
+    service.setValue("provider-runtime:v1", "session-a", JSON.stringify({ ok: true }));
+
+    const reloaded = new PersistenceService(path.join(dir, "state.sqlite"));
+    expect(reloaded.getValue("provider-runtime:v1", "session-a")).toBe(JSON.stringify({ ok: true }));
+    expect(reloaded.listValues("provider-runtime:v1")).toEqual([
+      expect.objectContaining({
+        namespace: "provider-runtime:v1",
+        key: "session-a",
+        value: JSON.stringify({ ok: true }),
+      }),
+    ]);
+  });
 });

@@ -196,7 +196,6 @@ export interface OrxaBridge {
     health: () => Promise<ClaudeChatHealthStatus>;
     listModels: () => Promise<ClaudeChatModelEntry[]>;
     getState: (sessionKey: string) => Promise<ClaudeChatState>;
-    restoreSession: (sessionKey: string, directory: string, providerThreadId: string) => Promise<ClaudeChatState>;
     startTurn: (sessionKey: string, directory: string, prompt: string, options?: ClaudeChatTurnOptions) => Promise<void>;
     interruptTurn: (sessionKey: string) => Promise<void>;
     approve: (requestId: string, decision: ClaudeChatApprovalDecision) => Promise<void>;

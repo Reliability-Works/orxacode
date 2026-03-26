@@ -6,11 +6,19 @@ import { app } from "electron";
 const DATABASE_NAME = "orxa-persistence.sqlite";
 const RENDERER_NAMESPACE = "renderer";
 
+export type PersistedValueRow = {
+  namespace: string;
+  key: string;
+  value: string;
+  updatedAt: number;
+};
+
 type PersistenceDatabase = {
   exec(sql: string): unknown;
   prepare(sql: string): {
     get(...params: unknown[]): unknown;
     run(...params: unknown[]): unknown;
+    all(...params: unknown[]): unknown;
   };
 };
 
@@ -51,14 +59,14 @@ export class PersistenceService {
     `);
   }
 
-  getRendererValue(key: string): string | null {
+  getValue(namespace: string, key: string): string | null {
     const row = this.database
       .prepare("SELECT value FROM persisted_values WHERE namespace = ? AND key = ?")
-      .get(RENDERER_NAMESPACE, key) as { value?: string } | undefined;
+      .get(namespace, key) as { value?: string } | undefined;
     return typeof row?.value === "string" ? row.value : null;
   }
 
-  setRendererValue(key: string, value: string): void {
+  setValue(namespace: string, key: string, value: string): void {
     this.database
       .prepare(`
         INSERT INTO persisted_values (namespace, key, value, updated_at)
@@ -67,12 +75,56 @@ export class PersistenceService {
           value = excluded.value,
           updated_at = excluded.updated_at
       `)
-      .run(RENDERER_NAMESPACE, key, value, Date.now());
+      .run(namespace, key, value, Date.now());
+  }
+
+  removeValue(namespace: string, key: string): void {
+    this.database
+      .prepare("DELETE FROM persisted_values WHERE namespace = ? AND key = ?")
+      .run(namespace, key);
+  }
+
+  listValues(namespace: string): PersistedValueRow[] {
+    const rows = this.database
+      .prepare(`
+        SELECT namespace, key, value, updated_at
+        FROM persisted_values
+        WHERE namespace = ?
+        ORDER BY updated_at DESC, key ASC
+      `)
+      .all(namespace) as Array<{
+        namespace?: string;
+        key?: string;
+        value?: string;
+        updated_at?: number;
+      }>;
+    return rows.flatMap((row) => {
+      if (
+        typeof row.namespace !== "string" ||
+        typeof row.key !== "string" ||
+        typeof row.value !== "string" ||
+        typeof row.updated_at !== "number"
+      ) {
+        return [];
+      }
+      return [{
+        namespace: row.namespace,
+        key: row.key,
+        value: row.value,
+        updatedAt: row.updated_at,
+      }];
+    });
+  }
+
+  getRendererValue(key: string): string | null {
+    return this.getValue(RENDERER_NAMESPACE, key);
+  }
+
+  setRendererValue(key: string, value: string): void {
+    this.setValue(RENDERER_NAMESPACE, key, value);
   }
 
   removeRendererValue(key: string): void {
-    this.database
-      .prepare("DELETE FROM persisted_values WHERE namespace = ? AND key = ?")
-      .run(RENDERER_NAMESPACE, key);
+    this.removeValue(RENDERER_NAMESPACE, key);
   }
 }

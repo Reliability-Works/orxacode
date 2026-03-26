@@ -4,7 +4,6 @@ import { useClaudeChatSession } from "./useClaudeChatSession";
 import {
   clearPersistedClaudeChatState,
   resetPersistedClaudeChatStateForTests,
-  setPersistedClaudeChatState,
 } from "./claude-chat-session-storage";
 import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
 
@@ -39,7 +38,6 @@ describe("useClaudeChatSession", () => {
     window.orxa = {
       claudeChat: {
         listModels: vi.fn(async () => []),
-        restoreSession: vi.fn(async () => ({ sessionKey: SESSION_KEY, status: "disconnected", providerThreadId: "restored-thread" })),
         startTurn: vi.fn(async () => undefined),
         interruptTurn: vi.fn(async () => undefined),
         approve: vi.fn(async () => undefined),
@@ -100,21 +98,20 @@ describe("useClaudeChatSession", () => {
     });
   });
 
-  it("hydrates persisted Claude provider sessions into the main-process bridge and reuses them on send", async () => {
-    setPersistedClaudeChatState(SESSION_KEY, {
-      providerThreadId: "claude-thread-1",
-      messages: [],
-      historyMessages: [],
-      isStreaming: false,
-      messageIdCounter: 0,
-      subagents: [],
-    });
+  it("ignores legacy persisted Claude provider ids and sends turns without renderer-managed resume metadata", async () => {
+    window.localStorage.setItem(
+      `orxa:claudeChatSession:v1:${SESSION_KEY}`,
+      JSON.stringify({
+        providerThreadId: "claude-thread-1",
+        messages: [],
+        historyMessages: [],
+        isStreaming: false,
+        messageIdCounter: 0,
+        subagents: [],
+      }),
+    );
 
     const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
-
-    await waitFor(() => {
-      expect(window.orxa!.claudeChat.restoreSession).toHaveBeenCalledWith(SESSION_KEY, "/workspace", "claude-thread-1");
-    });
 
     await act(async () => {
       await result.current.startTurn("Continue the previous conversation");
@@ -126,7 +123,6 @@ describe("useClaudeChatSession", () => {
       "Continue the previous conversation",
       expect.objectContaining({
         cwd: "/workspace",
-        resumeSessionId: "claude-thread-1",
       }),
     );
   });

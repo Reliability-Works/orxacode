@@ -239,7 +239,6 @@ function resolveClaudeChatProviderThreadId(sessionKey: string) {
   const runtime = selectClaudeChatSessionRuntime(sessionKey);
   const persisted = getPersistedClaudeChatState(sessionKey);
   return runtime?.providerThreadId
-    ?? persisted.providerThreadId
     ?? runtime?.historyMessages.find((message) => message.sessionId.trim().length > 0)?.sessionId
     ?? persisted.historyMessages.find((message) => message.sessionId.trim().length > 0)?.sessionId
     ?? null;

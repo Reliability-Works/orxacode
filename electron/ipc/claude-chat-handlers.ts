@@ -13,13 +13,6 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
   ipcMain.handle(IPC.claudeChatGetState, async (_event, sessionKey: unknown) => {
     return claudeChatService.getState(assertString(sessionKey, "sessionKey"));
   });
-  ipcMain.handle(IPC.claudeChatRestoreSession, async (_event, sessionKey: unknown, directory: unknown, providerThreadId: unknown) => {
-    return claudeChatService.restoreSession(
-      assertString(sessionKey, "sessionKey"),
-      assertString(directory, "directory"),
-      assertString(providerThreadId, "providerThreadId"),
-    );
-  });
   ipcMain.handle(IPC.claudeChatStartTurn, async (_event, sessionKey: unknown, directory: unknown, prompt: unknown, options?: unknown) => {
     return claudeChatService.startTurn(
       assertString(sessionKey, "sessionKey"),
