@@ -211,11 +211,17 @@ class TaskWorktreeService {
   }
 
   private async runGitRaw(repoPath: string, args: string[], cwd = repoPath) {
+    const gitEnv = { ...process.env } as NodeJS.ProcessEnv;
+    delete gitEnv.GIT_DIR;
+    delete gitEnv.GIT_WORK_TREE;
+    delete gitEnv.GIT_COMMON_DIR;
+    delete gitEnv.GIT_INDEX_FILE;
+
     return new Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number | null }>((resolve) => {
       const child = spawn("git", ["-C", repoPath, ...args], {
         cwd,
         env: {
-          ...process.env,
+          ...gitEnv,
           GIT_DISCOVERY_ACROSS_FILESYSTEM: "1",
         },
         stdio: ["ignore", "pipe", "pipe"],
