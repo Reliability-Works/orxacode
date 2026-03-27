@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.47",
+  "version": "0.1.0-beta.48",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
@@ -84,6 +84,10 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "@tanstack/react-virtual": "^3.13.23",
@@ -92,6 +96,7 @@
     "cytoscape": "^3.33.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.6.2",
+    "ignore": "^7.0.5",
     "jsonc-parser": "^3.3.1",
     "keytar": "^7.9.0",
     "lucide-react": "^0.575.0",

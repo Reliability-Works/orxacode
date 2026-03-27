@@ -187,6 +187,28 @@ describe("ClaudeChatService", () => {
     );
   });
 
+  it("does not install a tool-approval interceptor in yolo mode", async () => {
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
+
+    vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
+
+    await service.startTurn("session-yolo", "/tmp/project", "apply the fix", {
+      model: "claude-sonnet-4-6",
+      permissionMode: "yolo-write",
+    });
+
+    expect(vi.mocked(query)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+        }),
+      }),
+    );
+    const queryOptions = vi.mocked(query).mock.calls[0]?.[0]?.options;
+    expect(queryOptions?.canUseTool).toBeUndefined();
+  });
+
   it("migrates a legacy Claude renderer session id into the provider directory and resumes it", async () => {
     const directory = new ProviderSessionDirectory();
     vi.spyOn(directory, "getLegacyRendererValue").mockReturnValue(JSON.stringify({

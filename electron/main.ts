@@ -11,11 +11,13 @@ import { BrowserController } from "./services/browser-controller";
 import { OrxaTerminalService } from "./services/orxa-terminal-service";
 import { PersistenceService } from "./services/persistence-service";
 import { ProviderSessionDirectory } from "./services/provider-session-directory";
+import { KanbanService } from "./services/kanban-service";
 import { setupAutoUpdates, type AutoUpdaterController } from "./services/auto-updater";
 import { createMainWindowEventPublisher } from "./services/main-window-event-publisher";
 import { registerProviderEventBridge } from "./services/provider-event-bridge";
 import { createStartupBootstrapTracker } from "./services/startup-bootstrap";
 import { resolveRendererHtmlPath } from "./services/renderer-entry";
+import { DiagnosticsService } from "./services/diagnostics-service";
 import { registerAppHandlers } from "./ipc/app-handlers";
 import { registerPersistenceHandlers } from "./ipc/persistence-handlers";
 import { registerUpdatesHandlers } from "./ipc/updates-handlers";
@@ -25,6 +27,7 @@ import { registerTerminalHandlers } from "./ipc/terminal-handlers";
 import { registerBrowserHandlers } from "./ipc/browser-handlers";
 import { registerClaudeChatHandlers } from "./ipc/claude-chat-handlers";
 import { registerCodexHandlers } from "./ipc/codex-handlers";
+import { registerKanbanHandlers } from "./ipc/kanban-handlers";
 import { createAssertBrowserSender } from "./ipc/validators";
 
 // Fix PATH on macOS — Electron doesn't inherit the user's shell PATH
@@ -58,9 +61,11 @@ const claudeChatService = new ClaudeChatService();
 const terminalService = new OrxaTerminalService();
 let persistenceService: PersistenceService | null = null;
 let providerSessionDirectory: ProviderSessionDirectory | null = null;
+let kanbanService: KanbanService | null = null;
 let mainWindow: BrowserWindow | null = null;
 let browserController: BrowserController | null = null;
 let autoUpdaterController: AutoUpdaterController | undefined;
+let diagnosticsService: DiagnosticsService | null = null;
 let resolvedCdpPort: number | null = null;
 const startupBootstrap = createStartupBootstrapTracker();
 const SMOKE_TEST_FLAG = "--smoke-test";
@@ -140,7 +145,76 @@ function createWindow() {
 function attachMainWindow(window: BrowserWindow) {
   mainWindow = window;
   browserController?.setWindow(window);
+  const webContents = window.webContents;
+  const onDidFailLoad = (
+    _event: Electron.Event,
+    errorCode: number,
+    errorDescription: string,
+    validatedURL: string,
+    isMainFrame: boolean,
+  ) => {
+    recordMainDiagnostic({
+      level: "error",
+      source: "main",
+      category: "main.did-fail-load",
+      message: `Renderer failed to load: ${errorDescription || errorCode}`,
+      details: JSON.stringify({ errorCode, errorDescription, validatedURL, isMainFrame }),
+    });
+  };
+  const onConsoleMessage = (
+    _event: Electron.Event,
+    level: number,
+    message: string,
+    line: number,
+    sourceId: string,
+  ) => {
+    if (level < 2) {
+      return;
+    }
+    recordMainDiagnostic({
+      level: level >= 3 ? "error" : "warn",
+      source: "main",
+      category: "renderer.console",
+      message,
+      details: JSON.stringify({ level, line, sourceId }),
+    });
+  };
+  const onRenderProcessGone = (_event: Electron.Event, details: Electron.RenderProcessGoneDetails) => {
+    recordMainDiagnostic({
+      level: "error",
+      source: "main",
+      category: "main.render-process-gone",
+      message: `Renderer process exited: ${details.reason}`,
+      details: JSON.stringify(details),
+    });
+  };
+  const onUnresponsive = () => {
+    recordMainDiagnostic({
+      level: "warn",
+      source: "main",
+      category: "main.window-unresponsive",
+      message: "Main window became unresponsive",
+    });
+  };
+  const onResponsive = () => {
+    recordMainDiagnostic({
+      level: "info",
+      source: "main",
+      category: "main.window-responsive",
+      message: "Main window became responsive again",
+    });
+  };
+  webContents.on("did-fail-load", onDidFailLoad);
+  webContents.on("console-message", onConsoleMessage);
+  webContents.on("render-process-gone", onRenderProcessGone);
+  window.on("unresponsive", onUnresponsive);
+  window.on("responsive", onResponsive);
   window.on("closed", () => {
+    webContents.off("did-fail-load", onDidFailLoad);
+    webContents.off("console-message", onConsoleMessage);
+    webContents.off("render-process-gone", onRenderProcessGone);
+    window.off("unresponsive", onUnresponsive);
+    window.off("responsive", onResponsive);
     if (mainWindow === window) {
       browserController?.setWindow(null);
       mainWindow = null;
@@ -233,6 +307,14 @@ function registerIpcHandlers() {
     codexService.setProviderSessionDirectory(providerSessionDirectory);
     claudeChatService.setProviderSessionDirectory(providerSessionDirectory);
   }
+  if (!kanbanService) {
+    kanbanService = new KanbanService({
+      opencodeService: service,
+      codexService,
+      claudeChatService,
+      terminalService,
+    });
+  }
 
   registerPersistenceHandlers({
     service: persistenceService,
@@ -240,6 +322,7 @@ function registerIpcHandlers() {
 
   registerAppHandlers({
     getMainWindow: () => mainWindow,
+    diagnosticsService: diagnosticsService ?? new DiagnosticsService(),
   });
 
   registerUpdatesHandlers({
@@ -279,10 +362,18 @@ function registerIpcHandlers() {
     claudeChatService,
   });
 
+  registerKanbanHandlers({
+    kanbanService,
+    getMainWindow: () => mainWindow,
+  });
+
   registerProviderEventBridge({
     codexService,
     claudeChatService,
-    publishEvent,
+    publishEvent: (event) => {
+      kanbanService?.handleEvent(event);
+      publishEvent(event);
+    },
   });
 }
 
@@ -290,16 +381,65 @@ function publishEvent(event: OrxaEvent) {
   eventPublisher.publish(event);
 }
 
+function recordMainDiagnostic(input: Parameters<DiagnosticsService["record"]>[0]) {
+  if (!diagnosticsService) {
+    return;
+  }
+  void diagnosticsService.record(input).then((entry) => {
+    publishEvent({
+      type: "app.diagnostic",
+      payload: entry,
+    });
+  });
+}
+
 async function boot() {
   await app.whenReady();
+  diagnosticsService = new DiagnosticsService();
+  await diagnosticsService.hydrate();
+  process.on("uncaughtException", (error) => {
+    recordMainDiagnostic({
+      level: "error",
+      source: "main",
+      category: "main.uncaught-exception",
+      message: error.message,
+      details: error.stack,
+    });
+  });
+  process.on("unhandledRejection", (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    const details = reason instanceof Error ? reason.stack : undefined;
+    recordMainDiagnostic({
+      level: "error",
+      source: "main",
+      category: "main.unhandled-rejection",
+      message,
+      details,
+    });
+  });
+  app.on("child-process-gone", (_event, details) => {
+    recordMainDiagnostic({
+      level: details.reason === "clean-exit" ? "info" : "warn",
+      source: "main",
+      category: "main.child-process-gone",
+      message: `Child process exited: ${details.type} (${details.reason})`,
+      details: JSON.stringify(details),
+    });
+  });
   persistenceService = new PersistenceService();
   browserController = new BrowserController({
     onEvent: (event) => publishEvent(event),
   });
   registerIpcHandlers();
 
-  service.onEvent = (event) => publishEvent(event);
+  service.onEvent = (event) => {
+    kanbanService?.handleEvent(event);
+    publishEvent(event);
+  };
   terminalService.onEvent = (event) => publishEvent(event);
+  if (kanbanService) {
+    kanbanService.onEvent = (event) => publishEvent(event);
+  }
 
   if (process.argv.includes(SMOKE_TEST_FLAG) || process.env.ORXA_SMOKE_TEST === "1") {
     setTimeout(() => {

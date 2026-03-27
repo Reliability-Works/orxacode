@@ -6,11 +6,8 @@ import type {
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeState,
-  SessionMessageBundle,
   SkillEntry,
 } from "@shared/ipc";
-import { JobEditorModal, type JobRecord, type JobRunRecord } from "./JobsBoard";
-import { MessageFeed } from "./MessageFeed";
 import { ProfileModal } from "./ProfileModal";
 import type { CommitNextStep } from "../hooks/useGitPanel";
 import type { PermissionMode } from "../types/app";
@@ -51,11 +48,7 @@ export type GlobalModalsHostProps = {
   getSessionStatusType: (sessionID: string, directory?: string) => string;
   activeSessionID?: string;
   openSession: (directory: string, sessionID: string) => void | Promise<void>;
-  jobRunViewer: JobRunRecord | null;
-  closeJobRunViewer: () => void;
   projects: ProjectListItem[];
-  jobRunViewerLoading: boolean;
-  jobRunViewerMessages: SessionMessageBundle[];
   branchCreateModalOpen: boolean;
   setBranchCreateModalOpen: Dispatch<SetStateAction<boolean>>;
   branchCreateName: string;
@@ -83,11 +76,6 @@ export type GlobalModalsHostProps = {
   commitFlowState: CommitFlowState;
   dismissCommitFlowState: () => void;
   submitCommit: () => Promise<void>;
-  jobEditorOpen: boolean;
-  jobDraft: JobRecord;
-  closeJobEditor: () => void;
-  updateJobEditor: (next: JobRecord) => void;
-  saveJobEditor: () => Promise<void>;
   addProjectDirectory: (options?: { select?: boolean }) => Promise<string | undefined>;
   skillUseModal: SkillUseModalState;
   setSkillUseModal: Dispatch<SetStateAction<SkillUseModalState>>;
@@ -125,11 +113,7 @@ export function GlobalModalsHost({
   getSessionStatusType,
   activeSessionID,
   openSession,
-  jobRunViewer,
-  closeJobRunViewer,
   projects,
-  jobRunViewerLoading,
-  jobRunViewerMessages,
   branchCreateModalOpen,
   setBranchCreateModalOpen,
   branchCreateName,
@@ -157,11 +141,6 @@ export function GlobalModalsHost({
   commitFlowState,
   dismissCommitFlowState,
   submitCommit,
-  jobEditorOpen,
-  jobDraft,
-  closeJobEditor,
-  updateJobEditor,
-  saveJobEditor,
   addProjectDirectory,
   skillUseModal,
   setSkillUseModal,
@@ -362,28 +341,6 @@ export function GlobalModalsHost({
         </div>
       ) : null}
 
-      {jobRunViewer ? (
-        <div className="overlay" onClick={closeJobRunViewer}>
-          <section className="modal job-run-modal" onClick={(event) => event.stopPropagation()}>
-            <header className="modal-header">
-              <h2>{jobRunViewer.jobName}</h2>
-              <button type="button" className="modal-close-btn" onClick={closeJobRunViewer}>
-                X
-              </button>
-            </header>
-            <div className="job-run-meta">
-              <span>{projects.find((project) => project.worktree === jobRunViewer.projectDir)?.name || jobRunViewer.projectDir.split("/").at(-1) || jobRunViewer.projectDir}</span>
-              <small>
-                Session {jobRunViewer.sessionID}
-              </small>
-            </div>
-            <div className="job-run-body">
-              {jobRunViewerLoading ? <p className="dashboard-empty">Loading job output...</p> : <MessageFeed messages={jobRunViewerMessages} />}
-            </div>
-          </section>
-        </div>
-      ) : null}
-
       {branchCreateModalOpen ? (
         <div className="overlay" onClick={() => setBranchCreateModalOpen(false)}>
           <section className="modal branch-create-modal" onClick={(event) => event.stopPropagation()}>
@@ -572,18 +529,6 @@ export function GlobalModalsHost({
           </section>
         </div>
       ) : null}
-
-      <JobEditorModal
-        open={jobEditorOpen}
-        draft={jobDraft}
-        projects={projects}
-        onClose={closeJobEditor}
-        onChange={updateJobEditor}
-        onSave={() => {
-          void saveJobEditor();
-        }}
-        onAddProject={() => addProjectDirectory({ select: false })}
-      />
 
       {skillUseModal ? (
         <div className="overlay" onClick={() => setSkillUseModal(null)}>

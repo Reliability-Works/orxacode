@@ -33,6 +33,8 @@ import type {
   OrxaEvent,
   McpDevToolsServerState,
   ProviderUsageStats,
+  AppDiagnosticEntry,
+  AppDiagnosticInput,
 } from "@shared/ipc";
 import type { Agent, ProviderListResponse, QuestionAnswer } from "@opencode-ai/sdk/v2/client";
 import { CanvasPane } from "./components/CanvasPane";
@@ -54,12 +56,12 @@ import { UnifiedTimelineRowView } from "./components/chat/UnifiedTimelineRow";
 import { GitSidebar } from "./components/GitSidebar";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { TerminalPanel } from "./components/TerminalPanel";
-import { JobsBoard } from "./components/JobsBoard";
+import { KanbanBoard } from "./components/KanbanBoard";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { WorkspaceSidebar } from "./components/WorkspaceSidebar";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { InfoDialog } from "./components/InfoDialog";
 import { TextInputDialog } from "./components/TextInputDialog";
-import { useJobsScheduler } from "./hooks/useJobsScheduler";
 import { SkillsBoard } from "./components/SkillsBoard";
 import { useAppShellCommitFlow } from "./hooks/useAppShellCommitFlow";
 import { useAppShellDialogs } from "./hooks/useAppShellDialogs";
@@ -155,6 +157,15 @@ const STRUCTURED_SESSION_LABELS: Partial<Record<SessionType, string>> = {
   "claude-chat": "Claude Code (Chat)",
   codex: "Codex Session",
 };
+
+const KANBAN_MANAGEMENT_PROVIDERS = ["opencode", "codex", "claude"] as const;
+
+function extractKanbanManagementSidebarSessionID(sessionKey: string | undefined): string | undefined {
+  if (!sessionKey || sessionKey.startsWith("kanban:management:")) {
+    return undefined;
+  }
+  return sessionKey.includes("::") ? sessionKey.split("::").at(-1) : sessionKey;
+}
 
 function describeClaudeHealthFailure(sessionLabel: string, health: ClaudeChatHealthStatus) {
   if (!health.available) {
@@ -284,6 +295,17 @@ type DebugLogEntry = {
   details?: string;
 };
 
+function toDebugLogEntryFromDiagnostic(entry: AppDiagnosticEntry): DebugLogEntry {
+  return {
+    id: entry.id,
+    time: entry.timestamp,
+    level: entry.level,
+    eventType: entry.category,
+    summary: entry.message,
+    details: entry.details,
+  };
+}
+
 const OPEN_TARGETS: OpenTargetOption[] = [
   { id: "cursor", label: "cursor", logo: cursorLogo },
   { id: "antigravity", label: "antigravity", logo: antigravityLogo },
@@ -338,6 +360,18 @@ function toDebugLogFromEvent(event: OrxaEvent): Omit<DebugLogEntry, "id" | "time
       eventType: "runtime.error",
       summary: event.payload.message || "Runtime error",
       details: stringifyDetails(event.payload),
+    };
+  }
+
+  if (event.type === "app.diagnostic") {
+    return {
+      level: event.payload.level,
+      eventType: event.payload.category,
+      summary: event.payload.message,
+      details: stringifyDetails({
+        source: event.payload.source,
+        details: event.payload.details,
+      }),
     };
   }
 
@@ -618,6 +652,144 @@ export default function App() {
       return [...current, next].slice(-1200);
     });
   }, []);
+  const reportRendererDiagnostic = useCallback((input: AppDiagnosticInput) => {
+    appendDebugLog({
+      level: input.level,
+      eventType: input.category,
+      summary: input.message,
+      details: input.details,
+    });
+    const pending = window.orxa?.app?.reportRendererDiagnostic?.(input);
+    void pending?.catch(() => undefined);
+  }, [appendDebugLog]);
+  useEffect(() => {
+    let cancelled = false;
+    const pending = window.orxa?.app?.listDiagnostics?.(300);
+    void pending?.then((entries) => {
+      if (cancelled || !entries?.length) {
+        return;
+      }
+      setDebugLogs((current) => {
+        const seen = new Set(current.map((entry) => entry.id));
+        const next = [...current];
+        for (const entry of entries) {
+          if (seen.has(entry.id)) {
+            continue;
+          }
+          next.push(toDebugLogEntryFromDiagnostic(entry));
+          seen.add(entry.id);
+        }
+        return next.slice(-1200);
+      });
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      reportRendererDiagnostic({
+        level: "error",
+        source: "renderer",
+        category: "renderer.error",
+        message: event.message || "Unhandled renderer error",
+        details: JSON.stringify({
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          stack: event.error instanceof Error ? event.error.stack : undefined,
+        }),
+      });
+    };
+    const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const message = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      reportRendererDiagnostic({
+        level: "error",
+        source: "renderer",
+        category: "renderer.unhandledrejection",
+        message,
+        details: event.reason instanceof Error ? event.reason.stack : undefined,
+      });
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, [reportRendererDiagnostic]);
+  useEffect(() => {
+    if (typeof PerformanceObserver === "undefined") {
+      return;
+    }
+    if (!PerformanceObserver.supportedEntryTypes?.includes("longtask")) {
+      return;
+    }
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        reportRendererDiagnostic({
+          level: "warn",
+          source: "renderer",
+          category: "renderer.longtask",
+          message: `Long renderer task detected (${Math.round(entry.duration)}ms)`,
+          details: JSON.stringify({
+            name: entry.name,
+            entryType: entry.entryType,
+            startTime: Math.round(entry.startTime),
+            duration: Math.round(entry.duration),
+          }),
+        });
+      }
+    });
+    observer.observe({ entryTypes: ["longtask"] });
+    return () => {
+      observer.disconnect();
+    };
+  }, [reportRendererDiagnostic]);
+  useEffect(() => {
+    let lastTick = performance.now();
+    const onVisibilityChange = () => {
+      reportRendererDiagnostic({
+        level: "info",
+        source: "renderer",
+        category: "renderer.visibility",
+        message: document.visibilityState === "visible" ? "Renderer became visible" : "Renderer became hidden",
+      });
+    };
+    const onPageShow = () => {
+      reportRendererDiagnostic({
+        level: "info",
+        source: "renderer",
+        category: "renderer.pageshow",
+        message: "Renderer page show fired",
+      });
+    };
+    const onFocus = () => {
+      const now = performance.now();
+      const gapMs = now - lastTick;
+      if (gapMs > 10_000) {
+        reportRendererDiagnostic({
+          level: "warn",
+          source: "renderer",
+          category: "renderer.resume-gap",
+          message: `Renderer resumed after ${Math.round(gapMs)}ms gap`,
+        });
+      }
+      lastTick = now;
+    };
+    const timer = window.setInterval(() => {
+      lastTick = performance.now();
+    }, 2_000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [reportRendererDiagnostic]);
   const { toasts, dismissToast, pushToast } = useAppShellToasts({ statusLine, toneForStatusLine });
   const {
     confirmDialogRequest,
@@ -838,29 +1010,7 @@ export default function App() {
     },
     serialize: (value) => String(Math.round(value)),
   });
-  const {
-    jobs,
-    jobTemplates,
-    jobEditorOpen,
-    jobDraft,
-    jobRuns,
-    unreadJobRunsCount,
-    jobRunViewer,
-    jobRunViewerMessages,
-    jobRunViewerLoading,
-    openJobEditor,
-    closeJobEditor,
-    updateJobEditor,
-    saveJobEditor,
-    removeJob,
-    toggleJobEnabled,
-    markAllJobRunsRead,
-    openJobRunViewer,
-    closeJobRunViewer,
-  } = useJobsScheduler({
-    activeProjectDir,
-    onStatus: setStatusLine,
-  });
+  const unreadJobRunsCount = 0;
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | undefined>();
@@ -1020,7 +1170,7 @@ export default function App() {
   const [anyOverlayInDom, setAnyOverlayInDom] = useState(false);
   useEffect(() => {
     const check = () => {
-      const hasOverlay = document.querySelector(".overlay, .model-modal-overlay, .settings-overlay, .run-command-modal-overlay") !== null;
+      const hasOverlay = document.querySelector(".overlay, .kanban-pane-overlay, .model-modal-overlay, .settings-overlay, .run-command-modal-overlay") !== null;
       setAnyOverlayInDom(hasOverlay);
     };
     check();
@@ -2580,6 +2730,7 @@ export default function App() {
       try {
         const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
         const archivedSessionType = getSessionType(sessionID, directory);
+        const isArchivedSessionActive = activeProjectDir === directory && activeSessionID === sessionID;
         const localProviderSession = isLocalProviderSessionType(archivedSessionType);
         if (!localProviderSession) {
           await window.orxa.opencode.archiveSession(directory, sessionID);
@@ -2613,13 +2764,11 @@ export default function App() {
         clearSessionReadAt(sessionKey);
         clearSessionMetadata(sessionKey);
         removeSessionFromLocalProjectCache(directory, sessionID);
-        const next = localProviderSession
-          ? (useUnifiedRuntimeStore.getState().projectDataByDirectory[directory] ?? null)
-          : await refreshProject(directory);
-        if (sessionID === activeSessionID) {
+        if (isArchivedSessionActive) {
           clearPendingSession();
-          const sorted = [...(next?.sessions ?? [])].filter((item) => !item.time.archived).sort((a, b) => b.time.updated - a.time.updated);
-          setActiveSessionID(sorted[0]?.id);
+          await selectProject(directory);
+        } else if (!localProviderSession) {
+          void refreshProject(directory).catch(() => undefined);
         }
         setStatusLine("Session archived");
       } catch (error) {
@@ -2628,17 +2777,18 @@ export default function App() {
     },
     [
       activeSessionID,
+      activeProjectDir,
       clearPendingSession,
       clearSessionMetadata,
       clearSessionReadAt,
       getSessionType,
       localProviderSessions,
       refreshProject,
+      selectProject,
       setLocalProviderSessions,
       removeClaudeChatSession,
       removeClaudeSession,
       removeSessionFromLocalProjectCache,
-      setActiveSessionID,
       syncLocalProviderSessionsIntoProject,
     ],
   );
@@ -2971,7 +3121,6 @@ export default function App() {
   }, [projectData, projectDataByDirectory]);
   const {
     backgroundSessionDescriptors,
-    activeBackgroundAgents,
     visibleBackgroundAgents,
   } = useBackgroundSessionDescriptors({
     activeProjectDir: activeProjectDir ?? undefined,
@@ -2984,28 +3133,103 @@ export default function App() {
     normalizePresentationProvider,
   });
   useEffect(() => {
-    if (!activeProjectDir || activeBackgroundAgents.length === 0) {
+    const kanban = window.orxa?.kanban;
+    const events = window.orxa?.events;
+    if (!kanban) {
       return;
     }
-    setHiddenBackgroundSessionIdsByProject((current) => {
-      const next = { ...current };
-      const hiddenIds = new Set(next[activeProjectDir] ?? []);
-      let changed = false;
-      for (const agent of activeBackgroundAgents) {
-        const sessionId = agent.sessionID ?? agent.id;
-        if (!sessionId || hiddenIds.has(sessionId)) {
-          continue;
+
+    let cancelled = false;
+    const hideSessions = (sessions: Array<{ directory: string; sessionId?: string }>) => {
+      if (sessions.length === 0) {
+        return;
+      }
+      setHiddenBackgroundSessionIdsByProject((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const session of sessions) {
+          if (!session.sessionId) {
+            continue;
+          }
+          const hiddenIds = new Set(next[session.directory] ?? []);
+          if (hiddenIds.has(session.sessionId)) {
+            continue;
+          }
+          hiddenIds.add(session.sessionId);
+          next[session.directory] = [...hiddenIds];
+          changed = true;
         }
-        hiddenIds.add(sessionId);
-        changed = true;
+        return changed ? next : current;
+      });
+    };
+
+    const syncKanbanManagementSessions = async () => {
+      const workspaces = await kanban.listWorkspaces().catch(() => [] as Awaited<ReturnType<typeof kanban.listWorkspaces>>);
+      const sessions = await Promise.all(
+        workspaces.flatMap((workspace) =>
+          KANBAN_MANAGEMENT_PROVIDERS.map(async (provider) => {
+            const session = await kanban.getManagementSession(workspace.directory, provider).catch(() => null);
+            return {
+              directory: workspace.directory,
+              sessionId: extractKanbanManagementSidebarSessionID(session?.sessionKey),
+            };
+          }),
+        ),
+      );
+      if (!cancelled) {
+        hideSessions(sessions);
       }
-      if (!changed) {
-        return current;
+    };
+
+    void syncKanbanManagementSessions();
+
+    const unsubscribe = events?.subscribe((event) => {
+      if (event.type !== "kanban.management") {
+        return;
       }
-      next[activeProjectDir] = [...hiddenIds];
-      return next;
+      hideSessions([
+        {
+          directory: event.payload.workspaceDir,
+          sessionId: extractKanbanManagementSidebarSessionID(event.payload.session.sessionKey),
+        },
+      ]);
     });
-  }, [activeBackgroundAgents, activeProjectDir, setHiddenBackgroundSessionIdsByProject]);
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [setHiddenBackgroundSessionIdsByProject]);
+  useEffect(() => {
+    const refreshBackgroundProjects = () => {
+      const directories = Object.keys(cachedProjects).filter((directory) => directory !== activeProjectDir);
+      for (const directory of directories) {
+        void refreshProject(directory, true).catch((error) => {
+          reportRendererDiagnostic({
+            level: "warn",
+            source: "renderer",
+            category: "background.refresh-project",
+            message: `Failed to refresh background workspace ${directory}`,
+            details: error instanceof Error ? error.stack ?? error.message : String(error),
+          });
+        });
+      }
+    };
+    const onResume = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      refreshBackgroundProjects();
+    };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
+    return () => {
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
+    };
+  }, [activeProjectDir, cachedProjects, refreshProject, reportRendererDiagnostic]);
   const effectiveBrowserState = useMemo(() => buildAppShellBrowserSidebarState({
     runtimeState: browserRuntimeState,
     history: browserHistoryItems,
@@ -3956,6 +4180,20 @@ export default function App() {
   ]);
 
   return (
+    <AppErrorBoundary
+      onError={(error, info) => {
+        reportRendererDiagnostic({
+          level: "error",
+          source: "renderer",
+          category: "renderer.error-boundary",
+          message: error.message || "Renderer subtree crashed",
+          details: JSON.stringify({
+            stack: error.stack,
+            componentStack: info.componentStack,
+          }),
+        });
+      }}
+    >
     <div className="app-shell">
       <BackgroundSessionSupervisorHost
         sessions={backgroundSessionDescriptors}
@@ -4118,20 +4356,8 @@ export default function App() {
         />
 
         <main className={`content-pane ${activeProjectDir ? "" : "content-pane-dashboard"}`.trim()}>
-          {sidebarMode === "jobs" ? (
-            <JobsBoard
-              templates={jobTemplates}
-              jobs={jobs}
-              runs={jobRuns}
-              unreadRuns={unreadJobRunsCount}
-              projects={projects}
-              onNewJob={() => openJobEditor()}
-              onUseTemplate={(template) => openJobEditor(template)}
-              onDeleteJob={removeJob}
-              onToggleEnabled={toggleJobEnabled}
-              onOpenRun={(runID) => void openJobRunViewer(runID)}
-              onMarkAllRunsRead={markAllJobRunsRead}
-            />
+          {sidebarMode === "kanban" ? (
+            <KanbanBoard />
           ) : sidebarMode === "skills" ? (
             <SkillsBoard
               skills={skills}
@@ -4776,11 +5002,7 @@ export default function App() {
         getSessionStatusType={getSessionStatusType}
         activeSessionID={activeSessionID}
         openSession={openSession}
-        jobRunViewer={jobRunViewer}
-        closeJobRunViewer={closeJobRunViewer}
         projects={projects}
-        jobRunViewerLoading={jobRunViewerLoading}
-        jobRunViewerMessages={jobRunViewerMessages}
         branchCreateModalOpen={branchCreateModalOpen}
         setBranchCreateModalOpen={setBranchCreateModalOpen}
         branchCreateName={branchCreateName}
@@ -4808,11 +5030,6 @@ export default function App() {
         commitFlowState={commitFlowState}
         dismissCommitFlowState={dismissCommitFlowState}
         submitCommit={submitCommit}
-        jobEditorOpen={jobEditorOpen}
-        jobDraft={jobDraft}
-        closeJobEditor={closeJobEditor}
-        updateJobEditor={updateJobEditor}
-        saveJobEditor={saveJobEditor}
         addProjectDirectory={addProjectDirectory}
         skillUseModal={skillUseModal}
         setSkillUseModal={setSkillUseModal}
@@ -4929,7 +5146,7 @@ export default function App() {
         dismissLabel="Close"
         onDismiss={() => setMemoryComingSoonOpen(false)}
       />
-
     </div>
+    </AppErrorBoundary>
   );
 }

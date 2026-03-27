@@ -212,6 +212,244 @@ beforeEach(() => {
         archiveSession: vi.fn(async () => undefined),
         archiveProviderSession: vi.fn(async () => undefined),
       },
+      kanban: {
+        listWorkspaces: vi.fn(async () => []),
+        addWorkspaceDirectory: vi.fn(async () => undefined),
+        removeWorkspaceDirectory: vi.fn(async () => true),
+        getSettings: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          autoCommit: false,
+          autoPr: false,
+          defaultProvider: "opencode",
+          providerDefaults: {},
+          scriptShortcuts: [],
+          worktreeInclude: {
+            detected: false,
+            source: "none",
+            entries: [],
+            updatedAt: Date.now(),
+          },
+          updatedAt: Date.now(),
+        })),
+        updateSettings: vi.fn(async (input) => input),
+        getBoard: vi.fn(async (workspaceDir: string) => ({
+          workspaceDir,
+          settings: {
+            workspaceDir,
+            autoCommit: false,
+            autoPr: false,
+            defaultProvider: "opencode",
+            providerDefaults: {},
+            scriptShortcuts: [],
+            worktreeInclude: {
+              detected: false,
+              source: "none",
+              entries: [],
+              updatedAt: Date.now(),
+            },
+            updatedAt: Date.now(),
+          },
+          tasks: [],
+          runtimes: [],
+          dependencies: [],
+          runs: [],
+          automations: [],
+          reviewComments: [],
+          trashedTasks: [],
+          worktrees: [],
+        })),
+        importLegacyJobs: vi.fn(async () => true),
+        createTask: vi.fn(async () => ({
+          id: "task-1",
+          workspaceDir: "/tmp/project",
+          title: "Task",
+          prompt: "Prompt",
+          description: "",
+          provider: "opencode",
+          columnId: "backlog",
+          position: 0,
+          statusSummary: "idle",
+          autoStartWhenUnblocked: false,
+          blocked: false,
+          shipStatus: "unshipped",
+          trashStatus: "active",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        })),
+        updateTask: vi.fn(async () => undefined),
+        moveTask: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          tasks: [],
+          dependencies: [],
+          runs: [],
+          automations: [],
+          reviewComments: [],
+          trashedTasks: [],
+          worktrees: [],
+        })),
+        trashTask: vi.fn(async () => undefined),
+        restoreTask: vi.fn(async () => undefined),
+        deleteTask: vi.fn(async () => true),
+        linkTasks: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          tasks: [],
+          dependencies: [],
+          runs: [],
+          automations: [],
+          reviewComments: [],
+          trashedTasks: [],
+          worktrees: [],
+        })),
+        unlinkTasks: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          tasks: [],
+          dependencies: [],
+          runs: [],
+          automations: [],
+          reviewComments: [],
+          trashedTasks: [],
+          worktrees: [],
+        })),
+        startTask: vi.fn(async () => undefined),
+        resumeTask: vi.fn(async () => undefined),
+        stopTask: vi.fn(async () => undefined),
+        getTaskRuntime: vi.fn(async () => null),
+        createTaskTerminal: vi.fn(async () => ({ id: "pty-1", directory: "/tmp/project", cwd: "/tmp/project", title: "Kanban", owner: "kanban", status: "running", pid: 1, exitCode: null, createdAt: Date.now() })),
+        getTaskTerminal: vi.fn(async () => null),
+        connectTaskTerminal: vi.fn(async () => ({ ptyID: "pty-1", directory: "/tmp/project", connected: true })),
+        closeTaskTerminal: vi.fn(async () => true),
+        getTaskDetail: vi.fn(async () => ({
+          task: {
+            id: "task-1",
+            workspaceDir: "/tmp/project",
+            title: "Task",
+            prompt: "Prompt",
+            description: "",
+            provider: "opencode",
+            columnId: "backlog",
+            position: 0,
+            statusSummary: "idle",
+            autoStartWhenUnblocked: false,
+            blocked: false,
+            shipStatus: "unshipped",
+            trashStatus: "active",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+          runtime: null,
+          run: null,
+          dependencies: [],
+          reviewComments: [],
+          checkpoints: [],
+          diff: "",
+          structuredDiff: [],
+          transcript: [],
+          worktree: null,
+        })),
+        createCheckpoint: vi.fn(async () => ({
+          id: "checkpoint-1",
+          workspaceDir: "/tmp/project",
+          taskId: "task-1",
+          label: "Manual checkpoint",
+          source: "manual",
+          diffRaw: "",
+          createdAt: Date.now(),
+        })),
+        listCheckpoints: vi.fn(async () => []),
+        getCheckpointDiff: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          taskId: "task-1",
+          fromCheckpointId: "checkpoint-1",
+          raw: "",
+          files: [],
+        })),
+        addReviewComment: vi.fn(async () => undefined),
+        sendReviewFeedback: vi.fn(async () => undefined),
+        commitTask: vi.fn(async () => undefined),
+        openTaskPr: vi.fn(async () => undefined),
+        gitState: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          repoRoot: "/tmp/project",
+          branchState: { current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          commits: [],
+          graphText: "",
+        })),
+        gitFetch: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          repoRoot: "/tmp/project",
+          branchState: { current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          commits: [],
+          graphText: "",
+        })),
+        gitPull: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          repoRoot: "/tmp/project",
+          branchState: { current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          commits: [],
+          graphText: "",
+        })),
+        gitPush: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          repoRoot: "/tmp/project",
+          branchState: { current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          commits: [],
+          graphText: "",
+        })),
+        gitCheckout: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          repoRoot: "/tmp/project",
+          branchState: { current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          commits: [],
+          graphText: "",
+        })),
+        listWorktrees: vi.fn(async () => []),
+        createWorktree: vi.fn(async () => undefined),
+        openWorktree: vi.fn(async () => undefined),
+        deleteWorktree: vi.fn(async () => true),
+        mergeWorktree: vi.fn(async () => undefined),
+        resolveMergeWithAgent: vi.fn(async () => undefined),
+        getWorktreeStatus: vi.fn(async () => ({
+          workspaceDir: "/tmp/project",
+          worktree: {
+            id: "wt-1",
+            workspaceDir: "/tmp/project",
+            label: "Worktree",
+            repoRoot: "/tmp/project",
+            directory: "/tmp/project/.worktrees/worktree",
+            branch: "feature/test",
+            baseRef: "main",
+            status: "ready",
+            mergeStatus: "clean",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+          branchState: { current: "feature/test", branches: ["main", "feature/test"], hasChanges: false, ahead: 0, behind: 0 },
+          statusText: "",
+          conflicts: [],
+        })),
+        createWorktreeIncludeFromGitignore: vi.fn(async () => ({
+          detected: true,
+          source: "generated_from_gitignore",
+          entries: [],
+          updatedAt: Date.now(),
+        })),
+        runScriptShortcut: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
+        listRuns: vi.fn(async () => []),
+        getRun: vi.fn(async () => null),
+        listAutomations: vi.fn(async () => []),
+        createAutomation: vi.fn(async () => undefined),
+        updateAutomation: vi.fn(async () => undefined),
+        deleteAutomation: vi.fn(async () => true),
+        runAutomationNow: vi.fn(async () => undefined),
+        startManagementSession: vi.fn(async () => ({ workspaceDir: "/tmp/project", provider: "opencode", sessionKey: "session-1", status: "idle", transcript: [], updatedAt: Date.now() })),
+        getManagementSession: vi.fn(async () => null),
+        sendManagementPrompt: vi.fn(async () => ({ session: { workspaceDir: "/tmp/project", provider: "opencode", sessionKey: "session-1", status: "idle", transcript: [], updatedAt: Date.now() }, rawResponse: "", operations: [], applied: [] })),
+      },
       terminal: {
         list: vi.fn(async () => []),
         create: vi.fn(async () => ({ id: "pty-1" })),
@@ -416,6 +654,148 @@ describe("App", () => {
     expect(document.querySelector(".session-status-indicator.unread")).toBeNull();
   });
 
+  it("shows a busy sidebar indicator for inactive Claude Chat sessions with active subagents", async () => {
+    window.localStorage.setItem(
+      "orxa:sessionTypes:v2",
+      JSON.stringify({ "/repo/marketing-websites::session-claude": "claude-chat" }),
+    );
+    useUnifiedRuntimeStore.setState({
+      claudeChatSessions: {
+        "/repo/marketing-websites::session-claude": {
+          key: "/repo/marketing-websites::session-claude",
+          directory: "/repo/marketing-websites",
+          connectionStatus: "connected",
+          messages: [],
+          historyMessages: [],
+          pendingApproval: null,
+          pendingUserInput: null,
+          isStreaming: false,
+          providerThreadId: "thread-claude",
+          activeTurnId: null,
+          lastError: undefined,
+          subagents: [
+            {
+              id: "subagent-1",
+              name: "Scout",
+              status: "thinking",
+              statusText: "Delegating",
+            },
+          ],
+        },
+      },
+    });
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-claude",
+        slug: "claude-chat",
+        title: "Claude Code (Chat)",
+        time: { created: Date.now(), updated: 10 },
+      }],
+      sessionStatus: { "session-claude": { type: "idle" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Claude Code (Chat)")).toBeInTheDocument();
+    expect(document.querySelector(".session-status-indicator.busy")).toBeInTheDocument();
+  });
+
+  it("hides Kanban management sessions from the workspace sidebar", async () => {
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "marketing-websites", worktree: "/repo/marketing-websites", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => ({
+      directory: "/repo/marketing-websites",
+      path: {},
+      sessions: [{
+        id: "session-bg",
+        slug: "kanban-board-manager",
+        title: "Kanban board manager",
+        time: { created: Date.now(), updated: Date.now() },
+      }],
+      sessionStatus: { "session-bg": { type: "busy" as const } },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+        },
+        kanban: {
+          ...window.orxa!.kanban,
+          listWorkspaces: vi.fn(async () => [{
+            directory: "/repo/marketing-websites",
+            name: "marketing-websites",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }]),
+          getManagementSession: vi.fn(async (workspaceDir: string, provider: string) => (
+            workspaceDir === "/repo/marketing-websites" && provider === "opencode"
+              ? {
+                  workspaceDir,
+                  provider: "opencode" as const,
+                  sessionKey: "session-bg",
+                  status: "idle" as const,
+                  transcript: [],
+                  updatedAt: Date.now(),
+                }
+              : null
+          )),
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Kanban board manager")).not.toBeInTheDocument();
+    });
+  });
+
   it("keeps inactive Codex sessions polling in the background", async () => {
     window.localStorage.setItem(
       "orxa:sessionTypes:v2",
@@ -546,9 +926,35 @@ describe("App", () => {
       configurable: true,
     });
 
-    render(<App />);
+    useUnifiedRuntimeStore.setState((state) => ({
+      ...state,
+      activeWorkspaceDirectory: "/repo/dreamweaver",
+      activeSessionID: "session-1",
+      projectDataByDirectory: {
+        ...state.projectDataByDirectory,
+        "/repo/dreamweaver": {
+          directory: "/repo/dreamweaver",
+          path: {},
+          sessions: [activeSession],
+          sessionStatus: { "session-1": { type: "idle" as const } },
+          providers: { all: [], connected: [], default: {} },
+          agents: [],
+          config: {},
+          permissions: [],
+          questions: [],
+          commands: [],
+          mcp: {},
+          lsp: [],
+          formatter: [],
+          ptys: [],
+        } as never,
+      },
+    }));
+
+    const { container } = render(<App />);
 
     const sessionButton = await screen.findByText("Build Spa Booking Site");
+    const selectProjectCallsBeforeArchive = selectProjectMock.mock.calls.length;
     fireEvent.contextMenu(sessionButton);
     fireEvent.click(await screen.findByText("Archive Session"));
 
@@ -560,7 +966,82 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.queryByText("Opening session...")).not.toBeInTheDocument();
     });
-    expect(screen.queryByText("New session")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(container.querySelectorAll(".workspace-landing-card").length).toBeGreaterThan(0);
+    });
+    expect(selectProjectMock).toHaveBeenCalledTimes(selectProjectCallsBeforeArchive + 1);
+  });
+
+  it("archives inactive sessions without rerouting the current workspace view", async () => {
+    const activeSession = {
+      id: "session-active",
+      slug: "active-session",
+      title: "Keep Me Open",
+      time: { created: Date.now(), updated: Date.now() },
+    };
+    const archivedSession = {
+      id: "session-archive",
+      slug: "archive-me",
+      title: "Archive Me",
+      time: { created: Date.now() - 1000, updated: Date.now() - 1000 },
+    };
+    const projectData = {
+      directory: "/repo/dreamweaver",
+      path: {},
+      sessions: [activeSession, archivedSession],
+      sessionStatus: {
+        "session-active": { type: "idle" as const },
+        "session-archive": { type: "idle" as const },
+      },
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {},
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    };
+
+    const bootstrapMock = vi.fn(async () => ({
+      projects: [{ id: "proj-1", name: "dreamweaver", worktree: "/repo/dreamweaver", source: "local" as const }],
+      runtime: { status: "disconnected" as const, managedServer: false },
+    }));
+    const selectProjectMock = vi.fn(async () => projectData);
+    const refreshProjectMock = vi.fn(async () => ({
+      ...projectData,
+      sessions: [activeSession],
+      sessionStatus: { "session-active": { type: "idle" as const } },
+    }));
+    const archiveSessionMock = vi.fn(async () => ({ ...archivedSession, time: { ...archivedSession.time, archived: Date.now() } }));
+
+    Object.defineProperty(window, "orxa", {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: bootstrapMock,
+          selectProject: selectProjectMock,
+          refreshProject: refreshProjectMock,
+          archiveSession: archiveSessionMock,
+        },
+      },
+      configurable: true,
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Keep Me Open")).toBeInTheDocument();
+    fireEvent.contextMenu(await screen.findByText("Archive Me"));
+    fireEvent.click(await screen.findByText("Archive Session"));
+
+    await waitFor(() => {
+      expect(archiveSessionMock).toHaveBeenCalledWith("/repo/dreamweaver", "session-archive");
+      expect(screen.queryByText("Archive Me")).not.toBeInTheDocument();
+    });
+    expect(selectProjectMock).toHaveBeenCalledTimes(1);
   });
 
   it("clears Claude chat runtime state when archiving from the App shell", async () => {

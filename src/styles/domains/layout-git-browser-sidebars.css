@@ -563,6 +563,21 @@
   margin-left: auto;
 }
 
+.sidebar-mode-warning {
+  display: inline-grid;
+  place-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-warning) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-warning) 14%, transparent);
+  color: var(--accent-warning);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 6px;
+}
+
 .sidebar-mode-placeholder {
   margin: 0 var(--space-3);
   padding: var(--space-3);

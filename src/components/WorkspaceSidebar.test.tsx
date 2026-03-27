@@ -153,6 +153,12 @@ describe("WorkspaceSidebar update button", () => {
     expect(onOpenMemoryModal).toHaveBeenCalledTimes(1);
   });
 
+  it("shows an experimental warning next to the Kanban mode entry", () => {
+    render(<WorkspaceSidebar {...buildProps()} />);
+
+    expect(screen.getByRole("button", { name: /Orxa KanBan/i })).toHaveTextContent("Experimental");
+  });
+
   it("shows awaiting and unread indicators for session rows", () => {
     render(
       <WorkspaceSidebar

@@ -865,6 +865,72 @@ export class CodexService extends EventEmitter {
     }
   }
 
+  async captureAssistantReply(threadId: string, prompt: string, cwd?: string): Promise<string> {
+    const normalizedThreadId = threadId.trim();
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    if (!normalizedPrompt) {
+      throw new Error("prompt is required");
+    }
+
+    await this.ensureConnected(cwd);
+
+    let responseText = "";
+    const releaseDelta = this.subscribeHiddenThread(normalizedThreadId, (notification) => {
+      if (notification.method === "item/agentMessage/delta") {
+        const delta = asString(notification.params.delta);
+        if (delta) {
+          responseText += delta;
+        }
+      }
+    });
+
+    try {
+      await this.startTurn({ threadId: normalizedThreadId, prompt: normalizedPrompt, cwd });
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          releaseTurn();
+          reject(new Error("Timed out waiting for Codex assistant reply"));
+        }, REQUEST_TIMEOUT_MS);
+
+        const finish = (error?: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          releaseTurn();
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        };
+
+        const releaseTurn = this.subscribeHiddenThread(normalizedThreadId, (notification: CodexNotification) => {
+          if (notification.method === "turn/completed") {
+            finish();
+            return;
+          }
+          if (notification.method === "turn/error") {
+            const message = asString(asRecord(notification.params)?.error).trim() || "Failed to capture Codex assistant reply";
+            finish(new Error(message));
+          }
+        });
+      });
+      return responseText.trim();
+    } finally {
+      releaseDelta();
+    }
+  }
+
   async startTurn(params: {
     threadId: string;
     prompt: string;

@@ -16,7 +16,7 @@ const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 export const EMPTY_WORKSPACE_SESSIONS_KEY = "orxa:emptyWorkspaceSessions:v1";
 const EMPTY_MESSAGE_BUNDLES: SessionMessageBundle[] = [];
 
-type SidebarMode = "projects" | "jobs" | "skills";
+type SidebarMode = "projects" | "kanban" | "skills";
 
 type ContextMenuState =
   | {

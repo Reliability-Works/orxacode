@@ -10,4 +10,5 @@ export * from "./ipc/codex";
 export * from "./ipc/claude-chat";
 export * from "./ipc/app";
 export * from "./ipc/events";
+export * from "./ipc/kanban";
 export * from "./ipc/bridge";

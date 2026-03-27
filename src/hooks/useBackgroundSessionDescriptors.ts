@@ -77,7 +77,8 @@ export function useBackgroundSessionDescriptors({
           if (seenCodexKeys.has(sessionStorageKey)) {
             continue;
           }
-          if (!hasActiveCodexBackgroundWork(sessionStorageKey)) {
+          const status = buildCodexSessionStatus(sessionStorageKey, false);
+          if (!hasActiveCodexBackgroundWork(sessionStorageKey) && status.type !== "plan_ready") {
             continue;
           }
           seenCodexKeys.add(sessionStorageKey);
@@ -104,8 +105,9 @@ export function useBackgroundSessionDescriptors({
         }
 
         if (sessionType === "claude") {
+          const runtime = claudeSessionStateMap[sessionStorageKey];
           const status = buildClaudeSessionStatus(sessionStorageKey, false);
-          if (status.type === "busy" || status.type === "awaiting") {
+          if (status.type === "busy" || status.type === "awaiting" || Boolean(runtime)) {
             next.push({
               key: `claude:${sessionStorageKey}`,
               provider: "claude",
@@ -146,6 +148,7 @@ export function useBackgroundSessionDescriptors({
     activeSessionKey,
     cachedProjects,
     claudeChatSessionStateMap,
+    claudeSessionStateMap,
     codexSessionStateMap,
     getSessionType,
     normalizePresentationProvider,
