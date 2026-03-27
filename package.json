@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.46",
+  "version": "0.1.0-beta.50",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
@@ -77,13 +77,26 @@
   "pnpm": {
     "overrides": {
       "ajv@<6.14.0": "6.14.0",
-      "minimatch@<3.1.3": "3.1.3",
-      "minimatch@>=5.0.0 <5.1.7": "5.1.7",
-      "minimatch@>=9.0.0 <9.0.6": "9.0.6"
+      "minimatch@<3.1.4": "3.1.4",
+      "minimatch@>=5.0.0 <5.1.8": "5.1.8",
+      "minimatch@>=9.0.0 <9.0.7": "9.0.7",
+      "minimatch@>=10.0.0 <10.2.4": "10.2.4",
+      "rollup@<4.60.0": "4.60.0",
+      "tar@<7.5.13": "7.5.13",
+      "flatted@<3.4.2": "3.4.2",
+      "undici@>=7.0.0 <7.24.6": "7.24.6",
+      "picomatch@>=4.0.0 <4.0.4": "4.0.4",
+      "brace-expansion@<2.0.0": "1.1.13",
+      "brace-expansion@>=2.0.0 <3.0.0": "2.0.3",
+      "brace-expansion@>=5.0.0 <5.0.5": "5.0.5"
     }
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.81",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
     "@tanstack/react-virtual": "^3.13.23",
@@ -92,6 +105,7 @@
     "cytoscape": "^3.33.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.6.2",
+    "ignore": "^7.0.5",
     "jsonc-parser": "^3.3.1",
     "keytar": "^7.9.0",
     "lucide-react": "^0.575.0",

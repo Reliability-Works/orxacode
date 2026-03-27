@@ -148,6 +148,153 @@ describe("useBackgroundSessionDescriptors", () => {
     ]);
   });
 
+  it("keeps Codex background supervision alive when a plan is ready", () => {
+    const planReadySessionKey = "/repo/project::session-4";
+    setPersistedCodexState(planReadySessionKey, {
+      messages: [],
+      thread: { id: "thread-4", preview: "Plan ready thread", modelProvider: "openai", createdAt: 1 },
+      isStreaming: false,
+      messageIdCounter: 0,
+    });
+    useUnifiedRuntimeStore.setState({
+      codexSessions: {
+        [planReadySessionKey]: {
+          key: planReadySessionKey,
+          directory: "/repo/project",
+          connectionStatus: "connected",
+          thread: { id: "thread-4", preview: "Plan ready thread", modelProvider: "openai", createdAt: 1 },
+          runtimeSnapshot: null,
+          messages: [],
+          pendingApproval: null,
+          pendingUserInput: null,
+          isStreaming: false,
+          planItems: [{ id: "plan-1", content: "Review the patch", status: "pending" }],
+          dismissedPlanIds: [],
+          subagents: [],
+          activeSubagentThreadId: null,
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useBackgroundSessionDescriptors({
+        activeProjectDir: "/repo/project",
+        activeSessionID: "active-session",
+        activeSessionKey: "/repo/project::active-session",
+        activeSessionType: "opencode",
+        cachedProjects: {
+          "/repo/project": {
+            directory: "/repo/project",
+            path: {} as never,
+            sessions: [{
+              id: "session-4",
+              projectID: "proj-1",
+              directory: "/repo/project",
+              slug: "plan-ready-codex",
+              title: "Plan Ready Codex",
+              version: "1",
+              time: { created: 1, updated: 2 },
+            }],
+            sessionStatus: {},
+            providers: {} as never,
+            agents: [],
+            config: {} as never,
+            permissions: [],
+            questions: [],
+            commands: [],
+            mcp: {},
+            lsp: [],
+            formatter: [],
+            ptys: [],
+          },
+        },
+        archivedBackgroundAgentIds: {},
+        getSessionType: () => "codex",
+        normalizePresentationProvider: (sessionType) =>
+          sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat"
+            ? sessionType
+            : sessionType
+              ? "opencode"
+              : undefined,
+      }),
+    );
+
+    expect(result.current.backgroundSessionDescriptors).toEqual([
+      {
+        key: "codex:/repo/project::session-4",
+        provider: "codex",
+        directory: "/repo/project",
+        sessionStorageKey: "/repo/project::session-4",
+      },
+    ]);
+  });
+
+  it("keeps Claude terminal supervision alive while runtime state exists", () => {
+    useUnifiedRuntimeStore.setState({
+      claudeSessions: {
+        "/repo/project::session-claude": {
+          key: "/repo/project::session-claude",
+          directory: "/repo/project",
+          busy: false,
+          awaiting: false,
+          activityAt: 1,
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useBackgroundSessionDescriptors({
+        activeProjectDir: "/repo/project",
+        activeSessionID: "active-session",
+        activeSessionKey: "/repo/project::active-session",
+        activeSessionType: "opencode",
+        cachedProjects: {
+          "/repo/project": {
+            directory: "/repo/project",
+            path: {} as never,
+            sessions: [{
+              id: "session-claude",
+              projectID: "proj-1",
+              directory: "/repo/project",
+              slug: "claude-terminal",
+              title: "Claude Code (Terminal)",
+              version: "1",
+              time: { created: 1, updated: 2 },
+            }],
+            sessionStatus: {},
+            providers: {} as never,
+            agents: [],
+            config: {} as never,
+            permissions: [],
+            questions: [],
+            commands: [],
+            mcp: {},
+            lsp: [],
+            formatter: [],
+            ptys: [],
+          },
+        },
+        archivedBackgroundAgentIds: {},
+        getSessionType: () => "claude",
+        normalizePresentationProvider: (sessionType) =>
+          sessionType === "codex" || sessionType === "claude" || sessionType === "claude-chat"
+            ? sessionType
+            : sessionType
+              ? "opencode"
+              : undefined,
+      }),
+    );
+
+    expect(result.current.backgroundSessionDescriptors).toEqual([
+      {
+        key: "claude:/repo/project::session-claude",
+        provider: "claude",
+        directory: "/repo/project",
+        sessionStorageKey: "/repo/project::session-claude",
+      },
+    ]);
+  });
+
   it("recomputes active background agents when codex runtime state changes without changing session identity", async () => {
     useUnifiedRuntimeStore.setState({
       codexSessions: {

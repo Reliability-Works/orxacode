@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { buildRunMetadataPrompt, CodexService, parseRunMetadataValue } from "./codex-service";
+import { ProviderSessionDirectory, makeProviderRuntimeSessionKey } from "./provider-session-directory";
 
 describe("CodexService metadata helpers", () => {
   it("builds the metadata prompt with the task text", () => {
@@ -218,7 +219,15 @@ describe("CodexService turn steering", () => {
   });
 
   it("resumes a persisted thread before the first turn after process restart", async () => {
-    const service = new CodexService();
+    const directory = new ProviderSessionDirectory();
+    directory.upsert({
+      provider: "codex",
+      sessionKey: makeProviderRuntimeSessionKey("codex", "/workspace", "thread-restore"),
+      status: "running",
+      resumeCursor: { threadId: "thread-restore" },
+      runtimePayload: { directory: "/workspace" },
+    });
+    const service = new CodexService(directory);
     const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
       if (method === "thread/resume") {
         return { thread: { id: params.threadId } };
@@ -242,6 +251,42 @@ describe("CodexService turn steering", () => {
       threadId: "thread-restore",
       input: [{ type: "text", text: "Continue the existing thread", text_elements: [] }],
     });
+  });
+
+  it("seeds the provider directory from legacy persisted Codex thread state", async () => {
+    const directory = new ProviderSessionDirectory();
+    vi.spyOn(directory, "getLegacyRendererValue").mockReturnValue(JSON.stringify({
+      thread: { id: "thread-legacy" },
+      messages: [],
+      isStreaming: false,
+      messageIdCounter: 0,
+    }));
+    const service = new CodexService(directory);
+    const request = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === "thread/resume") {
+        return { thread: { id: params.threadId } };
+      }
+      return {};
+    });
+    vi.spyOn(service as unknown as { ensureConnected: (cwd?: string) => Promise<void> }, "ensureConnected").mockResolvedValue(undefined);
+
+    Object.assign(service as unknown as Record<string, unknown>, {
+      process: {} as object,
+      request,
+    });
+
+    await service.startTurn({
+      threadId: "thread-legacy",
+      prompt: "Continue the migrated thread",
+      cwd: "/workspace",
+    });
+
+    expect(directory.getBinding(makeProviderRuntimeSessionKey("codex", "/workspace", "thread-legacy"), "codex")).toEqual(
+      expect.objectContaining({
+        resumeCursor: { threadId: "thread-legacy" },
+      }),
+    );
+    expect(request).toHaveBeenCalledWith("thread/resume", { threadId: "thread-legacy" });
   });
 
   it("supports image-only Codex turns", async () => {

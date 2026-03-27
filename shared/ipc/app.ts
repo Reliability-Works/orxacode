@@ -43,3 +43,18 @@ export type HttpRequestResult = {
   body: string;
   elapsed: number;
 };
+
+export type AppDiagnosticLevel = "info" | "warn" | "error";
+
+export type AppDiagnosticInput = {
+  level: AppDiagnosticLevel;
+  source: "main" | "renderer";
+  category: string;
+  message: string;
+  details?: string;
+};
+
+export type AppDiagnosticEntry = AppDiagnosticInput & {
+  id: string;
+  timestamp: number;
+};

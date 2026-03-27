@@ -14,6 +14,10 @@ type Props = {
   presentation?: UnifiedProjectedSessionPresentation | null;
   sessionNotices?: SessionFeedNotice[];
   showAssistantPlaceholder?: boolean;
+  optimisticUserPrompt?: {
+    text: string;
+    timestamp: number;
+  } | null;
   assistantLabel?: string;
   workspaceDirectory?: string | null;
   bottomClearance?: number;
@@ -34,6 +38,7 @@ export const MessageFeed = memo(function MessageFeed({
   presentation,
   sessionNotices = [],
   showAssistantPlaceholder = false,
+  optimisticUserPrompt = null,
   assistantLabel = "Orxa",
   workspaceDirectory,
   bottomClearance = 24,
@@ -85,6 +90,7 @@ export const MessageFeed = memo(function MessageFeed({
     }
     return result;
   }, [renderedRows, sessionNotices]);
+  const hasVisibleContent = renderedRows.length > 0 || Boolean(optimisticUserPrompt);
 
   // Scroll-snap on session switch and auto-scroll on new messages are now
   // handled universally inside VirtualizedTimeline via the sessionId prop.
@@ -99,7 +105,7 @@ export const MessageFeed = memo(function MessageFeed({
       virtualize={false}
       sessionId={sessionId}
       emptyState={
-        renderedRows.length === 0 && !(showAssistantPlaceholder && messages.length > 0)
+        !hasVisibleContent && !(showAssistantPlaceholder && (messages.length > 0 || Boolean(optimisticUserPrompt)))
           ? (
             <div className="center-pane-rail">
               <div className="messages-empty">No messages yet. Start by sending a prompt.</div>
@@ -114,8 +120,19 @@ export const MessageFeed = memo(function MessageFeed({
         </div>
       )}
       footer={
-        showAssistantPlaceholder && (messages.length > 0 || renderedRows.length > 0) ? (
+        showAssistantPlaceholder && (messages.length > 0 || hasVisibleContent) ? (
           <>
+            {optimisticUserPrompt ? (
+              <div className="center-pane-rail center-pane-rail--row">
+                <MessageCardFrame role="user" label="User" timestamp={optimisticUserPrompt.timestamp}>
+                  <div className="message-parts">
+                    <section className="message-part message-part--text">
+                      <div className="message-text">{optimisticUserPrompt.text}</div>
+                    </section>
+                  </div>
+                </MessageCardFrame>
+              </div>
+            ) : null}
             <div className="center-pane-rail center-pane-rail--row">
               <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
                 <div className="message-parts">

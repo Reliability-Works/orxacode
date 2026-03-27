@@ -16,7 +16,7 @@ const PINNED_SESSIONS_KEY = "orxa:pinnedSessions:v1";
 export const EMPTY_WORKSPACE_SESSIONS_KEY = "orxa:emptyWorkspaceSessions:v1";
 const EMPTY_MESSAGE_BUNDLES: SessionMessageBundle[] = [];
 
-type SidebarMode = "projects" | "jobs" | "skills";
+type SidebarMode = "projects" | "kanban" | "skills";
 
 type ContextMenuState =
   | {
@@ -639,11 +639,52 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
   }, []);
 
   const startResponsePolling = useCallback(
-    (...args: [string, string]) => {
-      void args;
+    (directory: string, sessionID: string) => {
       stopResponsePolling();
+      const poll = () => {
+        responsePollTimer.current = window.setTimeout(() => {
+          const state = getRuntimeState();
+          if (state.activeWorkspaceDirectory !== directory || state.activeSessionID !== sessionID) {
+            stopResponsePolling();
+            return;
+          }
+          void loadOpencodeRuntimeSnapshot(directory, sessionID)
+            .then((runtime) => {
+              const normalized = normalizeMessageBundles(runtime.messages);
+              const persisted = getPersistedOpencodeState(makeUnifiedSessionKey("opencode", directory, sessionID));
+              const merged = mergeOpencodeMessages(normalized, persisted.messages);
+              const runtimeProject = buildRuntimeProjectSlice(directory, runtime);
+              if (getRuntimeState().activeWorkspaceDirectory === directory && getRuntimeState().activeSessionID === sessionID) {
+                setOpencodeRuntimeSnapshot(directory, sessionID, {
+                  ...runtime,
+                  sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[sessionID],
+                  permissions: runtimeProject.permissions,
+                  questions: runtimeProject.questions,
+                  commands: runtimeProject.commands,
+                  messages: merged,
+                });
+              }
+
+              const sessionStatusType = ((runtime.sessionStatus as { type?: string } | undefined)?.type ?? "").toLowerCase();
+              const shouldContinue = merged.length === 0
+                || sessionStatusType.includes("busy")
+                || sessionStatusType.includes("running")
+                || sessionStatusType.includes("retry");
+
+              if (shouldContinue) {
+                poll();
+                return;
+              }
+              stopResponsePolling();
+            })
+            .catch(() => {
+              stopResponsePolling();
+            });
+        }, 700);
+      };
+      poll();
     },
-    [stopResponsePolling],
+    [buildRuntimeProjectSlice, getRuntimeState, setOpencodeRuntimeSnapshot, stopResponsePolling],
   );
 
   const createSession = useCallback(
@@ -696,6 +737,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
             model: promptOptions?.selectedModelPayload,
             variant: promptOptions?.selectedVariant,
           });
+          startResponsePolling(targetDirectory, resolvedSessionID);
           void loadOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID)
             .then((runtime) => {
               const normalized = normalizeMessageBundles(runtime.messages);
@@ -726,7 +768,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
         return undefined;
       }
     },
-    [activeProjectDir, buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, refreshProject, rememberEmptySession, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setOpencodeRuntimeSnapshot, setPendingSessionId, setStatusLine, stopResponsePolling],
+    [activeProjectDir, buildRuntimeProjectSlice, cleanupEmptySession, getRuntimeState, refreshProject, rememberEmptySession, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setOpencodeRuntimeSnapshot, setPendingSessionId, setStatusLine, startResponsePolling, stopResponsePolling],
   );
 
   const queueRefresh = useCallback(

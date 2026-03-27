@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ClaudeChatService } from "./claude-chat-service";
 import { query, renameSession, tagSession } from "@anthropic-ai/claude-agent-sdk";
+import { ProviderSessionDirectory } from "./provider-session-directory";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn(),
@@ -30,7 +31,7 @@ describe("ClaudeChatService", () => {
   });
 
   it("maps task and child-thread events into structured background-agent notifications", async () => {
-    const service = new ClaudeChatService();
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
     const notifications: Array<{ method: string; params: Record<string, unknown> }> = [];
     const states: Array<{ status: string; providerThreadId?: string; activeTurnId?: string | null }> = [];
 
@@ -167,7 +168,7 @@ describe("ClaudeChatService", () => {
   });
 
   it("passes Claude plan mode through to the SDK query options", async () => {
-    const service = new ClaudeChatService();
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
 
     vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
 
@@ -180,15 +181,47 @@ describe("ClaudeChatService", () => {
       expect.objectContaining({
         options: expect.objectContaining({
           permissionMode: "plan",
+          settingSources: ["user", "project", "local"],
         }),
       }),
     );
   });
 
-  it("restores a persisted Claude session id and resumes it on the next turn", async () => {
-    const service = new ClaudeChatService();
+  it("does not install a tool-approval interceptor in yolo mode", async () => {
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
 
-    service.restoreSession("session-restore", "/tmp/project", "claude-thread-restore");
+    vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
+
+    await service.startTurn("session-yolo", "/tmp/project", "apply the fix", {
+      model: "claude-sonnet-4-6",
+      permissionMode: "yolo-write",
+    });
+
+    expect(vi.mocked(query)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+        }),
+      }),
+    );
+    const queryOptions = vi.mocked(query).mock.calls[0]?.[0]?.options;
+    expect(queryOptions?.canUseTool).toBeUndefined();
+  });
+
+  it("migrates a legacy Claude renderer session id into the provider directory and resumes it", async () => {
+    const directory = new ProviderSessionDirectory();
+    vi.spyOn(directory, "getLegacyRendererValue").mockReturnValue(JSON.stringify({
+      providerThreadId: "claude-thread-restore",
+      messages: [],
+      historyMessages: [],
+      isStreaming: false,
+      messageIdCounter: 0,
+      subagents: [],
+    }));
+    const setLegacyRendererValue = vi.spyOn(directory, "setLegacyRendererValue").mockImplementation(() => undefined);
+    const service = new ClaudeChatService(directory);
+
     vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
 
     await service.startTurn("session-restore", "/tmp/project", "continue");
@@ -200,10 +233,17 @@ describe("ClaudeChatService", () => {
         }),
       }),
     );
+    expect(directory.getBinding("session-restore", "claude-chat")).toEqual(
+      expect.objectContaining({
+        resumeCursor: { resume: "claude-thread-restore" },
+        runtimePayload: { directory: "/tmp/project" },
+      }),
+    );
+    expect(setLegacyRendererValue).toHaveBeenCalled();
   });
 
   it("sends attached images through the Claude SDK user-message stream", async () => {
-    const service = new ClaudeChatService();
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
 
     vi.mocked(query).mockReturnValue(createQueryStream([]) as never);
 
@@ -250,7 +290,7 @@ describe("ClaudeChatService", () => {
   });
 
   it("ignores tool-use payload JSON in assistant text and keeps tool summaries structured", async () => {
-    const service = new ClaudeChatService();
+    const service = new ClaudeChatService(new ProviderSessionDirectory());
     const notifications: Array<{ method: string; params: Record<string, unknown> }> = [];
 
     service.on("notification", (payload) => {
@@ -343,6 +383,23 @@ describe("ClaudeChatService", () => {
         }),
       ]),
     );
+  });
+
+  it("removes persisted Claude bindings when archiving a session", async () => {
+    const directory = new ProviderSessionDirectory();
+    const service = new ClaudeChatService(directory);
+
+    directory.upsert({
+      provider: "claude-chat",
+      sessionKey: "session-archive",
+      status: "running",
+      resumeCursor: { resume: "claude-thread-archive" },
+      runtimePayload: { directory: "/tmp/project" },
+    });
+
+    await service.archiveSession("session-archive");
+
+    expect(directory.getBinding("session-archive", "claude-chat")).toBeNull();
   });
 
   it("renames Claude provider sessions through the SDK", async () => {

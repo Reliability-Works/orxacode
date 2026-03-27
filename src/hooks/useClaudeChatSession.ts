@@ -260,9 +260,6 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
   useEffect(() => {
     initClaudeChatSession(sessionKey, directory);
     const persisted = getPersistedClaudeChatState(sessionKey);
-    if (persisted.providerThreadId) {
-      setClaudeChatProviderThreadId(sessionKey, persisted.providerThreadId);
-    }
     if (persisted.messages.length > 0) {
       replaceClaudeChatMessages(sessionKey, persisted.messages);
       setClaudeChatStreaming(sessionKey, persisted.isStreaming);
@@ -275,25 +272,15 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     replaceClaudeChatMessages,
     sessionKey,
     setClaudeChatHistoryMessages,
-    setClaudeChatProviderThreadId,
     setClaudeChatStreaming,
     setClaudeChatSubagents,
   ]);
-
-  useEffect(() => {
-    const persistedProviderThreadId = getPersistedClaudeChatState(sessionKey).providerThreadId?.trim();
-    if (!persistedProviderThreadId) {
-      return;
-    }
-    void window.orxa.claudeChat.restoreSession(sessionKey, directory, persistedProviderThreadId).catch(() => undefined);
-  }, [directory, sessionKey]);
 
   useEffect(() => {
     if (!runtime) {
       return;
     }
     setPersistedClaudeChatState(sessionKey, {
-      providerThreadId: runtime.providerThreadId,
       messages: runtime.messages,
       historyMessages: runtime.historyMessages,
       isStreaming: runtime.isStreaming,
@@ -313,6 +300,63 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
       cancelled = true;
     };
   }, []);
+
+  const syncClaudeChatState = useCallback(async () => {
+    if (!window.orxa?.claudeChat) {
+      return;
+    }
+    const state = await window.orxa.claudeChat.getState(sessionKey);
+    setClaudeChatConnectionState(
+      sessionKey,
+      state.status,
+      state.providerThreadId,
+      state.activeTurnId,
+      state.lastError,
+    );
+    if (state.providerThreadId) {
+      const historyMessages = await window.orxa.claudeChat.getSessionMessages(state.providerThreadId, directory).catch(() => []);
+      setClaudeChatHistoryMessages(sessionKey, historyMessages);
+    }
+  }, [directory, sessionKey, setClaudeChatConnectionState, setClaudeChatHistoryMessages]);
+
+  useEffect(() => {
+    void syncClaudeChatState();
+  }, [syncClaudeChatState]);
+
+  useEffect(() => {
+    const hasRecoverableActivity = Boolean(
+      runtime?.providerThreadId
+      || runtime?.isStreaming
+      || runtime?.pendingApproval
+      || runtime?.pendingUserInput
+      || runtime?.subagents.length,
+    );
+    if (!hasRecoverableActivity) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void syncClaudeChatState();
+    }, 2_000);
+    const onResume = () => {
+      void syncClaudeChatState();
+    };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
+    };
+  }, [
+    runtime?.isStreaming,
+    runtime?.pendingApproval,
+    runtime?.pendingUserInput,
+    runtime?.providerThreadId,
+    runtime?.subagents.length,
+    syncClaudeChatState,
+  ]);
 
   useEffect(() => {
     const unsubscribe = window.orxa.events.subscribe((event) => {
@@ -577,7 +621,6 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     const timestamp = Date.now();
     const userId = nextClaudeMessageId(sessionKey);
     const displayPrompt = options?.displayPrompt ?? prompt;
-    const resumeSessionId = runtime?.providerThreadId ?? getPersistedClaudeChatState(sessionKey).providerThreadId ?? undefined;
     const turnOptions = { ...(options ?? {}) };
     delete (turnOptions as { displayPrompt?: string }).displayPrompt;
     updateClaudeChatMessages(sessionKey, (messages) => [
@@ -592,10 +635,9 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     ]);
     await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, {
       cwd: directory,
-      ...(resumeSessionId ? { resumeSessionId } : {}),
       ...turnOptions,
     });
-  }, [directory, runtime?.providerThreadId, sessionKey, updateClaudeChatMessages]);
+  }, [directory, sessionKey, updateClaudeChatMessages]);
 
   const interruptTurn = useCallback(async () => {
     await window.orxa.claudeChat.interruptTurn(sessionKey);

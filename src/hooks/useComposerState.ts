@@ -44,6 +44,12 @@ type UseComposerStateOptions = {
   stopResponsePolling: () => void;
   clearPendingSession: () => void;
   onSessionAbortRequested?: (directory: string, sessionID: string) => void;
+  onPromptAccepted?: (payload: {
+    directory: string;
+    sessionID: string;
+    text: string;
+    promptSource: "user" | "job" | "machine";
+  }) => void;
 };
 
 // Per-workspace composer text cache (survives workspace switches)
@@ -277,6 +283,13 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
 
       options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
+      options.onPromptAccepted?.({
+        directory: activeProjectDir,
+        sessionID: activeSessionID,
+        text,
+        promptSource,
+      });
+      options.startResponsePolling(activeProjectDir, activeSessionID);
       void options.refreshMessages();
       if (shouldAutoTitle) {
         void options.refreshProject(activeProjectDir).catch(() => undefined);

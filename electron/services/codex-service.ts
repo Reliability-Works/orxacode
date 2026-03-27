@@ -14,6 +14,10 @@ import type {
   CodexThread,
   CodexThreadRuntime,
 } from "@shared/ipc";
+import {
+  makeProviderRuntimeSessionKey,
+  ProviderSessionDirectory,
+} from "./provider-session-directory";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -401,6 +405,8 @@ function isMissingCodexThreadArchiveError(error: unknown) {
 }
 
 export class CodexService extends EventEmitter {
+  private providerSessionDirectory: ProviderSessionDirectory | null;
+
   private process: ChildProcess | null = null;
   private readline: Interface | null = null;
   private nextId = 1;
@@ -415,6 +421,15 @@ export class CodexService extends EventEmitter {
   private readonly threadSettings = new Map<string, { model?: string; reasoningEffort?: string | null }>();
   private readonly hydratedThreadIds = new Set<string>();
 
+  constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
+    super();
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
+
+  setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
+    this.providerSessionDirectory = providerSessionDirectory;
+  }
+
   get state(): CodexState {
     return { ...this._state };
   }
@@ -425,6 +440,83 @@ export class CodexService extends EventEmitter {
 
   get collaborationModes(): CodexCollaborationMode[] {
     return [...this._collaborationModes];
+  }
+
+  private findBindingForThread(threadId: string) {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId) {
+      return null;
+    }
+    return (this.providerSessionDirectory?.list("codex") ?? []).find((binding) => {
+      const cursor = asRecord(binding.resumeCursor);
+      return asString(cursor?.threadId).trim() === normalizedThreadId;
+    }) ?? null;
+  }
+
+  private seedBindingFromLegacyThread(threadId: string, cwd?: string) {
+    const normalizedThreadId = threadId.trim();
+    const normalizedCwd = cwd?.trim() || "";
+    if (!normalizedThreadId || !normalizedCwd || !this.providerSessionDirectory) {
+      return null;
+    }
+    const sessionKey = makeProviderRuntimeSessionKey("codex", normalizedCwd, normalizedThreadId);
+    const raw = this.providerSessionDirectory.getLegacyRendererValue(`orxa:codexSession:v1:${sessionKey}`);
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw) as { thread?: { id?: unknown } | null };
+      const legacyThreadId = typeof parsed.thread?.id === "string" ? parsed.thread.id.trim() : "";
+      if (legacyThreadId !== normalizedThreadId) {
+        return null;
+      }
+      return this.providerSessionDirectory.upsert({
+        provider: "codex",
+        sessionKey,
+        status: "running",
+        resumeCursor: { threadId: normalizedThreadId },
+        runtimePayload: { directory: normalizedCwd },
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private upsertBindingForThread(
+    threadId: string,
+    input?: {
+      cwd?: string;
+      model?: string;
+      reasoningEffort?: string | null;
+      collaborationMode?: string;
+      status?: "starting" | "running" | "stopped" | "error";
+    },
+  ) {
+    const normalizedThreadId = threadId.trim();
+    if (!normalizedThreadId || !this.providerSessionDirectory) {
+      return null;
+    }
+    const existing = this.findBindingForThread(normalizedThreadId);
+    const normalizedCwd =
+      input?.cwd?.trim()
+      || asString(asRecord(existing?.runtimePayload)?.directory).trim();
+    const sessionKey = existing?.sessionKey
+      ?? (normalizedCwd ? makeProviderRuntimeSessionKey("codex", normalizedCwd, normalizedThreadId) : "");
+    if (!sessionKey) {
+      return existing ?? null;
+    }
+    return this.providerSessionDirectory.upsert({
+      provider: "codex",
+      sessionKey,
+      status: input?.status ?? "running",
+      resumeCursor: { threadId: normalizedThreadId },
+      runtimePayload: {
+        ...(normalizedCwd ? { directory: normalizedCwd } : {}),
+        ...(input?.model ? { model: input.model } : {}),
+        ...(input?.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+        ...(input?.collaborationMode ? { collaborationMode: input.collaborationMode } : {}),
+      },
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -571,6 +663,12 @@ export class CodexService extends EventEmitter {
       reasoningEffort: asString(result.reasoningEffort ?? result.reasoning_effort).trim() || null,
     });
     this.hydratedThreadIds.add(result.thread.id);
+    this.upsertBindingForThread(result.thread.id, {
+      cwd: params.cwd,
+      model: typeof result.model === "string" ? result.model : undefined,
+      reasoningEffort: asString(result.reasoningEffort ?? result.reasoning_effort).trim() || null,
+      status: "running",
+    });
     return result.thread;
   }
 
@@ -621,6 +719,11 @@ export class CodexService extends EventEmitter {
       reasoningEffort: asString(record?.reasoningEffort ?? record?.reasoning_effort).trim() || null,
     });
     this.hydratedThreadIds.add(resumedThreadId);
+    this.upsertBindingForThread(resumedThreadId, {
+      model: asString(record?.model).trim() || undefined,
+      reasoningEffort: asString(record?.reasoningEffort ?? record?.reasoning_effort).trim() || null,
+      status: "running",
+    });
     return record ?? {};
   }
 
@@ -646,6 +749,10 @@ export class CodexService extends EventEmitter {
       if (!isMissingCodexThreadArchiveError(error)) {
         throw error;
       }
+    }
+    const binding = this.findBindingForThread(normalizedThreadId);
+    if (binding) {
+      this.providerSessionDirectory?.remove(binding.sessionKey, "codex");
     }
     this.cleanupThreadMappings(normalizedThreadId);
   }
@@ -758,6 +865,72 @@ export class CodexService extends EventEmitter {
     }
   }
 
+  async captureAssistantReply(threadId: string, prompt: string, cwd?: string): Promise<string> {
+    const normalizedThreadId = threadId.trim();
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedThreadId) {
+      throw new Error("threadId is required");
+    }
+    if (!normalizedPrompt) {
+      throw new Error("prompt is required");
+    }
+
+    await this.ensureConnected(cwd);
+
+    let responseText = "";
+    const releaseDelta = this.subscribeHiddenThread(normalizedThreadId, (notification) => {
+      if (notification.method === "item/agentMessage/delta") {
+        const delta = asString(notification.params.delta);
+        if (delta) {
+          responseText += delta;
+        }
+      }
+    });
+
+    try {
+      await this.startTurn({ threadId: normalizedThreadId, prompt: normalizedPrompt, cwd });
+      await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          releaseTurn();
+          reject(new Error("Timed out waiting for Codex assistant reply"));
+        }, REQUEST_TIMEOUT_MS);
+
+        const finish = (error?: Error) => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearTimeout(timer);
+          releaseTurn();
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        };
+
+        const releaseTurn = this.subscribeHiddenThread(normalizedThreadId, (notification: CodexNotification) => {
+          if (notification.method === "turn/completed") {
+            finish();
+            return;
+          }
+          if (notification.method === "turn/error") {
+            const message = asString(asRecord(notification.params)?.error).trim() || "Failed to capture Codex assistant reply";
+            finish(new Error(message));
+          }
+        });
+      });
+      return responseText.trim();
+    } finally {
+      releaseDelta();
+    }
+  }
+
   async startTurn(params: {
     threadId: string;
     prompt: string;
@@ -767,6 +940,9 @@ export class CodexService extends EventEmitter {
     collaborationMode?: string;
     attachments?: CodexAttachment[];
   }): Promise<void> {
+    if (!this.findBindingForThread(params.threadId)) {
+      this.seedBindingFromLegacyThread(params.threadId, params.cwd);
+    }
     if (this.process && !this.hydratedThreadIds.has(params.threadId)) {
       await this.resumeThread(params.threadId);
     }
@@ -786,6 +962,13 @@ export class CodexService extends EventEmitter {
     if (input.length === 0) {
       throw new Error("prompt or image attachment is required");
     }
+    this.upsertBindingForThread(params.threadId, {
+      cwd: params.cwd,
+      model: params.model,
+      reasoningEffort: params.effort ?? null,
+      collaborationMode: params.collaborationMode,
+      status: "starting",
+    });
     const turnParams: Record<string, unknown> = {
       threadId: params.threadId,
       input,
@@ -824,6 +1007,13 @@ export class CodexService extends EventEmitter {
     }
 
     await this.request("turn/start", turnParams);
+    this.upsertBindingForThread(params.threadId, {
+      cwd: params.cwd,
+      model: params.model,
+      reasoningEffort: params.effort ?? null,
+      collaborationMode: params.collaborationMode,
+      status: "running",
+    });
   }
 
   async steerTurn(threadId: string, turnId: string, prompt: string): Promise<void> {

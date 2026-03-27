@@ -2125,8 +2125,18 @@ export function useCodexSession(
     const hasActiveBackgroundWork =
       isStreaming ||
       subagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction");
+    const onResume = () => {
+      void syncCodexThreadRuntime();
+    };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
     if (!hasActiveBackgroundWork || hasBlockingInteraction) {
-      return;
+      return () => {
+        document.removeEventListener("visibilitychange", onResume);
+        window.removeEventListener("focus", onResume);
+        window.removeEventListener("pageshow", onResume);
+      };
     }
     const pollIntervalMs = 1500;
     const timer = window.setInterval(() => {
@@ -2135,6 +2145,9 @@ export function useCodexSession(
 
     return () => {
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
     };
   }, [hasPendingPlanReview, isStreaming, pendingApproval, pendingUserInput, subagents, syncCodexThreadRuntime, thread?.id]);
 

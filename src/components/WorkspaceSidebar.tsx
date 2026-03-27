@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction } from "react";
-import { ChevronDown, ChevronRight, LayoutDashboard, CirclePlay, Zap, Brain, Search, Archive, Pin } from "lucide-react";
+import { ChevronDown, ChevronRight, LayoutDashboard, Rows3, Zap, Brain, Search, Archive, Pin } from "lucide-react";
 
 import type { ProjectListItem } from "@shared/ipc";
 import type { SessionType } from "../types/canvas";
@@ -8,7 +8,7 @@ import { IconButton } from "./IconButton";
 import { NewSessionPicker } from "./NewSessionPicker";
 import { AnthropicLogo, CanvasLogo, OpenAILogo, OpenCodeLogo } from "./ProviderLogos";
 
-type SidebarMode = "projects" | "jobs" | "skills";
+type SidebarMode = "projects" | "kanban" | "skills";
 type ProjectSortMode = "updated" | "recent" | "alpha-asc" | "alpha-desc";
 type SessionSidebarIndicator = "busy" | "awaiting" | "unread" | "none";
 
@@ -254,11 +254,12 @@ export function WorkspaceSidebar({
           </button>
           <button
             type="button"
-            className={sidebarMode === "jobs" ? "active" : ""}
-            onClick={() => setSidebarMode("jobs")}
+            className={sidebarMode === "kanban" ? "active" : ""}
+            onClick={() => setSidebarMode("kanban")}
           >
-            <CirclePlay size={16} aria-hidden="true" />
-            Jobs
+            <Rows3 size={16} aria-hidden="true" />
+            Orxa KanBan
+            <span className="sidebar-mode-warning">Experimental</span>
             {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
           </button>
           <button
@@ -531,7 +532,7 @@ export function WorkspaceSidebar({
       {/* Collapsed icon rail — shown when sidebar is collapsed to 48px */}
       <div className="sidebar-collapsed-rail" aria-hidden="true">
         <LayoutDashboard size={18} />
-        <CirclePlay size={18} />
+        <Rows3 size={18} />
         <Zap size={18} />
         <Search size={18} />
         <Brain size={18} />

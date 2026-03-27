@@ -36,6 +36,8 @@ async function loadBridge() {
   return call?.[1] as {
     app: {
       openExternal: (url: string) => Promise<unknown>;
+      listDiagnostics: (limit?: number) => Promise<unknown>;
+      reportRendererDiagnostic: (input: unknown) => Promise<unknown>;
     };
     opencode: {
       getArtifactRetentionPolicy: () => Promise<unknown>;
@@ -131,6 +133,18 @@ describe("preload browser bridge", () => {
 
     await bridge.app.openExternal("https://example.com");
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.appOpenExternal, "https://example.com");
+  });
+
+  it("wires diagnostics methods to expected IPC channels", async () => {
+    const bridge = await loadBridge();
+    electronMocks.invoke.mockResolvedValue(undefined);
+
+    await bridge.app.listDiagnostics(25);
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.appListDiagnostics, 25);
+
+    const payload = { level: "error", source: "renderer", category: "renderer.error", message: "boom" };
+    await bridge.app.reportRendererDiagnostic(payload);
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.appReportRendererDiagnostic, payload);
   });
 
   it("wires artifact retention methods to expected IPC channels", async () => {
