@@ -301,6 +301,9 @@ function registerIpcHandlers() {
   if (!persistenceService) {
     throw new Error("Persistence service not initialized");
   }
+  if (!diagnosticsService) {
+    throw new Error("Diagnostics service not initialized");
+  }
   if (!providerSessionDirectory) {
     providerSessionDirectory = new ProviderSessionDirectory(persistenceService);
     service.setProviderSessionDirectory(providerSessionDirectory);
@@ -322,7 +325,7 @@ function registerIpcHandlers() {
 
   registerAppHandlers({
     getMainWindow: () => mainWindow,
-    diagnosticsService: diagnosticsService ?? new DiagnosticsService(),
+    diagnosticsService,
   });
 
   registerUpdatesHandlers({
@@ -482,6 +485,8 @@ async function boot() {
     autoUpdaterController?.cleanup();
     browserController?.dispose();
     browserController = null;
+    kanbanService?.destroy();
+    kanbanService = null;
     eventPublisher.flushAll();
     void service.stopLocal();
   });

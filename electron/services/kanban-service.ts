@@ -419,8 +419,15 @@ class TaskWorktreeService {
       mkdirSync(path.dirname(targetPath), { recursive: true });
       try {
         symlinkSync(sourcePath, targetPath, sourceStats.isDirectory() ? "dir" : "file");
-      } catch {
+      } catch (error) {
         rmSync(targetPath, { recursive: true, force: true });
+        try {
+          symlinkSync(sourcePath, targetPath, sourceStats.isDirectory() ? "dir" : "file");
+        } catch (retryError) {
+          throw new Error(
+            `Failed to mirror ignored path "${relativePath}" into worktree: ${sanitizeError(retryError || error)}`,
+          );
+        }
       }
     }
   }
@@ -797,6 +804,10 @@ export class KanbanService extends EventEmitter {
       void this.runSchedulerTick();
     }, 30_000);
     this.schedulerTimer.unref?.();
+  }
+
+  destroy() {
+    clearInterval(this.schedulerTimer);
   }
 
   private migrateLegacyKanbanSchema() {
@@ -1683,6 +1694,7 @@ export class KanbanService extends EventEmitter {
 
   private async refreshTask(task: KanbanTask) {
     try {
+      const previousStatusSummary = task.statusSummary;
       let lastEventSummary = "";
       let latestPreview = task.latestPreview ?? "";
       let latestActivityKind: KanbanTaskActivityKind | undefined = task.latestActivityKind;
@@ -1744,6 +1756,7 @@ export class KanbanService extends EventEmitter {
       task.latestActivityKind = latestActivityKind ?? task.latestActivityKind;
       task.updatedAt = Date.now();
       this.upsertTask(task);
+      this.syncLatestRunForTaskStatus(task, previousStatusSummary);
       const runtime = this.syncRuntimeForTask(task, { lastEventSummary, latestPreview: task.latestPreview, latestActivityKind: task.latestActivityKind });
       this.syncWorktreeForTask(task, { latestPreview: task.latestPreview, latestActivityKind: task.latestActivityKind });
       this.emitEvent({ type: "kanban.runtime", payload: { workspaceDir: task.workspaceDir, runtime } });
@@ -2156,6 +2169,47 @@ export class KanbanService extends EventEmitter {
     };
     this.upsertRun(run);
     return run;
+  }
+
+  private syncLatestRunForTaskStatus(task: KanbanTask, previousStatusSummary?: KanbanTaskStatusSummary) {
+    if (!task.latestRunId) {
+      return;
+    }
+    const wasActive = previousStatusSummary === "starting" || previousStatusSummary === "running";
+    const nextRunStatus = task.statusSummary === "completed"
+      ? "completed"
+      : task.statusSummary === "failed"
+        ? "failed"
+        : task.statusSummary === "stopped"
+          ? "stopped"
+          : null;
+    if (!wasActive || !nextRunStatus) {
+      return;
+    }
+    const run = this.listRunsInternal(task.workspaceDir).find((candidate) => candidate.id === task.latestRunId);
+    if (!run || run.status === nextRunStatus) {
+      return;
+    }
+    const now = Date.now();
+    const message = nextRunStatus === "completed"
+      ? "Task completed"
+      : nextRunStatus === "failed"
+        ? "Task failed"
+        : "Task stopped";
+    this.upsertRun({
+      ...run,
+      status: nextRunStatus,
+      updatedAt: now,
+      completedAt: run.completedAt ?? now,
+      error: nextRunStatus === "failed" ? task.latestPreview ?? run.error : run.error,
+      logs: [...run.logs, {
+        id: randomUUID(),
+        kind: "system",
+        level: nextRunStatus === "failed" ? "error" : "info",
+        message,
+        timestamp: now,
+      }],
+    });
   }
 
   private updateTaskRunBindings(task: KanbanTask, run: KanbanRun) {
@@ -2911,6 +2965,8 @@ export class KanbanService extends EventEmitter {
             schedule: operation.schedule,
             autoStart: operation.autoStart,
           });
+        } else {
+          throw new Error(`Unsupported management operation type: ${(operation as { type?: unknown }).type ?? "unknown"}`);
         }
         applied.push({ index, type: operation.type, ok: true });
       } catch (error) {

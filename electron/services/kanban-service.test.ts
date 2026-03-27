@@ -19,69 +19,73 @@ function createGitWorkspace(prefix: string) {
 }
 
 function createService() {
+  const opencodeService = {
+    getSessionRuntime: vi.fn(async () => ({
+      directory: "/repo",
+      sessionID: "session-1",
+      session: null,
+      sessionStatus: { type: "idle" },
+      permissions: [],
+      questions: [],
+      commands: [],
+      messages: [],
+      sessionDiff: [],
+      executionLedger: { cursor: 0, records: [] },
+      changeProvenance: { cursor: 0, records: [] },
+    })),
+    createSession: vi.fn(async () => ({ id: "session-1" })),
+    sendPrompt: vi.fn(async () => true),
+    abortSession: vi.fn(async () => true),
+    gitDiff: vi.fn(async () => "No local changes."),
+    loadMessages: vi.fn(async () => []),
+    gitCommit: vi.fn(async () => ({
+      repoRoot: "/repo",
+      branch: "main",
+      commitHash: "abc1234",
+      message: "test commit",
+      pushed: false,
+    })),
+    gitBranches: vi.fn(async () => ({ current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 })),
+    gitStatus: vi.fn(async () => ""),
+    gitCheckoutBranch: vi.fn(async () => ({ current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 })),
+  } as const;
+  const codexService = {
+    getThreadRuntime: vi.fn(async () => ({ thread: null, childThreads: [] })),
+    startThread: vi.fn(async () => ({ id: "thread-1" })),
+    startTurn: vi.fn(async () => undefined),
+    interruptThreadTree: vi.fn(async () => undefined),
+  } as const;
+  const claudeChatService = {
+    getState: vi.fn(async () => ({ sessionKey: "claude-1", status: "disconnected" })),
+    startTurn: vi.fn(async () => undefined),
+    interruptTurn: vi.fn(async () => undefined),
+    getSessionMessages: vi.fn(async () => []),
+  } as const;
+  const terminalService = {
+    listPtys: vi.fn(() => []),
+    createPty: vi.fn((_directory: string, cwd?: string, title?: string) => ({
+      id: "pty-1",
+      directory: "/repo",
+      cwd: cwd ?? "/repo",
+      title: title ?? "Kanban",
+      owner: "kanban",
+      status: "running",
+      pid: 123,
+      exitCode: null,
+      createdAt: Date.now(),
+    })),
+    connectPty: vi.fn(async () => ({ ptyID: "pty-1", directory: "/repo", connected: true })),
+    closePty: vi.fn(async () => true),
+  } as const;
   const databasePath = path.join(tmpdir(), `orxa-kanban-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sqlite`);
   const service = new KanbanService({
     databasePath,
-    opencodeService: {
-      getSessionRuntime: vi.fn(async () => ({
-        directory: "/repo",
-        sessionID: "session-1",
-        session: null,
-        sessionStatus: { type: "idle" },
-        permissions: [],
-        questions: [],
-        commands: [],
-        messages: [],
-        sessionDiff: [],
-        executionLedger: { cursor: 0, records: [] },
-        changeProvenance: { cursor: 0, records: [] },
-      })),
-      createSession: vi.fn(async () => ({ id: "session-1" })),
-      sendPrompt: vi.fn(async () => true),
-      abortSession: vi.fn(async () => true),
-      gitDiff: vi.fn(async () => "No local changes."),
-      loadMessages: vi.fn(async () => []),
-      gitCommit: vi.fn(async () => ({
-        repoRoot: "/repo",
-        branch: "main",
-        commitHash: "abc1234",
-        message: "test commit",
-        pushed: false,
-      })),
-      gitBranches: vi.fn(async () => ({ current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 })),
-      gitStatus: vi.fn(async () => ""),
-      gitCheckoutBranch: vi.fn(async () => ({ current: "main", branches: ["main"], hasChanges: false, ahead: 0, behind: 0 })),
-    } as never,
-    codexService: {
-      getThreadRuntime: vi.fn(async () => ({ thread: null, childThreads: [] })),
-      startThread: vi.fn(async () => ({ id: "thread-1" })),
-      startTurn: vi.fn(async () => undefined),
-      interruptThreadTree: vi.fn(async () => undefined),
-    } as never,
-    claudeChatService: {
-      getState: vi.fn(async () => ({ sessionKey: "claude-1", status: "disconnected" })),
-      startTurn: vi.fn(async () => undefined),
-      interruptTurn: vi.fn(async () => undefined),
-      getSessionMessages: vi.fn(async () => []),
-    } as never,
-    terminalService: {
-      listPtys: vi.fn(() => []),
-      createPty: vi.fn((_directory: string, cwd?: string, title?: string) => ({
-        id: "pty-1",
-        directory: "/repo",
-        cwd: cwd ?? "/repo",
-        title: title ?? "Kanban",
-        owner: "kanban",
-        status: "running",
-        pid: 123,
-        exitCode: null,
-        createdAt: Date.now(),
-      })),
-      connectPty: vi.fn(async () => ({ ptyID: "pty-1", directory: "/repo", connected: true })),
-      closePty: vi.fn(async () => true),
-    } as never,
+    opencodeService: opencodeService as never,
+    codexService: codexService as never,
+    claudeChatService: claudeChatService as never,
+    terminalService: terminalService as never,
   });
-  return { service, databasePath };
+  return { service, databasePath, opencodeService, codexService, claudeChatService, terminalService };
 }
 
 afterEach(() => {
@@ -375,6 +379,67 @@ describe("KanbanService", () => {
       expect(readFileSync(path.join(resumed.worktreePath!, "notes.txt"), "utf8")).toBe("untracked\n");
     } finally {
       rmSync(workspaceDir, { recursive: true, force: true });
+      rmSync(databasePath, { force: true });
+    }
+  });
+
+  it("syncs the latest run when a refreshed task completes in the background", async () => {
+    const { service, databasePath, opencodeService } = createService();
+    const workspaceDir = createGitWorkspace("orxa-kanban-run-sync");
+    try {
+      writeFileSync(path.join(workspaceDir, "tracked.txt"), "base\n", "utf8");
+      runGit(workspaceDir, ["add", "tracked.txt"]);
+      runGit(workspaceDir, ["commit", "-m", "Initial commit"]);
+
+      const task = await service.createTask({
+        workspaceDir,
+        title: "Task A",
+        prompt: "Do work",
+        provider: "opencode",
+        baseRef: "main",
+      });
+      const started = await service.startTask(workspaceDir, task.id);
+      const initialRun = await service.getRun(workspaceDir, started.latestRunId!);
+      expect(initialRun?.status).toBe("running");
+
+      opencodeService.getSessionRuntime.mockResolvedValue({
+        directory: started.worktreePath!,
+        sessionID: started.providerThreadId!,
+        session: null,
+        sessionStatus: { type: "complete" },
+        permissions: [],
+        questions: [],
+        commands: [],
+        messages: [{ parts: [{ text: "Finished successfully" }] }] as never[],
+        sessionDiff: [],
+        executionLedger: { cursor: 0, records: [] },
+        changeProvenance: { cursor: 0, records: [] },
+      });
+
+      const board = await service.getBoard(workspaceDir);
+      const completedTask = board.tasks.find((candidate) => candidate.id === task.id);
+      const completedRun = board.runs.find((candidate) => candidate.id === started.latestRunId);
+
+      expect(completedTask?.statusSummary).toBe("completed");
+      expect(completedRun?.status).toBe("completed");
+      expect(completedRun?.logs.at(-1)?.message).toBe("Task completed");
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      rmSync(databasePath, { force: true });
+    }
+  });
+
+  it("marks unknown management operations as failed instead of successful", async () => {
+    const { service, databasePath } = createService();
+    try {
+      const applied = await (service as unknown as {
+        applyManagementOperations: (workspaceDir: string, operations: Array<{ type: string }>) => Promise<Array<{ ok: boolean; error?: string }>>;
+      }).applyManagementOperations("/repo", [{ type: "bogus_operation" }]);
+
+      expect(applied).toHaveLength(1);
+      expect(applied[0]?.ok).toBe(false);
+      expect(applied[0]?.error).toContain("Unsupported management operation type");
+    } finally {
       rmSync(databasePath, { force: true });
     }
   });
