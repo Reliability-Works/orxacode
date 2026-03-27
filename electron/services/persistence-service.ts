@@ -6,6 +6,10 @@ import { app } from "electron";
 const DATABASE_NAME = "orxa-persistence.sqlite";
 const RENDERER_NAMESPACE = "renderer";
 
+export function getPersistenceDatabasePath() {
+  return path.join(app.getPath("userData"), DATABASE_NAME);
+}
+
 export type PersistedValueRow = {
   namespace: string;
   key: string;
@@ -41,7 +45,7 @@ export class PersistenceService {
   private readonly database: PersistenceDatabase;
 
   constructor(databasePath?: string) {
-    const resolvedPath = databasePath ?? path.join(app.getPath("userData"), DATABASE_NAME);
+    const resolvedPath = databasePath ?? getPersistenceDatabasePath();
     mkdirSync(path.dirname(resolvedPath), { recursive: true });
     this.database = createDatabase(resolvedPath);
     this.database.exec(`

@@ -871,8 +871,11 @@ export function buildClaudeChatSessionStatus(sessionKey: string, isActive: boole
   const state = useUnifiedRuntimeStore.getState();
   const session = state.claudeChatSessions[sessionKey];
   const activityAt = session?.messages.at(-1)?.timestamp ?? 0;
+  const hasActiveSubagents = Boolean(
+    session?.subagents.some((agent) => agent.status === "thinking" || agent.status === "awaiting_instruction"),
+  );
   return deriveUnifiedSessionStatus({
-    busy: Boolean(session?.isStreaming || session?.connectionStatus === "connecting"),
+    busy: Boolean(session?.isStreaming || session?.connectionStatus === "connecting" || hasActiveSubagents),
     awaiting: Boolean(session?.pendingApproval || session?.pendingUserInput),
     planReady: false,
     activityAt,

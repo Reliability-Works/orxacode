@@ -1,4 +1,4 @@
-export type OrxaTerminalOwner = "workspace" | "canvas" | "claude";
+export type OrxaTerminalOwner = "workspace" | "canvas" | "claude" | "kanban";
 
 export type OrxaTerminalSession = {
   id: string;

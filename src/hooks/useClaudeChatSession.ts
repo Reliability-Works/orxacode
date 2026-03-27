@@ -301,6 +301,63 @@ export function useClaudeChatSession(directory: string, sessionKey: string) {
     };
   }, []);
 
+  const syncClaudeChatState = useCallback(async () => {
+    if (!window.orxa?.claudeChat) {
+      return;
+    }
+    const state = await window.orxa.claudeChat.getState(sessionKey);
+    setClaudeChatConnectionState(
+      sessionKey,
+      state.status,
+      state.providerThreadId,
+      state.activeTurnId,
+      state.lastError,
+    );
+    if (state.providerThreadId) {
+      const historyMessages = await window.orxa.claudeChat.getSessionMessages(state.providerThreadId, directory).catch(() => []);
+      setClaudeChatHistoryMessages(sessionKey, historyMessages);
+    }
+  }, [directory, sessionKey, setClaudeChatConnectionState, setClaudeChatHistoryMessages]);
+
+  useEffect(() => {
+    void syncClaudeChatState();
+  }, [syncClaudeChatState]);
+
+  useEffect(() => {
+    const hasRecoverableActivity = Boolean(
+      runtime?.providerThreadId
+      || runtime?.isStreaming
+      || runtime?.pendingApproval
+      || runtime?.pendingUserInput
+      || runtime?.subagents.length,
+    );
+    if (!hasRecoverableActivity) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void syncClaudeChatState();
+    }, 2_000);
+    const onResume = () => {
+      void syncClaudeChatState();
+    };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
+    };
+  }, [
+    runtime?.isStreaming,
+    runtime?.pendingApproval,
+    runtime?.pendingUserInput,
+    runtime?.providerThreadId,
+    runtime?.subagents.length,
+    syncClaudeChatState,
+  ]);
+
   useEffect(() => {
     const unsubscribe = window.orxa.events.subscribe((event) => {
       if (event.type === "claude-chat.state" && event.payload.sessionKey === sessionKey) {

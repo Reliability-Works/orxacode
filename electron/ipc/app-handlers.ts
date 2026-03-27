@@ -5,14 +5,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, dialog, ipcMain, shell, type BrowserWindow } from "electron";
 import { IPC } from "../../shared/ipc";
-import type { SkillEntry } from "../../shared/ipc";
+import type { AppDiagnosticInput, SkillEntry } from "../../shared/ipc";
+import type { DiagnosticsService } from "../services/diagnostics-service";
 import { assertExternalUrl, assertString } from "./validators";
 
 type AppHandlersDeps = {
   getMainWindow: () => BrowserWindow | null;
+  diagnosticsService: DiagnosticsService;
 };
 
-export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
+export function registerAppHandlers({ getMainWindow, diagnosticsService }: AppHandlersDeps) {
   ipcMain.handle(IPC.appOpenExternal, async (_event, url: unknown) => {
     await shell.openExternal(assertExternalUrl(url));
     return true;
@@ -215,6 +217,24 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
     return skills.sort((left, right) => left.name.localeCompare(right.name));
   });
 
+  ipcMain.handle(IPC.appListDiagnostics, async (_event, limit?: unknown) => {
+    return diagnosticsService.list(typeof limit === "number" ? limit : undefined);
+  });
+
+  ipcMain.handle(IPC.appReportRendererDiagnostic, async (_event, input: unknown) => {
+    if (!input || typeof input !== "object") {
+      throw new Error("diagnostic input is required");
+    }
+    const candidate = input as Record<string, unknown>;
+    return diagnosticsService.record({
+      level: assertString(candidate.level, "level") as AppDiagnosticInput["level"],
+      source: assertString(candidate.source, "source") as AppDiagnosticInput["source"],
+      category: assertString(candidate.category, "category"),
+      message: assertString(candidate.message, "message"),
+      details: typeof candidate.details === "string" ? candidate.details : undefined,
+    });
+  });
+
   ipcMain.handle(IPC.appSetWindowVibrancy, async (_event, vibrancy: unknown) => {
     const win = getMainWindow();
     if (!win) return;
@@ -231,13 +251,61 @@ export function registerAppHandlers({ getMainWindow }: AppHandlersDeps) {
 
   ipcMain.handle(IPC.appRunAgentCli, async (_event, options: unknown) => {
     if (!options || typeof options !== "object") throw new Error("options is required");
-    const { agent, prompt, cwd } = options as { agent?: string; prompt?: string; cwd?: string };
+    const {
+      agent,
+      prompt,
+      cwd,
+      model,
+      opencodeAgent,
+      variant,
+      effort,
+      permissionMode,
+    } = options as {
+      agent?: string;
+      prompt?: string;
+      cwd?: string;
+      model?: string;
+      opencodeAgent?: string;
+      variant?: string;
+      effort?: string;
+      permissionMode?: string;
+    };
     if (!agent || !prompt || !cwd) throw new Error("agent, prompt, and cwd are required");
 
     const AGENT_COMMANDS: Record<string, { bin: string; args: (p: string) => string[] }> = {
-      opencode: { bin: "opencode", args: (p) => ["run", p] },
-      codex: { bin: "codex", args: (p) => ["exec", p] },
-      claude: { bin: "claude", args: (p) => ["-p", p] },
+      opencode: {
+        bin: "opencode",
+        args: (p) => [
+          "run",
+          ...(model ? ["--model", model] : []),
+          ...(opencodeAgent ? ["--agent", opencodeAgent] : []),
+          ...(variant ? ["--variant", variant] : []),
+          "--format",
+          "default",
+          p,
+        ],
+      },
+      codex: {
+        bin: "codex",
+        args: (p) => [
+          "exec",
+          ...(model ? ["--model", model] : []),
+          ...(effort ? ["-c", `model_reasoning_effort=${effort}`] : []),
+          p,
+        ],
+      },
+      claude: {
+        bin: "claude",
+        args: (p) => [
+          "-p",
+          ...(model ? ["--model", model] : []),
+          ...(effort ? ["--effort", effort] : []),
+          ...(permissionMode ? ["--permission-mode", permissionMode] : []),
+          "--setting-sources",
+          "user,project,local",
+          p,
+        ],
+      },
     };
 
     const config = AGENT_COMMANDS[agent];

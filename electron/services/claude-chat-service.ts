@@ -487,6 +487,7 @@ export class ClaudeChatService extends EventEmitter {
         ...(options?.model ? { model: options.model } : {}),
       },
     });
+    const shouldInterceptToolPermissions = permissionMode === "default";
     const queryOptions: ClaudeQueryOptions = {
       cwd: directory,
       model: options?.model,
@@ -508,41 +509,45 @@ export class ClaudeChatService extends EventEmitter {
           }
         : {}),
       ...(resumeSessionId ? { resume: resumeSessionId } : { sessionId: providerSessionId }),
-      canUseTool: async (
-        toolName: string,
-        toolInput: Record<string, unknown>,
-        callbackOptions: Parameters<NonNullable<ClaudeQueryOptions["canUseTool"]>>[2],
-      ) => {
-        const requestId = randomUUID();
-        return await new Promise<PermissionResult>((resolve) => {
-          this.pendingApprovals.set(requestId, {
-            sessionKey,
-            turnId,
-            itemId: callbackOptions.toolUseID,
-            toolName,
-            resolve,
-          });
-          const rawCommand = toolInput.command ?? toolInput.cmd;
-          const command =
-            typeof rawCommand === "string"
-              ? rawCommand
-              : Array.isArray(rawCommand)
-                ? rawCommand.map((entry) => String(entry)).join(" ")
-                : undefined;
-          const payload: ClaudeChatApprovalRequest = {
-            id: requestId,
-            sessionKey,
-            threadId: sessionKey,
-            turnId,
-            itemId: callbackOptions.toolUseID,
-            toolName,
-            reason: command ? `${toolName}: ${command}` : toolName,
-            command,
-            availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
-          };
-          this.emit("approval", payload);
-        });
-      },
+      ...(shouldInterceptToolPermissions
+        ? {
+            canUseTool: async (
+              toolName: string,
+              toolInput: Record<string, unknown>,
+              callbackOptions: Parameters<NonNullable<ClaudeQueryOptions["canUseTool"]>>[2],
+            ) => {
+              const requestId = randomUUID();
+              return await new Promise<PermissionResult>((resolve) => {
+                this.pendingApprovals.set(requestId, {
+                  sessionKey,
+                  turnId,
+                  itemId: callbackOptions.toolUseID,
+                  toolName,
+                  resolve,
+                });
+                const rawCommand = toolInput.command ?? toolInput.cmd;
+                const command =
+                  typeof rawCommand === "string"
+                    ? rawCommand
+                    : Array.isArray(rawCommand)
+                      ? rawCommand.map((entry) => String(entry)).join(" ")
+                      : undefined;
+                const payload: ClaudeChatApprovalRequest = {
+                  id: requestId,
+                  sessionKey,
+                  threadId: sessionKey,
+                  turnId,
+                  itemId: callbackOptions.toolUseID,
+                  toolName,
+                  reason: command ? `${toolName}: ${command}` : toolName,
+                  command,
+                  availableDecisions: ["accept", "acceptForSession", "decline", "cancel"],
+                };
+                this.emit("approval", payload);
+              });
+            },
+          }
+        : {}),
       onElicitation,
     };
 

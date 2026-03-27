@@ -37,10 +37,19 @@ export function OpencodeBackgroundSessionManager({ directory, sessionID }: Props
     const timer = window.setInterval(() => {
       void sync();
     }, OPENCODE_BACKGROUND_POLL_MS);
+    const onResume = () => {
+      void sync();
+    };
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("focus", onResume);
+    window.addEventListener("pageshow", onResume);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("focus", onResume);
+      window.removeEventListener("pageshow", onResume);
     };
   }, [directory, sessionID, setOpencodeRuntimeSnapshot]);
 

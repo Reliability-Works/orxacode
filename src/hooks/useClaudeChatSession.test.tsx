@@ -98,6 +98,32 @@ describe("useClaudeChatSession", () => {
     });
   });
 
+  it("reconciles provider state and history on mount", async () => {
+    vi.mocked(window.orxa!.claudeChat.getState).mockResolvedValue({
+      sessionKey: SESSION_KEY,
+      status: "connected",
+      providerThreadId: "claude-thread-1",
+      activeTurnId: "turn-1",
+    });
+    vi.mocked(window.orxa!.claudeChat.getSessionMessages).mockResolvedValue([
+      {
+        id: "history-1",
+        role: "assistant",
+        content: "Recovered history",
+        timestamp: 1,
+        sessionId: "claude-thread-1",
+      },
+    ]);
+
+    const { result } = renderHook(() => useClaudeChatSession("/workspace", SESSION_KEY));
+
+    await waitFor(() => {
+      expect(result.current.providerThreadId).toBe("claude-thread-1");
+    });
+    expect(window.orxa!.claudeChat.getSessionMessages).toHaveBeenCalledWith("claude-thread-1", "/workspace");
+    expect(useUnifiedRuntimeStore.getState().claudeChatSessions[SESSION_KEY]?.historyMessages).toHaveLength(1);
+  });
+
   it("ignores legacy persisted Claude provider ids and sends turns without renderer-managed resume metadata", async () => {
     window.localStorage.setItem(
       `orxa:claudeChatSession:v1:${SESSION_KEY}`,
