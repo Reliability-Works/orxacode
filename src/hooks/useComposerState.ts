@@ -277,6 +277,7 @@ export function useComposerState(activeProjectDir: string | null, activeSessionI
 
       options.clearPendingSession();
       options.setStatusLine(shouldAutoTitle ? "Prompt sent and session titled" : "Prompt sent");
+      options.startResponsePolling(activeProjectDir, activeSessionID);
       void options.refreshMessages();
       if (shouldAutoTitle) {
         void options.refreshProject(activeProjectDir).catch(() => undefined);

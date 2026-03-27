@@ -168,4 +168,45 @@ describe("useComposerState", () => {
     expect(refreshProjectMock).toHaveBeenCalledWith("/repo");
     expect(sendPromptMock).toHaveBeenCalled();
   });
+
+  it("starts response polling after sending an OpenCode prompt", async () => {
+    const sendPromptMock = vi.fn(async () => true);
+    const startResponsePolling = vi.fn();
+    Object.defineProperty(window, "orxa", {
+      configurable: true,
+      value: {
+        opencode: {
+          sendPrompt: sendPromptMock,
+          renameSession: vi.fn(async () => true),
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useComposerState("/repo", "session-1", {
+        availableSlashCommands: [],
+        refreshMessages: vi.fn(async () => undefined),
+        refreshProject: vi.fn(async () => undefined),
+        sessions: [{ id: "session-1", title: "Session 1" }],
+        selectedAgent: undefined,
+        availableAgentNames: new Set(),
+        setStatusLine: vi.fn(),
+        shouldAutoRenameSessionTitle: vi.fn(() => false),
+        deriveSessionTitleFromPrompt: vi.fn((prompt: string) => prompt),
+        startResponsePolling,
+        stopResponsePolling: vi.fn(),
+        clearPendingSession: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.setComposer("hello");
+    });
+
+    await act(async () => {
+      await result.current.sendPrompt();
+    });
+
+    expect(startResponsePolling).toHaveBeenCalledWith("/repo", "session-1");
+  });
 });
