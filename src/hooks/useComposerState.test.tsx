@@ -172,6 +172,7 @@ describe("useComposerState", () => {
   it("starts response polling after sending an OpenCode prompt", async () => {
     const sendPromptMock = vi.fn(async () => true);
     const startResponsePolling = vi.fn();
+    const onPromptAccepted = vi.fn();
     Object.defineProperty(window, "orxa", {
       configurable: true,
       value: {
@@ -196,6 +197,7 @@ describe("useComposerState", () => {
         startResponsePolling,
         stopResponsePolling: vi.fn(),
         clearPendingSession: vi.fn(),
+        onPromptAccepted,
       }),
     );
 
@@ -208,5 +210,11 @@ describe("useComposerState", () => {
     });
 
     expect(startResponsePolling).toHaveBeenCalledWith("/repo", "session-1");
+    expect(onPromptAccepted).toHaveBeenCalledWith({
+      directory: "/repo",
+      sessionID: "session-1",
+      text: "hello",
+      promptSource: "user",
+    });
   });
 });

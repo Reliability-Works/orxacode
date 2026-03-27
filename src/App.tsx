@@ -196,6 +196,10 @@ const INITIAL_RUNTIME: RuntimeState = {
 };
 
 type OpenTarget = "cursor" | "antigravity" | "finder" | "terminal" | "ghostty" | "xcode" | "zed";
+type OptimisticOpencodePrompt = {
+  text: string;
+  timestamp: number;
+};
 
 const DEFAULT_COMMIT_GUIDANCE_PROMPT = [
   "Write a high-quality conventional commit message.",
@@ -1113,6 +1117,7 @@ export default function App() {
   const canShowIntegratedTerminal = activeSessionType !== "claude" && activeSessionType !== "canvas";
   const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null);
   const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null);
+  const [optimisticOpencodePrompts, setOptimisticOpencodePrompts] = useState<Record<string, OptimisticOpencodePrompt>>({});
   const [codexUsageLoading, setCodexUsageLoading] = useState(false);
   const [claudeUsageLoading, setClaudeUsageLoading] = useState(false);
   const refreshCodexUsage = useCallback(async () => {
@@ -1148,6 +1153,10 @@ export default function App() {
   }, [activeProjectDir, activeSessionID]);
   const activeClaudeSessionState =
     activeSessionType === "claude" && activeSessionKey ? claudeSessionStateMap[activeSessionKey] : undefined;
+  const activeOptimisticOpencodePrompt = useMemo(
+    () => (activeSessionType === "standalone" && activeSessionKey ? optimisticOpencodePrompts[activeSessionKey] ?? null : null),
+    [activeSessionKey, activeSessionType, optimisticOpencodePrompts],
+  );
   const browserModeEnabled = activeSessionKey ? browserModeBySession[activeSessionKey] === true : false;
   const browserAutomationHalted = activeSessionKey
     ? typeof browserAutomationHaltedBySession[activeSessionKey] === "number"
@@ -1732,6 +1741,19 @@ export default function App() {
     stopResponsePolling,
     clearPendingSession,
     onSessionAbortRequested: markSessionAbortRequested,
+    onPromptAccepted: ({ directory, sessionID, text, promptSource }) => {
+      if (promptSource !== "user") {
+        return;
+      }
+      const sessionKey = `${directory}::${sessionID}`;
+      setOptimisticOpencodePrompts((current) => ({
+        ...current,
+        [sessionKey]: {
+          text,
+          timestamp: Date.now(),
+        },
+      }));
+    },
   });
 
   useEffect(() => {
@@ -1951,6 +1973,20 @@ export default function App() {
     // refreshMessages() will update with fresh server data in the background.
     void refreshMessages();
   }, [activeProjectDir, activeSessionID, refreshMessages, setMessages]);
+
+  useEffect(() => {
+    if (!activeSessionKey || !activeOptimisticOpencodePrompt || messages.length === 0) {
+      return;
+    }
+    setOptimisticOpencodePrompts((current) => {
+      if (!(activeSessionKey in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[activeSessionKey];
+      return next;
+    });
+  }, [activeOptimisticOpencodePrompt, activeSessionKey, messages.length]);
 
   const latestMessageProvenanceMarker = useMemo(() => {
     const latestMessage = messages[messages.length - 1];
@@ -3090,19 +3126,49 @@ export default function App() {
   const isActiveSessionPinned = Boolean(
     activeProjectDir && activeSessionID && (pinnedSessions[activeProjectDir] ?? []).includes(activeSessionID),
   );
-  const activeTodoPresentation = useMemo(() => selectActiveTaskListPresentation({
+  const activeTodoPresentation = selectActiveTaskListPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, normalizePresentationProvider]);
-  const activeSessionPresentation = useMemo(() => selectSessionPresentation({
+  });
+  const activeSessionPresentation = selectSessionPresentation({
     provider: normalizePresentationProvider(activeSessionType),
     directory: activeProjectDir,
     sessionID: activeSessionID,
     sessionKey: activeSessionKey ?? undefined,
     assistantLabel,
-  }), [activeSessionType, activeProjectDir, activeSessionID, activeSessionKey, assistantLabel, normalizePresentationProvider]);
+  });
+  const feedMessages = useMemo<SessionMessageBundle[]>(() => {
+    if (!activeOptimisticOpencodePrompt || !activeSessionID || messages.length > 0) {
+      return messages;
+    }
+    return [
+      {
+        info: ({
+          id: `optimistic-user:${activeSessionID}`,
+          role: "user",
+          sessionID: activeSessionID,
+          time: {
+            created: activeOptimisticOpencodePrompt.timestamp,
+            updated: activeOptimisticOpencodePrompt.timestamp,
+          },
+        } as unknown) as SessionMessageBundle["info"],
+        parts: [
+          {
+            id: `optimistic-user-part:${activeSessionID}`,
+            type: "text",
+            sessionID: activeSessionID,
+            messageID: `optimistic-user:${activeSessionID}`,
+            text: activeOptimisticOpencodePrompt.text,
+          },
+        ] as SessionMessageBundle["parts"],
+      },
+    ];
+  }, [activeOptimisticOpencodePrompt, activeSessionID, messages]);
+  const feedPresentation = activeOptimisticOpencodePrompt && messages.length === 0
+    ? null
+    : activeSessionPresentation;
   const activeReviewChangesFiles = useMemo(
     () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
     [activeSessionPresentation],
@@ -4529,10 +4595,11 @@ export default function App() {
               ) : (
                 <>
                   <MessageFeed
-                    messages={messages}
-                    presentation={activeSessionPresentation}
+                    messages={feedMessages}
+                    presentation={feedPresentation}
                     sessionNotices={activeSessionNotices}
                     showAssistantPlaceholder={isSessionInProgress}
+                    optimisticUserPrompt={activeOptimisticOpencodePrompt}
                     assistantLabel={assistantLabel}
                     workspaceDirectory={activeProjectDir ?? null}
                     bottomClearance={messageFeedBottomClearance}

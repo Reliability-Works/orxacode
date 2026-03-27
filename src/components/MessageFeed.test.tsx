@@ -1909,6 +1909,20 @@ describe("MessageFeed", () => {
     expect(screen.getByText("Assistant")).toBeInTheDocument();
   });
 
+  it("renders an optimistic first user prompt while the assistant placeholder is active", () => {
+    render(
+      <MessageFeed
+        messages={[]}
+        optimisticUserPrompt={{ text: "hi", timestamp: Date.now() }}
+        showAssistantPlaceholder
+      />,
+    );
+
+    expect(screen.queryByText(/No messages yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.getByText("Thinking...")).toBeInTheDocument();
+  });
+
   it("renders expandable thinking details when the presentation includes reasoning content", () => {
     const messages: SessionMessageBundle[] = [
       {
