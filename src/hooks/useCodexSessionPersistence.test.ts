@@ -1,17 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hydratePersistedCodexSession } from "./useCodexSessionPersistence";
-import { resetPersistedCodexStateForTests } from "./codex-session-storage";
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { hydratePersistedCodexSession } from './useCodexSessionPersistence'
+import { resetPersistedCodexStateForTests } from './codex-session-storage'
 
-describe("hydratePersistedCodexSession", () => {
+describe('hydratePersistedCodexSession', () => {
   beforeEach(() => {
-    window.localStorage.clear();
-    resetPersistedCodexStateForTests();
-  });
+    window.localStorage.clear()
+    resetPersistedCodexStateForTests()
+  })
 
-  it("infers a minimal Codex thread from the session key when persisted thread metadata is missing", () => {
-    const setThreadState = vi.fn();
+  it('infers a minimal Codex thread from the session key when persisted thread metadata is missing', () => {
+    const setThreadState = vi.fn()
 
-    hydratePersistedCodexSession("codex::/workspace::thread-123", {
+    hydratePersistedCodexSession('codex::/workspace::thread-123', {
       setMessagesState: vi.fn(),
       setThreadState,
       setStreamingState: vi.fn(),
@@ -22,14 +22,14 @@ describe("hydratePersistedCodexSession", () => {
       setPlanItemsState: vi.fn(),
       setThreadNameState: vi.fn(),
       resetRefs: vi.fn(),
-    });
+    })
 
     expect(setThreadState).toHaveBeenCalledWith({
-      id: "thread-123",
-      preview: "",
-      modelProvider: "",
+      id: 'thread-123',
+      preview: '',
+      modelProvider: '',
       createdAt: 0,
       ephemeral: true,
-    });
-  });
-});
+    })
+  })
+})

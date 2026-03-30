@@ -1,11 +1,11 @@
-import { useClaudeChatSession } from "../hooks/useClaudeChatSession";
+import { useClaudeChatSession } from '../hooks/useClaudeChatSession'
 
 type Props = {
-  directory: string;
-  sessionStorageKey: string;
-};
+  directory: string
+  sessionStorageKey: string
+}
 
 export function ClaudeChatBackgroundSessionManager({ directory, sessionStorageKey }: Props) {
-  useClaudeChatSession(directory, sessionStorageKey);
-  return null;
+  useClaudeChatSession(directory, sessionStorageKey)
+  return null
 }

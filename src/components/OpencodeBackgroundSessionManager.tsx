@@ -1,57 +1,59 @@
-import { useEffect } from "react";
-import { normalizeMessageBundles } from "../lib/opencode-event-reducer";
-import { useUnifiedRuntimeStore } from "../state/unified-runtime-store";
+import { useEffect } from 'react'
+import { normalizeMessageBundles } from '../lib/opencode-event-reducer'
+import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
 
 type Props = {
-  directory: string;
-  sessionID: string;
-};
+  directory: string
+  sessionID: string
+}
 
-const OPENCODE_BACKGROUND_POLL_MS = 1500;
+const OPENCODE_BACKGROUND_POLL_MS = 1500
 
 export function OpencodeBackgroundSessionManager({ directory, sessionID }: Props) {
-  const setOpencodeRuntimeSnapshot = useUnifiedRuntimeStore((state) => state.setOpencodeRuntimeSnapshot);
+  const setOpencodeRuntimeSnapshot = useUnifiedRuntimeStore(
+    state => state.setOpencodeRuntimeSnapshot
+  )
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
 
     const sync = async () => {
       if (!window.orxa?.opencode) {
-        return;
+        return
       }
       try {
-        const runtime = await window.orxa.opencode.getSessionRuntime(directory, sessionID);
+        const runtime = await window.orxa.opencode.getSessionRuntime(directory, sessionID)
         if (cancelled) {
-          return;
+          return
         }
         setOpencodeRuntimeSnapshot(directory, sessionID, {
           ...runtime,
           messages: normalizeMessageBundles(runtime.messages),
-        });
+        })
       } catch {
         // Background supervision is best-effort only.
       }
-    };
+    }
 
-    void sync();
+    void sync()
     const timer = window.setInterval(() => {
-      void sync();
-    }, OPENCODE_BACKGROUND_POLL_MS);
+      void sync()
+    }, OPENCODE_BACKGROUND_POLL_MS)
     const onResume = () => {
-      void sync();
-    };
-    document.addEventListener("visibilitychange", onResume);
-    window.addEventListener("focus", onResume);
-    window.addEventListener("pageshow", onResume);
+      void sync()
+    }
+    document.addEventListener('visibilitychange', onResume)
+    window.addEventListener('focus', onResume)
+    window.addEventListener('pageshow', onResume)
 
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onResume);
-      window.removeEventListener("focus", onResume);
-      window.removeEventListener("pageshow", onResume);
-    };
-  }, [directory, sessionID, setOpencodeRuntimeSnapshot]);
+      cancelled = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onResume)
+      window.removeEventListener('focus', onResume)
+      window.removeEventListener('pageshow', onResume)
+    }
+  }, [directory, sessionID, setOpencodeRuntimeSnapshot])
 
-  return null;
+  return null
 }

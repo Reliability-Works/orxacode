@@ -93,7 +93,7 @@
 
 .dashboard-action-primary {
   background: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -116,7 +116,9 @@
   padding: 8px 16px;
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
 }
 
 .dashboard-action-secondary:hover {
@@ -440,7 +442,7 @@
   margin: 8px 0 0;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: #0C0C0C;
+  background: #0c0c0c;
   color: var(--text-primary);
   padding: 10px;
   font-family: var(--font-mono);
@@ -574,8 +576,6 @@
     align-items: flex-start;
     flex-wrap: wrap;
   }
-
-
 }
 
 @container (max-width: 520px) {
@@ -755,8 +755,14 @@
 
 /* Flash animation when scrolling to a matched message */
 @keyframes search-highlight-pulse {
-  0% { outline: 2px solid var(--accent-green); outline-offset: 4px; }
-  100% { outline: 2px solid transparent; outline-offset: 4px; }
+  0% {
+    outline: 2px solid var(--accent-green);
+    outline-offset: 4px;
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 4px;
+  }
 }
 
 .search-highlight-flash {

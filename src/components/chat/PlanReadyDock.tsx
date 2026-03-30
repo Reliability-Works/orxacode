@@ -1,15 +1,15 @@
-import { useState } from "react";
-import { DockSurface } from "./DockSurface";
-import { CheckCircle, Edit3 } from "lucide-react";
+import { useState } from 'react'
+import { DockSurface } from './DockSurface'
+import { CheckCircle, Edit3 } from 'lucide-react'
 
 export interface PlanReadyDockProps {
-  onAccept: () => void;
-  onSubmitChanges: (changes: string) => void;
+  onAccept: () => void
+  onSubmitChanges: (changes: string) => void
 }
 
 export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps) {
-  const [changes, setChanges] = useState("");
-  const [showTextarea, setShowTextarea] = useState(false);
+  const [changes, setChanges] = useState('')
+  const [showTextarea, setShowTextarea] = useState(false)
 
   const footer = (
     <div className="plan-ready-dock-footer">
@@ -18,7 +18,10 @@ export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps)
           <button
             type="button"
             className="plan-ready-dock-cancel"
-            onClick={() => { setShowTextarea(false); setChanges(""); }}
+            onClick={() => {
+              setShowTextarea(false)
+              setChanges('')
+            }}
           >
             Cancel
           </button>
@@ -28,9 +31,9 @@ export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps)
             disabled={!changes.trim()}
             onClick={() => {
               if (changes.trim()) {
-                onSubmitChanges(changes.trim());
-                setChanges("");
-                setShowTextarea(false);
+                onSubmitChanges(changes.trim())
+                setChanges('')
+                setShowTextarea(false)
               }
             }}
           >
@@ -47,18 +50,14 @@ export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps)
             <Edit3 size={13} aria-hidden="true" />
             Modify plan
           </button>
-          <button
-            type="button"
-            className="plan-ready-dock-accept"
-            onClick={onAccept}
-          >
+          <button type="button" className="plan-ready-dock-accept" onClick={onAccept}>
             <CheckCircle size={13} aria-hidden="true" />
             Implement this plan
           </button>
         </>
       )}
     </div>
-  );
+  )
 
   return (
     <DockSurface title="Plan ready" footer={footer}>
@@ -69,7 +68,7 @@ export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps)
             <textarea
               className="plan-ready-dock-textarea"
               value={changes}
-              onChange={(e) => setChanges(e.target.value)}
+              onChange={e => setChanges(e.target.value)}
               placeholder="e.g. add authentication, remove the caching step..."
               rows={3}
               autoFocus
@@ -82,5 +81,5 @@ export function PlanReadyDock({ onAccept, onSubmitChanges }: PlanReadyDockProps)
         )}
       </div>
     </DockSurface>
-  );
+  )
 }

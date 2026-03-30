@@ -1,11 +1,21 @@
-import type { BrowserAgentActionResult, BrowserHistoryItem, BrowserState } from "./browser";
-import type { ClaudeChatApprovalRequest, ClaudeChatNotification, ClaudeChatState, ClaudeChatUserInputRequest } from "./claude-chat";
-import type { CodexApprovalRequest, CodexNotification, CodexState, CodexUserInputRequest } from "./codex";
-import type { ContextSelectionTrace, ArtifactRecord } from "./artifacts";
-import type { McpDevToolsServerStatus } from "./mcp-devtools";
-import type { RuntimeState } from "./runtime";
-import type { UpdateReleaseChannel } from "./updates";
-import type { AppDiagnosticEntry } from "./app";
+import type { BrowserAgentActionResult, BrowserHistoryItem, BrowserState } from './browser'
+import type {
+  ClaudeChatApprovalRequest,
+  ClaudeChatNotification,
+  ClaudeChatState,
+  ClaudeChatUserInputRequest,
+} from './claude-chat'
+import type {
+  CodexApprovalRequest,
+  CodexNotification,
+  CodexState,
+  CodexUserInputRequest,
+} from './codex'
+import type { ContextSelectionTrace, ArtifactRecord } from './artifacts'
+import type { McpDevToolsServerStatus } from './mcp-devtools'
+import type { RuntimeState } from './runtime'
+import type { UpdateReleaseChannel } from './updates'
+import type { AppDiagnosticEntry } from './app'
 import type {
   KanbanBoardSnapshot,
   KanbanManagementSession,
@@ -17,209 +27,209 @@ import type {
   KanbanTaskRuntime,
   KanbanWorktree,
   KanbanWorktreeStatusDetail,
-} from "./kanban";
-import type { Event as OpencodeEvent } from "@opencode-ai/sdk/v2/client";
+} from './kanban'
+import type { Event as OpencodeEvent } from '@opencode-ai/sdk/v2/client'
 
-type StreamEventSummary = OpencodeEvent;
+type StreamEventSummary = OpencodeEvent
 
 export type OrxaEvent =
   | {
-      type: "runtime.status";
-      payload: RuntimeState;
+      type: 'runtime.status'
+      payload: RuntimeState
     }
   | {
-      type: "runtime.error";
+      type: 'runtime.error'
       payload: {
-        message: string;
-      };
+        message: string
+      }
     }
   | {
-      type: "app.diagnostic";
-      payload: AppDiagnosticEntry;
+      type: 'app.diagnostic'
+      payload: AppDiagnosticEntry
     }
   | {
-      type: "opencode.global";
+      type: 'opencode.global'
       payload: {
-        directory?: string;
-        event: StreamEventSummary;
-      };
+        directory?: string
+        event: StreamEventSummary
+      }
     }
   | {
-      type: "opencode.project";
+      type: 'opencode.project'
       payload: {
-        directory: string;
-        event: StreamEventSummary;
-      };
+        directory: string
+        event: StreamEventSummary
+      }
     }
   | {
-      type: "pty.output";
+      type: 'pty.output'
       payload: {
-        ptyID: string;
-        directory: string;
-        chunk: string;
-      };
+        ptyID: string
+        directory: string
+        chunk: string
+      }
     }
   | {
-      type: "pty.closed";
+      type: 'pty.closed'
       payload: {
-        ptyID: string;
-        directory: string;
-      };
+        ptyID: string
+        directory: string
+      }
     }
   | {
-      type: "updater.telemetry";
+      type: 'updater.telemetry'
       payload: {
         phase:
-          | "check.start"
-          | "check.success"
-          | "check.error"
-          | "update.available"
-          | "download.start"
-          | "download.progress"
-          | "download.complete"
-          | "install.start";
-        manual: boolean;
-        releaseChannel: UpdateReleaseChannel;
-        durationMs?: number;
-        percent?: number;
-        message?: string;
-        version?: string;
-      };
+          | 'check.start'
+          | 'check.success'
+          | 'check.error'
+          | 'update.available'
+          | 'download.start'
+          | 'download.progress'
+          | 'download.complete'
+          | 'install.start'
+        manual: boolean
+        releaseChannel: UpdateReleaseChannel
+        durationMs?: number
+        percent?: number
+        message?: string
+        version?: string
+      }
     }
   | {
-      type: "browser.state";
-      payload: BrowserState;
+      type: 'browser.state'
+      payload: BrowserState
     }
   | {
-      type: "browser.history.added";
-      payload: BrowserHistoryItem;
+      type: 'browser.history.added'
+      payload: BrowserHistoryItem
     }
   | {
-      type: "browser.history.cleared";
+      type: 'browser.history.cleared'
       payload: {
-        count: number;
-      };
+        count: number
+      }
     }
   | {
-      type: "browser.agent.action";
-      payload: BrowserAgentActionResult;
+      type: 'browser.agent.action'
+      payload: BrowserAgentActionResult
     }
   | {
-      type: "browser.inspect.annotation";
+      type: 'browser.inspect.annotation'
       payload: {
-        element: string;
-        selector: string;
-        boundingBox?: { x: number; y: number; width: number; height: number };
-        computedStyles?: string;
-      };
+        element: string
+        selector: string
+        boundingBox?: { x: number; y: number; width: number; height: number }
+        computedStyles?: string
+      }
     }
   | {
-      type: "artifact.created";
-      payload: ArtifactRecord;
+      type: 'artifact.created'
+      payload: ArtifactRecord
     }
   | {
-      type: "context.selection";
-      payload: ContextSelectionTrace;
+      type: 'context.selection'
+      payload: ContextSelectionTrace
     }
   | {
-      type: "mcp.devtools.status";
-      payload: McpDevToolsServerStatus;
+      type: 'mcp.devtools.status'
+      payload: McpDevToolsServerStatus
     }
   | {
-      type: "codex.state";
-      payload: CodexState;
+      type: 'codex.state'
+      payload: CodexState
     }
   | {
-      type: "codex.notification";
-      payload: CodexNotification;
+      type: 'codex.notification'
+      payload: CodexNotification
     }
   | {
-      type: "codex.approval";
-      payload: CodexApprovalRequest;
+      type: 'codex.approval'
+      payload: CodexApprovalRequest
     }
   | {
-      type: "codex.userInput";
-      payload: CodexUserInputRequest;
+      type: 'codex.userInput'
+      payload: CodexUserInputRequest
     }
   | {
-      type: "claude-chat.state";
-      payload: ClaudeChatState;
+      type: 'claude-chat.state'
+      payload: ClaudeChatState
     }
   | {
-      type: "claude-chat.notification";
-      payload: ClaudeChatNotification;
+      type: 'claude-chat.notification'
+      payload: ClaudeChatNotification
     }
   | {
-      type: "claude-chat.approval";
-      payload: ClaudeChatApprovalRequest;
+      type: 'claude-chat.approval'
+      payload: ClaudeChatApprovalRequest
     }
   | {
-      type: "claude-chat.userInput";
-      payload: ClaudeChatUserInputRequest;
+      type: 'claude-chat.userInput'
+      payload: ClaudeChatUserInputRequest
     }
   | {
-      type: "kanban.board";
+      type: 'kanban.board'
       payload: {
-        workspaceDir: string;
-        snapshot: KanbanBoardSnapshot;
-      };
+        workspaceDir: string
+        snapshot: KanbanBoardSnapshot
+      }
     }
   | {
-      type: "kanban.task";
+      type: 'kanban.task'
       payload: {
-        workspaceDir: string;
-        task: KanbanTask;
-      };
+        workspaceDir: string
+        task: KanbanTask
+      }
     }
   | {
-      type: "kanban.run";
+      type: 'kanban.run'
       payload: {
-        workspaceDir: string;
-        run: KanbanRun;
-      };
+        workspaceDir: string
+        run: KanbanRun
+      }
     }
   | {
-      type: "kanban.taskDetail";
+      type: 'kanban.taskDetail'
       payload: {
-        workspaceDir: string;
-        detail: KanbanTaskDetail;
-      };
+        workspaceDir: string
+        detail: KanbanTaskDetail
+      }
     }
   | {
-      type: "kanban.runtime";
+      type: 'kanban.runtime'
       payload: {
-        workspaceDir: string;
-        runtime: KanbanTaskRuntime;
-      };
+        workspaceDir: string
+        runtime: KanbanTaskRuntime
+      }
     }
   | {
-      type: "kanban.worktree";
+      type: 'kanban.worktree'
       payload: {
-        workspaceDir: string;
-        worktree: KanbanWorktree;
-        detail?: KanbanWorktreeStatusDetail;
-      };
+        workspaceDir: string
+        worktree: KanbanWorktree
+        detail?: KanbanWorktreeStatusDetail
+      }
     }
   | {
-      type: "kanban.checkpoint";
+      type: 'kanban.checkpoint'
       payload: {
-        workspaceDir: string;
-        taskId: string;
-        checkpoint: KanbanTaskCheckpoint;
-      };
+        workspaceDir: string
+        taskId: string
+        checkpoint: KanbanTaskCheckpoint
+      }
     }
   | {
-      type: "kanban.shortcut";
+      type: 'kanban.shortcut'
       payload: {
-        workspaceDir: string;
-        taskId: string;
-        result: KanbanScriptShortcutResult;
-      };
+        workspaceDir: string
+        taskId: string
+        result: KanbanScriptShortcutResult
+      }
     }
   | {
-      type: "kanban.management";
+      type: 'kanban.management'
       payload: {
-        workspaceDir: string;
-        session: KanbanManagementSession;
-      };
-    };
+        workspaceDir: string
+        session: KanbanManagementSession
+      }
+    }

@@ -1,40 +1,40 @@
-import { useEffect } from "react";
+import { useEffect } from 'react'
 
 export type InfoDialogProps = {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  dismissLabel?: string;
-  onDismiss: () => void;
-};
+  isOpen: boolean
+  title: string
+  message: string
+  dismissLabel?: string
+  onDismiss: () => void
+}
 
 export function InfoDialog({
   isOpen,
   title,
   message,
-  dismissLabel = "Close",
+  dismissLabel = 'Close',
   onDismiss,
 }: InfoDialogProps) {
   useEffect(() => {
     if (!isOpen) {
-      return;
+      return
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" || event.key === "Enter") {
-        event.preventDefault();
-        onDismiss();
+      if (event.key === 'Escape' || event.key === 'Enter') {
+        event.preventDefault()
+        onDismiss()
       }
-    };
+    }
 
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener('keydown', onKeyDown)
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [isOpen, onDismiss]);
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isOpen, onDismiss])
 
   if (!isOpen) {
-    return null;
+    return null
   }
 
   return (
@@ -44,7 +44,7 @@ export function InfoDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="info-dialog-title"
-        onClick={(event) => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
       >
         <header className="modal-header">
           <h2 id="info-dialog-title">{title}</h2>
@@ -59,5 +59,5 @@ export function InfoDialog({
         </div>
       </section>
     </div>
-  );
+  )
 }

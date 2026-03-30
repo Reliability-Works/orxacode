@@ -6,10 +6,10 @@ import type {
   KanbanSettings,
   KanbanTask,
   KanbanWorktree,
-} from "../../shared/ipc";
+} from '../../shared/ipc'
 
 function sanitizeForPrompt(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 function boardTaskSummary(task: KanbanTask) {
@@ -21,7 +21,7 @@ function boardTaskSummary(task: KanbanTask) {
     blocked: task.blocked,
     status: task.statusSummary,
     autoStartWhenUnblocked: task.autoStartWhenUnblocked,
-  };
+  }
 }
 
 function automationSummary(automation: KanbanAutomation) {
@@ -31,7 +31,7 @@ function automationSummary(automation: KanbanAutomation) {
     provider: automation.provider,
     schedule: automation.schedule,
     enabled: automation.enabled,
-  };
+  }
 }
 
 function worktreeSummary(worktree: KanbanWorktree) {
@@ -43,15 +43,15 @@ function worktreeSummary(worktree: KanbanWorktree) {
     status: worktree.status,
     mergeStatus: worktree.mergeStatus,
     taskId: worktree.taskId,
-  };
+  }
 }
 
 export function buildKanbanManagementPrompt(input: {
-  workspaceDir: string;
-  provider: KanbanProvider;
-  prompt: string;
-  board: KanbanBoardSnapshot;
-  settings: KanbanSettings;
+  workspaceDir: string
+  provider: KanbanProvider
+  prompt: string
+  board: KanbanBoardSnapshot
+  settings: KanbanSettings
 }) {
   const payload = {
     workspaceDir: input.workspaceDir,
@@ -68,13 +68,13 @@ export function buildKanbanManagementPrompt(input: {
     dependencies: input.board.dependencies,
     automations: input.board.automations.map(automationSummary),
     worktrees: input.board.worktrees.map(worktreeSummary),
-  };
+  }
 
   return [
-    "You are an orchestration agent managing an Orxa Kanban board.",
-    "Return JSON only with this shape:",
+    'You are an orchestration agent managing an Orxa Kanban board.',
+    'Return JSON only with this shape:',
     '{"reply":"short human summary","operations":[...]}',
-    "Allowed operations:",
+    'Allowed operations:',
     '- {"type":"create_task","title":"...","prompt":"...","description":"...","provider":"opencode|codex|claude","columnId":"backlog|ready|in_progress|review|done","autoStartWhenUnblocked":true|false}',
     '- {"type":"update_task","taskId":"...","title":"...","prompt":"...","description":"...","provider":"opencode|codex|claude","autoStartWhenUnblocked":true|false}',
     '- {"type":"link_tasks","fromTaskId":"...","toTaskId":"..."}',
@@ -91,26 +91,28 @@ export function buildKanbanManagementPrompt(input: {
     '- {"type":"delete_worktree","worktreeId":"..."}',
     '- {"type":"run_shortcut","taskId":"...","shortcutId":"..."}',
     '- {"type":"create_automation","name":"...","prompt":"...","provider":"opencode|codex|claude","schedule":{"type":"daily","time":"09:00","days":[1,2,3,4,5]},"autoStart":true|false}',
-    "Do not include any prose outside the JSON.",
-    "",
-    "Current board:",
+    'Do not include any prose outside the JSON.',
+    '',
+    'Current board:',
     JSON.stringify(payload, null, 2),
-    "",
+    '',
     `User request: ${sanitizeForPrompt(input.prompt)}`,
-  ].join("\n");
+  ].join('\n')
 }
 
 export function parseKanbanManagementResponse(raw: string): {
-  reply: string;
-  operations: KanbanManagementOperation[];
+  reply: string
+  operations: KanbanManagementOperation[]
 } {
-  const trimmed = raw.trim();
-  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fencedMatch?.[1]?.trim() || trimmed;
-  const parsed = JSON.parse(candidate) as { reply?: unknown; operations?: unknown };
-  const operations = Array.isArray(parsed.operations) ? parsed.operations : [];
+  const trimmed = raw.trim()
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  const candidate = fencedMatch?.[1]?.trim() || trimmed
+  const parsed = JSON.parse(candidate) as { reply?: unknown; operations?: unknown }
+  const operations = Array.isArray(parsed.operations) ? parsed.operations : []
   return {
-    reply: typeof parsed.reply === "string" ? parsed.reply : "",
-    operations: operations.filter((entry): entry is KanbanManagementOperation => Boolean(entry) && typeof entry === "object"),
-  };
+    reply: typeof parsed.reply === 'string' ? parsed.reply : '',
+    operations: operations.filter(
+      (entry): entry is KanbanManagementOperation => Boolean(entry) && typeof entry === 'object'
+    ),
+  }
 }

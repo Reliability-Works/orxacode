@@ -1,19 +1,21 @@
-import { ShieldAlert } from "lucide-react";
-import { DockSurface } from "./DockSurface";
+import { ShieldAlert } from 'lucide-react'
+import { DockSurface } from './DockSurface'
 
 export interface PermissionDockProps {
-  description: string;
-  filePattern?: string;
-  command?: string[];
-  onDecide: (decision: "allow_once" | "allow_always" | "reject") => void;
+  description: string
+  filePattern?: string
+  command?: string[]
+  onDecide: (decision: 'allow_once' | 'allow_always' | 'reject') => void
 }
 
-export function PermissionDock({ description, filePattern, command, onDecide }: PermissionDockProps) {
+export function PermissionDock({
+  description,
+  filePattern,
+  command,
+  onDecide,
+}: PermissionDockProps) {
   return (
-    <DockSurface
-      title="Permission Request"
-      icon={<ShieldAlert size={13} />}
-    >
+    <DockSurface title="Permission Request" icon={<ShieldAlert size={13} />}>
       <div className="permission-dock">
         <p className="permission-dock-description">{description}</p>
 
@@ -26,8 +28,10 @@ export function PermissionDock({ description, filePattern, command, onDecide }: 
         {command && command.length > 0 ? (
           <div className="permission-preview permission-preview--command">
             <pre className="permission-preview-code">
-              <span className="permission-preview-prompt" aria-hidden="true">$ </span>
-              {command.join(" ")}
+              <span className="permission-preview-prompt" aria-hidden="true">
+                ${' '}
+              </span>
+              {command.join(' ')}
             </pre>
           </div>
         ) : null}
@@ -36,26 +40,26 @@ export function PermissionDock({ description, filePattern, command, onDecide }: 
           <button
             type="button"
             className="permission-btn permission-btn--allow-once"
-            onClick={() => onDecide("allow_once")}
+            onClick={() => onDecide('allow_once')}
           >
             Allow once
           </button>
           <button
             type="button"
             className="permission-btn permission-btn--allow-always"
-            onClick={() => onDecide("allow_always")}
+            onClick={() => onDecide('allow_always')}
           >
             Always allow
           </button>
           <button
             type="button"
             className="permission-btn permission-btn--reject"
-            onClick={() => onDecide("reject")}
+            onClick={() => onDecide('reject')}
           >
             Reject
           </button>
         </div>
       </div>
     </DockSurface>
-  );
+  )
 }

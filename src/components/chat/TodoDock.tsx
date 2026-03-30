@@ -1,21 +1,21 @@
-import { useEffect, useRef } from "react";
-import { ChevronDown } from "lucide-react";
-import { DockSurface } from "./DockSurface";
+import { useEffect, useRef } from 'react'
+import { ChevronDown } from 'lucide-react'
+import { DockSurface } from './DockSurface'
 
 export interface TodoItem {
-  id: string;
-  content: string;
-  status: "pending" | "in_progress" | "completed" | "cancelled";
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
 }
 
 export interface TodoDockProps {
-  items: TodoItem[];
-  open: boolean;
-  onToggle: () => void;
+  items: TodoItem[]
+  open: boolean
+  onToggle: () => void
 }
 
-function statusIcon(status: TodoItem["status"]) {
-  if (status === "completed") {
+function statusIcon(status: TodoItem['status']) {
+  if (status === 'completed') {
     return (
       <svg
         width="14"
@@ -27,11 +27,17 @@ function statusIcon(status: TodoItem["status"]) {
         aria-hidden="true"
       >
         <circle cx="7" cy="7" r="6.5" stroke="#22c55e" />
-        <path d="M4 7l2.2 2.5L10 4.5" stroke="#22c55e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path
+          d="M4 7l2.2 2.5L10 4.5"
+          stroke="#22c55e"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
-    );
+    )
   }
-  if (status === "in_progress") {
+  if (status === 'in_progress') {
     return (
       <svg
         width="12"
@@ -44,44 +50,44 @@ function statusIcon(status: TodoItem["status"]) {
       >
         <circle cx="6" cy="6" r="3" />
       </svg>
-    );
+    )
   }
-  return null;
+  return null
 }
 
 export function TodoDock({ items, open, onToggle }: TodoDockProps) {
-  const completedCount = items.filter((item) => item.status === "completed").length;
-  const totalCount = items.length;
-  const inProgressRef = useRef<HTMLLIElement | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
+  const completedCount = items.filter(item => item.status === 'completed').length
+  const totalCount = items.length
+  const inProgressRef = useRef<HTMLLIElement | null>(null)
+  const listRef = useRef<HTMLUListElement | null>(null)
 
   useEffect(() => {
-    if (!open) return;
-    const inProgressEl = inProgressRef.current;
-    const listEl = listRef.current;
-    if (!inProgressEl || !listEl) return;
+    if (!open) return
+    const inProgressEl = inProgressRef.current
+    const listEl = listRef.current
+    if (!inProgressEl || !listEl) return
     requestAnimationFrame(() => {
-      const containerRect = listEl.getBoundingClientRect();
-      const itemRect = inProgressEl.getBoundingClientRect();
-      const topFade = 16;
-      const bottomFade = 16;
-      const top = itemRect.top - containerRect.top + listEl.scrollTop;
-      const bottom = itemRect.bottom - containerRect.top + listEl.scrollTop;
-      const viewTop = listEl.scrollTop + topFade;
-      const viewBottom = listEl.scrollTop + listEl.clientHeight - bottomFade;
+      const containerRect = listEl.getBoundingClientRect()
+      const itemRect = inProgressEl.getBoundingClientRect()
+      const topFade = 16
+      const bottomFade = 16
+      const top = itemRect.top - containerRect.top + listEl.scrollTop
+      const bottom = itemRect.bottom - containerRect.top + listEl.scrollTop
+      const viewTop = listEl.scrollTop + topFade
+      const viewBottom = listEl.scrollTop + listEl.clientHeight - bottomFade
       if (top < viewTop) {
-        listEl.scrollTop = Math.max(0, top - topFade);
+        listEl.scrollTop = Math.max(0, top - topFade)
       } else if (bottom > viewBottom) {
-        listEl.scrollTop = bottom - (listEl.clientHeight - bottomFade);
+        listEl.scrollTop = bottom - (listEl.clientHeight - bottomFade)
       }
-    });
-  }, [open, items]);
+    })
+  }, [open, items])
 
-  const progressLabel = `${completedCount} / ${totalCount} tasks`;
+  const progressLabel = `${completedCount} / ${totalCount} tasks`
 
   return (
     <DockSurface
-      className={`dock-surface--compact-width${open ? "" : " dock-surface--collapsed-inline"}`.trim()}
+      className={`dock-surface--compact-width${open ? '' : ' dock-surface--collapsed-inline'}`.trim()}
       bodyClassName="todo-dock-surface-body"
     >
       <div className="todo-dock">
@@ -90,7 +96,7 @@ export function TodoDock({ items, open, onToggle }: TodoDockProps) {
           className="todo-dock-header"
           onClick={onToggle}
           aria-expanded={open}
-          aria-label={open ? "Collapse todo list" : "Expand todo list"}
+          aria-label={open ? 'Collapse todo list' : 'Expand todo list'}
         >
           <span className="todo-progress" aria-label={progressLabel}>
             <span className="todo-progress-done">{completedCount}</span>
@@ -101,20 +107,16 @@ export function TodoDock({ items, open, onToggle }: TodoDockProps) {
           <ChevronDown
             size={14}
             aria-hidden="true"
-            className={`todo-dock-chevron ${open ? "is-open" : ""}`.trim()}
+            className={`todo-dock-chevron ${open ? 'is-open' : ''}`.trim()}
           />
         </button>
 
         {open ? (
-          <ul
-            ref={listRef}
-            className="todo-dock-list"
-            role="list"
-          >
-            {items.map((item) => (
+          <ul ref={listRef} className="todo-dock-list" role="list">
+            {items.map(item => (
               <li
                 key={item.id}
-                ref={item.status === "in_progress" ? inProgressRef : null}
+                ref={item.status === 'in_progress' ? inProgressRef : null}
                 className={`todo-item todo-item--${item.status}`}
                 data-status={item.status}
               >
@@ -126,5 +128,5 @@ export function TodoDock({ items, open, onToggle }: TodoDockProps) {
         ) : null}
       </div>
     </DockSurface>
-  );
+  )
 }

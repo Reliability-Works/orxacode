@@ -4,16 +4,16 @@ Settings are organized into provider-specific sections.
 
 ## Orxa Code (App-level)
 
-| Setting                       | Description                                    | Default |
-| ----------------------------- | ---------------------------------------------- | ------- |
-| Auto-open terminal on create  | Open terminal when creating PTY                | true    |
-| Confirm dangerous actions     | Show confirmation for reject buttons           | true    |
-| Auto check for updates        | Periodic update checks                         | true    |
-| Notify when agent waiting     | Desktop notification when agent needs input    | true    |
-| Notify when agent finishes    | Desktop notification on task completion        | true    |
-| Enable collaboration modes    | Show collaboration mode selector for Codex     | true    |
-| Notify on subagent events     | Desktop notifications for subagent activity    | true    |
-| Release channel               | stable or prerelease                           | stable  |
+| Setting                      | Description                                 | Default |
+| ---------------------------- | ------------------------------------------- | ------- |
+| Auto-open terminal on create | Open terminal when creating PTY             | true    |
+| Confirm dangerous actions    | Show confirmation for reject buttons        | true    |
+| Auto check for updates       | Periodic update checks                      | true    |
+| Notify when agent waiting    | Desktop notification when agent needs input | true    |
+| Notify when agent finishes   | Desktop notification on task completion     | true    |
+| Enable collaboration modes   | Show collaboration mode selector for Codex  | true    |
+| Notify on subagent events    | Desktop notifications for subagent activity | true    |
+| Release channel              | stable or prerelease                        | stable  |
 
 ## Orxa Code (Preferences)
 
@@ -50,9 +50,9 @@ Settings are organized into provider-specific sections.
 
 ## Claude Code
 
-| Section         | Settings                                  |
-| --------------- | ----------------------------------------- |
-| Config          | Editable settings.json and CLAUDE.md      |
-| Personalization | Custom instructions                       |
-| Permissions     | Default permission mode                   |
-| Directories     | Allowed/blocked directory configuration   |
+| Section         | Settings                                |
+| --------------- | --------------------------------------- |
+| Config          | Editable settings.json and CLAUDE.md    |
+| Personalization | Custom instructions                     |
+| Permissions     | Default permission mode                 |
+| Directories     | Allowed/blocked directory configuration |

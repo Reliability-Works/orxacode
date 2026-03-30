@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react'
 
 interface MessageTurnProps {
-  children: ReactNode;
-  interrupted?: boolean;
+  children: ReactNode
+  interrupted?: boolean
 }
 
 export function MessageTurn({ children, interrupted }: MessageTurnProps) {
@@ -11,5 +11,5 @@ export function MessageTurn({ children, interrupted }: MessageTurnProps) {
       {children}
       {interrupted ? <div className="message-turn-divider" aria-label="Turn interrupted" /> : null}
     </div>
-  );
+  )
 }

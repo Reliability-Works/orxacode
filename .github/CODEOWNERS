@@ -1,0 +1,23 @@
+# CODEOWNERS for Orxa Code
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global fallback - default owners for everything
+* @callum-spencer
+
+# Electron main process (security sensitive)
+electron/ @callum-spencer
+
+# IPC contracts and shared types
+shared/ @callum-spencer
+
+# Core UI components and state
+src/components/ @callum-spencer
+src/state/ @callum-spencer
+
+# Build and CI configuration
+.github/workflows/ @callum-spencer
+scripts/ @callum-spencer
+
+# Documentation
+docs/ @callum-spencer
+*.md @callum-spencer

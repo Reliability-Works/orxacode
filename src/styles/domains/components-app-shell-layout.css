@@ -66,7 +66,7 @@
   justify-content: center;
   border-radius: 999px;
   background: var(--accent-warning);
-  color: #0C0C0C;
+  color: #0c0c0c;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -81,7 +81,7 @@
   justify-content: center;
   border-radius: 999px;
   background: var(--accent-warning);
-  color: #0C0C0C;
+  color: #0c0c0c;
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
@@ -454,7 +454,9 @@
   border-radius: 50%;
   border: 1px solid var(--border-secondary);
   flex-shrink: 0;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .commit-continue {
@@ -748,7 +750,10 @@
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: background 100ms, color 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    color 100ms,
+    border-color 100ms;
 }
 
 .kanban-icon-btn:hover {
@@ -774,7 +779,9 @@
 }
 
 @keyframes kanban-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .kanban-primary-btn {
@@ -783,7 +790,7 @@
   gap: 5px;
   white-space: nowrap;
   background: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   border: 1px solid var(--accent-green);
   border-radius: 6px;
   padding: 5px 12px;
@@ -811,7 +818,9 @@
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  transition: color 100ms, background 100ms;
+  transition:
+    color 100ms,
+    background 100ms;
   white-space: nowrap;
 }
 
@@ -837,7 +846,10 @@
   color: var(--text-tertiary);
   font-size: 11px;
   cursor: pointer;
-  transition: background 100ms, color 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    color 100ms,
+    border-color 100ms;
   white-space: nowrap;
 }
 
@@ -904,7 +916,9 @@
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
-  transition: background 100ms, border-color 100ms;
+  transition:
+    background 100ms,
+    border-color 100ms;
   white-space: nowrap;
 }
 
@@ -1055,7 +1069,9 @@
   display: grid;
   gap: 6px;
   cursor: pointer;
-  transition: border-color 100ms ease, background 100ms ease;
+  transition:
+    border-color 100ms ease,
+    background 100ms ease;
 }
 
 .kanban-task-card:hover,
@@ -1087,7 +1103,12 @@
   color: var(--text-muted);
   cursor: alias;
   opacity: 0.72;
-  transition: border-color 80ms ease, color 80ms ease, background 80ms ease, opacity 80ms ease, transform 80ms ease;
+  transition:
+    border-color 80ms ease,
+    color 80ms ease,
+    background 80ms ease,
+    opacity 80ms ease,
+    transform 80ms ease;
 }
 
 .kanban-task-card:hover .kanban-task-link-anchor {
@@ -1193,7 +1214,9 @@
   color: var(--text-muted);
   font-size: 10px;
   cursor: pointer;
-  transition: background 80ms, color 80ms;
+  transition:
+    background 80ms,
+    color 80ms;
 }
 
 .kanban-task-inline-action:hover {
@@ -1220,17 +1243,17 @@
 
 .kanban-task-pill--status.is-blocked {
   border-color: rgba(251, 191, 36, 0.45);
-  color: #FCD34D;
+  color: #fcd34d;
 }
 
 .kanban-task-pill--status.is-success {
   border-color: rgba(34, 197, 94, 0.4);
-  color: #86EFAC;
+  color: #86efac;
 }
 
 .kanban-task-pill--status.is-error {
   border-color: rgba(239, 68, 68, 0.4);
-  color: #FCA5A5;
+  color: #fca5a5;
 }
 
 /* ─── Runs / Automations tab content ─── */
@@ -1401,13 +1424,15 @@
   stroke-width: 2;
   stroke-linecap: round;
   opacity: 0.72;
-  transition: stroke 120ms, opacity 120ms;
+  transition:
+    stroke 120ms,
+    opacity 120ms;
 }
 
 .kanban-dependency-edge.is-hovered {
-  stroke: color-mix(in srgb, var(--accent-error, #EF4444) 72%, white 8%);
+  stroke: color-mix(in srgb, var(--accent-error, #ef4444) 72%, white 8%);
   opacity: 1;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-error, #EF4444) 18%, transparent));
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent-error, #ef4444) 18%, transparent));
 }
 
 .kanban-dep-arrow-fill {
@@ -1415,7 +1440,7 @@
 }
 
 .kanban-dep-arrow-fill-hover {
-  fill: color-mix(in srgb, var(--accent-error, #EF4444) 72%, white 8%);
+  fill: color-mix(in srgb, var(--accent-error, #ef4444) 72%, white 8%);
 }
 
 .kanban-dependency-edge-hit {
@@ -1498,7 +1523,9 @@
   color: var(--accent-green);
   font-size: 11px;
   cursor: pointer;
-  transition: opacity 80ms ease, color 80ms ease;
+  transition:
+    opacity 80ms ease,
+    color 80ms ease;
 }
 
 .kanban-inline-meta-btn:hover {
@@ -1527,7 +1554,10 @@
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: background 80ms, color 80ms, border-color 80ms;
+  transition:
+    background 80ms,
+    color 80ms,
+    border-color 80ms;
 }
 
 .kanban-segmented-control button:hover {
@@ -1574,7 +1604,9 @@
   height: 12px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform 120ms ease, background 120ms ease;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
 }
 
 .kanban-switch.on .kanban-switch-thumb {
@@ -1599,7 +1631,7 @@
   color: var(--text-secondary);
 }
 
-.kanban-schedule-section input[type="time"]::-webkit-calendar-picker-indicator {
+.kanban-schedule-section input[type='time']::-webkit-calendar-picker-indicator {
   filter: invert(58%) sepia(72%) saturate(460%) hue-rotate(90deg) brightness(95%) contrast(95%);
 }
 
@@ -1809,8 +1841,13 @@
 }
 
 @keyframes kanban-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .kanban-task-card {
@@ -1826,7 +1863,7 @@
 
 .kanban-task-pill--ship {
   border-color: rgba(34, 197, 94, 0.35);
-  color: #86EFAC;
+  color: #86efac;
   gap: 3px;
 }
 
@@ -1939,9 +1976,15 @@
   color: var(--text-primary);
 }
 
-.kanban-diff-file-item--added { color: #86EFAC; }
-.kanban-diff-file-item--deleted { color: #FCA5A5; }
-.kanban-diff-file-item--renamed { color: #93C5FD; }
+.kanban-diff-file-item--added {
+  color: #86efac;
+}
+.kanban-diff-file-item--deleted {
+  color: #fca5a5;
+}
+.kanban-diff-file-item--renamed {
+  color: #93c5fd;
+}
 
 .kanban-diff-hunk-view {
   overflow: auto;
@@ -1989,11 +2032,11 @@
 }
 
 .kanban-diff-line--add {
-  background: color-mix(in srgb, var(--accent-green, #22C55E) 8%, transparent);
+  background: color-mix(in srgb, var(--accent-green, #22c55e) 8%, transparent);
 }
 
 .kanban-diff-line--del {
-  background: color-mix(in srgb, var(--accent-error, #EF4444) 8%, transparent);
+  background: color-mix(in srgb, var(--accent-error, #ef4444) 8%, transparent);
 }
 
 .kanban-diff-line-num {
@@ -2084,7 +2127,9 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  transition: background 80ms, border-color 80ms;
+  transition:
+    background 80ms,
+    border-color 80ms;
 }
 
 .kanban-checkpoint-item:hover {
@@ -2397,11 +2442,11 @@
 }
 
 .kanban-mgmt-op.is-ok {
-  color: #86EFAC;
+  color: #86efac;
 }
 
 .kanban-mgmt-op.is-error {
-  color: #FCA5A5;
+  color: #fca5a5;
 }
 
 .kanban-mgmt-op-error {
@@ -2446,7 +2491,7 @@
   gap: 6px;
   white-space: nowrap;
   background: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   border-color: var(--accent-green);
   border-radius: 4px;
   padding: 8px 16px;
@@ -2454,9 +2499,10 @@
 }
 
 .jobs-new-button:hover {
-  background: var(--accent-green); filter: brightness(0.9);
+  background: var(--accent-green);
+  filter: brightness(0.9);
   border-color: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   transform: none;
 }
 
@@ -2607,7 +2653,7 @@
 .jobs-template-card,
 .jobs-config-card,
 .skills-card {
-  border: 1px solid #1F1F1F;
+  border: 1px solid #1f1f1f;
   border-radius: 4px;
   background: var(--bg-surface);
   padding: 16px;
@@ -2697,12 +2743,12 @@
 
 .jobs-status-pill.enabled {
   border-color: var(--accent-border-strong);
-  color: #86EFAC;
+  color: #86efac;
 }
 
 .jobs-status-pill.paused {
   border-color: rgba(251, 191, 36, 0.45);
-  color: #FCD34D;
+  color: #fcd34d;
 }
 
 .jobs-config-actions {
@@ -2894,7 +2940,9 @@
   height: 14px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
 .job-editor-switch.on .job-editor-switch-thumb {
@@ -2903,7 +2951,7 @@
 }
 
 /* Fix native time input clock icon color */
-.job-editor-schedule input[type="time"]::-webkit-calendar-picker-indicator {
+.job-editor-schedule input[type='time']::-webkit-calendar-picker-indicator {
   filter: invert(58%) sepia(72%) saturate(460%) hue-rotate(90deg) brightness(95%) contrast(95%);
 }
 
@@ -2937,8 +2985,12 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spin {
@@ -2948,7 +3000,7 @@
 button.primary {
   border-color: var(--accent-green);
   background: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   font-weight: 500;
 }
 
@@ -3019,15 +3071,15 @@ button.primary {
 }
 
 .new-session-picker-icon--canvas {
-  color: var(--accent-green, #22C55E);
+  color: var(--accent-green, #22c55e);
 }
 
 .new-session-picker-icon--claude {
-  color: #A78BFA;
+  color: #a78bfa;
 }
 
 .new-session-picker-icon--codex {
-  color: #10A37F;
+  color: #10a37f;
 }
 
 .new-session-picker-option--disabled {
@@ -3087,25 +3139,25 @@ button.primary {
 }
 
 .session-type-icon--canvas {
-  color: var(--accent-green, #22C55E);
+  color: var(--accent-green, #22c55e);
   width: 10px;
   height: 10px;
 }
 
 .session-type-icon--claude {
-  color: #A78BFA;
+  color: #a78bfa;
   width: 10px;
   height: 10px;
 }
 
 .session-type-icon--codex {
-  color: #10A37F;
+  color: #10a37f;
   width: 10px;
   height: 10px;
 }
 
 .session-type-icon--opencode {
-  color: #6C7BFF;
+  color: #6c7bff;
   width: 10px;
   height: 10px;
 }
@@ -3238,8 +3290,13 @@ button.primary {
    ============================================================ */
 
 @keyframes dev-server-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* ============================================================
@@ -3271,15 +3328,25 @@ button.primary {
   line-height: 1.3;
 }
 
-.markdown-tile-body h1 { font-size: 18px; margin-top: 0; }
+.markdown-tile-body h1 {
+  font-size: 18px;
+  margin-top: 0;
+}
 
-.markdown-tile-body h2 { font-size: 15px; }
+.markdown-tile-body h2 {
+  font-size: 15px;
+}
 
-.markdown-tile-body h3 { font-size: 13px; }
+.markdown-tile-body h3 {
+  font-size: 13px;
+}
 
 .markdown-tile-body h4,
 .markdown-tile-body h5,
-.markdown-tile-body h6 { font-size: 12px; color: var(--text-secondary); }
+.markdown-tile-body h6 {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 
 /* Paragraphs */
 .markdown-tile-body p {
@@ -3344,7 +3411,7 @@ button.primary {
 
 /* Links */
 .markdown-tile-body a {
-  color: var(--accent-blue, #3B82F6);
+  color: var(--accent-blue, #3b82f6);
   text-decoration: underline;
   text-decoration-color: rgba(59, 130, 246, 0.4);
 }
@@ -3354,9 +3421,14 @@ button.primary {
 }
 
 /* Strong / em */
-.markdown-tile-body strong { color: var(--text-primary); font-weight: 600; }
+.markdown-tile-body strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
 
-.markdown-tile-body em { color: var(--text-secondary); }
+.markdown-tile-body em {
+  color: var(--text-secondary);
+}
 
 /* ============================================================
    Image Tile
@@ -3402,7 +3474,7 @@ button.primary {
 }
 
 .image-tile-error {
-  color: var(--accent-error, #EF4444);
+  color: var(--accent-error, #ef4444);
 }
 
 .image-tile-error-path {
@@ -3435,7 +3507,9 @@ button.primary {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 100ms, background 100ms;
+  transition:
+    color 100ms,
+    background 100ms;
 }
 
 .image-tile-ctrl-btn:hover:not(:disabled) {
@@ -3551,14 +3625,14 @@ button.primary {
 }
 
 .codex-approval-command code {
-  font-family: var(--font-code, "IBM Plex Mono", "SF Mono", Menlo, monospace);
+  font-family: var(--font-code, 'IBM Plex Mono', 'SF Mono', Menlo, monospace);
   color: var(--text-primary);
 }
 
 .codex-approval-change {
   font-size: 11px;
   color: var(--text-muted);
-  font-family: var(--font-code, "IBM Plex Mono", "SF Mono", Menlo, monospace);
+  font-family: var(--font-code, 'IBM Plex Mono', 'SF Mono', Menlo, monospace);
   padding: 2px 0;
 }
 
@@ -3615,7 +3689,7 @@ button.primary {
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 13px;
-  font-family: var(--font-code, "IBM Plex Mono", "SF Mono", Menlo, monospace);
+  font-family: var(--font-code, 'IBM Plex Mono', 'SF Mono', Menlo, monospace);
   color: var(--text-primary);
   background: rgba(255, 255, 255, 0.03);
   outline: none;
@@ -3830,8 +3904,12 @@ button.primary {
 }
 
 @keyframes thinking-sweep {
-  0% { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
 }
 
 /* ─── CopyButton ─────────────────────────────────────────────────── */
@@ -3890,7 +3968,8 @@ button.primary {
 /* ─── TodoDock ───────────────────────────────────────────────────── */
 
 @keyframes pulse-dot {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
@@ -4079,7 +4158,7 @@ button.primary {
 }
 
 .codex-session-alert strong::before {
-  content: "\26A0";
+  content: '\26A0';
   font-size: 14px;
 }
 
@@ -4137,7 +4216,11 @@ button.primary {
   border-radius: 8px;
   background: var(--bg-surface);
   cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   text-align: center;
 }
 
@@ -4168,10 +4251,22 @@ button.primary {
 }
 
 /* Brand colors: OpenCode beige/cream, OpenAI white, Anthropic coral/tan, Canvas blue */
-.landing-card--opencode .landing-card-icon { color: #E8DDD3; border-color: rgba(232, 221, 211, 0.3); }
-.landing-card--codex .landing-card-icon { color: #FFFFFF; border-color: rgba(255, 255, 255, 0.25); }
-.landing-card--claude .landing-card-icon { color: #D4A27F; border-color: rgba(212, 162, 127, 0.3); }
-.landing-card--canvas .landing-card-icon { color: #60A5FA; border-color: rgba(96, 165, 250, 0.3); }
+.landing-card--opencode .landing-card-icon {
+  color: #e8ddd3;
+  border-color: rgba(232, 221, 211, 0.3);
+}
+.landing-card--codex .landing-card-icon {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+}
+.landing-card--claude .landing-card-icon {
+  color: #d4a27f;
+  border-color: rgba(212, 162, 127, 0.3);
+}
+.landing-card--canvas .landing-card-icon {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.3);
+}
 
 .landing-card-title {
   font-size: 14px;

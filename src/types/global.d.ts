@@ -1,11 +1,11 @@
-import type { OrxaBridge } from "@shared/ipc";
+import type { OrxaBridge } from '@shared/ipc'
 
 declare global {
-  const __APP_VERSION__: string;
+  const APP_VERSION: string
 
   interface Window {
-    orxa: OrxaBridge;
+    orxa: OrxaBridge
   }
 }
 
-export {};
+export {}

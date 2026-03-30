@@ -1,0 +1,9 @@
+dist
+dist-electron
+coverage
+node_modules
+.pnpm-store
+*.lock
+pnpm-lock.yaml
+.gitignore
+.prettierignore

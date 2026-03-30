@@ -14,11 +14,13 @@ Orxa Code includes an embedded Chromium browser in its own dedicated sidebar.
 When **Browser Mode** is enabled in the composer controls:
 
 1. The agent emits structured action envelopes:
+
    ```xml
    <orxa_browser_action>{"id":"action-id","action":"navigate","args":{"url":"https://example.com"}}</orxa_browser_action>
    ```
 
 2. The app executes the action and returns a machine message:
+
    ```
    [ORXA_BROWSER_RESULT]{"id":"action-id","action":"navigate","ok":true,"data":{...}}
    ```

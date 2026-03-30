@@ -1,27 +1,27 @@
-import { useState } from "react";
-import { MarkdownRenderer } from "./MarkdownRenderer";
+import { useState } from 'react'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface ReasoningPartProps {
-  content: string;
-  summary?: string;
-  defaultExpanded?: boolean;
+  content: string
+  summary?: string
+  defaultExpanded?: boolean
 }
 
 export function ReasoningPart({ content, summary, defaultExpanded = false }: ReasoningPartProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
-  const label = summary ?? "Reasoning...";
+  const label = summary ?? 'Reasoning...'
 
   return (
     <div className="reasoning-part">
       <button
         type="button"
         className="reasoning-part-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(v => !v)}
         aria-expanded={expanded}
       >
         <span className="reasoning-part-chevron" aria-hidden="true">
-          {expanded ? "▾" : "›"}
+          {expanded ? '▾' : '›'}
         </span>
         <span className="reasoning-part-label">{label}</span>
       </button>
@@ -31,5 +31,5 @@ export function ReasoningPart({ content, summary, defaultExpanded = false }: Rea
         </div>
       ) : null}
     </div>
-  );
+  )
 }

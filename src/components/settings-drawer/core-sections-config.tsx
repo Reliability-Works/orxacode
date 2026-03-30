@@ -1,18 +1,22 @@
-import type { RawConfigDocument } from "@shared/ipc";
+import type { RawConfigDocument } from '@shared/ipc'
 
 type ConfigSectionProps = {
-  effectiveScope: "project" | "global";
-  directory: string | undefined;
-  setScope: (scope: "project" | "global") => void;
-  openEditor: () => void;
-  rawDoc: RawConfigDocument | null;
-  rawText: string;
-  setRawText: (value: string) => void;
-  onWriteRaw: (scope: "project" | "global", content: string, directory?: string) => Promise<RawConfigDocument>;
-  setRawDoc: (doc: RawConfigDocument) => void;
-  setFeedback: (message: string) => void;
-  onReadRaw: (scope: "project" | "global", directory?: string) => Promise<RawConfigDocument>;
-};
+  effectiveScope: 'project' | 'global'
+  directory: string | undefined
+  setScope: (scope: 'project' | 'global') => void
+  openEditor: () => void
+  rawDoc: RawConfigDocument | null
+  rawText: string
+  setRawText: (value: string) => void
+  onWriteRaw: (
+    scope: 'project' | 'global',
+    content: string,
+    directory?: string
+  ) => Promise<RawConfigDocument>
+  setRawDoc: (doc: RawConfigDocument) => void
+  setFeedback: (message: string) => void
+  onReadRaw: (scope: 'project' | 'global', directory?: string) => Promise<RawConfigDocument>
+}
 
 export function ConfigSection({
   effectiveScope,
@@ -33,16 +37,16 @@ export function ConfigSection({
         <div className="settings-config-segment">
           <button
             type="button"
-            className={`settings-config-segment-btn${effectiveScope === "project" ? " active" : ""}`}
+            className={`settings-config-segment-btn${effectiveScope === 'project' ? ' active' : ''}`}
             disabled={!directory}
-            onClick={() => setScope("project")}
+            onClick={() => setScope('project')}
           >
             workspace
           </button>
           <button
             type="button"
-            className={`settings-config-segment-btn${effectiveScope === "global" ? " active" : ""}`}
-            onClick={() => setScope("global")}
+            className={`settings-config-segment-btn${effectiveScope === 'global' ? ' active' : ''}`}
+            onClick={() => setScope('global')}
           >
             global
           </button>
@@ -57,18 +61,20 @@ export function ConfigSection({
         <article className="settings-config-card">
           <h4>opencode json</h4>
           <p className="raw-path">{rawDoc?.path}</p>
-          <textarea value={rawText} onChange={(event) => setRawText(event.target.value)} />
+          <textarea value={rawText} onChange={event => setRawText(event.target.value)} />
           <div className="settings-actions">
             <button
               type="button"
               className="settings-config-card-save"
               onClick={() =>
                 void onWriteRaw(effectiveScope, rawText, directory)
-                  .then((next) => {
-                    setRawDoc(next);
-                    setFeedback("OpenCode config saved");
+                  .then(next => {
+                    setRawDoc(next)
+                    setFeedback('OpenCode config saved')
                   })
-                  .catch((error: unknown) => setFeedback(error instanceof Error ? error.message : String(error)))
+                  .catch((error: unknown) =>
+                    setFeedback(error instanceof Error ? error.message : String(error))
+                  )
               }
             >
               save
@@ -76,9 +82,9 @@ export function ConfigSection({
             <button
               type="button"
               onClick={() =>
-                void onReadRaw(effectiveScope, directory).then((next) => {
-                  setRawDoc(next);
-                  setRawText(next.content);
+                void onReadRaw(effectiveScope, directory).then(next => {
+                  setRawDoc(next)
+                  setRawText(next.content)
                 })
               }
             >
@@ -88,5 +94,5 @@ export function ConfigSection({
         </article>
       </div>
     </section>
-  );
+  )
 }

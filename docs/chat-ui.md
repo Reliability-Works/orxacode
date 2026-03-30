@@ -24,26 +24,33 @@ Structured chat providers render through a shared set of React components. Today
 Docks appear above the composer input and provide non-blocking interaction:
 
 ### TodoDock
+
 Shows plan/todo progress with a collapsible step list. Progress counter (done/total), pulsing dot for in-progress items, strikethrough for completed. Used by both OpenCode (via `todo.updated` events) and Codex (via `turn/plan/updated`).
 
 ### QuestionDock
+
 Renders agent questions one at a time with single/multi-select options, custom text input, progress dots for multi-question flows, and submit/reject buttons.
 
 ### PermissionDock
+
 Three-decision pattern: Allow once / Always allow / Reject. Shows file patterns for file operations and command preview for bash operations.
 
 ### PlanReadyDock
+
 Appears after a Codex plan turn completes. Two actions: "Implement this plan" (switches to default mode) or "Modify plan" (opens textarea for changes).
 
 ### QueuedMessagesDock
+
 Shows messages typed while the agent is busy. Each item has Send Now / Edit / Remove actions. Messages auto-send when the agent finishes its turn.
 
 ### BackgroundAgentsPanel
+
 Shows delegated work from providers that emit explicit background-agent or child-thread events. Currently used by Codex and Claude Code (Chat). The detail modal can render either the child transcript or the latest task/progress summary when a child transcript is not yet available.
 
 ## Message Queue
 
 When the agent is busy processing:
+
 - The composer textarea stays editable
 - Pressing Enter queues the message instead of blocking
 - Queued messages appear in the QueuedMessagesDock
@@ -51,6 +58,7 @@ When the agent is busy processing:
 - A toast confirms "Message queued"
 
 Provider notes:
+
 - **OpenCode** — queued followups send when the active turn finishes
 - **Codex** — queued followups can steer the active turn when appropriate
 - **Claude Code (Chat)** — uses the shared composer, permissions/questions docks, plan toggle, and background-agent panel

@@ -1,9 +1,9 @@
-import { useCallback, useState } from "react";
-import { BookOpen, FolderOpen } from "lucide-react";
-import { CanvasTileComponent } from "../CanvasTile";
-import { tilePathBasename, type CanvasTileComponentProps } from "./tile-shared";
+import { useCallback, useState } from 'react'
+import { BookOpen, FolderOpen } from 'lucide-react'
+import { CanvasTileComponent } from '../CanvasTile'
+import { tilePathBasename, type CanvasTileComponentProps } from './tile-shared'
 
-type MarkdownTileProps = CanvasTileComponentProps;
+type MarkdownTileProps = CanvasTileComponentProps
 
 /**
  * Minimal markdown-to-HTML renderer. Handles headings, bold, italic,
@@ -13,131 +13,130 @@ type MarkdownTileProps = CanvasTileComponentProps;
  * This intentionally avoids any external dependency.
  */
 function renderMarkdown(raw: string): string {
-  const lines = raw.split("\n");
-  const out: string[] = [];
-  let inCodeBlock = false;
-  let codeLang = "";
-  let codeLines: string[] = [];
-  let inList: "ul" | "ol" | null = null;
+  const lines = raw.split('\n')
+  const out: string[] = []
+  let inCodeBlock = false
+  let codeLang = ''
+  let codeLines: string[] = []
+  let inList: 'ul' | 'ol' | null = null
 
   function escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
 
   function applyInline(text: string): string {
     // Bold (**text** or __text__)
-    text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    text = text.replace(/__(.+?)__/g, "<strong>$1</strong>");
+    text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    text = text.replace(/__(.+?)__/g, '<strong>$1</strong>')
     // Italic (*text* or _text_)
-    text = text.replace(/\*([^*]+?)\*/g, "<em>$1</em>");
-    text = text.replace(/_([^_]+?)_/g, "<em>$1</em>");
+    text = text.replace(/\*([^*]+?)\*/g, '<em>$1</em>')
+    text = text.replace(/_([^_]+?)_/g, '<em>$1</em>')
     // Inline code
-    text = text.replace(/`([^`]+?)`/g, "<code>$1</code>");
+    text = text.replace(/`([^`]+?)`/g, '<code>$1</code>')
     // Links [text](url)
-    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-    return text;
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+    return text
   }
 
   function closeList() {
-    if (inList === "ul") out.push("</ul>");
-    if (inList === "ol") out.push("</ol>");
-    inList = null;
+    if (inList === 'ul') out.push('</ul>')
+    if (inList === 'ol') out.push('</ol>')
+    inList = null
   }
 
   for (const rawLine of lines) {
-    const line = rawLine;
+    const line = rawLine
 
     // Fenced code block toggle
-    if (line.startsWith("```")) {
+    if (line.startsWith('```')) {
       if (inCodeBlock) {
         // Close block
-        out.push(`<pre><code${codeLang ? ` class="language-${codeLang}"` : ""}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
-        inCodeBlock = false;
-        codeLines = [];
-        codeLang = "";
+        out.push(
+          `<pre><code${codeLang ? ` class="language-${codeLang}"` : ''}>${escapeHtml(codeLines.join('\n'))}</code></pre>`
+        )
+        inCodeBlock = false
+        codeLines = []
+        codeLang = ''
       } else {
-        closeList();
-        inCodeBlock = true;
-        codeLang = line.slice(3).trim();
-        codeLines = [];
+        closeList()
+        inCodeBlock = true
+        codeLang = line.slice(3).trim()
+        codeLines = []
       }
-      continue;
+      continue
     }
 
     if (inCodeBlock) {
-      codeLines.push(line);
-      continue;
+      codeLines.push(line)
+      continue
     }
 
     // Headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)/);
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)/)
     if (headingMatch) {
-      closeList();
-      const level = headingMatch[1].length;
-      out.push(`<h${level}>${applyInline(escapeHtml(headingMatch[2]))}</h${level}>`);
-      continue;
+      closeList()
+      const level = headingMatch[1].length
+      out.push(`<h${level}>${applyInline(escapeHtml(headingMatch[2]))}</h${level}>`)
+      continue
     }
 
     // Horizontal rule
     if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
-      closeList();
-      out.push("<hr />");
-      continue;
+      closeList()
+      out.push('<hr />')
+      continue
     }
 
     // Blockquote
-    if (line.startsWith("> ")) {
-      closeList();
-      out.push(`<blockquote>${applyInline(escapeHtml(line.slice(2)))}</blockquote>`);
-      continue;
+    if (line.startsWith('> ')) {
+      closeList()
+      out.push(`<blockquote>${applyInline(escapeHtml(line.slice(2)))}</blockquote>`)
+      continue
     }
 
     // Unordered list
-    const ulMatch = line.match(/^[-*+]\s+(.*)/);
+    const ulMatch = line.match(/^[-*+]\s+(.*)/)
     if (ulMatch) {
-      if (inList !== "ul") {
-        closeList();
-        out.push("<ul>");
-        inList = "ul";
+      if (inList !== 'ul') {
+        closeList()
+        out.push('<ul>')
+        inList = 'ul'
       }
-      out.push(`<li>${applyInline(escapeHtml(ulMatch[1]))}</li>`);
-      continue;
+      out.push(`<li>${applyInline(escapeHtml(ulMatch[1]))}</li>`)
+      continue
     }
 
     // Ordered list
-    const olMatch = line.match(/^\d+\.\s+(.*)/);
+    const olMatch = line.match(/^\d+\.\s+(.*)/)
     if (olMatch) {
-      if (inList !== "ol") {
-        closeList();
-        out.push("<ol>");
-        inList = "ol";
+      if (inList !== 'ol') {
+        closeList()
+        out.push('<ol>')
+        inList = 'ol'
       }
-      out.push(`<li>${applyInline(escapeHtml(olMatch[1]))}</li>`);
-      continue;
+      out.push(`<li>${applyInline(escapeHtml(olMatch[1]))}</li>`)
+      continue
     }
 
     // Empty line — close any open list, paragraph break
-    if (line.trim() === "") {
-      closeList();
-      out.push("");
-      continue;
+    if (line.trim() === '') {
+      closeList()
+      out.push('')
+      continue
     }
 
     // Plain paragraph line
-    closeList();
-    out.push(`<p>${applyInline(escapeHtml(line))}</p>`);
+    closeList()
+    out.push(`<p>${applyInline(escapeHtml(line))}</p>`)
   }
 
   // Close any open code block or list
   if (inCodeBlock && codeLines.length > 0) {
-    out.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    out.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`)
   }
-  closeList();
+  closeList()
 
-  return out.join("\n");
+  return out.join('\n')
 }
 
 const PLACEHOLDER_MARKDOWN = `# Markdown Preview
@@ -148,7 +147,7 @@ Open a file to preview rendered markdown here.
 - Fenced code blocks
 - Ordered and unordered lists
 - Headings h1--h6
-`;
+`
 
 export function MarkdownTile({
   tile,
@@ -163,49 +162,49 @@ export function MarkdownTile({
   canvasOffsetY,
   viewportScale,
 }: MarkdownTileProps) {
-  const filePath = typeof tile.meta.filePath === "string" ? tile.meta.filePath : "";
-  const content = typeof tile.meta.content === "string" ? tile.meta.content : PLACEHOLDER_MARKDOWN;
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const filePath = typeof tile.meta.filePath === 'string' ? tile.meta.filePath : ''
+  const content = typeof tile.meta.content === 'string' ? tile.meta.content : PLACEHOLDER_MARKDOWN
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const fileName = filePath ? tilePathBasename(filePath, "untitled.md") : undefined;
-  const html = renderMarkdown(content);
+  const fileName = filePath ? tilePathBasename(filePath, 'untitled.md') : undefined
+  const html = renderMarkdown(content)
 
   const handleOpenFile = useCallback(async () => {
-    const bridge = typeof window !== "undefined" ? window.orxa?.app : undefined;
-    if (!bridge?.openFile) return;
+    const bridge = typeof window !== 'undefined' ? window.orxa?.app : undefined
+    if (!bridge?.openFile) return
 
     try {
-      setIsLoading(true);
-      setError(null);
+      setIsLoading(true)
+      setError(null)
       const result = await bridge.openFile({
-        title: "Open Markdown File",
-        filters: [{ name: "Markdown", extensions: ["md", "mdx", "markdown", "txt"] }],
-      });
+        title: 'Open Markdown File',
+        filters: [{ name: 'Markdown', extensions: ['md', 'mdx', 'markdown', 'txt'] }],
+      })
       if (!result) {
-        setIsLoading(false);
-        return;
+        setIsLoading(false)
+        return
       }
 
       // Read the file content — try via readProjectFile first, fall back to reading via the path
-      let fileContent = "";
+      let fileContent = ''
       try {
         // Use fetch with file:// protocol to read the file in Electron
-        const resp = await fetch(result.url);
-        fileContent = await resp.text();
+        const resp = await fetch(result.url)
+        fileContent = await resp.text()
       } catch {
-        fileContent = `*Could not read file: ${result.path}*`;
+        fileContent = `*Could not read file: ${result.path}*`
       }
 
       onUpdate(tile.id, {
         meta: { ...tile.meta, filePath: result.path, content: fileContent },
-      });
+      })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(err instanceof Error ? err.message : String(err))
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  }, [tile.id, tile.meta, onUpdate]);
+  }, [tile.id, tile.meta, onUpdate])
 
   const openFileButton = (
     <button
@@ -215,9 +214,9 @@ export function MarkdownTile({
       title="Open markdown file"
     >
       <FolderOpen size={11} />
-      <span>{isLoading ? "opening..." : "open file"}</span>
+      <span>{isLoading ? 'opening...' : 'open file'}</span>
     </button>
-  );
+  )
 
   return (
     <CanvasTileComponent
@@ -242,11 +241,8 @@ export function MarkdownTile({
           {openFileButton}
           {error && <span className="markdown-tile-error">{error}</span>}
         </div>
-        <div
-          className="markdown-tile-content"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="markdown-tile-content" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     </CanvasTileComponent>
-  );
+  )
 }

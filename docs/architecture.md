@@ -38,6 +38,7 @@ Main Process (Electron)
 ## IPC Contract
 
 Defined in `shared/ipc.ts`:
+
 - All renderer-main communication goes through typed channels
 - High-risk inputs are validated in main
 - Browser automation IPC is sender-validated and payload-validated per action
@@ -56,12 +57,14 @@ The renderer subscribes once and routes events to the appropriate session hook.
 ## Provider Services
 
 ### OpenCode
+
 - Full SDK client with session/message/tool APIs
 - Real-time event streaming
 - Permission and question request/reply flow
 - Todo tracking from `todo.updated` events
 
 ### Codex
+
 - Spawns `codex app-server` as child process
 - JSON-RPC 2.0 over stdin/stdout (newline-delimited JSON)
 - Initialize handshake, then model/list and collaborationMode/list

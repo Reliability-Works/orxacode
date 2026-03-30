@@ -1,20 +1,19 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RawConfigDocument, ServerDiagnostics } from "@shared/ipc";
-import { SettingsDrawer } from "./SettingsDrawer";
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, expect, it, vi } from 'vitest'
+import type { RawConfigDocument, ServerDiagnostics } from '@shared/ipc'
+import { SettingsDrawer } from './SettingsDrawer'
 
 afterEach(() => {
-  cleanup();
-});
+  cleanup()
+})
 
-describe("SettingsDrawer", () => {
-  it("renders a back-to-app action instead of the old modal title", () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
+it('renders a back-to-app action instead of the old modal title', () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
 
     render(
       <SettingsDrawer
@@ -23,399 +22,506 @@ describe("SettingsDrawer", () => {
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
-        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
-        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
+        onReadGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: false,
+        }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: true,
+        }))}
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    expect(screen.getByRole("button", { name: "Back to app" })).toBeInTheDocument();
-    expect(screen.queryByText(/^settings$/i)).not.toBeInTheDocument();
-  });
+    expect(screen.getByRole('button', { name: 'Back to app' })).toBeInTheDocument()
+    expect(screen.queryByText(/^settings$/i)).not.toBeInTheDocument()
+})
 
-  it("renders provider models only from discoverable option input", () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
-
+it('renders provider models only from discoverable option input', () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
 
     render(
       <SettingsDrawer
         open
-
         directory={undefined}
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
-        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
-        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
-
+        onReadGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: false,
+        }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: true,
+        }))}
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
-
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[
           {
-            key: "openai/gpt-5.2",
-            providerID: "openai",
-            modelID: "gpt-5.2",
-            providerName: "OpenAI",
-            modelName: "GPT-5.2",
+            key: 'openai/gpt-5.2',
+            providerID: 'openai',
+            modelID: 'gpt-5.2',
+            providerName: 'OpenAI',
+            modelName: 'GPT-5.2',
             variants: [],
           },
           {
-            key: "cloudflare/@cf/meta/llama-3.1-8b-instruct",
-            providerID: "cloudflare",
-            modelID: "@cf/meta/llama-3.1-8b-instruct",
-            providerName: "Cloudflare AI",
-            modelName: "Llama 3.1 8B Instruct",
+            key: 'cloudflare/@cf/meta/llama-3.1-8b-instruct',
+            providerID: 'cloudflare',
+            modelID: '@cf/meta/llama-3.1-8b-instruct',
+            providerName: 'Cloudflare AI',
+            modelName: 'Llama 3.1 8B Instruct',
             variants: [],
           },
         ]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Provider Models" })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Provider Models' })[0]!)
 
-    expect(screen.getByText("OpenAI")).toBeInTheDocument();
-    expect(screen.getByText("Cloudflare AI")).toBeInTheDocument();
-    expect(screen.queryByText("Abacus")).not.toBeInTheDocument();
-  });
+    expect(screen.getByText('OpenAI')).toBeInTheDocument()
+    expect(screen.getByText('Cloudflare AI')).toBeInTheDocument()
+    expect(screen.queryByText('Abacus')).not.toBeInTheDocument()
+})
 
-  it("shows app version in app preferences", () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
-
+it('shows app version in app preferences', () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
 
     render(
       <SettingsDrawer
         open
-
         directory={undefined}
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
-        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
-        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
-
+        onReadGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: false,
+        }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: true,
+        }))}
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
-
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getAllByRole("button", { name: "App" })[0]!);
-    expect(screen.getByText(`Version: v${__APP_VERSION__}`)).toBeInTheDocument();
-    expect(screen.getByText(/Last checked:/)).toBeInTheDocument();
-  });
+    fireEvent.click(screen.getAllByRole('button', { name: 'App' })[0]!)
+    expect(screen.getByText(`Version: v${APP_VERSION}`)).toBeInTheDocument()
+    expect(screen.getByText(/Last checked:/)).toBeInTheDocument()
+})
 
-  it("places git settings on the dedicated Git page", () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
-
+it('places git settings on the dedicated Git page', () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
 
     render(
       <SettingsDrawer
         open
-
         directory={undefined}
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
-        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
-        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
-
+        onReadGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: false,
+        }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: true,
+        }))}
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
-
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getAllByRole("button", { name: "App" })[0]!);
-    expect(screen.queryByText("commit message guidance prompt")).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'App' })[0]!)
+    expect(screen.queryByText('commit message guidance prompt')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Git" })[0]!);
-    expect(screen.getByText("commit message guidance prompt")).toBeInTheDocument();
-  });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Git' })[0]!)
+    expect(screen.getByText('commit message guidance prompt')).toBeInTheDocument()
+})
 
-  it("allows editing global AGENTS.md on the Personalization page", async () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
-
+it('allows editing global AGENTS.md on the Personalization page', async () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
     const readGlobalAgentsMd = vi.fn(async () => ({
-      path: "/Users/test/.config/opencode/AGENTS.md",
-      content: "# Global Rules\n",
+      path: '/Users/test/.config/opencode/AGENTS.md',
+      content: '# Global Rules\n',
       exists: true,
-    }));
+    }))
     const writeGlobalAgentsMd = vi.fn(async (content: string) => ({
-      path: "/Users/test/.config/opencode/AGENTS.md",
+      path: '/Users/test/.config/opencode/AGENTS.md',
       content,
       exists: true,
-    }));
+    }))
 
     render(
       <SettingsDrawer
         open
-
         directory={undefined}
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
         onReadGlobalAgentsMd={readGlobalAgentsMd}
         onWriteGlobalAgentsMd={writeGlobalAgentsMd}
-
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
-
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Personalization" })[0]!);
-    expect(screen.getByText("your global AGENTS.md which will apply to all workspace sessions.")).toBeInTheDocument();
-    await waitFor(() => expect(readGlobalAgentsMd).toHaveBeenCalled());
-    expect(screen.getByText("/Users/test/.config/opencode/AGENTS.md")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Personalization' })[0]!)
+    expect(
+      screen.getByText('your global AGENTS.md which will apply to all workspace sessions.')
+    ).toBeInTheDocument()
+    await waitFor(() => expect(readGlobalAgentsMd).toHaveBeenCalled())
+    expect(screen.getByText('/Users/test/.config/opencode/AGENTS.md')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText("global AGENTS.md"), { target: { value: "# Updated Global Rules\n" } });
-    fireEvent.click(screen.getByRole("button", { name: "save" }));
+    fireEvent.change(screen.getByLabelText('global AGENTS.md'), {
+      target: { value: '# Updated Global Rules\n' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'save' }))
 
-    expect(writeGlobalAgentsMd).toHaveBeenCalledWith("# Updated Global Rules\n");
-  });
+    expect(writeGlobalAgentsMd).toHaveBeenCalledWith('# Updated Global Rules\n')
+})
 
-  it("does not render a memory settings section in the nav", async () => {
-    const rawDoc: RawConfigDocument = { scope: "global", path: "config.json", content: "{}" };
-
+it('does not render a memory settings section in the nav', async () => {
+    const rawDoc: RawConfigDocument = { scope: 'global', path: 'config.json', content: '{}' }
 
     const diagnostics: ServerDiagnostics = {
-      runtime: { status: "disconnected", managedServer: false },
-      health: "disconnected",
-    };
+      runtime: { status: 'disconnected', managedServer: false },
+      health: 'disconnected',
+    }
 
     render(
       <SettingsDrawer
         open
-
         directory="/repo"
         onClose={() => undefined}
         onReadRaw={vi.fn(async () => rawDoc)}
         onWriteRaw={vi.fn(async () => rawDoc)}
-        onReadGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: false }))}
-        onWriteGlobalAgentsMd={vi.fn(async () => ({ path: "/Users/test/.config/opencode/AGENTS.md", content: "", exists: true }))}
-
+        onReadGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: false,
+        }))}
+        onWriteGlobalAgentsMd={vi.fn(async () => ({
+          path: '/Users/test/.config/opencode/AGENTS.md',
+          content: '',
+          exists: true,
+        }))}
         appPreferences={{
           showOperationsPane: true,
           autoOpenTerminalOnCreate: true,
           confirmDangerousActions: true,
-          permissionMode: "ask-write",
-          commitGuidancePrompt: "",
-          codeFont: "IBM Plex Mono",
+          permissionMode: 'ask-write',
+          commitGuidancePrompt: '',
+          codeFont: 'IBM Plex Mono',
           hiddenModels: [],
-          codexPath: "",
-          codexArgs: "",
-          codexDefaultModel: "",
-          codexReasoningEffort: "medium",
-          codexAccessMode: "on-request",
-          gitAgent: "opencode" as const,
+          codexPath: '',
+          codexArgs: '',
+          codexDefaultModel: '',
+          codexReasoningEffort: 'medium',
+          codexAccessMode: 'on-request',
+          gitAgent: 'opencode' as const,
           notifyOnAwaitingInput: false,
           notifyOnTaskComplete: false,
           collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false, enableAssistantStreaming: true, theme: "glass" as const, uiFont: "Inter",
+          subagentSystemNotificationsEnabled: false,
+          enableAssistantStreaming: true,
+          theme: 'glass' as const,
+          uiFont: 'Inter',
         }}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
-        onGetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onSetUpdatePreferences={vi.fn(async () => ({ autoCheckEnabled: true, releaseChannel: "stable" as const }))}
-        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: "started" as const }))}
-
+        onGetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onSetUpdatePreferences={vi.fn(async () => ({
+          autoCheckEnabled: true,
+          releaseChannel: 'stable' as const,
+        }))}
+        onCheckForUpdates={vi.fn(async () => ({ ok: true, status: 'started' as const }))}
         allModelOptions={[]}
         profiles={[]}
-        runtime={{ status: "connected", activeProfileId: undefined, baseUrl: "", managedServer: false }}
+        runtime={{
+          status: 'connected',
+          activeProfileId: undefined,
+          baseUrl: '',
+          managedServer: false,
+        }}
         onSaveProfile={vi.fn()}
         onDeleteProfile={vi.fn()}
         onAttachProfile={vi.fn()}
         onStartLocalProfile={vi.fn()}
         onStopLocalProfile={vi.fn()}
         onRefreshProfiles={vi.fn()}
-      />,
-    );
+      />
+    )
 
-    expect(screen.queryByRole("button", { name: "Memory" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Server" })[0]!);
-    expect(await screen.findByText("// local runtime")).toBeInTheDocument();
-    expect(screen.getByText("// remote profiles")).toBeInTheDocument();
-  });
-});
+    expect(screen.queryByRole('button', { name: 'Memory' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Server' })[0]!)
+    expect(await screen.findByText('// local runtime')).toBeInTheDocument()
+    expect(screen.getByText('// remote profiles')).toBeInTheDocument()
+})

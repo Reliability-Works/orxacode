@@ -1,20 +1,20 @@
-import { useState, type ReactNode } from "react";
-import { ToolTypeIcon } from "./tool-type-icon";
+import { useState, type ReactNode } from 'react'
+import { ToolTypeIcon } from './tool-type-icon'
 
-export type ToolCallStatus = "pending" | "running" | "completed" | "error";
+export type ToolCallStatus = 'pending' | 'running' | 'completed' | 'error'
 
 interface ToolCallCardProps {
-  title: string;
-  expandedTitle?: string;
-  subtitle?: string;
-  status: ToolCallStatus;
-  command?: string;
-  output?: string;
-  error?: string;
-  defaultExpanded?: boolean;
+  title: string
+  expandedTitle?: string
+  subtitle?: string
+  status: ToolCallStatus
+  command?: string
+  output?: string
+  error?: string
+  defaultExpanded?: boolean
   /** Override the auto-detected icon hint (e.g. "bash" forces Terminal icon). */
-  iconHint?: string;
-  children?: ReactNode;
+  iconHint?: string
+  children?: ReactNode
 }
 
 export function ToolCallCard({
@@ -28,29 +28,35 @@ export function ToolCallCard({
   iconHint,
   children,
 }: ToolCallCardProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpanded] = useState(defaultExpanded)
 
-  const hasBody = !!(children ?? command ?? output ?? error);
+  const hasBody = !!(children ?? command ?? output ?? error)
 
   return (
     <div
-      className={`tool-call-card tool-call-card--${status} ${expanded ? "is-expanded" : "is-collapsed"}`.trim()}
-      data-expanded={expanded ? "true" : "false"}
+      className={`tool-call-card tool-call-card--${status} ${expanded ? 'is-expanded' : 'is-collapsed'}`.trim()}
+      data-expanded={expanded ? 'true' : 'false'}
     >
       <button
         type="button"
         className="tool-call-card-header"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(v => !v)}
         aria-expanded={expanded}
         disabled={!hasBody}
       >
-        <ToolTypeIcon title={iconHint ?? title} className={`tool-call-card-icon tool-call-card-icon--${status}`} />
-        <span className={`tool-call-card-status tool-call-card-status--${status}`} aria-label={status} />
+        <ToolTypeIcon
+          title={iconHint ?? title}
+          className={`tool-call-card-icon tool-call-card-icon--${status}`}
+        />
+        <span
+          className={`tool-call-card-status tool-call-card-status--${status}`}
+          aria-label={status}
+        />
         <span className="tool-call-card-title">{title}</span>
         {subtitle ? <span className="tool-call-card-subtitle">{subtitle}</span> : null}
         {hasBody ? (
           <span className="tool-call-card-chevron" aria-hidden="true">
-            {expanded ? "▾" : "›"}
+            {expanded ? '▾' : '›'}
           </span>
         ) : null}
       </button>
@@ -72,5 +78,5 @@ export function ToolCallCard({
         </div>
       ) : null}
     </div>
-  );
+  )
 }

@@ -1,184 +1,188 @@
-import type { BrowserHistoryItem, BrowserState } from "@shared/ipc";
+import type { BrowserHistoryItem, BrowserState } from '@shared/ipc'
 
-export const DEFAULT_BROWSER_LANDING_URL = "about:blank";
+export const DEFAULT_BROWSER_LANDING_URL = 'about:blank'
 
-const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
+const URL_REFERENCE_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i
 const WEB_TASK_HINT_PATTERN =
-  /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i;
-const STATUS_TOAST_ERROR_PATTERN = /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i;
-const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i;
+  /\b(research|browse|browsing|web|website|webpage|look up|lookup|search online|search the web|find online|url|latest|news|social media|reddit|linkedin|x\.com|twitter)\b/i
+const STATUS_TOAST_ERROR_PATTERN =
+  /\b(error|failed|unable|cannot|can't|denied|rejected|missing|not found|unavailable|timed out|inaccessible)\b/i
+const STATUS_TOAST_WARNING_PATTERN = /\b(warning|interrupted|stopped|retry)\b/i
 const RECOVERABLE_SESSION_ERROR_PATTERN =
-  /\b(skill|skills?|working directory|workspace|cwd|enoent|not found|no such file|no longer accessible)\b/i;
+  /\b(skill|skills?|working directory|workspace|cwd|enoent|not found|no such file|no longer accessible)\b/i
 const UUID_LIKE_SESSION_TITLE_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SHORT_HEX_SESSION_TITLE_PATTERN = /^[a-f0-9]{4,8}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SHORT_HEX_SESSION_TITLE_PATTERN = /^[a-f0-9]{4,8}$/i
 
 export const EMPTY_BROWSER_RUNTIME_STATE: BrowserState = {
-  partition: "persist:orxa-browser",
+  partition: 'persist:orxa-browser',
   bounds: { x: 0, y: 0, width: 0, height: 0 },
   tabs: [],
   activeTabID: undefined,
-};
+}
 
-export type BrowserControlOwner = "agent" | "human";
+export type BrowserControlOwner = 'agent' | 'human'
 
 type BrowserSidebarTabState = {
-  id: string;
-  title: string;
-  url: string;
-  isActive: boolean;
-};
+  id: string
+  title: string
+  url: string
+  isActive: boolean
+}
 
 type BrowserSidebarHistoryEntry = {
-  id: string;
-  label: string;
-  url: string;
-};
+  id: string
+  label: string
+  url: string
+}
 
 export type BrowserSidebarStateView = {
-  modeEnabled: boolean;
-  controlOwner: BrowserControlOwner;
-  tabs: BrowserSidebarTabState[];
-  activeTabID: string | null;
-  activeUrl: string;
-  history: BrowserSidebarHistoryEntry[];
-  canGoBack: boolean;
-  canGoForward: boolean;
-  isLoading: boolean;
-  actionRunning: boolean;
-  canStop?: boolean;
-};
+  modeEnabled: boolean
+  controlOwner: BrowserControlOwner
+  tabs: BrowserSidebarTabState[]
+  activeTabID: string | null
+  activeUrl: string
+  history: BrowserSidebarHistoryEntry[]
+  canGoBack: boolean
+  canGoForward: boolean
+  isLoading: boolean
+  actionRunning: boolean
+  canStop?: boolean
+}
 
 type BrowserSidebarStateInput = {
-  runtimeState: BrowserState;
-  history: BrowserHistoryItem[];
-  modeEnabled: boolean;
-  controlOwner: BrowserControlOwner;
-  actionRunning: boolean;
-  canStop: boolean;
-};
+  runtimeState: BrowserState
+  history: BrowserHistoryItem[]
+  modeEnabled: boolean
+  controlOwner: BrowserControlOwner
+  actionRunning: boolean
+  canStop: boolean
+}
 
-function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarStateView["history"] {
-  return items.map((entry) => ({
+function toBrowserSidebarHistory(items: BrowserHistoryItem[]): BrowserSidebarStateView['history'] {
+  return items.map(entry => ({
     id: entry.id,
     label: entry.title?.trim() ? entry.title : entry.url,
     url: entry.url,
-  }));
+  }))
 }
 
-export function toneForStatusLine(status: string): "error" | "warning" | null {
-  const value = status.trim();
+export function toneForStatusLine(status: string): 'error' | 'warning' | null {
+  const value = status.trim()
   if (!value) {
-    return null;
+    return null
   }
   if (STATUS_TOAST_ERROR_PATTERN.test(value)) {
-    return "error";
+    return 'error'
   }
   if (STATUS_TOAST_WARNING_PATTERN.test(value)) {
-    return "warning";
+    return 'warning'
   }
-  return null;
+  return null
 }
 
 export function isRecoverableSessionError(message: string, code?: string) {
   if (RECOVERABLE_SESSION_ERROR_PATTERN.test(message)) {
-    return true;
+    return true
   }
-  if (typeof code === "string" && RECOVERABLE_SESSION_ERROR_PATTERN.test(code)) {
-    return true;
+  if (typeof code === 'string' && RECOVERABLE_SESSION_ERROR_PATTERN.test(code)) {
+    return true
   }
-  return false;
+  return false
 }
 
 export function buildBrowserAutopilotHint(input: string): string | undefined {
-  const text = input.trim();
+  const text = input.trim()
   if (!text) {
-    return undefined;
+    return undefined
   }
-  const hasUrl = URL_REFERENCE_PATTERN.test(text);
-  const hasWebTask = WEB_TASK_HINT_PATTERN.test(text);
+  const hasUrl = URL_REFERENCE_PATTERN.test(text)
+  const hasWebTask = WEB_TASK_HINT_PATTERN.test(text)
   if (!hasUrl && !hasWebTask) {
-    return undefined;
+    return undefined
   }
 
   const lines = [
-    "Auto Browser Skill Triggered: the latest user request appears to need web browsing.",
-    "Prefer integrated Orxa browser actions over any external/headless browser tool.",
-  ];
+    'Auto Browser Skill Triggered: the latest user request appears to need web browsing.',
+    'Prefer integrated Orxa browser actions over any external/headless browser tool.',
+  ]
   if (hasUrl) {
-    lines.push("Use URLs mentioned by the user as first navigation targets.");
+    lines.push('Use URLs mentioned by the user as first navigation targets.')
   }
   if (hasWebTask) {
-    lines.push("For research tasks, follow a loop: navigate, wait_for_idle, extract_text, then summarize.");
+    lines.push(
+      'For research tasks, follow a loop: navigate, wait_for_idle, extract_text, then summarize.'
+    )
   }
-  return lines.join("\n");
+  return lines.join('\n')
 }
 
 export function toBrowserSidebarState(input: BrowserSidebarStateInput): BrowserSidebarStateView {
-  const tabs = input.runtimeState.tabs.map((tab) => ({
+  const tabs = input.runtimeState.tabs.map(tab => ({
     id: tab.id,
-    title: tab.title?.trim() ? tab.title : tab.url || "New Tab",
+    title: tab.title?.trim() ? tab.title : tab.url || 'New Tab',
     url: tab.url,
     isActive: tab.id === input.runtimeState.activeTabID,
-  }));
-  const activeTab = input.runtimeState.tabs.find((tab) => tab.id === input.runtimeState.activeTabID) ?? null;
+  }))
+  const activeTab =
+    input.runtimeState.tabs.find(tab => tab.id === input.runtimeState.activeTabID) ?? null
 
   return {
     modeEnabled: input.modeEnabled,
     controlOwner: input.controlOwner,
     tabs,
     activeTabID: input.runtimeState.activeTabID ?? null,
-    activeUrl: activeTab?.url ?? "",
+    activeUrl: activeTab?.url ?? '',
     history: toBrowserSidebarHistory(input.history),
     canGoBack: activeTab?.canGoBack ?? false,
     canGoForward: activeTab?.canGoForward ?? false,
     isLoading: activeTab?.loading ?? false,
     actionRunning: input.actionRunning,
     canStop: input.canStop,
-  };
+  }
 }
 
 export function shouldAutoRenameSessionTitle(title: string | undefined) {
   if (!title) {
-    return true;
+    return true
   }
-  const normalized = title.trim().toLowerCase();
+  const normalized = title.trim().toLowerCase()
   return (
-    normalized === "" ||
-    normalized === "new session" ||
-    normalized === "opencode session" ||
-    normalized === "untitled session"
-  );
+    normalized === '' ||
+    normalized === 'new session' ||
+    normalized === 'opencode session' ||
+    normalized === 'untitled session'
+  )
 }
 
 export function looksAutoGeneratedSessionTitle(title: string | undefined) {
   if (!title) {
-    return true;
+    return true
   }
-  const trimmed = title.trim();
+  const trimmed = title.trim()
   if (!trimmed) {
-    return true;
+    return true
   }
-  const normalized = trimmed.toLowerCase();
+  const normalized = trimmed.toLowerCase()
   return (
     shouldAutoRenameSessionTitle(trimmed) ||
-    normalized === "codex session" ||
-    normalized === "claude code" ||
-    normalized === "canvas" ||
-    normalized === "new agent" ||
-    normalized.startsWith("agent ") ||
+    normalized === 'codex session' ||
+    normalized === 'claude code' ||
+    normalized === 'canvas' ||
+    normalized === 'new agent' ||
+    normalized.startsWith('agent ') ||
     SHORT_HEX_SESSION_TITLE_PATTERN.test(trimmed) ||
     UUID_LIKE_SESSION_TITLE_PATTERN.test(trimmed)
-  );
+  )
 }
 
 export function deriveSessionTitleFromPrompt(prompt: string, maxLength = 56) {
   const cleaned = prompt
-    .replace(/\s+/g, " ")
-    .replace(/[^\p{L}\p{N}\s\-_:,.!?/]/gu, "")
-    .trim();
+    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s\-_:,.!?/]/gu, '')
+    .trim()
   if (!cleaned) {
-    return "New session";
+    return 'New session'
   }
-  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned
 }

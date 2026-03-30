@@ -1,40 +1,43 @@
-import type { Session } from "@opencode-ai/sdk/v2/client";
-import type { ProjectBootstrap } from "@shared/ipc";
-import type { SessionType } from "../types/canvas";
-import { buildWorkspaceSessionMetadataKey } from "./workspace-session-metadata";
+import type { Session } from '@opencode-ai/sdk/v2/client'
+import type { ProjectBootstrap } from '@shared/ipc'
+import type { SessionType } from '../types/canvas'
+import { buildWorkspaceSessionMetadataKey } from './workspace-session-metadata'
 
-export const LOCAL_PROVIDER_SESSIONS_KEY = "orxa:localProviderSessions:v1";
+export const LOCAL_PROVIDER_SESSIONS_KEY = 'orxa:localProviderSessions:v1'
 
-export type LocalProviderSessionType = Extract<SessionType, "codex" | "claude" | "claude-chat">;
+export type LocalProviderSessionType = Extract<SessionType, 'codex' | 'claude' | 'claude-chat'>
 
 export type LocalProviderSessionRecord = {
-  sessionID: string;
-  directory: string;
-  type: LocalProviderSessionType;
-  title: string;
-  slug: string;
-  createdAt: number;
-  updatedAt: number;
-};
+  sessionID: string
+  directory: string
+  type: LocalProviderSessionType
+  title: string
+  slug: string
+  createdAt: number
+  updatedAt: number
+}
 
-export type LocalProviderSessionMap = Record<string, LocalProviderSessionRecord>;
+export type LocalProviderSessionMap = Record<string, LocalProviderSessionRecord>
 
-const LOCAL_PROVIDER_TYPES = new Set<LocalProviderSessionType>(["codex", "claude", "claude-chat"]);
+const LOCAL_PROVIDER_TYPES = new Set<LocalProviderSessionType>(['codex', 'claude', 'claude-chat'])
 
-export function isLocalProviderSessionType(type: string | undefined): type is LocalProviderSessionType {
-  return Boolean(type && LOCAL_PROVIDER_TYPES.has(type as LocalProviderSessionType));
+export function isLocalProviderSessionType(
+  type: string | undefined
+): type is LocalProviderSessionType {
+  return Boolean(type && LOCAL_PROVIDER_TYPES.has(type as LocalProviderSessionType))
 }
 
 export function createLocalProviderSessionRecord(
   directory: string,
   type: LocalProviderSessionType,
-  title: string,
+  title: string
 ): LocalProviderSessionRecord {
-  const now = Date.now();
-  const token = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID().slice(0, 8)
-    : Math.random().toString(36).slice(2, 10);
-  const sessionID = `${type}-${now.toString(36)}-${token}`;
+  const now = Date.now()
+  const token =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10)
+  const sessionID = `${type}-${now.toString(36)}-${token}`
   return {
     sessionID,
     directory,
@@ -43,7 +46,7 @@ export function createLocalProviderSessionRecord(
     slug: type,
     createdAt: now,
     updatedAt: now,
-  };
+  }
 }
 
 export function toLocalProviderSession(record: LocalProviderSessionRecord): Session {
@@ -53,36 +56,40 @@ export function toLocalProviderSession(record: LocalProviderSessionRecord): Sess
     directory: record.directory,
     slug: record.slug,
     title: record.title,
-    version: "local",
+    version: 'local',
     time: {
       created: record.createdAt,
       updated: record.updatedAt,
     },
-  } as unknown as Session;
+  } as unknown as Session
 }
 
 export function mergeLocalProviderSessions(
   project: ProjectBootstrap,
   records: LocalProviderSessionMap,
-  getSessionType: (sessionID: string, directory?: string) => string | undefined,
+  getSessionType: (sessionID: string, directory?: string) => string | undefined
 ): ProjectBootstrap {
-  const retainedSessions = project.sessions.filter((session) => !isLocalProviderSessionType(getSessionType(session.id, project.directory)));
+  const retainedSessions = project.sessions.filter(
+    session => !isLocalProviderSessionType(getSessionType(session.id, project.directory))
+  )
   const retainedStatus = Object.fromEntries(
-    Object.entries(project.sessionStatus).filter(([sessionID]) => !isLocalProviderSessionType(getSessionType(sessionID, project.directory))),
-  );
+    Object.entries(project.sessionStatus).filter(
+      ([sessionID]) => !isLocalProviderSessionType(getSessionType(sessionID, project.directory))
+    )
+  )
 
   const localRecords = Object.values(records)
-    .filter((record) => record.directory === project.directory)
-    .map((record) => ({ ...record }));
+    .filter(record => record.directory === project.directory)
+    .map(record => ({ ...record }))
 
   for (const session of project.sessions) {
-    const sessionType = getSessionType(session.id, project.directory);
+    const sessionType = getSessionType(session.id, project.directory)
     if (!isLocalProviderSessionType(sessionType)) {
-      continue;
+      continue
     }
-    const sessionKey = buildWorkspaceSessionMetadataKey(project.directory, session.id);
+    const sessionKey = buildWorkspaceSessionMetadataKey(project.directory, session.id)
     if (records[sessionKey]) {
-      continue;
+      continue
     }
     localRecords.push({
       sessionID: session.id,
@@ -92,15 +99,17 @@ export function mergeLocalProviderSessions(
       slug: session.slug,
       createdAt: session.time.created,
       updatedAt: session.time.updated,
-    });
+    })
   }
 
-  const mergedSessions = [...retainedSessions, ...localRecords.map((record) => toLocalProviderSession(record))]
-    .sort((left, right) => right.time.updated - left.time.updated);
+  const mergedSessions = [
+    ...retainedSessions,
+    ...localRecords.map(record => toLocalProviderSession(record)),
+  ].sort((left, right) => right.time.updated - left.time.updated)
 
   for (const record of localRecords) {
     if (!(record.sessionID in retainedStatus)) {
-      retainedStatus[record.sessionID] = { type: "idle" };
+      retainedStatus[record.sessionID] = { type: 'idle' }
     }
   }
 
@@ -108,44 +117,44 @@ export function mergeLocalProviderSessions(
     ...project,
     sessions: mergedSessions,
     sessionStatus: retainedStatus,
-  };
+  }
 }
 
 export function upsertLocalProviderSessionRecord(
   map: LocalProviderSessionMap,
-  record: LocalProviderSessionRecord,
+  record: LocalProviderSessionRecord
 ): LocalProviderSessionMap {
-  const sessionKey = buildWorkspaceSessionMetadataKey(record.directory, record.sessionID);
+  const sessionKey = buildWorkspaceSessionMetadataKey(record.directory, record.sessionID)
   return {
     ...map,
     [sessionKey]: record,
-  };
+  }
 }
 
 export function removeLocalProviderSessionRecord(
   map: LocalProviderSessionMap,
   directory: string,
-  sessionID: string,
+  sessionID: string
 ): LocalProviderSessionMap {
-  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
+  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
   if (!(sessionKey in map)) {
-    return map;
+    return map
   }
-  const next = { ...map };
-  delete next[sessionKey];
-  return next;
+  const next = { ...map }
+  delete next[sessionKey]
+  return next
 }
 
 export function renameLocalProviderSessionRecord(
   map: LocalProviderSessionMap,
   directory: string,
   sessionID: string,
-  title: string,
+  title: string
 ): LocalProviderSessionMap {
-  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
-  const current = map[sessionKey];
+  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
+  const current = map[sessionKey]
   if (!current) {
-    return map;
+    return map
   }
   return {
     ...map,
@@ -154,19 +163,19 @@ export function renameLocalProviderSessionRecord(
       title,
       updatedAt: Date.now(),
     },
-  };
+  }
 }
 
 export function touchLocalProviderSessionRecord(
   map: LocalProviderSessionMap,
   directory: string,
   sessionID: string,
-  updatedAt = Date.now(),
+  updatedAt = Date.now()
 ): LocalProviderSessionMap {
-  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID);
-  const current = map[sessionKey];
+  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
+  const current = map[sessionKey]
   if (!current || updatedAt <= current.updatedAt) {
-    return map;
+    return map
   }
   return {
     ...map,
@@ -174,5 +183,5 @@ export function touchLocalProviderSessionRecord(
       ...current,
       updatedAt,
     },
-  };
+  }
 }
