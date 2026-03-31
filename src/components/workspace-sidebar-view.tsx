@@ -128,7 +128,7 @@ function renderSessionTypeIcon(sessionType: SessionType | undefined) {
           <AnthropicLogo size={10} />
         </span>
       )
-    case 'standalone':
+    case 'opencode':
     default:
       return (
         <span className="session-type-icon session-type-icon--opencode" aria-hidden="true">

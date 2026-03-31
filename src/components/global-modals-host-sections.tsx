@@ -147,7 +147,7 @@ export function SessionListModal({
   }
 
   return (
-    <div className="overlay" onClick={() => setAllSessionsModalOpen(false)}>
+    <div className="overlay overlay--session-list" onClick={() => setAllSessionsModalOpen(false)}>
       <div className="modal session-list-modal" onClick={event => event.stopPropagation()}>
         <div className="modal-header">
           <h2>all sessions</h2>

@@ -5,7 +5,7 @@ import { buildWorkspaceSessionMetadataKey } from './lib/workspace-session-metada
 import {
   createLocalProviderSessionRecord,
   isLocalProviderSessionType,
-  type LocalProviderSessionType,
+  type SyntheticSessionType,
 } from './lib/local-provider-sessions'
 
 type LocalProviderSessionRecord = ReturnType<typeof createLocalProviderSessionRecord>
@@ -40,13 +40,13 @@ type CreateSessionContext = {
   setSessionTypes: Dispatch<SetStateAction<Record<string, SessionType>>>
   setSidebarMode: (mode: 'projects' | 'kanban' | 'skills') => void
   setStatusLine: (value: string) => void
-  trackEmptySession: (sessionID: string, directory: string) => void
 }
 
 const STRUCTURED_SESSION_LABELS: Partial<Record<SessionType, string>> = {
   claude: 'Claude Code (Terminal)',
   'claude-chat': 'Claude Code (Chat)',
   codex: 'Codex Session',
+  opencode: 'OpenCode Session',
 }
 
 type SessionCreationIntent = {
@@ -58,7 +58,15 @@ type SessionCreationIntent = {
 }
 
 type LocalSessionCreationIntent = SessionCreationIntent & {
-  sessionType: LocalProviderSessionType
+  sessionType: SyntheticSessionType
+}
+
+function shouldCreateDraftSession(intent: SessionCreationIntent) {
+  return (
+    intent.sessionType === 'opencode' ||
+    intent.sessionType === 'codex' ||
+    intent.sessionType === 'claude-chat'
+  )
 }
 
 function resolveSessionCreationIntent(
@@ -67,12 +75,12 @@ function resolveSessionCreationIntent(
   sessionTypeOrPrompt?: SessionType | string
 ): SessionCreationIntent | null {
   const isSessionType =
-    sessionTypeOrPrompt === 'standalone' ||
+    sessionTypeOrPrompt === 'opencode' ||
     sessionTypeOrPrompt === 'canvas' ||
     sessionTypeOrPrompt === 'claude' ||
     sessionTypeOrPrompt === 'claude-chat' ||
     sessionTypeOrPrompt === 'codex'
-  const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : 'standalone'
+  const sessionType: SessionType = isSessionType ? (sessionTypeOrPrompt as SessionType) : 'opencode'
   const targetDirectory = directory ?? activeProjectDir
   if (!targetDirectory) {
     return null
@@ -87,6 +95,7 @@ function resolveSessionCreationIntent(
       'claude-chat': 'Claude Code (Chat)',
       canvas: 'Canvas',
       codex: 'Codex Session',
+      opencode: 'OpenCode Session',
     },
   }
 }
@@ -131,6 +140,7 @@ function applyStructuredSessionMetadata(
 
 async function createLocalProviderSession(
   intent: LocalSessionCreationIntent,
+  options: { draft: boolean },
   context: Pick<
     CreateSessionContext,
     | 'activeProjectDir'
@@ -145,7 +155,6 @@ async function createLocalProviderSession(
     | 'setSessionTypes'
     | 'setSidebarMode'
     | 'setStatusLine'
-    | 'trackEmptySession'
   >
 ) {
   const {
@@ -161,7 +170,6 @@ async function createLocalProviderSession(
     setSessionTypes,
     setSidebarMode,
     setStatusLine,
-    trackEmptySession,
   } = context
 
   if (activeProjectDir !== intent.targetDirectory) {
@@ -172,7 +180,8 @@ async function createLocalProviderSession(
     createLocalProviderSessionRecord(
       intent.targetDirectory,
       intent.sessionType,
-      intent.titleMap[intent.sessionType] ?? intent.sessionLabel
+      intent.titleMap[intent.sessionType] ?? intent.sessionLabel,
+      { draft: options.draft }
     )
   )
   const scopedSessionKey = buildWorkspaceSessionMetadataKey(intent.targetDirectory, record.sessionID)
@@ -185,10 +194,8 @@ async function createLocalProviderSession(
   setActiveProjectDir(intent.targetDirectory)
   setActiveSessionID(record.sessionID)
   clearPendingSession()
-  if (intent.sessionType === 'claude') {
+  if (!options.draft) {
     markSessionUsed(record.sessionID)
-  } else {
-    trackEmptySession(record.sessionID, intent.targetDirectory)
   }
   setStatusLine('Session created')
 }
@@ -218,7 +225,6 @@ export async function createSessionAction(
     setSessionTypes,
     setSidebarMode,
     setStatusLine,
-    trackEmptySession,
   } = context
 
   const intent = resolveSessionCreationIntent(activeProjectDir, directory, sessionTypeOrPrompt)
@@ -233,8 +239,14 @@ export async function createSessionAction(
     return
   }
 
-  if (isLocalProviderSessionType(intent.sessionType)) {
+  const shouldCreateSyntheticSession =
+    (intent.sessionType === 'opencode' && !intent.initialPrompt) ||
+    isLocalProviderSessionType(intent.sessionType)
+
+  if (shouldCreateSyntheticSession) {
     await createLocalProviderSession(intent as LocalSessionCreationIntent, {
+      draft: shouldCreateDraftSession(intent),
+    }, {
       activeProjectDir,
       clearPendingSession,
       markSessionUsed,
@@ -247,7 +259,6 @@ export async function createSessionAction(
       setSessionTypes,
       setSidebarMode,
       setStatusLine,
-      trackEmptySession,
     })
     return
   }
@@ -260,7 +271,7 @@ export async function createSessionAction(
     availableAgentNames,
   })
 
-  if (intent.sessionType !== 'standalone' && createdSessionId) {
+  if (intent.sessionType !== 'opencode' && createdSessionId) {
     const scopedSessionKey = buildWorkspaceSessionMetadataKey(intent.targetDirectory, createdSessionId)
     applyStructuredSessionMetadata(
       scopedSessionKey,

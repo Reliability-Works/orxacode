@@ -33,10 +33,10 @@ describe('NewSessionPicker', () => {
     expect(screen.queryByText('codex session')).not.toBeInTheDocument()
   })
 
-  it("clicking opencode calls onPick with 'standalone'", () => {
+  it("clicking opencode calls onPick with 'opencode'", () => {
     const { onPick } = renderPicker()
     fireEvent.click(screen.getByText('opencode session'))
-    expect(onPick).toHaveBeenCalledWith('standalone')
+    expect(onPick).toHaveBeenCalledWith('opencode')
   })
 
   it("clicking canvas calls onPick with 'canvas'", () => {

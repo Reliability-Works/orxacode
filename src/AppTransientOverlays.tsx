@@ -123,7 +123,7 @@ function renderSessionContextMenu(
   createWorktreeSession: AppTransientOverlaysProps['createWorktreeSession'],
   renameSession: AppTransientOverlaysProps['renameSession']
 ) {
-  const sessionType = getSessionType(contextMenu.sessionID, contextMenu.directory) ?? 'standalone'
+  const sessionType = getSessionType(contextMenu.sessionID, contextMenu.directory) ?? 'opencode'
   const actions = getSessionContextActions(sessionType)
   return (
     <>

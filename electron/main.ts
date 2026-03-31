@@ -1,7 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { access } from 'node:fs/promises'
-import { execSync } from 'node:child_process'
 import { app, BrowserWindow, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
 import type { OrxaEvent } from '../shared/ipc'
 import { OpencodeService } from './services/opencode-service'
@@ -16,6 +15,11 @@ import { setupAutoUpdates, type AutoUpdaterController } from './services/auto-up
 import { createMainWindowEventPublisher } from './services/main-window-event-publisher'
 import { registerProviderEventBridge } from './services/provider-event-bridge'
 import { createStartupBootstrapTracker } from './services/startup-bootstrap'
+import {
+  applyStartupPathBootstrap,
+  pickRemoteDebuggingPort,
+  refreshShellPathInBackground,
+} from './services/startup-environment'
 import { resolveRendererHtmlPath } from './services/renderer-entry'
 import { DiagnosticsService } from './services/diagnostics-service'
 import { registerAppHandlers } from './ipc/app-handlers'
@@ -30,27 +34,16 @@ import { registerCodexHandlers } from './ipc/codex-handlers'
 import { registerKanbanHandlers } from './ipc/kanban-handlers'
 import { createAssertBrowserSender } from './ipc/validators'
 
-// Fix PATH on macOS — Electron doesn't inherit the user's shell PATH
+// Prime PATH on macOS without blocking cold startup on a login-shell spawn.
 if (process.platform === 'darwin') {
-  const shellPath = process.env.SHELL ?? '/bin/zsh'
-  try {
-    const stdout = execSync(`${shellPath} -ilc 'echo $PATH'`, { encoding: 'utf8', timeout: 5000 })
-    process.env.PATH = stdout.trim() || process.env.PATH
-  } catch {
-    // If shell PATH extraction fails, append common paths
-    const extraPaths = [
-      '/opt/homebrew/bin',
-      '/usr/local/bin',
-      `${process.env.HOME}/.nvm/versions/node/current/bin`,
-      `${process.env.HOME}/.volta/bin`,
-    ].join(':')
-    process.env.PATH = `${process.env.PATH}:${extraPaths}`
-  }
+  applyStartupPathBootstrap(process.env)
+  void refreshShellPathInBackground(process.env).catch(() => undefined)
 }
 
 // Enable CDP remote debugging so that chrome-devtools-mcp can connect
-// to our Electron browser views. Use a fixed port to make discovery reliable.
-app.commandLine.appendSwitch('remote-debugging-port', '9222')
+// to our Electron browser views. Pick the first free port in our preferred range.
+const REMOTE_DEBUGGING_PORT = await pickRemoteDebuggingPort()
+app.commandLine.appendSwitch('remote-debugging-port', String(REMOTE_DEBUGGING_PORT))
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -79,8 +72,7 @@ async function resolveCdpPort(): Promise<number> {
     return resolvedCdpPort
   }
 
-  // Try the configured port (9222) and nearby ports in case of conflict
-  for (const port of [9222, 9223, 9224, 9225, 9226]) {
+  for (const port of [REMOTE_DEBUGGING_PORT, 9222, 9223, 9224, 9225, 9226]) {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 1000)

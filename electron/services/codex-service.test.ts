@@ -1,11 +1,94 @@
 /** @vitest-environment node */
 
 import { describe, expect, it, vi } from 'vitest'
+
+const { createInterfaceMock, spawnMock } = vi.hoisted(() => ({
+  createInterfaceMock: vi.fn(),
+  spawnMock: vi.fn(),
+}))
+
+vi.mock('node:child_process', () => ({
+  spawn: spawnMock,
+}))
+
+vi.mock('node:readline', () => ({
+  createInterface: createInterfaceMock,
+}))
+
 import { buildRunMetadataPrompt, CodexService, parseRunMetadataValue } from './codex-service'
 import {
   ProviderSessionDirectory,
   makeProviderRuntimeSessionKey,
 } from './provider-session-directory'
+
+function createMockCodexProcess() {
+  const lineListeners: Array<(line: string) => void> = []
+  const errorListeners: Array<(error: Error) => void> = []
+  const exitListeners: Array<(code: number | null, signal: NodeJS.Signals | null) => void> = []
+  const stderrListeners: Array<(chunk: Buffer) => void> = []
+
+  const child = {
+    stdin: {
+      writable: true,
+      write: vi.fn((chunk: string) => {
+        const message = JSON.parse(chunk.trim()) as { id?: number; method?: string }
+        if (typeof message.id !== 'number' || typeof message.method !== 'string') {
+          return true
+        }
+
+        const result =
+          message.method === 'initialize'
+            ? { serverInfo: { name: 'codex', version: '1.0.0' } }
+            : message.method === 'model/list'
+              ? { data: [] }
+              : message.method === 'collaborationMode/list'
+                ? { data: [] }
+                : {}
+
+        queueMicrotask(() => {
+          const line = JSON.stringify({ id: message.id, result })
+          lineListeners.forEach(listener => listener(line))
+        })
+        return true
+      }),
+    },
+    stdout: {},
+    stderr: {
+      on: vi.fn((event: string, listener: (chunk: Buffer) => void) => {
+        if (event === 'data') {
+          stderrListeners.push(listener)
+        }
+      }),
+    },
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      if (event === 'error') {
+        errorListeners.push(listener as (error: Error) => void)
+      }
+      if (event === 'exit') {
+        exitListeners.push(
+          listener as (code: number | null, signal: NodeJS.Signals | null) => void
+        )
+      }
+    }),
+    kill: vi.fn(),
+    emitError: (error: Error) => errorListeners.forEach(listener => listener(error)),
+    emitExit: (code: number | null, signal: NodeJS.Signals | null = null) =>
+      exitListeners.forEach(listener => listener(code, signal)),
+    emitStderr: (chunk: string) =>
+      stderrListeners.forEach(listener => listener(Buffer.from(chunk))),
+  }
+
+  createInterfaceMock.mockReturnValue({
+    on: vi.fn((event: string, listener: (line: string) => void) => {
+      if (event === 'line') {
+        lineListeners.push(listener)
+      }
+    }),
+    close: vi.fn(),
+  })
+
+  return child
+}
 
 describe('CodexService metadata helpers', () => {
   it('builds the metadata prompt with the task text', () => {
@@ -86,6 +169,27 @@ describe('CodexService archive semantics', () => {
     })
 
     await expect(service.archiveThread('thr-1')).rejects.toThrow('permission denied')
+  })
+})
+
+describe('CodexService startup', () => {
+  it('waits for an in-flight startup instead of returning a transient connecting state', async () => {
+    spawnMock.mockReset()
+    createInterfaceMock.mockReset()
+    spawnMock.mockReturnValue(createMockCodexProcess())
+
+    const service = new CodexService()
+
+    const firstStart = service.start('/workspace/project')
+    const secondStart = service.start('/workspace/project')
+    const [firstState, secondState] = await Promise.all([firstStart, secondStart])
+
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    expect(firstState).toMatchObject({
+      status: 'connected',
+      serverInfo: { name: 'codex', version: '1.0.0' },
+    })
+    expect(secondState).toEqual(firstState)
   })
 })
 

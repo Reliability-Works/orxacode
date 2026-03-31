@@ -38,7 +38,7 @@ const SESSION_OPTIONS = [
     Icon: OpenAILogo,
   },
   {
-    type: 'standalone' as const,
+    type: 'opencode' as const,
     title: 'opencode session',
     subtitle: '// opencode ai chat session',
     iconClassName: 'new-session-picker-icon',

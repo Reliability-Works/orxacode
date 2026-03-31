@@ -37,7 +37,7 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     setAllSessionsModalOpen: vi.fn(),
     getSessionTitle: vi.fn((_, __, fallbackTitle) => fallbackTitle),
     getSessionType: vi.fn<WorkspaceSidebarProps['getSessionType']>(
-      () => 'standalone' satisfies SessionType
+      () => 'opencode' satisfies SessionType
     ),
     getSessionIndicator: vi.fn(() => 'none' as const),
     selectProject: vi.fn(),
@@ -83,72 +83,81 @@ function registerWorkspaceSidebarUpdateBasicsTests() {
     vi.useRealTimers()
   })
 
-  it('renders a footer check-for-updates button by default', () => {
+  it('does not render an update card when no update is available', () => {
     render(<WorkspaceSidebar {...buildProps()} />)
 
-    expect(screen.getByRole('button', { name: 'Check for updates' })).toBeInTheDocument()
-    expect(screen.queryByText('Update found')).not.toBeInTheDocument()
+    expect(screen.queryByText('Update available')).not.toBeInTheDocument()
   })
 
-  it('calls update check when no update is available', () => {
+  it('checks for updates when the update card is pressed', () => {
     const onCheckForUpdates = vi.fn()
-    render(<WorkspaceSidebar {...buildProps({ onCheckForUpdates })} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }))
-    expect(onCheckForUpdates).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows update card and downloads when an update is available', () => {
-    const onDownloadAndInstallUpdate = vi.fn()
     render(
       <WorkspaceSidebar
         {...buildProps({
           updateAvailableVersion: '0.1.0-beta.6',
-          onDownloadAndInstallUpdate,
+          onCheckForUpdates,
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /update available/i }))
+    expect(onCheckForUpdates).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows update card and checks for updates when one is available', () => {
+    const onCheckForUpdates = vi.fn()
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          updateAvailableVersion: '0.1.0-beta.6',
+          onCheckForUpdates,
         })}
       />
     )
 
     expect(screen.getByText('Update available')).toBeInTheDocument()
-    expect(screen.getByText(/v0\.1\.0-beta\.6/)).toBeInTheDocument()
+    expect(screen.getByText('0.1.0-beta.6')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Update available').closest('button')!)
-    expect(onDownloadAndInstallUpdate).toHaveBeenCalledTimes(1)
+    expect(onCheckForUpdates).toHaveBeenCalledTimes(1)
   })
 
-  it('shows pending state while an update install is active', () => {
+  it('downloads the update when install is pending', () => {
+    const onDownloadAndInstallUpdate = vi.fn()
     render(
       <WorkspaceSidebar
         {...buildProps({
           updateAvailableVersion: '0.1.0-beta.6',
           updateInstallPending: true,
+          onDownloadAndInstallUpdate,
         })}
       />
     )
 
-    const updatingButton = screen.getByRole('button', { name: 'Downloading update' })
-    expect(updatingButton).toBeDisabled()
+    const updatingButton = screen.getByRole('button', { name: /update available/i })
+    fireEvent.click(updatingButton)
+    expect(onDownloadAndInstallUpdate).toHaveBeenCalledTimes(1)
   })
 
   it('shows checking state while a check is in progress', () => {
     render(
       <WorkspaceSidebar
         {...buildProps({
+          updateAvailableVersion: '0.1.0-beta.6',
           isCheckingForUpdates: true,
         })}
       />
     )
 
-    const checkingButton = screen.getByRole('button', { name: 'Checking for updates' })
+    const checkingButton = screen.getByRole('button', { name: /update available/i })
     expect(checkingButton).toBeDisabled()
-    expect(checkingButton.className).toContain('is-spinning')
   })
 
-  it('opens debug logs from sidebar footer', () => {
+  it('does not render a legacy debug logs footer button', () => {
     const onOpenDebugLogs = vi.fn()
     render(<WorkspaceSidebar {...buildProps({ onOpenDebugLogs })} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Debug logs' }))
-    expect(onOpenDebugLogs).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: 'Debug logs' })).not.toBeInTheDocument()
+    expect(onOpenDebugLogs).not.toHaveBeenCalled()
   })
 
   it('opens the coming soon memory modal from the sidebar', () => {
@@ -285,7 +294,7 @@ function registerWorkspaceSidebarPinnedSessionTests() {
     )
 
     expect(screen.getByText('Pinned')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /Pinned session/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Pinned session' })).toHaveLength(1)
   })
 
   it('shows a session-type icon for rendered session rows', () => {

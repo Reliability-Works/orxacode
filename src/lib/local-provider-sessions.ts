@@ -1,25 +1,37 @@
 import type { Session } from '@opencode-ai/sdk/v2/client'
 import type { ProjectBootstrap } from '@shared/ipc'
 import type { SessionType } from '../types/canvas'
+import { normalizeSessionType } from './session-types'
 import { buildWorkspaceSessionMetadataKey } from './workspace-session-metadata'
 
 export const LOCAL_PROVIDER_SESSIONS_KEY = 'orxa:localProviderSessions:v1'
 
-export type LocalProviderSessionType = Extract<SessionType, 'codex' | 'claude' | 'claude-chat'>
+export type SyntheticSessionType = Extract<
+  SessionType,
+  'opencode' | 'codex' | 'claude' | 'claude-chat'
+>
+export type LocalProviderSessionType = Exclude<SyntheticSessionType, 'opencode'>
 
 export type LocalProviderSessionRecord = {
   sessionID: string
   directory: string
-  type: LocalProviderSessionType
+  type: SyntheticSessionType
   title: string
   slug: string
   createdAt: number
   updatedAt: number
+  draft: boolean
 }
 
 export type LocalProviderSessionMap = Record<string, LocalProviderSessionRecord>
 
 const LOCAL_PROVIDER_TYPES = new Set<LocalProviderSessionType>(['codex', 'claude', 'claude-chat'])
+const SYNTHETIC_SESSION_TYPES = new Set<SyntheticSessionType>([
+  'opencode',
+  'codex',
+  'claude',
+  'claude-chat',
+])
 
 export function isLocalProviderSessionType(
   type: string | undefined
@@ -27,10 +39,16 @@ export function isLocalProviderSessionType(
   return Boolean(type && LOCAL_PROVIDER_TYPES.has(type as LocalProviderSessionType))
 }
 
+export function isSyntheticSessionType(type: string | undefined): type is SyntheticSessionType {
+  const normalized = normalizeSessionType(type)
+  return Boolean(normalized && SYNTHETIC_SESSION_TYPES.has(normalized as SyntheticSessionType))
+}
+
 export function createLocalProviderSessionRecord(
   directory: string,
-  type: LocalProviderSessionType,
-  title: string
+  type: SyntheticSessionType,
+  title: string,
+  options?: { draft?: boolean }
 ): LocalProviderSessionRecord {
   const now = Date.now()
   const token =
@@ -46,7 +64,50 @@ export function createLocalProviderSessionRecord(
     slug: type,
     createdAt: now,
     updatedAt: now,
+    draft: options?.draft ?? false,
   }
+}
+
+export function normalizeSyntheticSessionRecord(
+  record: Partial<LocalProviderSessionRecord> | null | undefined
+): LocalProviderSessionRecord | null {
+  const type = normalizeSessionType(record?.type)
+  if (
+    !record ||
+    !type ||
+    !isSyntheticSessionType(type) ||
+    typeof record.sessionID !== 'string' ||
+    typeof record.directory !== 'string' ||
+    typeof record.title !== 'string' ||
+    typeof record.slug !== 'string' ||
+    typeof record.createdAt !== 'number' ||
+    typeof record.updatedAt !== 'number'
+  ) {
+    return null
+  }
+  return {
+    sessionID: record.sessionID,
+    directory: record.directory,
+    type,
+    title: record.title,
+    slug: record.slug === 'standalone' ? 'opencode' : record.slug,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    draft: record.draft === true,
+  }
+}
+
+export function normalizeSyntheticSessionMap(
+  raw: unknown
+): LocalProviderSessionMap {
+  if (!raw || typeof raw !== 'object') {
+    return {}
+  }
+  const normalizedEntries = Object.entries(raw).flatMap(([key, value]) => {
+    const record = normalizeSyntheticSessionRecord(value as Partial<LocalProviderSessionRecord>)
+    return record ? [[key, record] as const] : []
+  })
+  return Object.fromEntries(normalizedEntries)
 }
 
 export function toLocalProviderSession(record: LocalProviderSessionRecord): Session {
@@ -66,41 +127,26 @@ export function toLocalProviderSession(record: LocalProviderSessionRecord): Sess
 
 export function mergeLocalProviderSessions(
   project: ProjectBootstrap,
-  records: LocalProviderSessionMap,
-  getSessionType: (sessionID: string, directory?: string) => string | undefined
+  records: LocalProviderSessionMap
 ): ProjectBootstrap {
+  const localRecordKeys = new Set(
+    Object.values(records)
+      .filter(record => record.directory === project.directory)
+      .map(record => buildWorkspaceSessionMetadataKey(record.directory, record.sessionID))
+  )
   const retainedSessions = project.sessions.filter(
-    session => !isLocalProviderSessionType(getSessionType(session.id, project.directory))
+    session => !localRecordKeys.has(buildWorkspaceSessionMetadataKey(project.directory, session.id))
   )
   const retainedStatus = Object.fromEntries(
     Object.entries(project.sessionStatus).filter(
-      ([sessionID]) => !isLocalProviderSessionType(getSessionType(sessionID, project.directory))
+      ([sessionID]) =>
+        !localRecordKeys.has(buildWorkspaceSessionMetadataKey(project.directory, sessionID))
     )
   )
 
   const localRecords = Object.values(records)
     .filter(record => record.directory === project.directory)
     .map(record => ({ ...record }))
-
-  for (const session of project.sessions) {
-    const sessionType = getSessionType(session.id, project.directory)
-    if (!isLocalProviderSessionType(sessionType)) {
-      continue
-    }
-    const sessionKey = buildWorkspaceSessionMetadataKey(project.directory, session.id)
-    if (records[sessionKey]) {
-      continue
-    }
-    localRecords.push({
-      sessionID: session.id,
-      directory: project.directory,
-      type: sessionType,
-      title: session.title ?? session.slug,
-      slug: session.slug,
-      createdAt: session.time.created,
-      updatedAt: session.time.updated,
-    })
-  }
 
   const mergedSessions = [
     ...retainedSessions,
@@ -156,6 +202,9 @@ export function renameLocalProviderSessionRecord(
   if (!current) {
     return map
   }
+  if (current.title === title) {
+    return map
+  }
   return {
     ...map,
     [sessionKey]: {
@@ -182,6 +231,31 @@ export function touchLocalProviderSessionRecord(
     [sessionKey]: {
       ...current,
       updatedAt,
+    },
+  }
+}
+
+export function markLocalProviderSessionRecordStarted(
+  map: LocalProviderSessionMap,
+  directory: string,
+  sessionID: string,
+  updatedAt = Date.now()
+): LocalProviderSessionMap {
+  const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
+  const current = map[sessionKey]
+  if (!current) {
+    return map
+  }
+  const nextUpdatedAt = updatedAt > current.updatedAt ? updatedAt : current.updatedAt
+  if (!current.draft && nextUpdatedAt === current.updatedAt) {
+    return map
+  }
+  return {
+    ...map,
+    [sessionKey]: {
+      ...current,
+      draft: false,
+      updatedAt: nextUpdatedAt,
     },
   }
 }

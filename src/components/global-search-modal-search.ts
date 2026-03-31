@@ -148,7 +148,7 @@ export function searchGlobalSessions(
         searchCodexMessages(sessionKey, q, matches)
       } else if (sessionType === 'claude-chat') {
         searchClaudeMessages(sessionKey, q, matches)
-      } else if (sessionType === 'standalone' || sessionType === 'opencode') {
+      } else if (sessionType === 'opencode') {
         searchOpencodeMessages(directory, session.id, q, matches)
       }
 

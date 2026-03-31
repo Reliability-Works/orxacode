@@ -11,6 +11,7 @@ import {
   migrateLegacySessionMetadata,
   type WorkspaceSessionReference,
 } from '../lib/workspace-session-metadata'
+import { normalizeSessionType } from '../lib/session-types'
 import type { SessionType } from '../types/canvas'
 
 type UseWorkspaceSessionMetadataMigrationInput = {
@@ -41,7 +42,11 @@ export function useWorkspaceSessionMetadataMigration({
 
     let cancelled = false
     void (async () => {
-      const legacyTypes = readLocalStorageRecord<SessionType>(LEGACY_SESSION_TYPES_KEY)
+      const legacyTypes = Object.fromEntries(
+        Object.entries(readLocalStorageRecord<string>(LEGACY_SESSION_TYPES_KEY))
+          .map(([key, value]) => [key, normalizeSessionType(value)])
+          .filter((entry): entry is [string, SessionType] => Boolean(entry[1]))
+      )
       const legacyTitles = readLocalStorageRecord<string>(LEGACY_SESSION_TITLES_KEY)
       if (Object.keys(legacyTypes).length === 0 && Object.keys(legacyTitles).length === 0) {
         sessionMetadataMigrationDoneRef.current = true

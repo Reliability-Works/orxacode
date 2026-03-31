@@ -15,7 +15,7 @@ const SESSION_OPTIONS: Array<{
   accentClass: string
 }> = [
   {
-    type: 'standalone',
+    type: 'opencode',
     title: 'OpenCode',
     subtitle: "Anomaly's OpenCode agent in the Orxa chat interface",
     logo: <OpenCodeLogo size={26} />,

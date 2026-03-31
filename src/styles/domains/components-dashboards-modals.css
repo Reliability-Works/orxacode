@@ -132,6 +132,12 @@
   max-height: 580px;
   display: grid;
   grid-template-rows: auto auto 1fr;
+  background: rgba(12, 13, 22, 0.96);
+}
+
+.overlay--session-list {
+  background: rgba(2, 3, 8, 0.84);
+  backdrop-filter: blur(10px);
 }
 
 .session-list-modal-body {

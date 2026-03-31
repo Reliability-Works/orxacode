@@ -379,8 +379,11 @@ export function WorkspaceProjectItem({
   const isActiveProject = project.worktree === activeProjectDir
   const isExpanded = !collapsedProjects[project.worktree]
   const hiddenSessionIDs = new Set(hiddenSessionIDsByProject?.[project.worktree] ?? [])
+  const pinnedSessionIDs = new Set(pinnedSessionsByProject?.[project.worktree] ?? [])
   const projectSessions = isActiveProject ? sessions : (cachedSessionsByProject?.[project.worktree] ?? [])
-  const visibleProjectSessions = projectSessions.filter(session => !hiddenSessionIDs.has(session.id))
+  const visibleProjectSessions = projectSessions.filter(
+    session => !hiddenSessionIDs.has(session.id) && !pinnedSessionIDs.has(session.id)
+  )
   const visibleSessions = isExpanded ? visibleProjectSessions : []
   const displayedSessions = selectDisplayedSessions(visibleProjectSessions, activeSessionID)
 

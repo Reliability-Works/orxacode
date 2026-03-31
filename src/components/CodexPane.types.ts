@@ -1,9 +1,13 @@
 import type { RefObject } from 'react'
+import type { CodexCollaborationMode, CodexModelEntry } from '@shared/ipc'
 import type { PermissionMode } from '../types/app'
 
 export interface CodexPaneProps {
   directory: string
   sessionStorageKey: string
+  isDraft?: boolean
+  cachedCollaborationModes?: CodexCollaborationMode[]
+  cachedModels?: CodexModelEntry[]
   titleLocked?: boolean
   onExit: () => void
   onFirstMessage?: () => void

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { parse as parseJsonc } from 'jsonc-parser'
 import type { Agent, ProviderListResponse } from '@opencode-ai/sdk/v2/client'
 import type {
@@ -143,18 +143,15 @@ function useProjectBootstrap(context: AppCoreBootstrapContext) {
         setActiveSessionID(undefined)
         setMessages([])
       }
-      for (const project of result.projects) {
-        if (project.worktree === activeProjectDir) {
-          continue
-        }
-        window.orxa.opencode
-          .selectProject(project.worktree)
-          .then(data => {
+      await Promise.allSettled(
+        result.projects
+          .filter(project => project.worktree !== activeProjectDir)
+          .map(async project => {
+            const data = await window.orxa.opencode.selectProject(project.worktree)
             setProjectDataForDirectory(project.worktree, data)
             setProjectCacheVersion(version => version + 1)
           })
-          .catch(() => undefined)
-      }
+      )
     } catch (error) {
       reportBootstrapError(error, setStatusLine)
     }
@@ -175,51 +172,26 @@ function useProjectBootstrap(context: AppCoreBootstrapContext) {
 function useStartupState(args: {
   bootstrap: () => Promise<void>
   cleanupPersistedEmptySessions: AppCoreBootstrapContext['cleanupPersistedEmptySessions']
-  refreshAgentFiles: () => Promise<void>
-  refreshConfigModels: () => Promise<void>
-  refreshGlobalAgents: () => Promise<void>
-  refreshGlobalProviders: () => Promise<void>
   refreshProfiles: () => Promise<void>
-  refreshRuntimeDependencies: () => Promise<void>
   setStatusLine: AppCoreBootstrapContext['setStatusLine']
-  syncBrowserSnapshot: AppCoreBootstrapContext['syncBrowserSnapshot']
 }) {
   const {
     bootstrap,
     cleanupPersistedEmptySessions,
-    refreshAgentFiles,
-    refreshConfigModels,
-    refreshGlobalAgents,
-    refreshGlobalProviders,
     refreshProfiles,
-    refreshRuntimeDependencies,
     setStatusLine,
-    syncBrowserSnapshot,
   } = args
 
   const startupSteps = useMemo(
     () => [
       { message: 'Loading runtime profiles…', action: refreshProfiles },
-      { message: 'Cleaning temporary sessions…', action: async () => void (await cleanupPersistedEmptySessions()) },
+      {
+        message: 'Cleaning temporary sessions…',
+        action: async () => void (await cleanupPersistedEmptySessions()),
+      },
       { message: 'Bootstrapping workspaces…', action: bootstrap },
-      { message: 'Loading model references…', action: refreshConfigModels },
-      { message: 'Loading provider registry…', action: refreshGlobalProviders },
-      { message: 'Loading agent registry…', action: refreshGlobalAgents },
-      { message: 'Loading agent files…', action: refreshAgentFiles },
-      { message: 'Checking runtime dependencies…', action: refreshRuntimeDependencies },
-      { message: 'Syncing browser state…', action: syncBrowserSnapshot },
     ],
-    [
-      bootstrap,
-      cleanupPersistedEmptySessions,
-      refreshAgentFiles,
-      refreshConfigModels,
-      refreshGlobalAgents,
-      refreshGlobalProviders,
-      refreshProfiles,
-      refreshRuntimeDependencies,
-      syncBrowserSnapshot,
-    ]
+    [bootstrap, cleanupPersistedEmptySessions, refreshProfiles]
   )
 
   return useAppShellStartupFlow({
@@ -229,6 +201,64 @@ function useStartupState(args: {
     steps: startupSteps,
     onStepError: error => reportBootstrapError(error, setStatusLine),
   })
+}
+
+function useBackgroundStartupRefreshes(args: {
+  refreshAgentFiles: () => Promise<void>
+  refreshConfigModels: () => Promise<void>
+  refreshGlobalAgents: () => Promise<void>
+  refreshGlobalProviders: () => Promise<void>
+  refreshRuntimeDependencies: () => Promise<void>
+  setStatusLine: AppCoreBootstrapContext['setStatusLine']
+  syncBrowserSnapshot: AppCoreBootstrapContext['syncBrowserSnapshot']
+}) {
+  const ranRef = useRef(false)
+  const {
+    refreshAgentFiles,
+    refreshConfigModels,
+    refreshGlobalAgents,
+    refreshGlobalProviders,
+    refreshRuntimeDependencies,
+    setStatusLine,
+    syncBrowserSnapshot,
+  } = args
+
+  useEffect(() => {
+    if (ranRef.current) {
+      return
+    }
+    ranRef.current = true
+
+    const timer = window.setTimeout(() => {
+      const tasks = [
+        refreshConfigModels,
+        refreshGlobalProviders,
+        refreshGlobalAgents,
+        refreshAgentFiles,
+        refreshRuntimeDependencies,
+        syncBrowserSnapshot,
+      ]
+      void Promise.allSettled(tasks.map(task => task())).then(results => {
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            reportBootstrapError(result.reason, setStatusLine)
+          }
+        }
+      })
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    refreshAgentFiles,
+    refreshConfigModels,
+    refreshGlobalAgents,
+    refreshGlobalProviders,
+    refreshRuntimeDependencies,
+    setStatusLine,
+    syncBrowserSnapshot,
+  ])
 }
 
 export function useAppCoreBootstrap(context: AppCoreBootstrapContext) {
@@ -242,11 +272,14 @@ export function useAppCoreBootstrap(context: AppCoreBootstrapContext) {
   const startup = useStartupState({
     bootstrap,
     cleanupPersistedEmptySessions: context.cleanupPersistedEmptySessions,
+    refreshProfiles,
+    setStatusLine: context.setStatusLine,
+  })
+  useBackgroundStartupRefreshes({
     refreshAgentFiles,
     refreshConfigModels,
     refreshGlobalAgents,
     refreshGlobalProviders,
-    refreshProfiles,
     refreshRuntimeDependencies,
     setStatusLine: context.setStatusLine,
     syncBrowserSnapshot: context.syncBrowserSnapshot,

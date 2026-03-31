@@ -53,6 +53,7 @@ export class CodexService extends EventEmitter {
   private providerSessionDirectory: ProviderSessionDirectory | null
   private process: ChildProcess | null = null
   private readline: Interface | null = null
+  private startPromise: Promise<CodexState> | null = null
   private nextId = 1
   private pending = new Map<number, PendingRequest>()
   private _state: CodexState = { status: 'disconnected' }
@@ -87,10 +88,28 @@ export class CodexService extends EventEmitter {
     cwd?: string,
     options?: { codexPath?: string; codexArgs?: string }
   ): Promise<CodexState> {
-    if (this.process) {
+    if (this.process && this._state.status !== 'connecting') {
       return this.state
     }
+    if (this.startPromise) {
+      return this.startPromise
+    }
 
+    const startPromise = this.startInternal(cwd, options)
+    this.startPromise = startPromise
+    try {
+      return await startPromise
+    } finally {
+      if (this.startPromise === startPromise) {
+        this.startPromise = null
+      }
+    }
+  }
+
+  private async startInternal(
+    cwd?: string,
+    options?: { codexPath?: string; codexArgs?: string }
+  ): Promise<CodexState> {
     this._state = { status: 'connecting' }
     this.emit('state', this._state)
 

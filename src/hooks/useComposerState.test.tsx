@@ -132,7 +132,7 @@ function registerAgentSelectionTests() {
   })
 }
 
-function registerRenameAndPollingTests() {
+function registerRenameTests() {
   it('refreshes project data after auto-renaming an OpenCode session title', async () => {
     const sendPromptMock = vi.fn(async () => true)
     const renameSessionMock = vi.fn(async () => true)
@@ -176,7 +176,9 @@ function registerRenameAndPollingTests() {
     expect(refreshProjectMock).toHaveBeenCalledWith('/repo')
     expect(sendPromptMock).toHaveBeenCalled()
   })
+}
 
+function registerPollingTests() {
   it('starts response polling after sending an OpenCode prompt', async () => {
     const sendPromptMock = vi.fn(async () => true)
     const startResponsePolling = vi.fn()
@@ -227,8 +229,68 @@ function registerRenameAndPollingTests() {
   })
 }
 
+function registerDraftMaterializationTests() {
+  it('materializes draft opencode sessions before sending the first prompt', async () => {
+    const sendPromptMock = vi.fn(async () => true)
+    const startResponsePolling = vi.fn()
+    const ensureSessionForSend = vi.fn(async () => ({
+      directory: '/repo',
+      sessionID: 'session-materialized',
+    }))
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          sendPrompt: sendPromptMock,
+          renameSession: vi.fn(async () => true),
+        },
+      },
+    })
+
+    const { result } = renderHook(() =>
+      useComposerState('/repo', 'session-draft', {
+        availableSlashCommands: [],
+        refreshMessages: vi.fn(async () => undefined),
+        refreshProject: vi.fn(async () => undefined),
+        sessions: [{ id: 'session-draft', title: 'OpenCode Session' }],
+        ensureSessionForSend,
+        selectedAgent: undefined,
+        availableAgentNames: new Set(),
+        setStatusLine: vi.fn(),
+        shouldAutoRenameSessionTitle: vi.fn(() => false),
+        deriveSessionTitleFromPrompt: vi.fn((prompt: string) => prompt),
+        startResponsePolling,
+        stopResponsePolling: vi.fn(),
+        clearPendingSession: vi.fn(),
+      })
+    )
+
+    act(() => {
+      result.current.setComposer('Ship it')
+    })
+
+    await act(async () => {
+      await result.current.sendPrompt()
+    })
+
+    expect(ensureSessionForSend).toHaveBeenCalledWith({
+      directory: '/repo',
+      sessionID: 'session-draft',
+    })
+    expect(sendPromptMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        directory: '/repo',
+        sessionID: 'session-materialized',
+      })
+    )
+    expect(startResponsePolling).toHaveBeenCalledWith('/repo', 'session-materialized')
+  })
+}
+
 describe('useComposerState', () => {
   registerAbortTests()
   registerAgentSelectionTests()
-  registerRenameAndPollingTests()
+  registerRenameTests()
+  registerPollingTests()
+  registerDraftMaterializationTests()
 })

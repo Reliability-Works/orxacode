@@ -8,6 +8,7 @@ import {
   buildWorkspaceSessionMetadataKey,
   readWorkspaceSessionMetadata,
 } from '../lib/workspace-session-metadata'
+import { normalizeSessionType } from '../lib/session-types'
 import type { SessionType } from '../types/canvas'
 
 export const LEGACY_SESSION_TYPES_KEY = 'orxa:sessionTypes:v1'
@@ -36,7 +37,16 @@ export function useWorkspaceSessionMetadata() {
   const removeCodexSession = useUnifiedRuntimeStore(state => state.removeCodexSession)
   const removeClaudeChatSession = useUnifiedRuntimeStore(state => state.removeClaudeChatSession)
 
-  const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {})
+  const [sessionTypes, setSessionTypes] = usePersistedState<Record<string, SessionType>>(SESSION_TYPES_KEY, {}, {
+    deserialize: raw => {
+      const parsed = JSON.parse(raw) as Record<string, string>
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .map(([key, value]) => [key, normalizeSessionType(value)])
+          .filter((entry): entry is [string, SessionType] => Boolean(entry[1]))
+      )
+    },
+  })
   const [sessionTitles, setSessionTitles] = usePersistedState<Record<string, string>>(SESSION_TITLES_KEY, {})
   const [manualSessionTitles, setManualSessionTitles] = usePersistedState<Record<string, boolean>>(MANUAL_SESSION_TITLES_KEY, {})
 
@@ -75,7 +85,7 @@ export function useWorkspaceSessionMetadata() {
       if (!sessionID) {
         return undefined
       }
-      return readWorkspaceSessionMetadata(sessionTypes, directory, sessionID) ?? 'standalone'
+      return readWorkspaceSessionMetadata(sessionTypes, directory, sessionID) ?? 'opencode'
     },
     [sessionTypes]
   )
@@ -90,7 +100,7 @@ export function useWorkspaceSessionMetadata() {
     if (sessionType === 'codex' || sessionType === 'claude' || sessionType === 'claude-chat') {
       return sessionType
     }
-    if (sessionType === 'opencode' || sessionType === 'canvas' || sessionType === 'standalone') {
+    if (sessionType === 'opencode' || sessionType === 'canvas') {
       return 'opencode' as const
     }
     return undefined

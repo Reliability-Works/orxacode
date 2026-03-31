@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { ModelOption } from '../lib/models'
 import type { PermissionMode } from '../types/app'
 import type { CodexCollaborationMode, CodexModelEntry } from '@shared/ipc'
@@ -18,22 +18,27 @@ function useCodexConnectionEffects({
   codexAccessMode,
   connect,
   connectionStatus,
+  isDraft,
   permissionMode,
   startThread,
   thread,
 }: {
   codexAccessMode?: string
-  connect: () => Promise<void> | void
+  connect: () => Promise<{ status?: string } | undefined> | { status?: string } | undefined
   connectionStatus: string
+  isDraft?: boolean
   permissionMode: PermissionMode
   startThread: (options: {
     title: string
     sandbox: 'danger-full-access' | 'read-only'
     approvalPolicy: 'never' | 'on-request'
-  }) => Promise<void> | void
+  }) => Promise<{ id?: string | null } | undefined> | { id?: string | null } | undefined
   thread: { id?: string | null } | null
 }) {
   useEffect(() => {
+    if (isDraft) {
+      return
+    }
     let cancelled = false
     const autoConnect = async () => {
       await new Promise(resolve => setTimeout(resolve, 50))
@@ -43,46 +48,59 @@ function useCodexConnectionEffects({
     return () => {
       cancelled = true
     }
-  }, [connect])
+  }, [connect, isDraft])
 
   useEffect(() => {
-    if (connectionStatus !== 'connected' || thread) return
+    if (isDraft || connectionStatus !== 'connected' || thread) return
     const allowFullAccess = permissionMode === 'yolo-write' || codexAccessMode === 'full-access'
     void startThread({
       title: 'Orxa Code Session',
       sandbox: allowFullAccess ? 'danger-full-access' : 'read-only',
       approvalPolicy: allowFullAccess ? 'never' : 'on-request',
     })
-  }, [codexAccessMode, connectionStatus, permissionMode, startThread, thread])
+  }, [codexAccessMode, connectionStatus, isDraft, permissionMode, startThread, thread])
 }
 
 function useCodexModelState({
+  cachedCollaborationModes,
+  cachedModels,
   connectionStatus,
   defaultReasoningEffort,
 }: {
+  cachedCollaborationModes?: CodexCollaborationMode[]
+  cachedModels?: CodexModelEntry[]
   connectionStatus: string
   defaultReasoningEffort?: string
 }) {
   const [selectedModel, setSelectedModel] = useState<string | undefined>()
-  const [codexModels, setCodexModels] = useState<CodexModelEntry[]>([])
-  const [modelSelectOptions, setModelSelectOptions] = useState<ModelOption[]>([])
+  const [codexModels, setCodexModels] = useState<CodexModelEntry[]>(cachedModels ?? [])
+  const [modelSelectOptions, setModelSelectOptions] = useState<ModelOption[]>(() =>
+    cachedModels ? codexModelsToOptions(cachedModels) : []
+  )
   const [selectedReasoningEffort, setSelectedReasoningEffort] = useState<string | undefined>()
-  const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationMode[]>([])
+  const [collaborationModes, setCollaborationModes] = useState<CodexCollaborationMode[]>(
+    cachedCollaborationModes ?? []
+  )
   const [selectedCollabMode, setSelectedCollabMode] = useState<string | undefined>()
 
-  useEffect(() => {
-    if (connectionStatus !== 'connected' || !window.orxa?.codex) return
-    void window.orxa.codex.listModels().then(rawModels => {
-      setCodexModels(rawModels)
-      const options = codexModelsToOptions(rawModels)
-      setModelSelectOptions(options)
-      if (!selectedModel && options.length > 0) {
-        const defaultModel = rawModels.find(model => model.isDefault)
-        setSelectedModel(defaultModel ? `${CODEX_PROVIDER_ID}/${defaultModel.model}` : options[0]?.key)
-      }
-    })
-    void window.orxa.codex.listCollaborationModes().then(setCollaborationModes).catch(() => undefined)
-  }, [connectionStatus, selectedModel])
+  useSeedCachedCodexModels({
+    cachedModels,
+    setCodexModels,
+    setModelSelectOptions,
+    setSelectedModel,
+  })
+  useSeedCachedCollaborationModes({
+    cachedCollaborationModes,
+    setCollaborationModes,
+  })
+  useLiveCodexMetadata({
+    connectionStatus,
+    selectedModel,
+    setCodexModels,
+    setCollaborationModes,
+    setModelSelectOptions,
+    setSelectedModel,
+  })
 
   const selectedModelID = useMemo(
     () =>
@@ -146,6 +164,92 @@ function useCodexModelState({
   }
 }
 
+function useSeedCachedCodexModels({
+  cachedModels,
+  setCodexModels,
+  setModelSelectOptions,
+  setSelectedModel,
+}: {
+  cachedModels?: CodexModelEntry[]
+  setCodexModels: Dispatch<SetStateAction<CodexModelEntry[]>>
+  setModelSelectOptions: Dispatch<SetStateAction<ModelOption[]>>
+  setSelectedModel: Dispatch<SetStateAction<string | undefined>>
+}) {
+  useEffect(() => {
+    if (!cachedModels || cachedModels.length === 0) {
+      return
+    }
+    setCodexModels(current => (current.length > 0 ? current : cachedModels))
+    setModelSelectOptions(current =>
+      current.length > 0 ? current : codexModelsToOptions(cachedModels)
+    )
+    setSelectedModel(current => {
+      if (current) {
+        return current
+      }
+      const defaultModel = cachedModels.find(model => model.isDefault)
+      return defaultModel ? `${CODEX_PROVIDER_ID}/${defaultModel.model}` : current
+    })
+  }, [cachedModels, setCodexModels, setModelSelectOptions, setSelectedModel])
+}
+
+function useSeedCachedCollaborationModes({
+  cachedCollaborationModes,
+  setCollaborationModes,
+}: {
+  cachedCollaborationModes?: CodexCollaborationMode[]
+  setCollaborationModes: Dispatch<SetStateAction<CodexCollaborationMode[]>>
+}) {
+  useEffect(() => {
+    if (!cachedCollaborationModes || cachedCollaborationModes.length === 0) {
+      return
+    }
+    setCollaborationModes(current => (current.length > 0 ? current : cachedCollaborationModes))
+  }, [cachedCollaborationModes, setCollaborationModes])
+}
+
+function useLiveCodexMetadata({
+  connectionStatus,
+  selectedModel,
+  setCodexModels,
+  setCollaborationModes,
+  setModelSelectOptions,
+  setSelectedModel,
+}: {
+  connectionStatus: string
+  selectedModel: string | undefined
+  setCodexModels: Dispatch<SetStateAction<CodexModelEntry[]>>
+  setCollaborationModes: Dispatch<SetStateAction<CodexCollaborationMode[]>>
+  setModelSelectOptions: Dispatch<SetStateAction<ModelOption[]>>
+  setSelectedModel: Dispatch<SetStateAction<string | undefined>>
+}) {
+  useEffect(() => {
+    if (connectionStatus !== 'connected' || !window.orxa?.codex) return
+    void window.orxa.codex.listModels().then(rawModels => {
+      setCodexModels(rawModels)
+      const options = codexModelsToOptions(rawModels)
+      setModelSelectOptions(options)
+      if (!selectedModel && options.length > 0) {
+        const defaultModel = rawModels.find(model => model.isDefault)
+        setSelectedModel(
+          defaultModel ? `${CODEX_PROVIDER_ID}/${defaultModel.model}` : options[0]?.key
+        )
+      }
+    })
+    void window.orxa.codex
+      .listCollaborationModes()
+      .then(setCollaborationModes)
+      .catch(() => undefined)
+  }, [
+    connectionStatus,
+    selectedModel,
+    setCodexModels,
+    setCollaborationModes,
+    setModelSelectOptions,
+    setSelectedModel,
+  ])
+}
+
 function useCodexTitleState({
   onTitleChange,
   sessionStorageKey,
@@ -162,17 +266,21 @@ function useCodexTitleState({
   const titleLockedRef = useRef(titleLocked)
   const threadIdRef = useRef<string | null>(thread?.id ?? null)
   const hasRequestedAutoTitleRef = useRef(false)
+  const onTitleChangeRef = useRef(onTitleChange)
 
   useEffect(() => {
     titleLockedRef.current = titleLocked
   }, [titleLocked])
   useEffect(() => {
+    onTitleChangeRef.current = onTitleChange
+  }, [onTitleChange])
+  useEffect(() => {
     threadIdRef.current = thread?.id ?? null
     hasRequestedAutoTitleRef.current = false
   }, [thread?.id, sessionStorageKey])
   useEffect(() => {
-    if (threadName) onTitleChange?.(threadName)
-  }, [onTitleChange, threadName])
+    if (threadName) onTitleChangeRef.current?.(threadName)
+  }, [threadName])
   useEffect(() => {
     if (threadName && !looksAutoGeneratedSessionTitle(threadName)) {
       hasRequestedAutoTitleRef.current = true
@@ -186,10 +294,10 @@ function useCodexTitleState({
       if (titleLockedRef.current || threadIdRef.current !== targetThreadId) return false
       await window.orxa.codex.setThreadName(targetThreadId, normalized)
       if (titleLockedRef.current || threadIdRef.current !== targetThreadId) return false
-      onTitleChange?.(normalized)
+      onTitleChangeRef.current?.(normalized)
       return true
     },
-    [onTitleChange]
+    []
   )
 
   const queueAutoTitleGeneration = useCallback(
@@ -221,8 +329,11 @@ function useCodexTitleState({
 }
 
 export function useCodexPaneBootstrap(args: {
+  cachedCollaborationModes?: CodexCollaborationMode[]
+  cachedModels?: CodexModelEntry[]
   codexAccessMode?: string
-  connect: () => Promise<void> | void
+  isDraft?: boolean
+  connect: () => Promise<{ status?: string } | undefined> | { status?: string } | undefined
   connectionStatus: string
   defaultReasoningEffort?: string
   onTitleChange?: (title: string) => void
@@ -232,7 +343,7 @@ export function useCodexPaneBootstrap(args: {
     title: string
     sandbox: 'danger-full-access' | 'read-only'
     approvalPolicy: 'never' | 'on-request'
-  }) => Promise<void> | void
+  }) => Promise<{ id?: string | null } | undefined> | { id?: string | null } | undefined
   thread: { id?: string | null } | null
   threadName?: string
   titleLocked: boolean

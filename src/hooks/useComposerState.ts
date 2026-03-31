@@ -30,11 +30,19 @@ export type SendPromptInput = {
   tools?: Record<string, boolean>
 }
 
+type SendPromptTarget = {
+  directory: string
+  sessionID: string
+}
+
 type UseComposerStateOptions = {
   availableSlashCommands: SlashCommand[]
   refreshMessages: () => Promise<unknown>
   refreshProject: (directory: string) => Promise<unknown>
   sessions: ComposerSession[]
+  ensureSessionForSend?: (
+    current: SendPromptTarget
+  ) => Promise<SendPromptTarget | null> | SendPromptTarget | null
   selectedAgent?: string
   availableAgentNames: Set<string>
   setStatusLine: (status: string) => void
@@ -377,11 +385,22 @@ function useComposerPromptActions(
         options.setStatusLine('Select a workspace and session first')
         return
       }
+      const target =
+        (await options.ensureSessionForSend?.({
+          directory: activeProjectDir,
+          sessionID: activeSessionID,
+        })) ?? {
+          directory: activeProjectDir,
+          sessionID: activeSessionID,
+        }
+      if (!target) {
+        return
+      }
       const promptInput: SendPromptInput =
         typeof input === 'string' ? { systemAddendum: input } : (input ?? {})
       await submitComposerPrompt(
-        activeProjectDir,
-        activeSessionID,
+        target.directory,
+        target.sessionID,
         promptInput.textOverride ?? composer,
         promptInput.attachmentOverride ?? composerAttachments,
         options,

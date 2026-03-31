@@ -13,7 +13,7 @@ export function getSessionContextActions(
       return ['archive', 'copy_id', 'rename']
     case 'claude':
       return ['archive', 'rename']
-    case 'standalone':
+    case 'opencode':
     default:
       return ['archive', 'copy_id', 'create_worktree', 'rename']
   }

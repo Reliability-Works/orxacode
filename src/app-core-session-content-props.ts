@@ -1,4 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react'
+import type { CodexCollaborationMode, CodexModelEntry } from '@shared/ipc'
 import type { ModelOption } from './lib/models'
 import type { UnifiedBackgroundAgentSummary } from './lib/session-presentation'
 import type { AppPreferences } from '~/types/app'
@@ -42,6 +43,9 @@ type BuildAppSessionContentPropsArgs = {
   canvasState: AppSessionContentProps['canvasPaneProps']['canvasState']
   mcpDevToolsState: AppSessionContentProps['canvasPaneProps']['mcpDevToolsState']
   activeLocalProviderSessionKey: string
+  activeCodexSessionDraft: boolean
+  cachedCodexCollaborationModes: CodexCollaborationMode[]
+  cachedCodexModels: CodexModelEntry[]
   handleActiveLocalProviderInteraction: () => void
   handleActiveLocalProviderTitleChange: (title: string) => void
   appPreferences: AppPreferences
@@ -201,8 +205,11 @@ function buildClaudeTerminalPaneProps(args: BuildAppSessionContentPropsArgs) {
 
 function buildCodexPaneProps(args: BuildAppSessionContentPropsArgs) {
   return {
+    cachedCollaborationModes: args.cachedCodexCollaborationModes,
+    cachedModels: args.cachedCodexModels,
     directory: args.activeProjectDir ?? '',
     sessionStorageKey: args.activeLocalProviderSessionKey,
+    isDraft: args.activeCodexSessionDraft,
     titleLocked: args.manualSessionTitles[args.activeLocalProviderSessionKey] ?? false,
     onExit: args.openWorkspaceDashboard,
     onFirstMessage: args.handleActiveLocalProviderInteraction,

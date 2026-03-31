@@ -43,6 +43,22 @@ registerCodexSessionTestLifecycle()
     expect(window.orxa!.codex.start).toHaveBeenCalledWith("/workspace", undefined);
   });
 
+  it("connect adopts an already-connected Codex service without restarting it", async () => {
+    window.orxa!.codex.getState = vi.fn(async () => ({
+      status: "connected" as const,
+      serverInfo: { name: "codex", version: "1.0.0" },
+    }));
+
+    const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    expect(window.orxa!.codex.getState).toHaveBeenCalledTimes(1);
+    expect(window.orxa!.codex.start).not.toHaveBeenCalled();
+    expect(result.current.connectionStatus).toBe("connected");
+  });
+
   it("disconnect calls codex.stop", async () => {
     const { result } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
     await act(async () => {
@@ -268,4 +284,3 @@ registerCodexSessionTestLifecycle()
       ]),
     );
   });
-

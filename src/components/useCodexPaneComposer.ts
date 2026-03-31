@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Attachment } from '../hooks/useComposerState'
 import { addCodexComposerAttachments, buildCodexDisplayPrompt } from './CodexPane.helpers'
+import type { PermissionMode } from '../types/app'
 
 function buildTurnOptions({
-  onFirstMessage,
   selectedCollabMode,
   selectedModelID,
   selectedReasoningEffort,
 }: {
-  onFirstMessage?: () => void
   selectedCollabMode?: string
   selectedModelID?: string
   selectedReasoningEffort?: string
 }) {
-  onFirstMessage?.()
   const options: { model?: string; effort?: string; collaborationMode?: string } = {}
   if (selectedModelID) options.model = selectedModelID
   if (selectedReasoningEffort) options.effort = selectedReasoningEffort
@@ -119,12 +117,97 @@ function useCodexAttachmentActions({
   return { abortActiveSession, addComposerAttachments, pickImageAttachment, removeAttachment }
 }
 
+function useCodexPromptSubmission({
+  composerAttachments,
+  input,
+  sendTurnNow,
+  setComposerAttachments,
+  setInput,
+}: {
+  composerAttachments: Attachment[]
+  input: string
+  sendTurnNow: (text: string, attachments: Attachment[]) => Promise<boolean>
+  setComposerAttachments: Dispatch<SetStateAction<Attachment[]>>
+  setInput: Dispatch<SetStateAction<string>>
+}) {
+  const queueCodexMessage = useCallback(
+    (text: string, enqueueCodexMessage: (value: string) => void) => {
+      enqueueCodexMessage(text)
+      setInput('')
+    },
+    [setInput]
+  )
+
+  const sendPrompt = useCallback(async () => {
+    const trimmed = input.trim()
+    const attachmentsToSend = [...composerAttachments]
+    if (!trimmed && attachmentsToSend.length === 0) return
+    setInput('')
+    setComposerAttachments([])
+    const sent = await sendTurnNow(trimmed, attachmentsToSend)
+    if (!sent) {
+      setInput(trimmed)
+      setComposerAttachments(attachmentsToSend)
+    }
+  }, [composerAttachments, input, sendTurnNow, setComposerAttachments, setInput])
+
+  return { queueCodexMessage, sendPrompt }
+}
+
+function useCodexThreadReadiness({
+  codexAccessMode,
+  connect,
+  connectionStatus,
+  isDraft,
+  permissionMode,
+  startThread,
+  thread,
+}: {
+  codexAccessMode?: string
+  connect: () => Promise<{ status?: string } | undefined> | { status?: string } | undefined
+  connectionStatus: string
+  isDraft?: boolean
+  permissionMode: PermissionMode
+  startThread: (options: {
+    title: string
+    sandbox: 'danger-full-access' | 'read-only'
+    approvalPolicy: 'never' | 'on-request'
+  }) => Promise<{ id?: string | null } | undefined> | { id?: string | null } | undefined
+  thread: { id?: string | null } | null
+}) {
+  return useCallback(async () => {
+    if (thread) {
+      return thread
+    }
+    if (isDraft || connectionStatus !== 'connected') {
+      const state = await connect()
+      const nextStatus = state?.status ?? connectionStatus
+      if (nextStatus !== 'connected') {
+        return null
+      }
+    }
+    const allowFullAccess = permissionMode === 'yolo-write' || codexAccessMode === 'full-access'
+    return (
+      (await startThread({
+        title: 'Orxa Code Session',
+        sandbox: allowFullAccess ? 'danger-full-access' : 'read-only',
+        approvalPolicy: allowFullAccess ? 'never' : 'on-request',
+      })) ?? null
+    )
+  }, [codexAccessMode, connect, connectionStatus, isDraft, permissionMode, startThread, thread])
+}
+
 type UseCodexPaneComposerArgs = {
+  codexAccessMode?: string
+  connect: () => Promise<{ status?: string } | undefined> | { status?: string } | undefined
+  connectionStatus: string
   directory: string
   interruptTurn: () => Promise<unknown>
+  isDraft?: boolean
   isStreaming: boolean
   messageCount: number
   onFirstMessage?: () => void
+  permissionMode: PermissionMode
   queueAutoTitleGeneration: (
     directory: string,
     prompt: string,
@@ -137,97 +220,75 @@ type UseCodexPaneComposerArgs = {
   sendMessage: (
     text: string,
     options?: {
+      threadID?: string
       model?: string
       effort?: string
       collaborationMode?: string
       attachments?: Array<{ type: 'image'; url: string }>
       displayPrompt?: string
     }
-  ) => Promise<unknown>
+  ) => Promise<boolean>
+  startThread: (options: {
+    title: string
+    sandbox: 'danger-full-access' | 'read-only'
+    approvalPolicy: 'never' | 'on-request'
+  }) => Promise<{ id?: string | null } | undefined> | { id?: string | null } | undefined
   steerMessage: (text: string) => Promise<boolean>
   thread: { id?: string | null } | null
 }
 
 export function useCodexPaneComposer({
-  directory,
-  interruptTurn,
-  isStreaming,
-  messageCount,
-  onFirstMessage,
-  queueAutoTitleGeneration,
-  selectedCollabMode,
-  selectedModelID,
-  selectedReasoningEffort,
-  sendMessage,
-  steerMessage,
-  thread,
+  codexAccessMode, connect, connectionStatus, directory, interruptTurn, isDraft, isStreaming,
+  messageCount, onFirstMessage, permissionMode, queueAutoTitleGeneration, selectedCollabMode,
+  selectedModelID, selectedReasoningEffort, sendMessage, startThread, steerMessage, thread,
 }: UseCodexPaneComposerArgs) {
   const [input, setInput] = useState('')
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([])
   const [isPlanMode, setIsPlanMode] = useState(false)
-  const {
-    codexQueue,
-    codexSendingId,
-    queueCodexMessage: enqueueCodexMessage,
-    removeCodexQueued,
-    setCodexQueue,
-    setCodexSendingId,
-  } = useCodexQueueState({ isStreaming, sendMessage: text => sendMessage(text) })
+  const { codexQueue, codexSendingId, queueCodexMessage: enqueueCodexMessage, removeCodexQueued, setCodexQueue, setCodexSendingId } =
+    useCodexQueueState({ isStreaming, sendMessage: text => sendMessage(text) })
+  const ensureThreadReady = useCodexThreadReadiness({
+    codexAccessMode, connect, connectionStatus, isDraft, permissionMode, startThread, thread,
+  })
 
   const sendTurnNow = useCallback(
     async (text: string, attachments: Attachment[], options?: { interruptIfBusy?: boolean }) => {
       const trimmed = text.trim()
-      if ((!trimmed && attachments.length === 0) || !thread) return false
+      if (!trimmed && attachments.length === 0) return false
+      const activeThread = thread ?? (await ensureThreadReady())
+      if (!activeThread?.id) return false
       if (isStreaming) {
         if (!options?.interruptIfBusy) return false
         await interruptTurn()
       }
       if (trimmed) {
-        queueAutoTitleGeneration(directory, trimmed, messageCount, thread.id ?? '')
+        queueAutoTitleGeneration(directory, trimmed, messageCount, activeThread.id)
       }
-      const turnOptions = buildTurnOptions({
-        onFirstMessage,
-        selectedCollabMode,
-        selectedModelID,
-        selectedReasoningEffort,
-      })
-      await sendMessage(trimmed, {
+      const turnOptions = buildTurnOptions({ selectedCollabMode, selectedModelID, selectedReasoningEffort })
+      const sent = await sendMessage(trimmed, {
         ...(Object.keys(turnOptions).length > 0 ? turnOptions : {}),
+        threadID: activeThread.id,
         ...(attachments.length > 0
           ? { attachments: attachments.map(attachment => ({ type: 'image' as const, url: attachment.url })) }
           : {}),
         displayPrompt: buildCodexDisplayPrompt(trimmed, attachments.length),
       })
+      if (!sent) return false
+      onFirstMessage?.()
       return true
     },
-    [directory, interruptTurn, isStreaming, messageCount, onFirstMessage, queueAutoTitleGeneration, selectedCollabMode, selectedModelID, selectedReasoningEffort, sendMessage, thread]
+    [
+      directory, ensureThreadReady, interruptTurn, isStreaming, messageCount, onFirstMessage,
+      queueAutoTitleGeneration, selectedCollabMode, selectedModelID, selectedReasoningEffort,
+      sendMessage, thread,
+    ]
   )
 
-  const { abortActiveSession, addComposerAttachments, pickImageAttachment, removeAttachment } = useCodexAttachmentActions({ interruptTurn, setComposerAttachments })
-
-  const queueCodexMessage = useCallback((text: string) => {
-    enqueueCodexMessage(text)
-    setInput('')
-  }, [enqueueCodexMessage])
-  const sendPrompt = useCallback(async () => {
-    const trimmed = input.trim()
-    const attachmentsToSend = [...composerAttachments]
-    if (!trimmed && attachmentsToSend.length === 0) return
-    setInput('')
-    setComposerAttachments([])
-    const sent = await sendTurnNow(trimmed, attachmentsToSend)
-    if (!sent) {
-      setInput(trimmed)
-      setComposerAttachments(attachmentsToSend)
-    }
-  }, [composerAttachments, input, sendTurnNow])
+  const { abortActiveSession, addComposerAttachments, pickImageAttachment, removeAttachment } =
+    useCodexAttachmentActions({ interruptTurn, setComposerAttachments })
+  const promptSubmission = useCodexPromptSubmission({ composerAttachments, input, sendTurnNow, setComposerAttachments, setInput })
   const { editCodexQueued, queuedAction } = useCodexQueueActions({
-    codexQueue,
-    codexSendingId,
-    setCodexQueue,
-    setCodexSendingId,
-    setInput,
-    steerMessage,
+    codexQueue, codexSendingId, setCodexQueue, setCodexSendingId, setInput, steerMessage,
   })
 
   return {
@@ -240,11 +301,11 @@ export function useCodexPaneComposer({
     input,
     isPlanMode,
     pickImageAttachment,
-    queueCodexMessage,
+    queueCodexMessage: (text: string) => promptSubmission.queueCodexMessage(text, enqueueCodexMessage),
     queuedAction,
     removeAttachment,
     removeCodexQueued,
-    sendPrompt,
+    sendPrompt: promptSubmission.sendPrompt,
     setInput,
     setIsPlanMode,
   }

@@ -67,7 +67,9 @@ function useWorkspaceStateBridges({
 
   const setActiveSessionID = useCallback(
     (sessionID: string | undefined) => {
-      setActiveSession(sessionID, sessionID ? 'opencode' : undefined)
+      // Provider identity is derived elsewhere from session metadata. Do not
+      // misclassify every session selection as OpenCode at the store boundary.
+      setActiveSession(sessionID, undefined)
     },
     [setActiveSession]
   )

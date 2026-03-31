@@ -89,13 +89,23 @@ function useCodexConnectionActions(deps: CodexSessionActionDeps) {
   const connect = useCallback(async () => {
     if (!window.orxa?.codex) {
       setConnectionState('error', serverInfo, 'Codex bridge not available')
-      return
+      return undefined
     }
     try {
+      const currentState = await window.orxa.codex.getState?.()
+      if (currentState?.status === 'connected') {
+        setConnectionState(currentState.status, currentState.serverInfo, currentState.lastError)
+        return currentState
+      }
+      if (currentState?.status === 'connecting') {
+        setConnectionState(currentState.status, currentState.serverInfo, currentState.lastError)
+      }
       const state = await window.orxa.codex.start(directory, codexOptions)
       setConnectionState(state.status, state.serverInfo, state.lastError)
+      return state
     } catch (err) {
       recordLastError(err, 'error')
+      return undefined
     }
   }, [codexOptions, directory, recordLastError, serverInfo, setConnectionState])
 
@@ -152,7 +162,7 @@ function useCodexThreadActions(deps: CodexSessionActionDeps) {
       approvalPolicy?: string
       sandbox?: string
     }) => {
-      if (!window.orxa?.codex) return
+      if (!window.orxa?.codex) return undefined
       try {
         clearLastError()
         const t = await window.orxa.codex.startThread({
@@ -183,8 +193,10 @@ function useCodexThreadActions(deps: CodexSessionActionDeps) {
         pendingInterruptRef.current = false
         interruptRequestedRef.current = false
         commandDiffSnapshotsRef.current.clear()
+        return t
       } catch (err) {
         recordLastError(err)
+        return undefined
       }
     },
     [
@@ -227,6 +239,7 @@ function useCodexMessageActions(deps: CodexSessionActionDeps) {
     async (
       prompt: string,
       options?: {
+        threadID?: string
         model?: string
         effort?: string
         collaborationMode?: string
@@ -234,7 +247,8 @@ function useCodexMessageActions(deps: CodexSessionActionDeps) {
         displayPrompt?: string
       }
     ) => {
-      if (!window.orxa?.codex || !thread) return
+      const targetThreadID = options?.threadID ?? thread?.id
+      if (!window.orxa?.codex || !targetThreadID) return false
 
       const userMsgId = `codex-user-${messageIdCounterRef.current++}`
       const displayPrompt = options?.displayPrompt ?? prompt
@@ -252,7 +266,7 @@ function useCodexMessageActions(deps: CodexSessionActionDeps) {
       try {
         clearLastError()
         await window.orxa.codex.startTurn(
-          thread.id,
+          targetThreadID,
           prompt,
           directory,
           options?.model,
@@ -260,9 +274,11 @@ function useCodexMessageActions(deps: CodexSessionActionDeps) {
           options?.collaborationMode,
           options?.attachments
         )
+        return true
       } catch (err) {
         console.error('[useCodexSession] codex.startTurn failed', err)
         recordLastError(err)
+        return false
       }
     },
     [clearLastError, directory, messageIdCounterRef, recordLastError, setMessagesState, thread]
@@ -449,7 +465,7 @@ function useCodexPlanActions(
       attachments?: CodexAttachment[]
       displayPrompt?: string
     }
-  ) => Promise<void>
+  ) => Promise<boolean>
 ): PlanActionsResult {
   const { setDismissedPlanIdsState, setActiveSubagentThreadIdState } = deps
 

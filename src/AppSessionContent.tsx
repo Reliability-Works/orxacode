@@ -69,7 +69,7 @@ function ProjectSessionSurface(props: AppSessionContentProps) {
     return <ClaudeTerminalPane {...claudeTerminalPaneProps} />
   }
   if (activeSessionType === 'codex') {
-    return <CodexPane {...codexPaneProps} />
+    return <CodexPane key={codexPaneProps.sessionStorageKey} {...codexPaneProps} />
   }
   return (
     <>

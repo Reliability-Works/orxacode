@@ -6,8 +6,8 @@ describe('session-context-menu', () => {
     expect(getSessionContextActions('canvas')).toEqual(['archive', 'rename'])
   })
 
-  it('keeps worktree creation only for standalone sessions', () => {
-    expect(getSessionContextActions('standalone')).toContain('create_worktree')
+  it('keeps worktree creation only for opencode sessions', () => {
+    expect(getSessionContextActions('opencode')).toContain('create_worktree')
     expect(getSessionContextActions('codex')).not.toContain('create_worktree')
     expect(getSessionContextActions('claude-chat')).not.toContain('create_worktree')
   })
@@ -41,7 +41,7 @@ describe('session-context-menu', () => {
   it('falls back to the workspace session id otherwise', () => {
     expect(
       resolveSessionCopyIdentifier({
-        sessionType: 'standalone',
+        sessionType: 'opencode',
         workspaceSessionID: 'workspace-session',
       })
     ).toEqual({

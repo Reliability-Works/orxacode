@@ -11,14 +11,17 @@ import { useCodexPaneSubagentState } from './useCodexPaneSubagentState'
 
 function buildComposerPlaceholder({
   connectionStatus,
+  isDraft,
   lastError,
   thread,
 }: {
   connectionStatus: string
+  isDraft?: boolean
   lastError?: string
   thread: { id?: string | null } | null
 }) {
   if (connectionStatus === 'error') return lastError ?? 'Error connecting to Codex. Click to retry.'
+  if (isDraft) return 'Send Codex a message...'
   if (connectionStatus !== 'connected') return 'Connecting to Codex...'
   if (!thread) return 'Starting thread...'
   return 'Send Codex a message...'
@@ -56,7 +59,7 @@ function buildComposerProps(args: {
     abortActiveSession: composer.abortActiveSession,
     isSessionBusy: session.isStreaming,
     pickImageAttachment: composer.pickImageAttachment,
-    hasActiveSession: session.connectionStatus === 'connected' && session.thread !== null,
+    hasActiveSession: pane.isDraft || (session.connectionStatus === 'connected' && session.thread !== null),
     isPlanMode: composer.isPlanMode,
     setIsPlanMode: composer.setIsPlanMode,
     collaborationModes: bootstrap.collaborationModes,
@@ -122,7 +125,10 @@ function useCodexPaneRuntime(pane: CodexPaneProps) {
     codexArgs: pane.codexArgs,
   })
   const bootstrap = useCodexPaneBootstrap({
+    cachedCollaborationModes: pane.cachedCollaborationModes,
+    cachedModels: pane.cachedModels,
     codexAccessMode: pane.codexAccessMode,
+    isDraft: pane.isDraft,
     connect: session.connect,
     connectionStatus: session.connectionStatus,
     defaultReasoningEffort: pane.defaultReasoningEffort,
@@ -135,16 +141,22 @@ function useCodexPaneRuntime(pane: CodexPaneProps) {
     titleLocked: pane.titleLocked ?? false,
   })
   const composer = useCodexPaneComposer({
+    connect: session.connect,
     directory: pane.directory,
     interruptTurn: session.interruptTurn,
+    connectionStatus: session.connectionStatus,
+    codexAccessMode: pane.codexAccessMode,
+    isDraft: pane.isDraft,
     isStreaming: session.isStreaming,
     messageCount: session.messages.filter(item => item.kind === 'message' && item.role === 'user').length,
     onFirstMessage: pane.onFirstMessage,
     queueAutoTitleGeneration: bootstrap.queueAutoTitleGeneration,
+    permissionMode: pane.permissionMode,
     selectedCollabMode: bootstrap.selectedCollabMode,
     selectedModelID: bootstrap.selectedModelID,
     selectedReasoningEffort: bootstrap.selectedReasoningEffort,
     sendMessage: session.sendMessage,
+    startThread: session.startThread,
     steerMessage: session.steerMessage,
     thread: session.thread,
   })
@@ -198,6 +210,7 @@ export function useCodexPaneViewProps(pane: CodexPaneProps): CodexPaneViewProps 
   const messagePresentation = useCodexPaneMessagePresentation(runtime.session.messages, runtime.session.isStreaming)
   const composerPlaceholder = buildComposerPlaceholder({
     connectionStatus: runtime.session.connectionStatus,
+    isDraft: pane.isDraft,
     lastError: runtime.session.lastError,
     thread: runtime.session.thread,
   })

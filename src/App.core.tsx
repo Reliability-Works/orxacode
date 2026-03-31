@@ -15,6 +15,9 @@ import type {
   OpenCodeAgentFile,
   ProjectListItem,
   ClaudeChatHealthStatus,
+  CodexCollaborationMode,
+  CodexModelEntry,
+  CodexState,
   RuntimeProfile,
   RuntimeDependencyReport,
   RuntimeState,
@@ -70,6 +73,7 @@ import {
   getPersistedClaudeChatState,
 } from './hooks/claude-chat-session-storage'
 import { clearPersistedCodexState, getPersistedCodexState } from './hooks/codex-session-storage'
+import { codexModelsToOptions } from './components/CodexPane.helpers'
 import {
   buildClaudeChatSessionStatus,
   buildClaudeSessionStatus,
@@ -94,6 +98,7 @@ import {
 import { preferredAgentForMode } from './lib/app-mode'
 import { removePersistedValue } from './lib/persistence'
 import { resolveSessionCopyIdentifier } from './lib/session-context-menu'
+import { isOpencodeRuntimeSession } from './lib/session-types'
 import {
   deriveSessionTitleFromPrompt,
   isRecoverableSessionError,
@@ -108,20 +113,11 @@ import {
 } from './lib/app-shell-view-models'
 import { extractReviewChangesFiles } from './lib/timeline-row-grouping'
 import { buildWorkspaceSessionMetadataKey } from './lib/workspace-session-metadata'
-import {
-  LOCAL_PROVIDER_SESSIONS_KEY,
-  createLocalProviderSessionRecord,
-  isLocalProviderSessionType,
-  mergeLocalProviderSessions,
-  removeLocalProviderSessionRecord,
-  renameLocalProviderSessionRecord,
-  touchLocalProviderSessionRecord,
-  upsertLocalProviderSessionRecord,
-} from './lib/local-provider-sessions'
 import { opencodeClient } from './lib/services/opencodeClient'
 import type { AppPreferences } from '~/types/app'
 import type { SessionType } from '~/types/canvas'
 import { CODE_FONT_OPTIONS, UI_FONT_OPTIONS } from '~/types/app'
+import { useSyntheticSessionRegistry } from './hooks/useSyntheticSessionRegistry'
 
 const KANBAN_MANAGEMENT_PROVIDERS = ['opencode', 'codex', 'claude'] as const
 
@@ -449,6 +445,11 @@ export default function App() {
     connected: [],
     default: {},
   })
+  const [codexServiceState, setCodexServiceState] = useState<CodexState | null>(null)
+  const [codexServiceModels, setCodexServiceModels] = useState<CodexModelEntry[]>([])
+  const [codexServiceCollaborationModes, setCodexServiceCollaborationModes] = useState<
+    CodexCollaborationMode[]
+  >([])
   const [globalAgents, setGlobalAgents] = useState<Agent[]>([])
   const [opencodeAgentFiles, setOpencodeAgentFiles] = useState<OpenCodeAgentFile[]>([])
   const [runtime, setRuntime] = useState<RuntimeState>(INITIAL_RUNTIME)
@@ -537,39 +538,60 @@ export default function App() {
     claudeSessionCount,
     clearSessionMetadata,
     cleanupEmptySession,
-    getSessionType,
+    getSessionType: getStoredSessionType,
     getSessionTitle,
     normalizePresentationProvider,
   } = useWorkspaceSessionMetadata()
-  const [localProviderSessions, setLocalProviderSessions] = usePersistedState<
-    Record<string, ReturnType<typeof createLocalProviderSessionRecord>>
-  >(LOCAL_PROVIDER_SESSIONS_KEY, {})
-  const mergeProjectDataWithLocalSessions = useCallback(
-    (project: Parameters<typeof mergeLocalProviderSessions>[0]) =>
-      mergeLocalProviderSessions(project, localProviderSessions, getSessionType),
-    [getSessionType, localProviderSessions]
+  const setProjectDataForDirectory = useUnifiedRuntimeStore(state => state.setProjectData)
+  const setWorkspaceMeta = useUnifiedRuntimeStore(state => state.setWorkspaceMeta)
+  const clearSessionReadAt = useUnifiedRuntimeStore(state => state.clearSessionReadAt)
+  const clearSyntheticSessionMetadata = useCallback(
+    (directory: string, sessionID: string) => {
+      const sessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
+      clearSessionMetadata(sessionKey)
+      clearSessionReadAt(sessionKey)
+    },
+    [clearSessionMetadata, clearSessionReadAt]
   )
+  const {
+    getSyntheticSessionRecord,
+    getSessionType,
+    isSyntheticSession,
+    registerSyntheticSession,
+    removeSyntheticSession,
+    renameSyntheticSession,
+    touchSyntheticSession,
+    markSyntheticSessionStarted,
+    mergeProjectDataWithSyntheticSessions,
+  } = useSyntheticSessionRegistry({
+    clearSyntheticSessionMetadata,
+    getStoredSessionType,
+    setProjectDataForDirectory,
+    setSessionTitles,
+    setSessionTypes,
+    setWorkspaceMeta,
+  })
   const cleanupWorkspaceSession = useCallback(
     (directory: string, sessionID: string) => {
-      const sessionType = getSessionType(sessionID, directory)
       cleanupEmptySession(directory, sessionID)
-      if (isLocalProviderSessionType(sessionType)) {
-        setLocalProviderSessions(prev =>
-          removeLocalProviderSessionRecord(prev, directory, sessionID)
-        )
+      if (isSyntheticSession(directory, sessionID)) {
+        removeSyntheticSession(directory, sessionID)
       }
     },
-    [cleanupEmptySession, getSessionType, setLocalProviderSessions]
+    [cleanupEmptySession, isSyntheticSession, removeSyntheticSession]
+  )
+  const shouldUseOpencodeRuntimeSession = useCallback(
+    (directory: string, sessionID: string) =>
+      isOpencodeRuntimeSession(getSessionType(sessionID, directory), sessionID),
+    [getSessionType]
   )
   const shouldDeleteRemoteEmptySession = useCallback(
-    (directory: string, sessionID: string) =>
-      !isLocalProviderSessionType(getSessionType(sessionID, directory)),
-    [getSessionType]
+    (directory: string, sessionID: string) => shouldUseOpencodeRuntimeSession(directory, sessionID),
+    [shouldUseOpencodeRuntimeSession]
   )
   const shouldSkipRuntimeSessionLoad = useCallback(
-    (directory: string, sessionID: string) =>
-      isLocalProviderSessionType(getSessionType(sessionID, directory)),
-    [getSessionType]
+    (directory: string, sessionID: string) => !shouldUseOpencodeRuntimeSession(directory, sessionID),
+    [shouldUseOpencodeRuntimeSession]
   )
   const {
     sidebarMode,
@@ -603,7 +625,6 @@ export default function App() {
     openProjectContextMenu,
     openSessionContextMenu,
     markSessionUsed,
-    trackEmptySession,
     cleanupPersistedEmptySessions,
   } = useWorkspaceState({
     setStatusLine,
@@ -613,7 +634,7 @@ export default function App() {
     setTerminalOpen,
     scheduleGitRefresh: delayMs => scheduleGitRefreshRef.current?.(delayMs),
     onCleanupEmptySession: cleanupWorkspaceSession,
-    mergeProjectData: mergeProjectDataWithLocalSessions,
+    mergeProjectData: mergeProjectDataWithSyntheticSessions,
     shouldDeleteRemoteEmptySession,
     shouldSkipRuntimeSessionLoad,
   })
@@ -658,73 +679,12 @@ export default function App() {
   const claudeSessionStateMap = useUnifiedRuntimeStore(state => state.claudeSessions)
   const projectDataByDirectory = useUnifiedRuntimeStore(state => state.projectDataByDirectory)
   const setSessionReadAt = useUnifiedRuntimeStore(state => state.setSessionReadAt)
-  const clearSessionReadAt = useUnifiedRuntimeStore(state => state.clearSessionReadAt)
   const removeClaudeSession = useUnifiedRuntimeStore(state => state.removeClaudeSession)
   const removeClaudeChatSession = useUnifiedRuntimeStore(state => state.removeClaudeChatSession)
-  const setProjectDataForDirectory = useUnifiedRuntimeStore(state => state.setProjectData)
-  const setWorkspaceMeta = useUnifiedRuntimeStore(state => state.setWorkspaceMeta)
   const initCodexSession = useUnifiedRuntimeStore(state => state.initCodexSession)
   const setCodexThread = useUnifiedRuntimeStore(state => state.setCodexThread)
   const setCodexStreaming = useUnifiedRuntimeStore(state => state.setCodexStreaming)
   const replaceCodexMessages = useUnifiedRuntimeStore(state => state.replaceCodexMessages)
-  const syncLocalProviderSessionsIntoProject = useCallback(
-    (directory: string, nextRecords: typeof localProviderSessions) => {
-      const state = useUnifiedRuntimeStore.getState()
-      const cached = state.projectDataByDirectory[directory]
-      if (!cached) {
-        return
-      }
-      const merged = mergeLocalProviderSessions(cached, nextRecords, getSessionType)
-      setProjectDataForDirectory(directory, merged)
-      if (state.activeWorkspaceDirectory === directory) {
-        setProjectData(merged)
-      }
-      const lastUpdated = merged.sessions.reduce(
-        (max, session) => Math.max(max, session.time.updated),
-        0
-      )
-      setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated })
-    },
-    [getSessionType, setProjectData, setProjectDataForDirectory, setWorkspaceMeta]
-  )
-  const registerLocalProviderSession = useCallback(
-    (record: ReturnType<typeof createLocalProviderSessionRecord>) => {
-      const next = upsertLocalProviderSessionRecord(localProviderSessions, record)
-      setLocalProviderSessions(next)
-      syncLocalProviderSessionsIntoProject(record.directory, next)
-      return record
-    },
-    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject]
-  )
-  const renameLocalProviderSession = useCallback(
-    (directory: string, sessionID: string, title: string) => {
-      const next = renameLocalProviderSessionRecord(
-        localProviderSessions,
-        directory,
-        sessionID,
-        title
-      )
-      setLocalProviderSessions(next)
-      syncLocalProviderSessionsIntoProject(directory, next)
-    },
-    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject]
-  )
-  const touchLocalProviderSession = useCallback(
-    (directory: string, sessionID: string, updatedAt?: number) => {
-      const next = touchLocalProviderSessionRecord(
-        localProviderSessions,
-        directory,
-        sessionID,
-        updatedAt
-      )
-      if (next === localProviderSessions) {
-        return
-      }
-      setLocalProviderSessions(next)
-      syncLocalProviderSessionsIntoProject(directory, next)
-    },
-    [localProviderSessions, setLocalProviderSessions, syncLocalProviderSessionsIntoProject]
-  )
   useWorkspaceSessionMetadataMigration({
     projects,
     projectData: projectData ?? undefined,
@@ -867,6 +827,10 @@ export default function App() {
     () => getSessionType(activeSessionID ?? '', activeProjectDir),
     [activeProjectDir, activeSessionID, getSessionType]
   )
+  const activeSyntheticSessionRecord = useMemo(
+    () => getSyntheticSessionRecord(activeProjectDir, activeSessionID),
+    [activeProjectDir, activeSessionID, getSyntheticSessionRecord]
+  )
   const canShowIntegratedTerminal = activeSessionType !== 'claude' && activeSessionType !== 'canvas'
   const [codexUsage, setCodexUsage] = useState<ProviderUsageStats | null>(null)
   const [claudeUsage, setClaudeUsage] = useState<ProviderUsageStats | null>(null)
@@ -912,7 +876,7 @@ export default function App() {
       : undefined
   const activeOptimisticOpencodePrompt = useMemo(
     () =>
-      activeSessionType === 'standalone' && activeSessionKey
+      activeSessionType === 'opencode' && activeSessionKey
         ? (optimisticOpencodePrompts[activeSessionKey] ?? null)
         : null,
     [activeSessionKey, activeSessionType, optimisticOpencodePrompts]
@@ -1040,6 +1004,25 @@ export default function App() {
     scheduleGitRefreshRef.current = scheduleGitRefresh
   }, [scheduleGitRefresh])
 
+  const cachedProjects = useMemo(() => {
+    const next = { ...projectDataByDirectory }
+    if (projectData?.directory) {
+      next[projectData.directory] = projectData
+    }
+    return next
+  }, [projectData, projectDataByDirectory])
+  const { backgroundSessionDescriptors, visibleBackgroundAgents } = useBackgroundSessionDescriptors(
+    {
+      activeProjectDir: activeProjectDir ?? undefined,
+      activeSessionID: activeSessionID ?? undefined,
+      activeSessionKey: activeSessionKey ?? undefined,
+      activeSessionType,
+      cachedProjects,
+      archivedBackgroundAgentIds,
+      getSessionType,
+      normalizePresentationProvider,
+    }
+  )
   const {
     hiddenSessionIDsByProject,
     sessions,
@@ -1055,6 +1038,7 @@ export default function App() {
     pinnedSessions,
     archivedBackgroundAgentIds,
     hiddenBackgroundSessionIdsByProject,
+    backgroundSessionDescriptors,
     getSessionType,
     normalizePresentationProvider,
   })
@@ -1062,6 +1046,45 @@ export default function App() {
   const availableSlashCommands = useMemo(() => {
     return projectData?.commands ?? []
   }, [projectData?.commands])
+  const ensureActiveOpencodeSessionForSend = useCallback(async () => {
+    if (!activeProjectDir || !activeSessionID) {
+      return null
+    }
+    const syntheticSession = getSyntheticSessionRecord(activeProjectDir, activeSessionID)
+    if (!syntheticSession || syntheticSession.type !== 'opencode') {
+      return {
+        directory: activeProjectDir,
+        sessionID: activeSessionID,
+      }
+    }
+
+    const nextSessionID = await createWorkspaceSession(activeProjectDir, undefined, {
+      permissionMode: appPreferences.permissionMode as SessionPermissionMode,
+      selectedAgent: undefined,
+      selectedModelPayload: undefined,
+      selectedVariant: undefined,
+      availableAgentNames: new Set<string>(),
+    })
+    if (!nextSessionID) {
+      return null
+    }
+
+    removeSyntheticSession(activeProjectDir, activeSessionID)
+    markSessionUsed(nextSessionID)
+
+    return {
+      directory: activeProjectDir,
+      sessionID: nextSessionID,
+    }
+  }, [
+    activeProjectDir,
+    activeSessionID,
+    appPreferences.permissionMode,
+    createWorkspaceSession,
+    getSyntheticSessionRecord,
+    markSessionUsed,
+    removeSyntheticSession,
+  ])
 
   const fileBackedAgentOptions = useMemo(
     () =>
@@ -1085,17 +1108,32 @@ export default function App() {
   const globalServerModelOptions = useMemo(() => {
     return listModelOptions(globalProviders)
   }, [globalProviders])
-  const authenticatedProviderIDs = useMemo(
-    () => new Set(globalProviders.all.map(provider => provider.id)),
-    [globalProviders]
+  const codexServiceModelOptions = useMemo(
+    () => codexModelsToOptions(codexServiceModels),
+    [codexServiceModels]
   )
+  const discoverableProviderIDs = useMemo(() => {
+    const ids = new Set(globalProviders.all.map(provider => provider.id))
+    if (
+      codexServiceModels.length > 0 ||
+      codexServiceState?.status === 'connected' ||
+      codexServiceState?.status === 'connecting'
+    ) {
+      ids.add('codex')
+    }
+    return ids
+  }, [codexServiceModels.length, codexServiceState?.status, globalProviders])
   const discoverableModelOptions = useMemo(
     () =>
       filterModelOptionsByProviderIDs(
-        mergeDiscoverableModelOptions(configModelOptions, globalServerModelOptions),
-        authenticatedProviderIDs
+        mergeDiscoverableModelOptions(
+          configModelOptions,
+          globalServerModelOptions,
+          codexServiceModelOptions
+        ),
+        discoverableProviderIDs
       ),
-    [authenticatedProviderIDs, configModelOptions, globalServerModelOptions]
+    [codexServiceModelOptions, configModelOptions, discoverableProviderIDs, globalServerModelOptions]
   )
   const settingsModelsRef = useRef<ModelOption[]>([])
   const settingsModelOptions = useMemo(() => {
@@ -1241,6 +1279,7 @@ export default function App() {
     refreshMessages,
     refreshProject,
     sessions,
+    ensureSessionForSend: ensureActiveOpencodeSessionForSend,
     selectedAgent,
     availableAgentNames,
     setStatusLine,
@@ -1353,6 +1392,134 @@ export default function App() {
     setProjectCacheVersion,
     syncBrowserSnapshot,
   })
+  const refreshCodexServiceSnapshot = useCallback(async () => {
+    if (!window.orxa?.codex) {
+      setCodexServiceState({ status: 'disconnected' })
+      return
+    }
+
+    try {
+      const state = await window.orxa.codex.getState()
+      setCodexServiceState(state)
+
+      if (state.status !== 'connected') {
+        return
+      }
+
+      const [models, collaborationModes] = await Promise.all([
+        window.orxa.codex.listModels().catch(() => [] as CodexModelEntry[]),
+        window.orxa.codex
+          .listCollaborationModes()
+          .catch(() => [] as CodexCollaborationMode[]),
+      ])
+      if (models.length > 0) {
+        setCodexServiceModels(models)
+      }
+      if (collaborationModes.length > 0) {
+        setCodexServiceCollaborationModes(collaborationModes)
+      }
+    } catch {
+      setCodexServiceState({ status: 'disconnected' })
+    }
+  }, [])
+  useEffect(() => {
+    if (!activeProjectDir || activeSessionType !== 'codex' || !window.orxa?.codex) {
+      return
+    }
+
+    let cancelled = false
+    const loadConnectedMetadata = async () => {
+      const [models, collaborationModes] = await Promise.all([
+        window.orxa.codex.listModels().catch(() => [] as CodexModelEntry[]),
+        window.orxa.codex
+          .listCollaborationModes()
+          .catch(() => [] as CodexCollaborationMode[]),
+      ])
+      if (cancelled) {
+        return
+      }
+      if (models.length > 0) {
+        setCodexServiceModels(models)
+      }
+      if (collaborationModes.length > 0) {
+        setCodexServiceCollaborationModes(collaborationModes)
+      }
+    }
+
+    void (async () => {
+      try {
+        const state = await window.orxa.codex.getState()
+        if (cancelled) {
+          return
+        }
+        setCodexServiceState(state)
+
+        if (state.status === 'connected') {
+          await loadConnectedMetadata()
+          return
+        }
+
+        const nextState = await window.orxa.codex.start(activeProjectDir, {
+          codexPath: appPreferences.codexPath,
+          codexArgs: appPreferences.codexArgs,
+        })
+        if (cancelled) {
+          return
+        }
+        setCodexServiceState(nextState)
+        if (nextState.status === 'connected') {
+          await loadConnectedMetadata()
+        }
+      } catch {
+        if (!cancelled) {
+          setCodexServiceState({ status: 'disconnected' })
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeProjectDir,
+    activeSessionType,
+    appPreferences.codexArgs,
+    appPreferences.codexPath,
+  ])
+
+  useEffect(() => {
+    void refreshCodexServiceSnapshot()
+  }, [refreshCodexServiceSnapshot])
+
+  useEffect(() => {
+    if (!window.orxa?.events) {
+      return
+    }
+
+    return window.orxa.events.subscribe(event => {
+      if (event.type !== 'codex.state') {
+        return
+      }
+      const state = event.payload as CodexState
+      setCodexServiceState(state)
+      if (state.status === 'connected') {
+        void refreshCodexServiceSnapshot()
+      }
+    })
+  }, [refreshCodexServiceSnapshot])
+
+  useEffect(() => {
+    const resume = () => void refreshCodexServiceSnapshot()
+    window.addEventListener('focus', resume)
+    window.addEventListener('pageshow', resume)
+    document.addEventListener('visibilitychange', resume)
+    return () => {
+      window.removeEventListener('focus', resume)
+      window.removeEventListener('pageshow', resume)
+      document.removeEventListener('visibilitychange', resume)
+    }
+  }, [refreshCodexServiceSnapshot])
+
   const sendComposerPrompt = useCallback(() => {
     if (activeProjectDir && activeSessionID) {
       clearBrowserAutomationHalt(activeProjectDir, activeSessionID)
@@ -1439,10 +1606,19 @@ export default function App() {
     if (!settingsOpen) {
       return
     }
-    void Promise.all([refreshConfigModels(), refreshGlobalProviders(), refreshAgentFiles()]).catch(
-      () => undefined
-    )
-  }, [refreshAgentFiles, refreshConfigModels, refreshGlobalProviders, settingsOpen])
+    void Promise.all([
+      refreshConfigModels(),
+      refreshGlobalProviders(),
+      refreshAgentFiles(),
+      refreshCodexServiceSnapshot(),
+    ]).catch(() => undefined)
+  }, [
+    refreshAgentFiles,
+    refreshCodexServiceSnapshot,
+    refreshConfigModels,
+    refreshGlobalProviders,
+    settingsOpen,
+  ])
 
   // Periodically refresh models/agents so the dropdown stays in sync
   // with external config changes without needing to open settings.
@@ -1452,19 +1628,24 @@ export default function App() {
         refreshConfigModels(),
         refreshGlobalProviders(),
         refreshAgentFiles(),
+        refreshCodexServiceSnapshot(),
       ]).catch(() => undefined)
     }, 45_000)
     return () => window.clearInterval(interval)
-  }, [refreshConfigModels, refreshGlobalProviders, refreshAgentFiles])
+  }, [refreshAgentFiles, refreshCodexServiceSnapshot, refreshConfigModels, refreshGlobalProviders])
 
   // Also refresh when switching to a new active session
   const prevActiveSessionRef = useRef(activeSessionID)
   useEffect(() => {
     if (activeSessionID && activeSessionID !== prevActiveSessionRef.current) {
-      void Promise.all([refreshConfigModels(), refreshGlobalProviders()]).catch(() => undefined)
+      void Promise.all([
+        refreshConfigModels(),
+        refreshGlobalProviders(),
+        refreshCodexServiceSnapshot(),
+      ]).catch(() => undefined)
     }
     prevActiveSessionRef.current = activeSessionID
-  }, [activeSessionID, refreshConfigModels, refreshGlobalProviders])
+  }, [activeSessionID, refreshCodexServiceSnapshot, refreshConfigModels, refreshGlobalProviders])
 
   useEffect(() => {
     if (!activeSessionID || !activeProjectDir) {
@@ -1835,7 +2016,7 @@ export default function App() {
           createWorkspaceSession,
           describeClaudeHealthFailure,
           markSessionUsed,
-          registerLocalProviderSession,
+          registerLocalProviderSession: registerSyntheticSession,
           selectProject,
           selectedAgent,
           selectedModelPayload,
@@ -1847,7 +2028,6 @@ export default function App() {
           setSessionTypes,
           setSidebarMode,
           setStatusLine,
-          trackEmptySession,
         },
         directory,
         sessionTypeOrPrompt
@@ -1859,7 +2039,7 @@ export default function App() {
       clearPendingSession,
       createWorkspaceSession,
       markSessionUsed,
-      registerLocalProviderSession,
+      registerSyntheticSession,
       selectProject,
       selectedAgent,
       selectedModelPayload,
@@ -1871,7 +2051,6 @@ export default function App() {
       setSessionTypes,
       setSidebarMode,
       setStatusLine,
-      trackEmptySession,
     ]
   )
 
@@ -1949,9 +2128,12 @@ export default function App() {
           const scopedSessionKey = buildWorkspaceSessionMetadataKey(directory, sessionID)
           try {
             const sessionType = getSessionType(sessionID, directory)
-            if (sessionType === 'standalone') {
-              await window.orxa.opencode.renameSession(directory, sessionID, nextTitle)
-              await refreshProject(directory)
+            const syntheticSession = getSyntheticSessionRecord(directory, sessionID)
+            if (sessionType === 'opencode') {
+              if (!syntheticSession) {
+                await window.orxa.opencode.renameSession(directory, sessionID, nextTitle)
+                await refreshProject(directory)
+              }
             } else if (sessionType === 'codex') {
               const codexThreadId = selectCodexSessionRuntime(scopedSessionKey)?.thread?.id
               if (codexThreadId) {
@@ -1967,8 +2149,8 @@ export default function App() {
                 )
               }
             }
-            if (isLocalProviderSessionType(sessionType)) {
-              renameLocalProviderSession(directory, sessionID, nextTitle)
+            if (syntheticSession) {
+              renameSyntheticSession(directory, sessionID, nextTitle)
             }
             setSessionTitles(prev => ({
               ...prev,
@@ -1986,9 +2168,10 @@ export default function App() {
       })
     },
     [
+      getSyntheticSessionRecord,
       getSessionType,
       refreshProject,
-      renameLocalProviderSession,
+      renameSyntheticSession,
       setManualSessionTitles,
       setSessionTitles,
       setTextInputDialog,
@@ -2027,8 +2210,8 @@ export default function App() {
         const archivedSessionType = getSessionType(sessionID, directory)
         const isArchivedSessionActive =
           activeProjectDir === directory && activeSessionID === sessionID
-        const localProviderSession = isLocalProviderSessionType(archivedSessionType)
-        if (!localProviderSession) {
+        const syntheticSession = getSyntheticSessionRecord(directory, sessionID)
+        if (shouldUseOpencodeRuntimeSession(directory, sessionID)) {
           await window.orxa.opencode.archiveSession(directory, sessionID)
         }
         // Clear canvas state for archived sessions so new canvas sessions start fresh
@@ -2053,23 +2236,19 @@ export default function App() {
         } else if (archivedSessionType === 'claude') {
           removeClaudeSession(sessionKey)
         }
-        let nextLocalProviderSessions = localProviderSessions
-        if (localProviderSession) {
-          nextLocalProviderSessions = removeLocalProviderSessionRecord(
-            localProviderSessions,
-            directory,
-            sessionID
-          )
-          setLocalProviderSessions(nextLocalProviderSessions)
-          syncLocalProviderSessionsIntoProject(directory, nextLocalProviderSessions)
+        if (syntheticSession) {
+          removeSyntheticSession(directory, sessionID)
         }
         clearSessionReadAt(sessionKey)
         clearSessionMetadata(sessionKey)
         removeSessionFromLocalProjectCache(directory, sessionID)
         if (isArchivedSessionActive) {
           clearPendingSession()
+          setActiveSessionID(undefined)
+          setMessages([])
           await selectProject(directory)
-        } else if (!localProviderSession) {
+          removeSessionFromLocalProjectCache(directory, sessionID)
+        } else if (!syntheticSession) {
           void refreshProject(directory).catch(() => undefined)
         }
         setStatusLine('Session archived')
@@ -2084,14 +2263,16 @@ export default function App() {
       clearSessionMetadata,
       clearSessionReadAt,
       getSessionType,
-      localProviderSessions,
+      getSyntheticSessionRecord,
       refreshProject,
+      removeSyntheticSession,
       selectProject,
-      setLocalProviderSessions,
       removeClaudeChatSession,
       removeClaudeSession,
       removeSessionFromLocalProjectCache,
-      syncLocalProviderSessionsIntoProject,
+      setActiveSessionID,
+      setMessages,
+      shouldUseOpencodeRuntimeSession,
     ]
   )
 
@@ -2317,25 +2498,6 @@ export default function App() {
     activeTodoPresentation?.items.length &&
     activeTodoPresentation.items.every(item => item.status === 'completed') &&
     activeReviewChangesFiles.length > 0
-  )
-  const cachedProjects = useMemo(() => {
-    const next = { ...projectDataByDirectory }
-    if (projectData?.directory) {
-      next[projectData.directory] = projectData
-    }
-    return next
-  }, [projectData, projectDataByDirectory])
-  const { backgroundSessionDescriptors, visibleBackgroundAgents } = useBackgroundSessionDescriptors(
-    {
-      activeProjectDir: activeProjectDir ?? undefined,
-      activeSessionID: activeSessionID ?? undefined,
-      activeSessionKey: activeSessionKey ?? undefined,
-      activeSessionType,
-      cachedProjects,
-      archivedBackgroundAgentIds,
-      getSessionType,
-      normalizePresentationProvider,
-    }
   )
   useEffect(() => {
     const kanban = window.orxa?.kanban
@@ -2903,14 +3065,21 @@ export default function App() {
     activeProjectDir && activeSessionID
       ? activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
       : activeSessionKey ?? ''
-  const handleActiveLocalProviderInteraction = () => {
+  const handleActiveLocalProviderInteraction = useCallback(() => {
     if (!activeProjectDir || !activeSessionID) {
       return
     }
     markSessionUsed(activeSessionID)
-    touchLocalProviderSession(activeProjectDir, activeSessionID)
-  }
-  const handleActiveLocalProviderTitleChange = (title: string) => {
+    markSyntheticSessionStarted(activeProjectDir, activeSessionID)
+    touchSyntheticSession(activeProjectDir, activeSessionID)
+  }, [
+    activeProjectDir,
+    activeSessionID,
+    markSessionUsed,
+    markSyntheticSessionStarted,
+    touchSyntheticSession,
+  ])
+  const handleActiveLocalProviderTitleChange = useCallback((title: string) => {
     if (!activeSessionID || !activeProjectDir) {
       return
     }
@@ -2923,6 +3092,9 @@ export default function App() {
     }
     setSessionTitles(prev => {
       const currentTitle = prev[scopedSessionKey]
+      if (currentTitle === title) {
+        return prev
+      }
       if (
         currentTitle &&
         !looksAutoGeneratedSessionTitle(currentTitle) &&
@@ -2935,8 +3107,14 @@ export default function App() {
         [scopedSessionKey]: title,
       }
     })
-    renameLocalProviderSession(activeProjectDir, activeSessionID, title)
-  }
+    renameSyntheticSession(activeProjectDir, activeSessionID, title)
+  }, [
+    activeProjectDir,
+    activeSessionID,
+    manualSessionTitles,
+    renameSyntheticSession,
+    setSessionTitles,
+  ])
   const runQueuedMessage = (id: string) => {
     const item = followupQueue.find(message => message.id === id)
     if (!item || sendingQueuedId) {
@@ -2988,6 +3166,10 @@ export default function App() {
     canvasState,
     mcpDevToolsState,
     activeLocalProviderSessionKey,
+    activeCodexSessionDraft:
+      activeSessionType === 'codex' ? (activeSyntheticSessionRecord?.draft ?? false) : false,
+    cachedCodexCollaborationModes: codexServiceCollaborationModes,
+    cachedCodexModels: codexServiceModels,
     handleActiveLocalProviderInteraction,
     handleActiveLocalProviderTitleChange,
     appPreferences,
