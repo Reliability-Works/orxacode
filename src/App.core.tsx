@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -7,10 +6,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react'
-import { parse as parseJsonc } from 'jsonc-parser'
 import { GitCommitHorizontal, Send, Upload } from 'lucide-react'
 import type {
   AgentsDocument,
@@ -19,7 +16,6 @@ import type {
   ProjectListItem,
   ClaudeChatHealthStatus,
   RuntimeProfile,
-  RuntimeProfileInput,
   RuntimeDependencyReport,
   RuntimeState,
   SessionPermissionMode,
@@ -28,41 +24,26 @@ import type {
   ProviderUsageStats,
   AppDiagnosticInput,
 } from '@shared/ipc'
-import type { Agent, ProviderListResponse, QuestionAnswer } from '@opencode-ai/sdk/v2/client'
-import { CanvasPane } from './components/CanvasPane'
+import type { Agent, ProviderListResponse } from '@opencode-ai/sdk/v2/client'
 import { BackgroundSessionSupervisorHost } from './components/BackgroundSessionSupervisorHost'
-import { WorkspaceLanding } from './components/WorkspaceLanding'
-import { ClaudeChatPane } from './components/ClaudeChatPane'
-import { ClaudeTerminalPane } from './components/ClaudeTerminalPane'
-import { CodexPane } from './components/CodexPane'
-import { ComposerPanel } from './components/ComposerPanel'
-import type { AgentQuestion } from './components/chat/QuestionDock'
-import { HomeDashboard } from './components/HomeDashboard'
-import { BrowserSidebar } from './components/BrowserSidebar'
 import {
   ContentTopBar,
-  type CustomRunCommandInput,
   type CustomRunCommandPreset,
 } from './components/ContentTopBar'
-import { GlobalModalsHost } from './components/GlobalModalsHost'
-import type { SkillPromptTarget } from './components/GlobalModalsHost'
-import { GlobalSearchModal } from './components/GlobalSearchModal'
-import { MessageFeed } from './components/MessageFeed'
-import { UnifiedTimelineRowView } from './components/chat/UnifiedTimelineRow'
-import { GitSidebar } from './components/GitSidebar'
-import { SettingsDrawer } from './components/SettingsDrawer'
-import { TerminalPanel } from './components/TerminalPanel'
-import { KanbanBoard } from './components/KanbanBoard'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
-import { ConfirmDialog } from './components/ConfirmDialog'
-import { InfoDialog } from './components/InfoDialog'
-import { TextInputDialog } from './components/TextInputDialog'
-import { SkillsBoard } from './components/SkillsBoard'
+import { useAppCoreBackgroundAgents } from './app-core-background-agents'
+import { AppTransientOverlays } from './AppTransientOverlays'
+import { AppGlobalDialogs } from './AppGlobalDialogs'
+import { AppSessionContent } from './AppSessionContent'
+import { AppSidePanes } from './AppSidePanes'
+import { useAppCoreProjectActions } from './app-core-project-actions'
+import { buildAppSessionContentProps } from './app-core-session-content-props'
+import { buildContentTopBarProps, buildWorkspaceSidebarProps } from './app-core-shell-props'
+import { buildGlobalDialogsProfileActions } from './app-global-dialog-actions'
 import { useAppShellCommitFlow } from './hooks/useAppShellCommitFlow'
 import { useAppShellDialogs } from './hooks/useAppShellDialogs'
 import { useAppShellSessionFeedNotices } from './hooks/useAppShellSessionFeedNotices'
-import { useAppShellStartupFlow } from './hooks/useAppShellStartupFlow'
 import { useAppShellToasts } from './hooks/useAppShellToasts'
 import { useAppShellUpdateFlow } from './hooks/useAppShellUpdateFlow'
 import { useCanvasState } from './hooks/useCanvasState'
@@ -74,10 +55,13 @@ import { useWorkspaceState } from './hooks/useWorkspaceState'
 import { useWorkspaceSessionMetadata } from './hooks/useWorkspaceSessionMetadata'
 import { useWorkspaceSessionMetadataMigration } from './hooks/useWorkspaceSessionMetadataMigration'
 import { useAppShellSessionCollections } from './hooks/useAppShellSessionCollections'
+import { useAppCoreAwaitingInput } from './app-core-awaiting-input'
+import { useAppCoreBootstrap } from './app-core-bootstrap'
 import { useAppCoreDiagnostics } from './app-core-debug'
 import { useAppCoreBrowser } from './app-core-browser'
 import { createSessionAction } from './app-core-session'
 import { useAppCoreSidebarResize } from './app-core-sidebar-resize'
+import { useAppCoreTerminal } from './app-core-terminal'
 // TODO: streaming buffer removed — needs reimplementation at the message-part delta
 // level rather than the presentation layer to avoid blocking tool calls and diffs
 import { useBackgroundSessionDescriptors } from './hooks/useBackgroundSessionDescriptors'
@@ -93,8 +77,6 @@ import {
   buildOpencodeSessionStatus,
   selectActiveComposerPresentation,
   selectActiveTaskListPresentation,
-  selectPendingPermissionDockData,
-  selectPendingQuestionDockData,
   selectClaudeChatSessionRuntime,
   selectCodexSessionRuntime,
   selectSessionPresentation,
@@ -106,13 +88,12 @@ import {
   findFallbackModel,
   listAgentOptions,
   listModelOptions,
-  listModelOptionsFromConfigReferences,
   mergeDiscoverableModelOptions,
   type ModelOption,
 } from './lib/models'
 import { preferredAgentForMode } from './lib/app-mode'
 import { removePersistedValue } from './lib/persistence'
-import { getSessionContextActions, resolveSessionCopyIdentifier } from './lib/session-context-menu'
+import { resolveSessionCopyIdentifier } from './lib/session-context-menu'
 import {
   deriveSessionTitleFromPrompt,
   isRecoverableSessionError,
@@ -125,7 +106,6 @@ import {
   buildAppShellHomeDashboardProps,
   deriveAppShellWorkspaceLayout,
 } from './lib/app-shell-view-models'
-import type { UnifiedBackgroundAgentSummary } from './lib/session-presentation'
 import { extractReviewChangesFiles } from './lib/timeline-row-grouping'
 import { buildWorkspaceSessionMetadataKey } from './lib/workspace-session-metadata'
 import {
@@ -232,8 +212,6 @@ const CUSTOM_RUN_COMMANDS_KEY = 'orxa:customRunCommands:v1'
 const DEFAULT_COMPOSER_LAYOUT_HEIGHT = 132
 const COMPOSER_DRAWER_ATTACH_OFFSET = 12
 const DEFAULT_TERMINAL_PANEL_HEIGHT = 180
-const MIN_TERMINAL_PANEL_HEIGHT = 120
-const MAX_TERMINAL_PANEL_HEIGHT = 420
 
 type ProjectSortMode = 'updated' | 'recent' | 'alpha-asc' | 'alpha-desc'
 
@@ -319,10 +297,8 @@ function commitFlowSuccessMessage(nextStep: CommitNextStep) {
 }
 const DEFAULT_COMPACTION_THRESHOLD = 120_000
 const MIN_COMPACTION_THRESHOLD = 24_000
-const PERMISSION_REPLY_TIMEOUT_MS = 15_000
 const BROWSER_MODE_BY_SESSION_KEY = 'orxa:browserModeBySession:v1'
 const BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY = 'orxa:browserAutomationHaltedBySession:v1'
-const STARTUP_STEP_TIMEOUT_MS = 12_000
 
 function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
   const parsed = JSON.parse(raw)
@@ -362,30 +338,6 @@ function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
     })
   }
   return result.sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-function splitCommandLines(commands: string) {
-  return commands
-    .replace(/\r\n/g, '\n')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
-  let timeoutId: number | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_resolve, reject) => {
-        timeoutId = window.setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId)
-    }
-  }
 }
 
 function tokenCountFromMessageInfo(info: SessionMessageBundle['info']) {
@@ -893,16 +845,11 @@ export default function App() {
     downloadAndInstallUpdate,
   } = useAppShellUpdateFlow({ setStatusLine })
   const [dockTodosOpen, setDockTodosOpen] = useState(false)
-  const [selectedBackgroundAgentId, setSelectedBackgroundAgentId] = useState<string | null>(null)
   const [archivedBackgroundAgentIds, setArchivedBackgroundAgentIds] = useState<
     Record<string, string[]>
   >({})
   const [hiddenBackgroundSessionIdsByProject, setHiddenBackgroundSessionIdsByProject] =
     usePersistedState<Record<string, string[]>>('orxa:hiddenBackgroundSessionIdsByProject:v1', {})
-  const [selectedBackgroundAgentLoading, setSelectedBackgroundAgentLoading] = useState(false)
-  const [selectedBackgroundAgentError, setSelectedBackgroundAgentError] = useState<string | null>(
-    null
-  )
   const [permissionDecisionPending, setPermissionDecisionPending] = useState<
     'once' | 'always' | 'reject' | null
   >(null)
@@ -1244,101 +1191,6 @@ export default function App() {
     }
   }, [debugLogLevelFilter, filteredDebugLogs, pushToast, setStatusLine])
 
-  const refreshProfiles = useCallback(async () => {
-    const [nextRuntime, nextProfiles] = await Promise.all([
-      window.orxa.runtime.getState(),
-      window.orxa.runtime.listProfiles(),
-    ])
-    setRuntime(nextRuntime)
-    setProfiles(nextProfiles)
-  }, [])
-
-  const refreshConfigModels = useCallback(async () => {
-    try {
-      const globalDoc = await window.orxa.opencode.readRawConfig('global')
-      const parsed = parseJsonc(globalDoc.content) as unknown
-      setConfigModelOptions(listModelOptionsFromConfigReferences(parsed))
-    } catch {
-      setConfigModelOptions([])
-    }
-  }, [])
-
-  const refreshGlobalProviders = useCallback(async () => {
-    try {
-      const providers = await window.orxa.opencode.listProviders()
-      setGlobalProviders(providers)
-    } catch {
-      setGlobalProviders({ all: [], connected: [], default: {} })
-    }
-  }, [])
-
-  const refreshGlobalAgents = useCallback(async () => {
-    try {
-      const agents = await window.orxa.opencode.listAgents()
-      setGlobalAgents(agents)
-    } catch {
-      setGlobalAgents([])
-    }
-  }, [])
-
-  const refreshAgentFiles = useCallback(async () => {
-    try {
-      const files = await window.orxa.opencode.listAgentFiles()
-      setOpencodeAgentFiles(files)
-    } catch {
-      setOpencodeAgentFiles([])
-    }
-  }, [])
-
-  const refreshRuntimeDependencies = useCallback(async () => {
-    try {
-      const report = await window.orxa.opencode.checkDependencies()
-      setDependencyReport(report)
-      setDependencyModalOpen(report.missingAny)
-    } catch {
-      setDependencyReport(null)
-    }
-  }, [])
-
-  const bootstrap = useCallback(async () => {
-    try {
-      const result = await window.orxa.opencode.bootstrap()
-      setProjects(result.projects)
-      setRuntime(result.runtime)
-      if (activeProjectDir && !result.projects.some(item => item.worktree === activeProjectDir)) {
-        setStatusLine(`Workspace directory is no longer accessible: ${activeProjectDir}`)
-        setActiveProjectDir(undefined)
-        setProjectData(null)
-        setActiveSessionID(undefined)
-        setMessages([])
-      }
-      // Pre-load session data for all projects in background (for sidebar display).
-      // Always refresh from the server even if we have cached data — the cache only
-      // provides immediate sidebar display while the server starts up.
-      for (const project of result.projects) {
-        if (project.worktree === activeProjectDir) continue // Active project already loaded
-        window.orxa.opencode
-          .selectProject(project.worktree)
-          .then(data => {
-            setProjectDataForDirectory(project.worktree, data)
-            setProjectCacheVersion(version => version + 1)
-          })
-          .catch(() => {
-            /* non-fatal */
-          })
-      }
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error))
-    }
-  }, [
-    activeProjectDir,
-    setActiveProjectDir,
-    setActiveSessionID,
-    setMessages,
-    setProjectData,
-    setProjectDataForDirectory,
-  ])
-
   const storeMarkSessionAbortRequestedAt = useUnifiedRuntimeStore(
     state => state.markSessionAbortRequestedAt
   )
@@ -1470,6 +1322,37 @@ export default function App() {
     setBrowserSidebarOpen,
     setStatusLine,
   })
+  const {
+    refreshProfiles,
+    refreshConfigModels,
+    refreshGlobalProviders,
+    refreshGlobalAgents,
+    refreshAgentFiles,
+    refreshRuntimeDependencies,
+    bootstrap,
+    startupState,
+    startupProgressPercent,
+  } = useAppCoreBootstrap({
+    activeProjectDir,
+    cleanupPersistedEmptySessions,
+    setRuntime,
+    setProfiles,
+    setProjects,
+    setConfigModelOptions,
+    setGlobalProviders,
+    setGlobalAgents,
+    setOpencodeAgentFiles,
+    setDependencyReport,
+    setDependencyModalOpen,
+    setStatusLine,
+    setActiveProjectDir,
+    setProjectData,
+    setActiveSessionID,
+    setMessages,
+    setProjectDataForDirectory,
+    setProjectCacheVersion,
+    syncBrowserSnapshot,
+  })
   const sendComposerPrompt = useCallback(() => {
     if (activeProjectDir && activeSessionID) {
       clearBrowserAutomationHalt(activeProjectDir, activeSessionID)
@@ -1545,41 +1428,6 @@ export default function App() {
     const model = modelSelectOptions.find(item => item.key === selectedModel)
     return model?.variants ?? []
   }, [selectedModel, modelSelectOptions])
-  const startupSteps = useMemo(
-    () => [
-      { message: 'Loading runtime profiles…', action: refreshProfiles },
-      { message: 'Cleaning temporary sessions…', action: cleanupPersistedEmptySessions },
-      { message: 'Bootstrapping workspaces…', action: bootstrap },
-      { message: 'Loading model references…', action: refreshConfigModels },
-      { message: 'Loading provider registry…', action: refreshGlobalProviders },
-      { message: 'Loading agent registry…', action: refreshGlobalAgents },
-      { message: 'Loading agent files…', action: refreshAgentFiles },
-      { message: 'Checking runtime dependencies…', action: refreshRuntimeDependencies },
-      { message: 'Syncing browser state…', action: syncBrowserSnapshot },
-    ],
-    [
-      bootstrap,
-      cleanupPersistedEmptySessions,
-      refreshConfigModels,
-      refreshGlobalAgents,
-      refreshGlobalProviders,
-      refreshAgentFiles,
-      refreshProfiles,
-      refreshRuntimeDependencies,
-      syncBrowserSnapshot,
-    ]
-  )
-  const handleStartupStepError = useCallback((error: unknown) => {
-    setStatusLine(error instanceof Error ? error.message : String(error))
-  }, [])
-  const { startupState, startupProgressPercent } = useAppShellStartupFlow({
-    initialMessage: 'Initializing Orxa Code…',
-    totalSteps: startupSteps.length,
-    stepTimeoutMs: STARTUP_STEP_TIMEOUT_MS,
-    steps: startupSteps,
-    onStepError: handleStartupStepError,
-  })
-
   useEffect(() => {
     if (hasProjectContext) {
       return
@@ -2027,67 +1875,40 @@ export default function App() {
     ]
   )
 
-  const addProjectDirectory = useCallback(
-    async (options?: { select?: boolean }) => {
-      try {
-        const result = await opencodeClient.addProjectDirectory()
-        if (!result) {
-          return undefined
-        }
-        const directory = result.directory
-        await bootstrap()
-        if (options?.select !== false) {
-          await selectProject(directory)
-        }
-        setStatusLine(`Workspace added: ${directory}`)
-        return directory
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-        return undefined
-      }
-    },
-    [bootstrap, selectProject]
-  )
-
-  const changeProjectDirectory = useCallback(
-    async (directory: string, label: string) => {
-      try {
-        const nextDirectory = await addProjectDirectory()
-        if (!nextDirectory) {
-          return
-        }
-        if (nextDirectory === directory) {
-          setStatusLine(`Workspace already points to ${nextDirectory}`)
-          return
-        }
-        await opencodeClient.removeProjectDirectory(directory)
-        await bootstrap()
-        if (activeProjectDir === directory) {
-          await selectProject(nextDirectory)
-        }
-        setStatusLine(`Updated workspace "${label}"`)
-        pushToast(`Workspace path updated to ${nextDirectory}`, 'info', 4_000)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        setStatusLine(message)
-        pushToast(message, 'error')
-      }
-    },
-    [activeProjectDir, addProjectDirectory, bootstrap, pushToast, selectProject, setStatusLine]
-  )
-
-  const loadSkills = useCallback(async () => {
-    try {
-      setSkillsLoading(true)
-      setSkillsError(undefined)
-      const entries = await window.orxa.opencode.listSkills()
-      setSkills(entries)
-    } catch (error) {
-      setSkillsError(error instanceof Error ? error.message : String(error))
-    } finally {
-      setSkillsLoading(false)
-    }
-  }, [])
+  const {
+    addProjectDirectory,
+    applySkillToProject,
+    changeProjectDirectory,
+    copyProjectPath,
+    createWorktreeSession,
+    loadSkills,
+    openSkillUseModal,
+    removeProjectDirectory,
+  } = useAppCoreProjectActions({
+    activeProjectDir,
+    activeSessionID,
+    projects,
+    bootstrap,
+    selectProject,
+    pushToast,
+    setStatusLine,
+    setSkills,
+    setSkillsLoading,
+    setSkillsError,
+    setSkillUseModal,
+    setProjectData,
+    setActiveSessionID,
+    setComposer,
+    setMessages,
+    setOpencodeMessages,
+    setSidebarMode,
+    requestConfirmation,
+    setActiveProjectDir,
+    setTerminalTabs,
+    setActiveTerminalId,
+    setTerminalOpen,
+    setTextInputDialog,
+  })
 
   useEffect(() => {
     if (sidebarMode !== 'skills') {
@@ -2095,96 +1916,6 @@ export default function App() {
     }
     void loadSkills()
   }, [loadSkills, sidebarMode])
-
-  const openSkillUseModal = useCallback(
-    (skill: SkillEntry) => {
-      setSkillUseModal({
-        skill,
-        projectDir: activeProjectDir ?? projects[0]?.worktree ?? '',
-      })
-    },
-    [activeProjectDir, projects]
-  )
-
-  const applySkillToProject = useCallback(
-    async (skill: SkillEntry, targetProjectDir: string, sessionTarget: SkillPromptTarget) => {
-      try {
-        const project = projects.find(item => item.worktree === targetProjectDir)
-        if (!project) {
-          setStatusLine('Select a valid workspace')
-          return
-        }
-        const seedPrompt = [
-          `Use skill: ${skill.name}`,
-          '',
-          skill.description,
-          '',
-          `Skill path: ${skill.path}`,
-          '',
-          'Apply this skill to the current task and ask clarifying questions if needed.',
-        ].join('\n')
-
-        await selectProject(targetProjectDir)
-        const latest = await opencodeClient.refreshProject(targetProjectDir)
-        setProjectData(latest)
-
-        let targetSessionID: string | null = null
-        let usedCurrentSession = false
-        if (
-          sessionTarget === 'current' &&
-          activeProjectDir === targetProjectDir &&
-          activeSessionID
-        ) {
-          const currentSessionAvailable = latest.sessions.some(
-            item => item.id === activeSessionID && !item.time.archived
-          )
-          if (currentSessionAvailable) {
-            targetSessionID = activeSessionID
-            usedCurrentSession = true
-          }
-        }
-
-        if (!targetSessionID) {
-          const created = await opencodeClient.createSession(
-            targetProjectDir,
-            `Skill: ${skill.name}`
-          )
-          targetSessionID = created.id
-          setMessages([])
-        } else {
-          const msgs = await opencodeClient
-            .loadMessages(targetProjectDir, targetSessionID)
-            .catch(() => [])
-          setOpencodeMessages(targetProjectDir, targetSessionID, msgs)
-        }
-
-        setActiveSessionID(targetSessionID)
-        setComposer(seedPrompt)
-        setSidebarMode('projects')
-        setSkillUseModal(null)
-        const projectLabel = project.name || project.worktree.split('/').at(-1) || project.worktree
-        const targetLabel = usedCurrentSession ? 'current session' : 'new session'
-        setStatusLine(`Prepared skill prompt for ${projectLabel} (${targetLabel})`)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        setStatusLine(message)
-        pushToast(message, 'warning')
-      }
-    },
-    [
-      activeProjectDir,
-      activeSessionID,
-      projects,
-      pushToast,
-      selectProject,
-      setActiveSessionID,
-      setComposer,
-      setMessages,
-      setOpencodeMessages,
-      setProjectData,
-      setSidebarMode,
-    ]
-  )
 
   useEffect(() => {
     if (!projectSearchOpen) {
@@ -2196,46 +1927,6 @@ export default function App() {
   useEffect(() => {
     setAllSessionsModalOpen(false)
   }, [activeProjectDir])
-
-  const removeProjectDirectory = useCallback(
-    async (directory: string, label: string) => {
-      try {
-        const confirmed = await requestConfirmation({
-          title: 'Remove workspace',
-          message: `Remove "${label}" from Orxa Code workspace list?`,
-          confirmLabel: 'Remove',
-          cancelLabel: 'Cancel',
-          variant: 'danger',
-        })
-        if (!confirmed) {
-          return
-        }
-        await opencodeClient.removeProjectDirectory(directory)
-        if (activeProjectDir === directory) {
-          setActiveProjectDir(undefined)
-          setProjectData(null)
-          setActiveSessionID(undefined)
-          setMessages([])
-          setTerminalTabs([])
-          setActiveTerminalId(undefined)
-          setTerminalOpen(false)
-        }
-        await bootstrap()
-        setStatusLine(`Removed workspace: ${label}`)
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-      }
-    },
-    [
-      activeProjectDir,
-      bootstrap,
-      requestConfirmation,
-      setActiveProjectDir,
-      setActiveSessionID,
-      setMessages,
-      setProjectData,
-    ]
-  )
 
   const renameSession = useCallback(
     (directory: string, sessionID: string, currentTitle: string) => {
@@ -2429,58 +2120,6 @@ export default function App() {
       }
     },
     [getSessionType]
-  )
-
-  const copyProjectPath = useCallback(async (directory: string) => {
-    try {
-      await navigator.clipboard.writeText(directory)
-      setStatusLine('Workspace path copied')
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error))
-    }
-  }, [])
-
-  const createWorktreeSession = useCallback(
-    (directory: string, sessionID: string, currentTitle: string) => {
-      const suggested = currentTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 32)
-      setTextInputDialog({
-        title: 'New worktree name',
-        defaultValue: suggested || 'feature',
-        placeholder: 'feature/my-worktree',
-        confirmLabel: 'Create',
-        validate: value => {
-          if (!value.trim()) {
-            return 'Worktree name is required'
-          }
-          return null
-        },
-        onConfirm: async value => {
-          const nameInput = value.trim()
-          if (!nameInput) {
-            return
-          }
-
-          try {
-            const result = await window.orxa.opencode.createWorktreeSession(
-              directory,
-              sessionID,
-              nameInput || undefined
-            )
-            await bootstrap()
-            await selectProject(result.worktree.directory)
-            setActiveSessionID(result.session.id)
-            setStatusLine(`Worktree session created: ${result.worktree.name}`)
-          } catch (error) {
-            setStatusLine(error instanceof Error ? error.message : String(error))
-          }
-        },
-      })
-    },
-    [bootstrap, selectProject, setActiveSessionID, setTextInputDialog]
   )
 
   useEffect(() => {
@@ -2873,262 +2512,61 @@ export default function App() {
       }) as CSSProperties,
     [composerAnchorBottom]
   )
-  const pendingPermission = useMemo(
-    () => (projectData?.permissions ?? [])[0],
-    [projectData?.permissions]
-  )
-  const isPermissionDecisionInFlight = Boolean(
-    pendingPermission &&
-    permissionDecisionPending !== null &&
-    permissionDecisionPendingRequestID === pendingPermission.id
-  )
-
-  useEffect(() => {
-    if (!permissionDecisionPending) {
-      if (permissionDecisionPendingRequestID !== null) {
-        setPermissionDecisionPendingRequestID(null)
-      }
-      return
-    }
-    if (!pendingPermission || permissionDecisionPendingRequestID !== pendingPermission.id) {
-      setPermissionDecisionPending(null)
-      setPermissionDecisionPendingRequestID(null)
-    }
-  }, [pendingPermission, permissionDecisionPending, permissionDecisionPendingRequestID])
-
-  useEffect(() => {
-    if (appPreferences.permissionMode !== 'yolo-write') {
-      return
-    }
-    if (!activeProjectDir || !pendingPermission || isPermissionDecisionInFlight) {
-      return
-    }
-    let cancelled = false
-    void (async () => {
-      try {
-        setPermissionDecisionPending('once')
-        setPermissionDecisionPendingRequestID(pendingPermission.id)
-        await window.orxa.opencode.replyPermission(
-          activeProjectDir,
-          pendingPermission.id,
-          'once',
-          'Auto-approved in Yolo mode'
-        )
-        if (!cancelled) {
-          await refreshProject(activeProjectDir)
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setStatusLine(error instanceof Error ? error.message : String(error))
-        }
-      } finally {
-        if (!cancelled) {
-          setPermissionDecisionPending(null)
-          setPermissionDecisionPendingRequestID(null)
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    activeProjectDir,
-    appPreferences.permissionMode,
-    isPermissionDecisionInFlight,
+  const {
     pendingPermission,
+    pendingQuestion,
+    isPermissionDecisionInFlight,
+    replyPendingPermission,
+    replyPendingQuestion,
+    rejectPendingQuestion,
+    dockPendingPermission,
+    dockPendingQuestion,
+  } = useAppCoreAwaitingInput({
+    activePresentationProvider:
+      activePresentationProvider === 'claude'
+        ? 'claude-chat'
+        : (activePresentationProvider ?? 'opencode'),
+    activeProjectDir,
+    activeSessionID,
+    activeSessionKey,
+    appPreferences,
+    effectiveSystemAddendum,
+    followupQueue,
+    isSessionInProgress,
+    permissions: projectData?.permissions ?? [],
+    questions: projectData?.questions ?? [],
+    requestConfirmation,
+    sendingQueuedId,
+    setAppPreferences,
+    setFollowupQueue,
+    setPermissionDecisionPending,
+    setPermissionDecisionPendingRequestID,
+    setSendingQueuedId,
+    setStatusLine,
+    sendPrompt,
+    toolsPolicy: activePromptToolsPolicy,
+    permissionDecisionPending,
     permissionDecisionPendingRequestID,
     refreshProject,
-    setStatusLine,
-  ])
-  const pendingQuestion = useMemo(() => {
-    const q = (projectData?.questions ?? [])[0] ?? null
-    // Only show questions for the active session
-    if (q && activeSessionID && q.sessionID && q.sessionID !== activeSessionID) return null
-    return q
-  }, [projectData?.questions, activeSessionID])
-  const selectedBackgroundAgent = useMemo<UnifiedBackgroundAgentSummary | null>(
-    () => visibleBackgroundAgents.find(agent => agent.id === selectedBackgroundAgentId) ?? null,
-    [selectedBackgroundAgentId, visibleBackgroundAgents]
-  )
-  const selectedBackgroundAgentSessionID =
-    selectedBackgroundAgent?.provider === 'opencode'
-      ? (selectedBackgroundAgent.sessionID ?? null)
-      : null
-  const selectedBackgroundAgentPrompt =
-    selectedBackgroundAgent?.provider === 'opencode'
-      ? (selectedBackgroundAgent.prompt ?? null)
-      : null
-
-  useEffect(() => {
-    if (selectedBackgroundAgentId && !selectedBackgroundAgent) {
-      setSelectedBackgroundAgentId(null)
-    }
-  }, [selectedBackgroundAgent, selectedBackgroundAgentId])
-
-  useEffect(() => {
-    if (!selectedBackgroundAgentSessionID || !activeProjectDir) {
-      setSelectedBackgroundAgentLoading(false)
-      setSelectedBackgroundAgentError(null)
-      return
-    }
-    const bridge = window.orxa?.opencode
-    if (!bridge?.loadMessages) {
-      setSelectedBackgroundAgentLoading(false)
-      setSelectedBackgroundAgentError(null)
-      return
-    }
-    let cancelled = false
-    let timer: number | null = null
-    const load = async (showLoading = false) => {
-      if (cancelled) {
-        return
-      }
-      if (showLoading) {
-        setSelectedBackgroundAgentLoading(true)
-      }
-      try {
-        const bundles = await bridge.loadMessages(
-          activeProjectDir,
-          selectedBackgroundAgentSessionID
-        )
-        if (cancelled) {
-          return
-        }
-        setOpencodeMessages(activeProjectDir, selectedBackgroundAgentSessionID, bundles)
-        setSelectedBackgroundAgentError(null)
-      } catch (error) {
-        if (!cancelled) {
-          setSelectedBackgroundAgentError(error instanceof Error ? error.message : String(error))
-        }
-      } finally {
-        if (!cancelled && showLoading) {
-          setSelectedBackgroundAgentLoading(false)
-        }
-      }
-    }
-
-    void load(true)
-    timer = window.setInterval(() => {
-      void load(false)
-    }, 1300)
-
-    return () => {
-      cancelled = true
-      if (timer !== null) {
-        window.clearInterval(timer)
-      }
-    }
-  }, [activeProjectDir, selectedBackgroundAgentSessionID, setOpencodeMessages])
-
-  const backgroundAgentDetail = useMemo<ReactNode>(() => {
-    if (!selectedBackgroundAgent || selectedBackgroundAgent.provider !== 'opencode') {
-      return null
-    }
-    const projected =
-      activeProjectDir && selectedBackgroundAgentSessionID
-        ? selectSessionPresentation({
-            provider: 'opencode',
-            directory: activeProjectDir,
-            sessionID: selectedBackgroundAgentSessionID,
-            assistantLabel: selectedBackgroundAgent.name,
-          })
-        : null
-    if (!projected || projected.rows.length === 0) {
-      return null
-    }
-    const normalizeTranscriptText = (value: string) => value.replace(/\s+/g, ' ').trim()
-    const normalizedPrompt = selectedBackgroundAgentPrompt
-      ? normalizeTranscriptText(selectedBackgroundAgentPrompt)
-      : null
-    let taskRowConsumed = false
-    const filteredRows = projected.rows.filter(row => {
-      if (row.kind !== 'message' || row.role !== 'user') {
-        return true
-      }
-      const rowText = normalizeTranscriptText(
-        row.sections
-          .filter(
-            (section): section is Extract<(typeof row.sections)[number], { type: 'text' }> =>
-              section.type === 'text'
-          )
-          .map(section => section.content)
-          .join('\n')
-      )
-      if (normalizedPrompt && rowText === normalizedPrompt) {
-        return false
-      }
-      if (!taskRowConsumed) {
-        taskRowConsumed = true
-        return false
-      }
-      return true
-    })
-    if (filteredRows.length === 0) {
-      return null
-    }
-    return (
-      <div className="agent-dock-detail-transcript">
-        {filteredRows.map(row => (
-          <UnifiedTimelineRowView
-            key={row.id}
-            row={row}
-            onOpenFileReference={reference => void openReferencedFile(reference)}
-          />
-        ))}
-      </div>
-    )
-  }, [
+  })
+  const {
+    backgroundAgentDetail,
+    backgroundAgentTaskText,
+    handleArchiveBackgroundAgent,
+    selectedBackgroundAgentError,
+    selectedBackgroundAgentId,
+    selectedBackgroundAgentLoading,
+    setSelectedBackgroundAgentId,
+  } = useAppCoreBackgroundAgents({
     activeProjectDir,
+    activeSessionID,
+    visibleBackgroundAgents,
+    setOpencodeMessages,
     openReferencedFile,
-    selectedBackgroundAgent,
-    selectedBackgroundAgentPrompt,
-    selectedBackgroundAgentSessionID,
-  ])
-  const backgroundAgentTaskText = useMemo(() => {
-    if (!selectedBackgroundAgent || selectedBackgroundAgent.provider !== 'opencode') {
-      return null
-    }
-    const projected =
-      activeProjectDir && selectedBackgroundAgentSessionID
-        ? selectSessionPresentation({
-            provider: 'opencode',
-            directory: activeProjectDir,
-            sessionID: selectedBackgroundAgentSessionID,
-            assistantLabel: selectedBackgroundAgent.name,
-          })
-        : null
-    if (!projected) {
-      return null
-    }
-    const normalizeTranscriptText = (value: string) => value.replace(/\s+/g, ' ').trim()
-    const normalizedPrompt = selectedBackgroundAgentPrompt
-      ? normalizeTranscriptText(selectedBackgroundAgentPrompt)
-      : null
-    const firstUserRow = projected.rows.find(row => row.kind === 'message' && row.role === 'user')
-    if (!firstUserRow || firstUserRow.kind !== 'message') {
-      return null
-    }
-    const taskText = firstUserRow.sections
-      .filter(
-        (section): section is Extract<(typeof firstUserRow.sections)[number], { type: 'text' }> =>
-          section.type === 'text'
-      )
-      .map(section => section.content)
-      .join('\n')
-      .trim()
-    if (!taskText) {
-      return null
-    }
-    return normalizedPrompt && normalizeTranscriptText(taskText) === normalizedPrompt
-      ? null
-      : taskText
-  }, [
-    activeProjectDir,
-    selectedBackgroundAgent,
-    selectedBackgroundAgentPrompt,
-    selectedBackgroundAgentSessionID,
-  ])
+    refreshProject,
+    setArchivedBackgroundAgentIds,
+    setStatusLine,
+  })
 
   // Hide BrowserView when permission/question modals are open
   useEffect(() => {
@@ -3187,9 +2625,6 @@ export default function App() {
 
   useEffect(() => {
     setDockTodosOpen(false)
-    setSelectedBackgroundAgentId(null)
-    setSelectedBackgroundAgentLoading(false)
-    setSelectedBackgroundAgentError(null)
   }, [activeSessionID])
 
   useEffect(() => {
@@ -3198,425 +2633,30 @@ export default function App() {
     }
   }, [canShowIntegratedTerminal])
 
-  const createTerminalTab = useCallback(async (): Promise<string> => {
-    if (!activeProjectDir) {
-      throw new Error('No active workspace selected.')
-    }
-
-    const cwd = projectData?.path.directory ?? activeProjectDir
-    const tabNum = terminalTabs.length + 1
-    const pty = await window.orxa.terminal.create(activeProjectDir, cwd, `Tab ${tabNum}`)
-    const newTab = { id: pty.id, label: `Tab ${tabNum}` }
-    setTerminalTabs(prev => [...prev, newTab])
-    setActiveTerminalId(pty.id)
-    setTerminalOpen(true)
-    return pty.id
-  }, [activeProjectDir, projectData?.path.directory, terminalTabs.length])
-
-  const createTerminal = useCallback(async () => {
-    try {
-      await createTerminalTab()
-      setStatusLine('Terminal created')
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error))
-    }
-  }, [createTerminalTab])
-
-  const toggleTerminal = useCallback(async () => {
-    if (!canShowIntegratedTerminal) {
-      return
-    }
-    if (terminalOpen) {
-      setTerminalOpen(false)
-      return
-    }
-    if (!activeProjectDir) {
-      return
-    }
-    if (terminalTabs.length === 0) {
-      await createTerminal()
-      return
-    }
-    setTerminalOpen(true)
-  }, [
-    activeProjectDir,
-    canShowIntegratedTerminal,
+  const {
     createTerminal,
-    terminalOpen,
-    terminalTabs.length,
-  ])
-
-  const handleTerminalResizeStart = useCallback(
-    (event: ReactMouseEvent<HTMLButtonElement>) => {
-      event.preventDefault()
-      terminalResizeStateRef.current = {
-        startY: event.clientY,
-        startHeight: terminalPanelHeight,
-      }
-    },
-    [terminalPanelHeight]
-  )
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      const state = terminalResizeStateRef.current
-      if (!state) {
-        return
-      }
-      const deltaY = state.startY - event.clientY
-      const nextHeight = Math.min(
-        MAX_TERMINAL_PANEL_HEIGHT,
-        Math.max(MIN_TERMINAL_PANEL_HEIGHT, state.startHeight + deltaY)
-      )
-      setTerminalPanelHeight(nextHeight)
-    }
-
-    const handleMouseUp = () => {
-      terminalResizeStateRef.current = null
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [])
-
-  const upsertCustomRunCommand = useCallback(
-    (input: CustomRunCommandInput): CustomRunCommandPreset => {
-      const title = input.title.trim()
-      const commands = input.commands.replace(/\r\n/g, '\n').trim()
-      if (!title) {
-        throw new Error('Name is required.')
-      }
-      if (!commands) {
-        throw new Error('Add at least one command.')
-      }
-
-      const normalizedID = input.id?.trim()
-      const next: CustomRunCommandPreset = {
-        id:
-          normalizedID && normalizedID.length > 0
-            ? normalizedID
-            : `run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-        title,
-        commands,
-        updatedAt: Date.now(),
-      }
-      setCustomRunCommands(current => {
-        const remaining = current.filter(item => item.id !== next.id)
-        return [next, ...remaining].sort((a, b) => b.updatedAt - a.updatedAt)
-      })
-      return next
-    },
-    [setCustomRunCommands]
-  )
-
-  const runCustomRunCommand = useCallback(
-    async (preset: CustomRunCommandPreset) => {
-      if (!activeProjectDir) {
-        setStatusLine('Select a workspace before running commands.')
-        return
-      }
-      const commandLines = splitCommandLines(preset.commands)
-      if (commandLines.length === 0) {
-        setStatusLine(`No commands found for ${preset.title}.`)
-        return
-      }
-
-      let targetPtyID = activeTerminalId ?? terminalTabs[0]?.id
-      try {
-        if (!targetPtyID) {
-          targetPtyID = await createTerminalTab()
-        }
-
-        if (activeTerminalId !== targetPtyID) {
-          setActiveTerminalId(targetPtyID)
-        }
-        setTerminalOpen(true)
-        await window.orxa.terminal.connect(activeProjectDir, targetPtyID)
-        for (const command of commandLines) {
-          await window.orxa.terminal.write(activeProjectDir, targetPtyID, `${command}\n`)
-        }
-        setStatusLine(
-          `Ran ${commandLines.length} command${commandLines.length === 1 ? '' : 's'} from ${preset.title}.`
-        )
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-      }
-    },
-    [activeProjectDir, activeTerminalId, createTerminalTab, terminalTabs]
-  )
-
-  const deleteCustomRunCommand = useCallback(
-    (id: string) => {
-      setCustomRunCommands(current => current.filter(item => item.id !== id))
-      setStatusLine('Custom run command deleted.')
-    },
-    [setCustomRunCommands]
-  )
-
-  const closeTerminalTab = useCallback(
-    async (ptyId: string) => {
-      if (!activeProjectDir) return
-      await window.orxa.terminal.close(activeProjectDir, ptyId).catch(() => undefined)
-      setTerminalTabs(prev => {
-        const remaining = prev.filter(t => t.id !== ptyId)
-        if (activeTerminalId === ptyId) {
-          setActiveTerminalId(remaining[remaining.length - 1]?.id)
-        }
-        if (remaining.length === 0) {
-          setTerminalOpen(false)
-        }
-        return remaining
-      })
-    },
-    [activeProjectDir, activeTerminalId]
-  )
-
-  const replyPendingPermission = useCallback(
-    async (reply: 'once' | 'always' | 'reject') => {
-      if (!activeProjectDir || !pendingPermission) {
-        return
-      }
-      if (reply === 'reject' && appPreferences.confirmDangerousActions) {
-        const confirmed = await requestConfirmation({
-          title: 'Reject permission request',
-          message: 'Reject this permission request?',
-          confirmLabel: 'Reject',
-          cancelLabel: 'Cancel',
-          variant: 'danger',
-        })
-        if (!confirmed) {
-          return
-        }
-      }
-      try {
-        if (reply === 'always') {
-          setAppPreferences(current =>
-            current.permissionMode === 'yolo-write'
-              ? current
-              : {
-                  ...current,
-                  permissionMode: 'yolo-write',
-                }
-          )
-        }
-        setPermissionDecisionPending(reply)
-        setPermissionDecisionPendingRequestID(pendingPermission.id)
-        await withTimeout(
-          window.orxa.opencode.replyPermission(activeProjectDir, pendingPermission.id, reply),
-          PERMISSION_REPLY_TIMEOUT_MS,
-          'Permission response timed out. Please try again.'
-        )
-        await refreshProject(activeProjectDir)
-        setStatusLine(`Permission ${reply === 'reject' ? 'rejected' : 'approved'}`)
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-      } finally {
-        setPermissionDecisionPending(null)
-        setPermissionDecisionPendingRequestID(null)
-      }
-    },
-    [
-      activeProjectDir,
-      appPreferences.confirmDangerousActions,
-      pendingPermission,
-      refreshProject,
-      requestConfirmation,
-      setAppPreferences,
-      setStatusLine,
-    ]
-  )
-
-  const replyPendingQuestion = useCallback(
-    async (answers: QuestionAnswer[]) => {
-      if (!activeProjectDir || !pendingQuestion) {
-        return
-      }
-      const normalized = answers.map(item =>
-        item.map(value => value.trim()).filter(value => value.length > 0)
-      )
-      if (!normalized.some(item => item.length > 0)) {
-        return
-      }
-      try {
-        await window.orxa.opencode.replyQuestion(activeProjectDir, pendingQuestion.id, normalized)
-        await refreshProject(activeProjectDir)
-        setStatusLine('Question answered')
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-      }
-    },
-    [activeProjectDir, pendingQuestion, refreshProject]
-  )
-
-  const rejectPendingQuestion = useCallback(async () => {
-    if (!activeProjectDir || !pendingQuestion) {
-      return
-    }
-    if (appPreferences.confirmDangerousActions) {
-      const confirmed = await requestConfirmation({
-        title: 'Reject question request',
-        message: 'Reject this question request?',
-        confirmLabel: 'Reject',
-        cancelLabel: 'Cancel',
-        variant: 'danger',
-      })
-      if (!confirmed) {
-        return
-      }
-    }
-    try {
-      await window.orxa.opencode.rejectQuestion(activeProjectDir, pendingQuestion.id)
-      await refreshProject(activeProjectDir)
-      setStatusLine('Question rejected')
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error))
-    }
-  }, [
+    toggleTerminal,
+    handleTerminalResizeStart,
+    upsertCustomRunCommand,
+    runCustomRunCommand,
+    deleteCustomRunCommand,
+    closeTerminalTab,
+  } = useAppCoreTerminal({
     activeProjectDir,
-    appPreferences.confirmDangerousActions,
-    pendingQuestion,
-    refreshProject,
-    requestConfirmation,
-  ])
-
-  // --- Dock props for ComposerPanel ---
-
-  const pendingPermissionData = selectPendingPermissionDockData({
-    provider: normalizePresentationProvider(activeSessionType),
-    directory: activeProjectDir,
-    sessionID: activeSessionID,
-    sessionKey: activeSessionKey ?? undefined,
-    permissionMode: appPreferences.permissionMode,
+    activeTerminalId,
+    canShowIntegratedTerminal,
+    projectDirectory: projectData?.path.directory,
+    terminalOpen,
+    terminalPanelHeight,
+    terminalTabs,
+    terminalResizeStateRef,
+    setActiveTerminalId,
+    setTerminalOpen,
+    setTerminalPanelHeight,
+    setTerminalTabs,
+    setCustomRunCommands,
+    setStatusLine,
   })
-
-  const pendingQuestionData = selectPendingQuestionDockData({
-    provider: normalizePresentationProvider(activeSessionType),
-    directory: activeProjectDir,
-    sessionID: activeSessionID,
-    sessionKey: activeSessionKey ?? undefined,
-  })
-
-  const dockPendingPermission = useMemo(() => {
-    if (!pendingPermissionData || isPermissionDecisionInFlight) {
-      return null
-    }
-    return {
-      description: pendingPermissionData.description,
-      filePattern: pendingPermissionData.filePattern,
-      command: pendingPermissionData.command,
-      onDecide: (decision: 'allow_once' | 'allow_always' | 'reject') => {
-        const replyMap: Record<string, 'once' | 'always' | 'reject'> = {
-          allow_once: 'once',
-          allow_always: 'always',
-          reject: 'reject',
-        }
-        void replyPendingPermission(replyMap[decision])
-      },
-    }
-  }, [isPermissionDecisionInFlight, pendingPermissionData, replyPendingPermission])
-
-  const dockPendingQuestion = useMemo(() => {
-    if (!pendingQuestionData) {
-      return null
-    }
-    return {
-      questions: pendingQuestionData.questions as AgentQuestion[],
-      onSubmit: (answers: Record<string, string | string[]>) => {
-        const ordered: QuestionAnswer[] = pendingQuestionData.questions.map(question => {
-          const answer = answers[question.id]
-          if (!answer) return [] as string[]
-          if (Array.isArray(answer)) return answer
-          return [answer]
-        })
-        void replyPendingQuestion(ordered)
-      },
-      onReject: () => {
-        void rejectPendingQuestion()
-      },
-    }
-  }, [pendingQuestionData, rejectPendingQuestion, replyPendingQuestion])
-
-  // ── Desktop notifications (deduplicated) ──────────────────────────
-  const prevSessionBusy = useRef(false)
-  const lastOpenCodeNotifyRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (appPreferences.permissionMode === 'yolo-write') return
-    if (!appPreferences.notifyOnAwaitingInput || document.hasFocus()) return
-    const key = dockPendingQuestion
-      ? `question:${typeof dockPendingQuestion === 'object' && 'questions' in dockPendingQuestion ? dockPendingQuestion.questions?.[0]?.id : 'q'}`
-      : dockPendingPermission
-        ? `permission:${typeof dockPendingPermission === 'object' && 'description' in dockPendingPermission ? dockPendingPermission.description?.slice(0, 40) : 'p'}`
-        : null
-    if (!key || key === lastOpenCodeNotifyRef.current) return
-    lastOpenCodeNotifyRef.current = key
-    new Notification('Orxa Code', {
-      body: dockPendingQuestion
-        ? 'Agent is asking a question'
-        : 'Agent needs permission to continue',
-      silent: false,
-    }).onclick = () => window.focus()
-  }, [
-    appPreferences.notifyOnAwaitingInput,
-    appPreferences.permissionMode,
-    dockPendingPermission,
-    dockPendingQuestion,
-  ])
-
-  useEffect(() => {
-    const isBusy = isSessionInProgress
-    const wasBusy = prevSessionBusy.current
-    prevSessionBusy.current = isBusy
-    if (!appPreferences.notifyOnTaskComplete || document.hasFocus()) return
-    if (wasBusy && !isBusy && activeSessionID) {
-      new Notification('Orxa Code', {
-        body: 'Agent has finished its task',
-        silent: false,
-      }).onclick = () => window.focus()
-    }
-  }, [isSessionInProgress, activeSessionID, appPreferences.notifyOnTaskComplete])
-
-  // Auto-send first queued followup when session becomes idle
-  const prevSessionBusyForQueue = useRef(false)
-  useEffect(() => {
-    const isBusy = isSessionInProgress
-    const wasBusy = prevSessionBusyForQueue.current
-    prevSessionBusyForQueue.current = isBusy
-    if (wasBusy && !isBusy && followupQueue.length > 0 && !sendingQueuedId) {
-      const first = followupQueue[0]
-      if (first) {
-        setSendingQueuedId(first.id)
-        void sendPrompt({
-          textOverride: first.text,
-          attachmentOverride: first.attachments ?? [],
-          systemAddendum: effectiveSystemAddendum,
-          promptSource: 'user',
-          tools: activePromptToolsPolicy,
-        }).finally(() => {
-          setSendingQueuedId(undefined)
-        })
-        setFollowupQueue(current => current.filter(m => m.id !== first.id))
-      }
-    }
-  }, [
-    isSessionInProgress,
-    followupQueue.length,
-    sendingQueuedId,
-    sendPrompt,
-    effectiveSystemAddendum,
-    activePromptToolsPolicy,
-    followupQueue,
-  ])
-
-  // Clear queue when active session changes
-  useEffect(() => {
-    setFollowupQueue([])
-    setSendingQueuedId(undefined)
-  }, [activeSessionID])
 
   useEffect(() => {
     if (!terminalOpen || !activeProjectDir || !canShowIntegratedTerminal) {
@@ -3850,6 +2890,315 @@ export default function App() {
       refreshDashboard,
     ]
   )
+  const profileActions = buildGlobalDialogsProfileActions({
+    refreshProfiles,
+    refreshConfigModels,
+    refreshGlobalProviders,
+    refreshGlobalAgents,
+    refreshAgentFiles,
+    bootstrap,
+    setStatusLine,
+  })
+  const activeLocalProviderSessionKey =
+    activeProjectDir && activeSessionID
+      ? activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+      : activeSessionKey ?? ''
+  const handleActiveLocalProviderInteraction = () => {
+    if (!activeProjectDir || !activeSessionID) {
+      return
+    }
+    markSessionUsed(activeSessionID)
+    touchLocalProviderSession(activeProjectDir, activeSessionID)
+  }
+  const handleActiveLocalProviderTitleChange = (title: string) => {
+    if (!activeSessionID || !activeProjectDir) {
+      return
+    }
+    const scopedSessionKey = buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+    if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
+      return
+    }
+    if (manualSessionTitles[scopedSessionKey]) {
+      return
+    }
+    setSessionTitles(prev => {
+      const currentTitle = prev[scopedSessionKey]
+      if (
+        currentTitle &&
+        !looksAutoGeneratedSessionTitle(currentTitle) &&
+        currentTitle !== title
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        [scopedSessionKey]: title,
+      }
+    })
+    renameLocalProviderSession(activeProjectDir, activeSessionID, title)
+  }
+  const runQueuedMessage = (id: string) => {
+    const item = followupQueue.find(message => message.id === id)
+    if (!item || sendingQueuedId) {
+      return
+    }
+    setSendingQueuedId(id)
+    void sendPrompt({
+      textOverride: item.text,
+      attachmentOverride: item.attachments ?? [],
+      systemAddendum: effectiveSystemAddendum,
+      promptSource: 'user',
+      tools: activePromptToolsPolicy,
+    }).finally(() => {
+      setSendingQueuedId(undefined)
+    })
+    removeQueuedMessage(id)
+  }
+  const branchControls = {
+    branchMenuOpen,
+    setBranchMenuOpen,
+    branchControlWidthCh,
+    branchLoading,
+    branchSwitching,
+    hasActiveProject: Boolean(activeProjectDir),
+    branchCurrent: branchState?.current,
+    branchDisplayValue,
+    branchSearchInputRef,
+    branchQuery,
+    setBranchQuery,
+    branchActionError,
+    clearBranchActionError: () => setBranchActionError(null),
+    checkoutBranch,
+    filteredBranches,
+    openBranchCreateModal,
+  }
+  const appSessionContentProps = buildAppSessionContentProps({
+    sidebarMode,
+    activeProjectDir,
+    activeSessionID,
+    activeSessionType,
+    pendingSessionId,
+    dashboardProps: homeDashboardProps,
+    skills,
+    skillsLoading,
+    skillsError,
+    loadSkills,
+    openSkillUseModal,
+    createSession,
+    canvasState,
+    mcpDevToolsState,
+    activeLocalProviderSessionKey,
+    handleActiveLocalProviderInteraction,
+    handleActiveLocalProviderTitleChange,
+    appPreferences,
+    setAppPreferences,
+    branchControls,
+    browserModeEnabled,
+    activeSessionKey,
+    setBrowserModeBySession,
+    openWorkspaceDashboard,
+    manualSessionTitles,
+    openReferencedFile,
+    setBrowserMode,
+    feedMessages,
+    feedPresentation,
+    activeSessionNotices,
+    isSessionInProgress,
+    activeOptimisticOpencodePrompt,
+    assistantLabel,
+    messageFeedBottomClearance,
+    composer,
+    handleComposerChange,
+    composerAttachments,
+    removeAttachment,
+    slashMenuOpen,
+    filteredSlashCommands,
+    slashSelectedIndex,
+    insertSlashCommand,
+    handleSlashKeyDown,
+    addComposerAttachments,
+    sendComposerPrompt,
+    abortActiveSession,
+    isSendingPrompt,
+    pickImageAttachment,
+    hasPlanAgent,
+    isPlanMode,
+    togglePlanMode,
+    effectiveComposerAgentOptions,
+    selectedAgent,
+    setSelectedAgent,
+    compactionMeter,
+    modelSelectOptions,
+    selectedModel,
+    setSelectedModel,
+    selectedVariant,
+    setSelectedVariant,
+    variantOptions,
+    composerPlaceholder,
+    handleComposerLayoutHeightChange,
+    handleDockHeightChange,
+    visibleBackgroundAgents,
+    selectedBackgroundAgentId,
+    setSelectedBackgroundAgentId,
+    handleArchiveBackgroundAgent,
+    backgroundAgentDetail,
+    backgroundAgentTaskText,
+    selectedBackgroundAgentLoading,
+    selectedBackgroundAgentError,
+    activeTodoItems: activeTodoPresentation?.items,
+    dockTodosOpen,
+    setDockTodosOpen,
+    showReviewChangesDrawer,
+    activeReviewChangesFiles,
+    dockPendingPermission,
+    dockPendingQuestion,
+    followupQueue,
+    sendingQueuedId,
+    queueFollowupMessage,
+    runQueuedMessage,
+    editQueuedMessage,
+    removeQueuedMessage,
+    canShowIntegratedTerminal,
+    terminalTabs,
+    activeTerminalId,
+    terminalOpen,
+    terminalPanelHeight,
+    createTerminal,
+    closeTerminalTab,
+    setActiveTerminalId,
+    handleTerminalResizeStart,
+  })
+  const contentTopBarProps = buildContentTopBarProps({
+    showProjectsPane,
+    setProjectsSidebarVisible,
+    showGitPane,
+    setAppPreferences,
+    browserSidebarOpen,
+    setBrowserSidebarOpen,
+    gitDiffStats,
+    contentPaneTitle,
+    activeProjectDir,
+    projectData,
+    terminalOpen,
+    canShowIntegratedTerminal,
+    toggleTerminal,
+    titleMenuOpen,
+    openMenuOpen,
+    setOpenMenuOpen,
+    commitMenuOpen,
+    setCommitMenuOpen,
+    setTitleMenuOpen,
+    activeSessionID,
+    activeSessionType,
+    isActiveSessionPinned,
+    togglePinSession,
+    setStatusLine,
+    activeSession,
+    renameSession,
+    archiveSession,
+    openWorkspaceDashboard,
+    copyProjectPath,
+    copySessionID,
+    activeOpenTarget,
+    openTargets,
+    selectOpenTarget,
+    openDirectoryInTarget,
+    openCommitModal,
+    pendingPrUrl,
+    openPendingPullRequest,
+    commitNextStepOptions,
+    setCommitNextStep,
+    customRunCommands,
+    upsertCustomRunCommand,
+    runCustomRunCommand,
+    deleteCustomRunCommand,
+  })
+  const workspaceSidebarProps = buildWorkspaceSidebarProps({
+    sidebarMode,
+    setSidebarMode,
+    unreadJobRunsCount,
+    availableUpdateVersion,
+    isCheckingForUpdates,
+    updateInstallPending,
+    updateStatusMessage,
+    checkForUpdates,
+    downloadAndInstallUpdate,
+    openWorkspaceDashboard,
+    projectSortOpen,
+    setProjectSortOpen,
+    projectSortMode,
+    setProjectSortMode,
+    filteredProjects,
+    activeProjectDir,
+    collapsedProjects,
+    setCollapsedProjects,
+    sessions,
+    cachedSessionsByProject,
+    hiddenSessionIDsByProject,
+    pinnedSessions,
+    activeSessionID: activeSessionID ?? undefined,
+    setAllSessionsModalOpen,
+    getSessionTitle,
+    getSessionType,
+    getSessionIndicator,
+    selectProject,
+    createSession,
+    openSession,
+    togglePinSession,
+    setStatusLine,
+    archiveSession,
+    openProjectContextMenu,
+    openSessionContextMenu,
+    addProjectDirectory: () => void addProjectDirectory(),
+    setGlobalSearchModalOpen,
+    setMemoryComingSoonOpen,
+    setDebugModalOpen,
+    setSettingsOpen,
+  })
+  const browserSidebarProps = {
+    browserState: effectiveBrowserState,
+    onBrowserOpenTab: browserOpenTab,
+    onBrowserCloseTab: browserCloseTab,
+    onBrowserNavigate: browserNavigate,
+    onBrowserGoBack: browserGoBack,
+    onBrowserGoForward: browserGoForward,
+    onBrowserReload: browserReload,
+    onBrowserSelectTab: browserSelectTab,
+    onBrowserSelectHistory: browserSelectHistory,
+    onBrowserReportViewportBounds: browserReportViewportBounds,
+    onBrowserTakeControl: browserTakeControl,
+    onBrowserHandBack: browserHandBack,
+    onBrowserStop: browserStop,
+    onStatusChange: setStatusLine,
+    onSendAnnotations: (text: string) =>
+      setComposer(prev => (prev ? `${prev}\n\n${text}` : text)),
+    mcpDevToolsState,
+  }
+  const gitSidebarProps = {
+    sidebarPanelTab: rightSidebarTab,
+    setSidebarPanelTab: setRightSidebarTab,
+    gitPanelTab,
+    setGitPanelTab,
+    gitDiffViewMode,
+    setGitDiffViewMode,
+    gitPanelOutput,
+    branchState,
+    branchQuery,
+    setBranchQuery,
+    activeProjectDir: activeProjectDir ?? null,
+    onLoadGitDiff: loadGitDiff,
+    onLoadGitLog: loadGitLog,
+    onLoadGitIssues: loadGitIssues,
+    onLoadGitPrs: loadGitPrs,
+    onStageAllChanges: stageAllChanges,
+    onDiscardAllChanges: discardAllChanges,
+    onStageFile: stageFile,
+    onRestoreFile: restoreFile,
+    onUnstageFile: unstageFile,
+    fileProvenanceByPath: sessionProvenanceByPath,
+    onAddToChatPath: appendPathToComposer,
+    onStatusChange: setStatusLine,
+  }
 
   return (
     <AppErrorBoundary
@@ -3889,142 +3238,11 @@ export default function App() {
           </section>
         ) : null}
         {hasProjectContext && !settingsOpen ? (
-          <ContentTopBar
-            projectsPaneVisible={showProjectsPane}
-            toggleProjectsPane={() => setProjectsSidebarVisible(!showProjectsPane)}
-            showGitPane={showGitPane}
-            setGitPaneVisible={visible =>
-              setAppPreferences(current => ({
-                ...current,
-                showOperationsPane: visible,
-              }))
-            }
-            browserSidebarOpen={browserSidebarOpen}
-            toggleBrowserSidebar={() => setBrowserSidebarOpen(current => !current)}
-            gitDiffStats={gitDiffStats}
-            contentPaneTitle={contentPaneTitle}
-            activeProjectDir={activeProjectDir ?? null}
-            projectData={projectData}
-            terminalOpen={terminalOpen}
-            showTerminalToggle={canShowIntegratedTerminal}
-            toggleTerminal={toggleTerminal}
-            titleMenuOpen={titleMenuOpen}
-            openMenuOpen={openMenuOpen}
-            setOpenMenuOpen={setOpenMenuOpen}
-            commitMenuOpen={commitMenuOpen}
-            setCommitMenuOpen={setCommitMenuOpen}
-            setTitleMenuOpen={setTitleMenuOpen}
-            hasActiveSession={Boolean(activeSessionID)}
-            isActiveSessionCanvasSession={activeSessionType === 'canvas'}
-            activeSessionType={activeSessionType}
-            isActiveSessionPinned={isActiveSessionPinned}
-            onTogglePinSession={() => {
-              if (!activeProjectDir || !activeSessionID) {
-                return
-              }
-              const nextPinned = !isActiveSessionPinned
-              togglePinSession(activeProjectDir, activeSessionID)
-              setStatusLine(nextPinned ? 'Session pinned' : 'Session unpinned')
-              setTitleMenuOpen(false)
-            }}
-            onRenameSession={() => {
-              if (!activeProjectDir || !activeSessionID || !activeSession) {
-                return
-              }
-              setTitleMenuOpen(false)
-              void renameSession(
-                activeProjectDir,
-                activeSessionID,
-                activeSession.title || activeSession.slug
-              )
-            }}
-            onArchiveSession={() => {
-              if (!activeProjectDir || !activeSessionID) {
-                return
-              }
-              setTitleMenuOpen(false)
-              void archiveSession(activeProjectDir, activeSessionID)
-            }}
-            onViewWorkspace={() => {
-              setTitleMenuOpen(false)
-              openWorkspaceDashboard()
-            }}
-            onCopyPath={() => {
-              if (!activeProjectDir) {
-                return
-              }
-              setTitleMenuOpen(false)
-              void copyProjectPath(activeProjectDir)
-            }}
-            onCopySessionId={() => {
-              if (!activeProjectDir || !activeSessionID) {
-                return
-              }
-              setTitleMenuOpen(false)
-              void copySessionID(activeProjectDir, activeSessionID)
-            }}
-            activeOpenTarget={activeOpenTarget}
-            openTargets={openTargets}
-            onSelectOpenTarget={selectOpenTarget}
-            openDirectoryInTarget={openDirectoryInTarget}
-            openCommitModal={openCommitModal}
-            pendingPrUrl={pendingPrUrl}
-            onOpenPendingPullRequest={openPendingPullRequest}
-            commitNextStepOptions={commitNextStepOptions}
-            setCommitNextStep={setCommitNextStep}
-            customRunCommands={customRunCommands}
-            onUpsertCustomRunCommand={upsertCustomRunCommand}
-            onRunCustomRunCommand={runCustomRunCommand}
-            onDeleteCustomRunCommand={deleteCustomRunCommand}
-          />
+          <ContentTopBar {...contentTopBarProps} />
         ) : null}
         <div ref={workspaceRef} className={workspaceClassName} style={workspaceStyle}>
           <div className={`workspace-left-pane ${showProjectsPane ? 'open' : 'collapsed'}`.trim()}>
-            <WorkspaceSidebar
-              sidebarMode={sidebarMode}
-              setSidebarMode={setSidebarMode}
-              unreadJobRunsCount={unreadJobRunsCount}
-              updateAvailableVersion={availableUpdateVersion}
-              isCheckingForUpdates={isCheckingForUpdates}
-              updateInstallPending={updateInstallPending}
-              updateStatusMessage={updateStatusMessage}
-              onCheckForUpdates={checkForUpdates}
-              onDownloadAndInstallUpdate={downloadAndInstallUpdate}
-              openWorkspaceDashboard={openWorkspaceDashboard}
-              projectSortOpen={projectSortOpen}
-              setProjectSortOpen={setProjectSortOpen}
-              projectSortMode={projectSortMode}
-              setProjectSortMode={setProjectSortMode}
-              filteredProjects={filteredProjects}
-              activeProjectDir={activeProjectDir}
-              collapsedProjects={collapsedProjects}
-              setCollapsedProjects={setCollapsedProjects}
-              sessions={sessions}
-              cachedSessionsByProject={cachedSessionsByProject}
-              hiddenSessionIDsByProject={hiddenSessionIDsByProject}
-              pinnedSessionsByProject={pinnedSessions}
-              activeSessionID={activeSessionID ?? undefined}
-              setAllSessionsModalOpen={setAllSessionsModalOpen}
-              getSessionTitle={getSessionTitle}
-              getSessionType={getSessionType}
-              getSessionIndicator={getSessionIndicator}
-              selectProject={selectProject}
-              createSession={createSession}
-              openSession={openSession}
-              togglePinSession={(directory, sessionID) => {
-                togglePinSession(directory, sessionID)
-                const isPinned = (pinnedSessions[directory] ?? []).includes(sessionID)
-                setStatusLine(isPinned ? 'Session unpinned' : 'Session pinned')
-              }}
-              archiveSession={archiveSession}
-              openProjectContextMenu={openProjectContextMenu}
-              openSessionContextMenu={openSessionContextMenu}
-              addProjectDirectory={() => addProjectDirectory()}
-              onOpenSearchModal={() => setGlobalSearchModalOpen(true)}
-              onOpenMemoryModal={() => setMemoryComingSoonOpen(true)}
-              onOpenDebugLogs={() => setDebugModalOpen(true)}
-              setSettingsOpen={setSettingsOpen}
-            />
+            <WorkspaceSidebar {...workspaceSidebarProps} />
           </div>
           <button
             type="button"
@@ -4037,369 +3255,7 @@ export default function App() {
           <main
             className={`content-pane ${activeProjectDir ? '' : 'content-pane-dashboard'}`.trim()}
           >
-            {sidebarMode === 'kanban' ? (
-              <KanbanBoard />
-            ) : sidebarMode === 'skills' ? (
-              <SkillsBoard
-                skills={skills}
-                loading={skillsLoading}
-                error={skillsError}
-                onRefresh={() => void loadSkills()}
-                onUseSkill={openSkillUseModal}
-              />
-            ) : activeProjectDir ? (
-              <Fragment>
-                {!activeSessionID ? (
-                  pendingSessionId ? (
-                    <div className="workspace-session-transition" aria-live="polite">
-                      Opening session...
-                    </div>
-                  ) : (
-                    <WorkspaceLanding
-                      workspaceName={activeProjectDir.split('/').pop() ?? activeProjectDir}
-                      onPickSession={type => void createSession(activeProjectDir, type)}
-                    />
-                  )
-                ) : activeSessionType === 'canvas' ? (
-                  <CanvasPane
-                    canvasState={canvasState}
-                    directory={activeProjectDir}
-                    mcpDevToolsState={mcpDevToolsState}
-                  />
-                ) : activeSessionType === 'claude-chat' ? (
-                  <ClaudeChatPane
-                    directory={activeProjectDir}
-                    sessionStorageKey={
-                      activeSessionKey ??
-                      buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-                    }
-                    onFirstMessage={() => {
-                      if (!activeSessionID) {
-                        return
-                      }
-                      markSessionUsed(activeSessionID)
-                      touchLocalProviderSession(activeProjectDir, activeSessionID)
-                    }}
-                    onTitleChange={title => {
-                      if (!activeSessionID || !activeProjectDir) {
-                        return
-                      }
-                      const scopedSessionKey = buildWorkspaceSessionMetadataKey(
-                        activeProjectDir,
-                        activeSessionID
-                      )
-                      if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
-                        return
-                      }
-                      if (manualSessionTitles[scopedSessionKey]) {
-                        return
-                      }
-                      setSessionTitles(prev => {
-                        const currentTitle = prev[scopedSessionKey]
-                        if (
-                          currentTitle &&
-                          !looksAutoGeneratedSessionTitle(currentTitle) &&
-                          currentTitle !== title
-                        ) {
-                          return prev
-                        }
-                        return {
-                          ...prev,
-                          [scopedSessionKey]: title,
-                        }
-                      })
-                      renameLocalProviderSession(activeProjectDir, activeSessionID, title)
-                    }}
-                    permissionMode={appPreferences.permissionMode}
-                    onPermissionModeChange={mode =>
-                      setAppPreferences({ ...appPreferences, permissionMode: mode })
-                    }
-                    branchMenuOpen={branchMenuOpen}
-                    setBranchMenuOpen={setBranchMenuOpen}
-                    branchControlWidthCh={branchControlWidthCh}
-                    branchLoading={branchLoading}
-                    branchSwitching={branchSwitching}
-                    hasActiveProject={Boolean(activeProjectDir)}
-                    branchCurrent={branchState?.current}
-                    branchDisplayValue={branchDisplayValue}
-                    branchSearchInputRef={branchSearchInputRef}
-                    branchQuery={branchQuery}
-                    setBranchQuery={setBranchQuery}
-                    branchActionError={branchActionError}
-                    clearBranchActionError={() => setBranchActionError(null)}
-                    checkoutBranch={checkoutBranch}
-                    filteredBranches={filteredBranches}
-                    openBranchCreateModal={openBranchCreateModal}
-                    browserModeEnabled={browserModeEnabled}
-                    setBrowserModeEnabled={enabled => {
-                      if (!activeSessionKey) {
-                        return
-                      }
-                      setBrowserModeBySession(prev => ({ ...prev, [activeSessionKey]: enabled }))
-                    }}
-                  />
-                ) : activeSessionType === 'claude' ? (
-                  <ClaudeTerminalPane
-                    directory={activeProjectDir}
-                    sessionStorageKey={
-                      activeSessionKey ??
-                      buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-                    }
-                    onExit={openWorkspaceDashboard}
-                    onFirstInteraction={() => {
-                      if (!activeSessionID) {
-                        return
-                      }
-                      markSessionUsed(activeSessionID)
-                      touchLocalProviderSession(activeProjectDir, activeSessionID)
-                    }}
-                  />
-                ) : activeSessionType === 'codex' ? (
-                  <CodexPane
-                    directory={activeProjectDir}
-                    sessionStorageKey={
-                      activeSessionKey ??
-                      buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-                    }
-                    titleLocked={
-                      manualSessionTitles[
-                        activeSessionKey ??
-                          buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-                      ] ?? false
-                    }
-                    onExit={openWorkspaceDashboard}
-                    onFirstMessage={() => {
-                      if (!activeSessionID) {
-                        return
-                      }
-                      markSessionUsed(activeSessionID)
-                      touchLocalProviderSession(activeProjectDir, activeSessionID)
-                    }}
-                    onTitleChange={title => {
-                      if (!activeSessionID || !activeProjectDir) {
-                        return
-                      }
-                      const scopedSessionKey = buildWorkspaceSessionMetadataKey(
-                        activeProjectDir,
-                        activeSessionID
-                      )
-                      if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
-                        return
-                      }
-                      if (manualSessionTitles[scopedSessionKey]) {
-                        return
-                      }
-                      setSessionTitles(prev => {
-                        const currentTitle = prev[scopedSessionKey]
-                        if (
-                          currentTitle &&
-                          !looksAutoGeneratedSessionTitle(currentTitle) &&
-                          currentTitle !== title
-                        ) {
-                          return prev
-                        }
-                        return {
-                          ...prev,
-                          [scopedSessionKey]: title,
-                        }
-                      })
-                      renameLocalProviderSession(activeProjectDir, activeSessionID, title)
-                    }}
-                    notifyOnAwaitingInput={appPreferences.notifyOnAwaitingInput}
-                    subagentSystemNotificationsEnabled={
-                      appPreferences.subagentSystemNotificationsEnabled
-                    }
-                    codexAccessMode={appPreferences.codexAccessMode}
-                    defaultReasoningEffort={appPreferences.codexReasoningEffort}
-                    permissionMode={appPreferences.permissionMode}
-                    onPermissionModeChange={mode =>
-                      setAppPreferences({ ...appPreferences, permissionMode: mode })
-                    }
-                    codexPath={appPreferences.codexPath}
-                    codexArgs={appPreferences.codexArgs}
-                    branchMenuOpen={branchMenuOpen}
-                    setBranchMenuOpen={setBranchMenuOpen}
-                    branchControlWidthCh={branchControlWidthCh}
-                    branchLoading={branchLoading}
-                    branchSwitching={branchSwitching}
-                    hasActiveProject={Boolean(activeProjectDir)}
-                    branchCurrent={branchState?.current}
-                    branchDisplayValue={branchDisplayValue}
-                    branchSearchInputRef={branchSearchInputRef}
-                    branchQuery={branchQuery}
-                    setBranchQuery={setBranchQuery}
-                    branchActionError={branchActionError}
-                    clearBranchActionError={() => setBranchActionError(null)}
-                    checkoutBranch={checkoutBranch}
-                    filteredBranches={filteredBranches}
-                    openBranchCreateModal={openBranchCreateModal}
-                    onOpenFileReference={reference => void openReferencedFile(reference)}
-                    browserModeEnabled={browserModeEnabled}
-                    setBrowserModeEnabled={enabled => void setBrowserMode(enabled)}
-                  />
-                ) : (
-                  <>
-                    <MessageFeed
-                      messages={feedMessages}
-                      presentation={feedPresentation}
-                      sessionNotices={activeSessionNotices}
-                      showAssistantPlaceholder={isSessionInProgress}
-                      optimisticUserPrompt={activeOptimisticOpencodePrompt}
-                      assistantLabel={assistantLabel}
-                      workspaceDirectory={activeProjectDir ?? null}
-                      bottomClearance={messageFeedBottomClearance}
-                      onOpenFileReference={reference => void openReferencedFile(reference)}
-                      sessionId={activeSessionKey ?? undefined}
-                    />
-
-                    <div className="center-pane-rail center-pane-rail--composer">
-                      <ComposerPanel
-                        composer={composer}
-                        setComposer={handleComposerChange}
-                        composerAttachments={composerAttachments}
-                        removeAttachment={removeAttachment}
-                        slashMenuOpen={slashMenuOpen}
-                        filteredSlashCommands={filteredSlashCommands}
-                        slashSelectedIndex={slashSelectedIndex}
-                        insertSlashCommand={insertSlashCommand}
-                        handleSlashKeyDown={handleSlashKeyDown}
-                        addComposerAttachments={addComposerAttachments}
-                        sendPrompt={sendComposerPrompt}
-                        abortActiveSession={abortActiveSession}
-                        isSessionBusy={isSessionInProgress}
-                        isSendingPrompt={isSendingPrompt}
-                        pickImageAttachment={pickImageAttachment}
-                        hasActiveSession={Boolean(activeSessionID)}
-                        isPlanMode={isPlanMode}
-                        hasPlanAgent={hasPlanAgent}
-                        togglePlanMode={togglePlanMode}
-                        browserModeEnabled={browserModeEnabled}
-                        setBrowserModeEnabled={enabled => void setBrowserMode(enabled)}
-                        hideBrowserToggle={false}
-                        hidePlanToggle
-                        agentOptions={effectiveComposerAgentOptions}
-                        selectedAgent={selectedAgent}
-                        onAgentChange={setSelectedAgent}
-                        permissionMode={appPreferences.permissionMode}
-                        onPermissionModeChange={mode =>
-                          setAppPreferences({ ...appPreferences, permissionMode: mode })
-                        }
-                        compactionProgress={compactionMeter.progress}
-                        compactionHint={compactionMeter.hint}
-                        compactionCompacted={compactionMeter.compacted}
-                        branchMenuOpen={branchMenuOpen}
-                        setBranchMenuOpen={setBranchMenuOpen}
-                        branchControlWidthCh={branchControlWidthCh}
-                        branchLoading={branchLoading}
-                        branchSwitching={branchSwitching}
-                        hasActiveProject={Boolean(activeProjectDir)}
-                        branchCurrent={branchState?.current}
-                        branchDisplayValue={branchDisplayValue}
-                        branchSearchInputRef={branchSearchInputRef}
-                        branchQuery={branchQuery}
-                        setBranchQuery={setBranchQuery}
-                        branchActionError={branchActionError}
-                        clearBranchActionError={() => setBranchActionError(null)}
-                        checkoutBranch={checkoutBranch}
-                        filteredBranches={filteredBranches}
-                        openBranchCreateModal={openBranchCreateModal}
-                        modelSelectOptions={modelSelectOptions}
-                        selectedModel={selectedModel}
-                        setSelectedModel={setSelectedModel}
-                        selectedVariant={selectedVariant}
-                        setSelectedVariant={setSelectedVariant}
-                        variantOptions={variantOptions}
-                        placeholder={composerPlaceholder}
-                        onLayoutHeightChange={handleComposerLayoutHeightChange}
-                        onDockHeightChange={handleDockHeightChange}
-                        backgroundAgents={visibleBackgroundAgents}
-                        selectedBackgroundAgentId={selectedBackgroundAgentId}
-                        onOpenBackgroundAgent={setSelectedBackgroundAgentId}
-                        onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
-                        onArchiveBackgroundAgent={async agent => {
-                          if (!activeProjectDir || !agent.sessionID) {
-                            return
-                          }
-                          try {
-                            await window.orxa.opencode
-                              .abortSession(activeProjectDir, agent.sessionID)
-                              .catch(() => false)
-                            await window.orxa.opencode.archiveSession(
-                              activeProjectDir,
-                              agent.sessionID
-                            )
-                            setArchivedBackgroundAgentIds(current => {
-                              const next = { ...current }
-                              const existing = new Set(next[activeProjectDir] ?? [])
-                              existing.add(agent.id)
-                              existing.add(agent.sessionID!)
-                              next[activeProjectDir] = [...existing]
-                              return next
-                            })
-                            if (selectedBackgroundAgentId === agent.id) {
-                              setSelectedBackgroundAgentId(null)
-                            }
-                            await refreshProject(activeProjectDir)
-                          } catch (error) {
-                            setStatusLine(error instanceof Error ? error.message : String(error))
-                          }
-                        }}
-                        backgroundAgentDetail={backgroundAgentDetail}
-                        backgroundAgentTaskText={backgroundAgentTaskText}
-                        backgroundAgentDetailLoading={selectedBackgroundAgentLoading}
-                        backgroundAgentDetailError={selectedBackgroundAgentError}
-                        backgroundAgentTaggingHint={null}
-                        todoItems={activeTodoPresentation?.items}
-                        todoOpen={dockTodosOpen}
-                        onTodoToggle={() => setDockTodosOpen(v => !v)}
-                        reviewChangesFiles={
-                          showReviewChangesDrawer ? activeReviewChangesFiles : undefined
-                        }
-                        onOpenReviewChange={path => void openReferencedFile(path)}
-                        pendingPermission={dockPendingPermission}
-                        pendingQuestion={dockPendingQuestion}
-                        queuedMessages={followupQueue}
-                        sendingQueuedId={sendingQueuedId}
-                        onQueueMessage={queueFollowupMessage}
-                        queuedActionKind="send"
-                        onPrimaryQueuedAction={(id: string) => {
-                          const item = followupQueue.find(m => m.id === id)
-                          if (!item || sendingQueuedId) return
-                          setSendingQueuedId(id)
-                          void sendPrompt({
-                            textOverride: item.text,
-                            attachmentOverride: item.attachments ?? [],
-                            systemAddendum: effectiveSystemAddendum,
-                            promptSource: 'user',
-                            tools: activePromptToolsPolicy,
-                          }).finally(() => {
-                            setSendingQueuedId(undefined)
-                          })
-                          removeQueuedMessage(id)
-                        }}
-                        onEditQueued={editQueuedMessage}
-                        onRemoveQueued={removeQueuedMessage}
-                      />
-                    </div>
-                  </>
-                )}
-                {canShowIntegratedTerminal ? (
-                  <TerminalPanel
-                    directory={activeProjectDir}
-                    tabs={terminalTabs}
-                    activeTabId={activeTerminalId}
-                    open={terminalOpen}
-                    height={terminalPanelHeight}
-                    onCreateTab={createTerminal}
-                    onCloseTab={closeTerminalTab}
-                    onSwitchTab={setActiveTerminalId}
-                    onResizeStart={handleTerminalResizeStart}
-                  />
-                ) : null}
-              </Fragment>
-            ) : (
-              <HomeDashboard {...homeDashboardProps} />
-            )}
+            <AppSessionContent {...appSessionContentProps} />
             {toasts.length > 0 ? (
               <div
                 className="composer-toast-stack"
@@ -4422,526 +3278,208 @@ export default function App() {
               </div>
             ) : null}
           </main>
-          {hasProjectContext ? (
-            <button
-              type="button"
-              className={`sidebar-resizer sidebar-resizer-browser ${browserSidebarOpen ? '' : 'is-collapsed'}`.trim()}
-              aria-label="Resize browser sidebar"
-              onMouseDown={event => startSidebarResize('browser', event)}
-              disabled={!browserSidebarOpen}
-            />
-          ) : null}
-          {hasProjectContext ? (
-            <div
-              className={`workspace-browser-pane ${browserSidebarOpen ? 'open' : 'collapsed'}`.trim()}
-            >
-              {browserSidebarOpen ? (
-                <BrowserSidebar
-                  browserState={effectiveBrowserState}
-                  onBrowserOpenTab={browserOpenTab}
-                  onBrowserCloseTab={browserCloseTab}
-                  onBrowserNavigate={browserNavigate}
-                  onBrowserGoBack={browserGoBack}
-                  onBrowserGoForward={browserGoForward}
-                  onBrowserReload={browserReload}
-                  onBrowserSelectTab={browserSelectTab}
-                  onBrowserSelectHistory={browserSelectHistory}
-                  onBrowserReportViewportBounds={browserReportViewportBounds}
-                  onBrowserTakeControl={browserTakeControl}
-                  onBrowserHandBack={browserHandBack}
-                  onBrowserStop={browserStop}
-                  onCollapse={() => setBrowserSidebarOpen(false)}
-                  onStatusChange={setStatusLine}
-                  onSendAnnotations={text =>
-                    setComposer(prev => (prev ? `${prev}\n\n${text}` : text))
-                  }
-                  mcpDevToolsState={mcpDevToolsState}
-                />
-              ) : null}
-            </div>
-          ) : null}
-          {hasProjectContext ? (
-            <button
-              type="button"
-              className={`sidebar-resizer sidebar-resizer-right ${showGitPane ? '' : 'is-collapsed'}`.trim()}
-              aria-label="Resize git sidebar"
-              onMouseDown={event => startSidebarResize('right', event)}
-              disabled={!showGitPane}
-            />
-          ) : null}
-          {hasProjectContext ? (
-            <div className={`workspace-right-pane ${showGitPane ? 'open' : 'collapsed'}`.trim()}>
-              <GitSidebar
-                sidebarPanelTab={rightSidebarTab}
-                setSidebarPanelTab={setRightSidebarTab}
-                gitPanelTab={gitPanelTab}
-                setGitPanelTab={setGitPanelTab}
-                gitDiffViewMode={gitDiffViewMode}
-                setGitDiffViewMode={setGitDiffViewMode}
-                gitPanelOutput={gitPanelOutput}
-                branchState={branchState}
-                branchQuery={branchQuery}
-                setBranchQuery={setBranchQuery}
-                activeProjectDir={activeProjectDir ?? null}
-                onLoadGitDiff={loadGitDiff}
-                onLoadGitLog={loadGitLog}
-                onLoadGitIssues={loadGitIssues}
-                onLoadGitPrs={loadGitPrs}
-                onStageAllChanges={stageAllChanges}
-                onDiscardAllChanges={discardAllChanges}
-                onStageFile={stageFile}
-                onRestoreFile={restoreFile}
-                onUnstageFile={unstageFile}
-                fileProvenanceByPath={sessionProvenanceByPath}
-                onAddToChatPath={appendPathToComposer}
-                onStatusChange={setStatusLine}
-              />
-            </div>
-          ) : null}
+          <AppSidePanes
+            hasProjectContext={hasProjectContext}
+            browserSidebarOpen={browserSidebarOpen}
+            showGitPane={showGitPane}
+            startSidebarResize={startSidebarResize}
+            setBrowserSidebarOpen={setBrowserSidebarOpen}
+            browserSidebarProps={browserSidebarProps}
+            gitSidebarProps={gitSidebarProps}
+          />
         </div>
 
-        {contextMenu ? (
-          <div
-            className="context-menu-overlay"
-            onClick={() => setContextMenu(null)}
-            onContextMenu={event => event.preventDefault()}
-          >
-            <div
-              className="context-menu"
-              style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
-              onClick={event => event.stopPropagation()}
-            >
-              {contextMenu.kind === 'project' ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const { directory, label } = contextMenu
-                      setContextMenu(null)
-                      void changeProjectDirectory(directory, label)
-                    }}
-                  >
-                    Change Working Directory...
-                  </button>
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => {
-                      const { directory, label } = contextMenu
-                      setContextMenu(null)
-                      void removeProjectDirectory(directory, label)
-                    }}
-                  >
-                    Delete
-                  </button>
-                </>
-              ) : (
-                <>
-                  {getSessionContextActions(
-                    getSessionType(contextMenu.sessionID, contextMenu.directory)
-                  ).includes('archive') ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const { directory, sessionID } = contextMenu
-                        setContextMenu(null)
-                        void archiveSession(directory, sessionID)
-                      }}
-                    >
-                      Archive Session
-                    </button>
-                  ) : null}
-                  {getSessionContextActions(
-                    getSessionType(contextMenu.sessionID, contextMenu.directory)
-                  ).includes('copy_id') ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const { directory, sessionID } = contextMenu
-                        setContextMenu(null)
-                        void copySessionID(directory, sessionID)
-                      }}
-                    >
-                      {getSessionType(contextMenu.sessionID, contextMenu.directory) === 'codex'
-                        ? 'Copy Codex Thread ID'
-                        : getSessionType(contextMenu.sessionID, contextMenu.directory) ===
-                            'claude-chat'
-                          ? 'Copy Claude Thread ID'
-                          : 'Copy Session ID'}
-                    </button>
-                  ) : null}
-                  {getSessionContextActions(
-                    getSessionType(contextMenu.sessionID, contextMenu.directory)
-                  ).includes('create_worktree') ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const { directory, sessionID, title } = contextMenu
-                        setContextMenu(null)
-                        void createWorktreeSession(directory, sessionID, title)
-                      }}
-                    >
-                      Create Worktree Session
-                    </button>
-                  ) : null}
-                  {getSessionContextActions(
-                    getSessionType(contextMenu.sessionID, contextMenu.directory)
-                  ).includes('rename') ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const { directory, sessionID, title } = contextMenu
-                        setContextMenu(null)
-                        void renameSession(directory, sessionID, title)
-                      }}
-                    >
-                      Rename Session
-                    </button>
-                  ) : null}
-                </>
-              )}
-            </div>
-          </div>
-        ) : null}
-
-        {debugModalOpen ? (
-          <div className="overlay debug-log-overlay" onClick={() => setDebugModalOpen(false)}>
-            <section
-              className="modal debug-log-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Session debug logs"
-              onClick={event => event.stopPropagation()}
-            >
-              <header className="modal-header">
-                <div>
-                  <h2>Session Debug Logs</h2>
-                  <small className="debug-log-subtitle">Current status: {statusLine}</small>
-                </div>
-                <button type="button" onClick={() => setDebugModalOpen(false)}>
-                  Close
-                </button>
-              </header>
-              <div className="debug-log-toolbar">
-                <span className="debug-log-filter-label">Filter level</span>
-                {(['all', 'info', 'warn', 'error'] as const).map(level => (
-                  <button
-                    key={level}
-                    type="button"
-                    className={debugLogLevelFilter === level ? 'active' : ''}
-                    onClick={() => setDebugLogLevelFilter(level)}
-                  >
-                    {level === 'all' ? 'All' : level.toUpperCase()}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="debug-log-copy-btn"
-                  onClick={() => void copyDebugLogsAsJson()}
-                >
-                  Copy logs as JSON
-                </button>
-              </div>
-              <div className="debug-log-list" role="log" aria-live="polite">
-                {filteredDebugLogs.length === 0 ? (
-                  <p className="dashboard-empty">No debug logs yet.</p>
-                ) : (
-                  filteredDebugLogs
-                    .slice()
-                    .reverse()
-                    .map(entry => (
-                      <article key={entry.id} className={`debug-log-item ${entry.level}`.trim()}>
-                        <div className="debug-log-item-meta">
-                          <span>{new Date(entry.time).toLocaleTimeString()}</span>
-                          <span>{entry.eventType}</span>
-                        </div>
-                        <p>{entry.summary}</p>
-                        {entry.details ? (
-                          <details>
-                            <summary>Details</summary>
-                            <pre>{entry.details}</pre>
-                          </details>
-                        ) : null}
-                      </article>
-                    ))
-                )}
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {updateProgressState ? (
-          <div
-            className="overlay"
-            onClick={
-              updateProgressState.phase === 'error' ? () => setUpdateProgressState(null) : undefined
-            }
-          >
-            <section
-              className="modal update-progress-modal"
-              onClick={event => event.stopPropagation()}
-            >
-              <div className="update-progress-body">
-                {updateProgressState.phase === 'error' ? (
-                  <>
-                    <h2>Update failed</h2>
-                    <p>{updateProgressState.message}</p>
-                    <button type="button" onClick={() => setUpdateProgressState(null)}>
-                      Dismiss
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <span
-                      className="session-status-indicator busy commit-progress-spinner"
-                      aria-hidden="true"
-                    />
-                    <h2>
-                      {updateProgressState.phase === 'installing'
-                        ? 'Installing update'
-                        : 'Downloading update'}
-                      {updateProgressState.version ? ` ${updateProgressState.version}` : ''}
-                    </h2>
-                    <p>{updateProgressState.message}</p>
-                    {updateProgressState.phase === 'downloading' ? (
-                      <div className="update-progress-meter" aria-label="Update download progress">
-                        <div
-                          className="update-progress-meter-fill"
-                          style={{
-                            width: `${Math.max(0, Math.min(100, updateProgressState.percent ?? 0))}%`,
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                    {updateProgressState.phase === 'downloading' ? (
-                      <small>
-                        {typeof updateProgressState.percent === 'number'
-                          ? `${Math.round(updateProgressState.percent)}%`
-                          : 'Starting...'}
-                      </small>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        <ConfirmDialog
-          isOpen={Boolean(confirmDialogRequest)}
-          title={confirmDialogRequest?.title ?? 'Confirm'}
-          message={confirmDialogRequest?.message ?? 'Are you sure?'}
-          confirmLabel={confirmDialogRequest?.confirmLabel}
-          cancelLabel={confirmDialogRequest?.cancelLabel}
-          variant={confirmDialogRequest?.variant}
-          onConfirm={() => closeConfirmDialog(true)}
-          onCancel={() => closeConfirmDialog(false)}
-        />
-
-        <TextInputDialog
-          isOpen={Boolean(textInputDialog)}
-          title={textInputDialog?.title ?? ''}
-          placeholder={textInputDialog?.placeholder}
-          defaultValue={textInputDialog?.defaultValue}
-          confirmLabel={textInputDialog?.confirmLabel}
-          cancelLabel={textInputDialog?.cancelLabel}
-          validate={textInputDialog?.validate}
-          onConfirm={submitTextInputDialog}
-          onCancel={closeTextInputDialog}
-        />
-
-        <GlobalModalsHost
-          activeProjectDir={activeProjectDir}
-          permissionMode={appPreferences.permissionMode}
-          dependencyReport={dependencyReport}
-          dependencyModalOpen={dependencyModalOpen}
-          setDependencyModalOpen={setDependencyModalOpen}
-          onCheckDependencies={refreshRuntimeDependencies}
-          permissionRequest={pendingPermission ?? null}
-          permissionDecisionInFlight={isPermissionDecisionInFlight}
-          replyPermission={replyPendingPermission}
-          questionRequest={pendingQuestion}
-          replyQuestion={replyPendingQuestion}
-          rejectQuestion={rejectPendingQuestion}
-          allSessionsModalOpen={allSessionsModalOpen}
-          setAllSessionsModalOpen={setAllSessionsModalOpen}
-          sessions={sessions}
-          getSessionStatusType={getSessionStatusType}
-          activeSessionID={activeSessionID}
-          openSession={openSession}
-          projects={projects}
-          branchCreateModalOpen={branchCreateModalOpen}
-          setBranchCreateModalOpen={setBranchCreateModalOpen}
-          branchCreateName={branchCreateName}
-          setBranchCreateName={setBranchCreateName}
-          branchCreateError={branchCreateError}
-          setBranchCreateError={setBranchCreateError}
-          submitBranchCreate={submitBranchCreate}
-          branchSwitching={branchSwitching}
-          commitModalOpen={commitModalOpen}
-          setCommitModalOpen={setCommitModalOpen}
-          commitSummary={commitSummary}
-          commitSummaryLoading={commitSummaryLoading}
-          commitIncludeUnstaged={commitIncludeUnstaged}
-          setCommitIncludeUnstaged={setCommitIncludeUnstaged}
-          commitMessageDraft={commitMessageDraft}
-          setCommitMessageDraft={setCommitMessageDraft}
-          commitNextStepOptions={commitNextStepOptions}
-          commitNextStep={commitNextStep}
-          setCommitNextStep={setCommitNextStep}
-          commitSubmitting={commitSubmitting}
-          commitBaseBranch={commitBaseBranch}
-          setCommitBaseBranch={setCommitBaseBranch}
-          commitBaseBranchOptions={commitBaseBranchOptions}
-          commitBaseBranchLoading={branchLoading}
-          commitFlowState={commitFlowState}
-          dismissCommitFlowState={dismissCommitFlowState}
-          submitCommit={submitCommit}
-          addProjectDirectory={addProjectDirectory}
-          skillUseModal={skillUseModal}
-          setSkillUseModal={setSkillUseModal}
-          applySkillToProject={applySkillToProject}
-          profileModalOpen={profileModalOpen}
-          setProfileModalOpen={setProfileModalOpen}
-          profiles={profiles}
-          runtime={runtime}
-          onSaveProfile={async (profile: RuntimeProfileInput) => {
-            await window.orxa.runtime.saveProfile(profile)
-            await refreshProfiles()
-            setStatusLine('Profile saved')
-          }}
-          onDeleteProfile={async profileID => {
-            await window.orxa.runtime.deleteProfile(profileID)
-            await refreshProfiles()
-            setStatusLine('Profile deleted')
-          }}
-          onAttachProfile={async profileID => {
-            await window.orxa.runtime.attach(profileID)
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-            await bootstrap()
-            setStatusLine('Attached to server')
-          }}
-          onStartLocalProfile={async profileID => {
-            await window.orxa.runtime.startLocal(profileID)
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-            await bootstrap()
-            setStatusLine('Local server started')
-          }}
-          onStopLocalProfile={async () => {
-            await window.orxa.runtime.stopLocal()
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-            setStatusLine('Local server stopped')
-          }}
-        />
-
-        <GlobalSearchModal
-          open={globalSearchModalOpen}
-          onClose={() => setGlobalSearchModalOpen(false)}
-          projects={projects}
-          projectSessions={allProjectSessions}
-          getSessionTitle={getSessionTitle}
+        <AppTransientOverlays
+          contextMenu={contextMenu}
+          setContextMenu={setContextMenu}
+          changeProjectDirectory={changeProjectDirectory}
+          removeProjectDirectory={removeProjectDirectory}
           getSessionType={getSessionType}
-          openSession={openSession}
+          archiveSession={archiveSession}
+          copySessionID={copySessionID}
+          createWorktreeSession={createWorktreeSession}
+          renameSession={renameSession}
+          debugModalOpen={debugModalOpen}
+          setDebugModalOpen={setDebugModalOpen}
+          statusLine={statusLine}
+          debugLogLevelFilter={debugLogLevelFilter}
+          setDebugLogLevelFilter={setDebugLogLevelFilter}
+          filteredDebugLogs={filteredDebugLogs}
+          copyDebugLogsAsJson={copyDebugLogsAsJson}
+          updateProgressState={updateProgressState}
+          setUpdateProgressState={setUpdateProgressState}
         />
 
-        <SettingsDrawer
-          open={settingsOpen}
-          directory={activeProjectDir}
-          onClose={() => setSettingsOpen(false)}
-          onReadRaw={(scope, directory) => window.orxa.opencode.readRawConfig(scope, directory)}
-          onWriteRaw={async (scope, content, directory) => {
-            const doc = await window.orxa.opencode.writeRawConfig(scope, content, directory)
-            if (scope === 'global') {
-              await Promise.all([refreshConfigModels(), refreshGlobalProviders()])
-            }
-            if (directory) {
-              await refreshProject(directory)
-            }
-            setStatusLine('Raw config saved')
-            return doc
+        <AppGlobalDialogs
+          confirmDialogProps={{
+            isOpen: Boolean(confirmDialogRequest),
+            title: confirmDialogRequest?.title ?? 'Confirm',
+            message: confirmDialogRequest?.message ?? 'Are you sure?',
+            confirmLabel: confirmDialogRequest?.confirmLabel,
+            cancelLabel: confirmDialogRequest?.cancelLabel,
+            variant: confirmDialogRequest?.variant,
+            onConfirm: () => closeConfirmDialog(true),
+            onCancel: () => closeConfirmDialog(false),
           }}
-          onReadGlobalAgentsMd={() => window.orxa.opencode.readGlobalAgentsMd()}
-          onWriteGlobalAgentsMd={async content => {
-            const doc = await window.orxa.opencode.writeGlobalAgentsMd(content)
-            setStatusLine('Global AGENTS.md saved')
-            return doc
+          textInputDialogProps={{
+            isOpen: Boolean(textInputDialog),
+            title: textInputDialog?.title ?? '',
+            placeholder: textInputDialog?.placeholder,
+            defaultValue: textInputDialog?.defaultValue,
+            confirmLabel: textInputDialog?.confirmLabel,
+            cancelLabel: textInputDialog?.cancelLabel,
+            validate: textInputDialog?.validate,
+            onConfirm: submitTextInputDialog,
+            onCancel: closeTextInputDialog,
           }}
-          appPreferences={appPreferences}
-          onAppPreferencesChange={setAppPreferences}
-          onGetServerDiagnostics={() => window.orxa.opencode.getServerDiagnostics()}
-          onRepairRuntime={() => window.orxa.opencode.repairRuntime()}
-          onGetUpdatePreferences={() => window.orxa.updates.getPreferences()}
-          onSetUpdatePreferences={input => window.orxa.updates.setPreferences(input)}
-          onCheckForUpdates={() => window.orxa.updates.checkNow()}
-          allModelOptions={settingsModelOptions}
-          profiles={profiles}
-          runtime={runtime}
-          onSaveProfile={async profile => {
-            await window.orxa.runtime.saveProfile(profile)
-            await refreshProfiles()
+          globalModalsProps={{
+            activeProjectDir,
+            permissionMode: appPreferences.permissionMode,
+            dependencyReport,
+            dependencyModalOpen,
+            setDependencyModalOpen,
+            onCheckDependencies: refreshRuntimeDependencies,
+            permissionRequest: pendingPermission ?? null,
+            permissionDecisionInFlight: isPermissionDecisionInFlight,
+            replyPermission: replyPendingPermission,
+            questionRequest: pendingQuestion,
+            replyQuestion: replyPendingQuestion,
+            rejectQuestion: rejectPendingQuestion,
+            allSessionsModalOpen,
+            setAllSessionsModalOpen,
+            sessions,
+            getSessionStatusType,
+            activeSessionID,
+            openSession,
+            projects,
+            branchCreateModalOpen,
+            setBranchCreateModalOpen,
+            branchCreateName,
+            setBranchCreateName,
+            branchCreateError,
+            setBranchCreateError,
+            submitBranchCreate,
+            branchSwitching,
+            commitModalOpen,
+            setCommitModalOpen,
+            commitSummary,
+            commitSummaryLoading,
+            commitIncludeUnstaged,
+            setCommitIncludeUnstaged,
+            commitMessageDraft,
+            setCommitMessageDraft,
+            commitNextStepOptions,
+            commitNextStep,
+            setCommitNextStep,
+            commitSubmitting,
+            commitBaseBranch,
+            setCommitBaseBranch,
+            commitBaseBranchOptions,
+            commitBaseBranchLoading: branchLoading,
+            commitFlowState,
+            dismissCommitFlowState,
+            submitCommit,
+            addProjectDirectory,
+            skillUseModal,
+            setSkillUseModal,
+            applySkillToProject,
+            profileModalOpen,
+            setProfileModalOpen,
+            profiles,
+            runtime,
+            ...profileActions,
           }}
-          onDeleteProfile={async profileID => {
-            await window.orxa.runtime.deleteProfile(profileID)
-            await refreshProfiles()
+          globalSearchProps={{
+            open: globalSearchModalOpen,
+            onClose: () => setGlobalSearchModalOpen(false),
+            projects,
+            projectSessions: allProjectSessions,
+            getSessionTitle,
+            getSessionType,
+            openSession,
           }}
-          onAttachProfile={async profileID => {
-            await window.orxa.runtime.attach(profileID)
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-            await bootstrap()
+          settingsDrawerProps={{
+            open: settingsOpen,
+            directory: activeProjectDir,
+            onClose: () => setSettingsOpen(false),
+            onReadRaw: (scope, directory) => window.orxa.opencode.readRawConfig(scope, directory),
+            onWriteRaw: async (scope, content, directory) => {
+              const doc = await window.orxa.opencode.writeRawConfig(scope, content, directory)
+              if (scope === 'global') {
+                await Promise.all([refreshConfigModels(), refreshGlobalProviders()])
+              }
+              if (directory) {
+                await refreshProject(directory)
+              }
+              setStatusLine('Raw config saved')
+              return doc
+            },
+            onReadGlobalAgentsMd: () => window.orxa.opencode.readGlobalAgentsMd(),
+            onWriteGlobalAgentsMd: async content => {
+              const doc = await window.orxa.opencode.writeGlobalAgentsMd(content)
+              setStatusLine('Global AGENTS.md saved')
+              return doc
+            },
+            appPreferences,
+            onAppPreferencesChange: setAppPreferences,
+            onGetServerDiagnostics: () => window.orxa.opencode.getServerDiagnostics(),
+            onRepairRuntime: () => window.orxa.opencode.repairRuntime(),
+            onGetUpdatePreferences: () => window.orxa.updates.getPreferences(),
+            onSetUpdatePreferences: input => window.orxa.updates.setPreferences(input),
+            onCheckForUpdates: () => window.orxa.updates.checkNow(),
+            allModelOptions: settingsModelOptions,
+            profiles,
+            runtime,
+            onSaveProfile: async profile => {
+              await window.orxa.runtime.saveProfile(profile)
+              await refreshProfiles()
+            },
+            onDeleteProfile: async profileID => {
+              await window.orxa.runtime.deleteProfile(profileID)
+              await refreshProfiles()
+            },
+            onAttachProfile: async profileID => {
+              await window.orxa.runtime.attach(profileID)
+              await refreshProfiles()
+              await Promise.all([
+                refreshConfigModels(),
+                refreshGlobalProviders(),
+                refreshGlobalAgents(),
+                refreshAgentFiles(),
+              ])
+              await bootstrap()
+            },
+            onStartLocalProfile: async profileID => {
+              await window.orxa.runtime.startLocal(profileID)
+              await refreshProfiles()
+              await Promise.all([
+                refreshConfigModels(),
+                refreshGlobalProviders(),
+                refreshGlobalAgents(),
+                refreshAgentFiles(),
+              ])
+              await bootstrap()
+            },
+            onStopLocalProfile: async () => {
+              await window.orxa.runtime.stopLocal()
+              await refreshProfiles()
+              await Promise.all([
+                refreshConfigModels(),
+                refreshGlobalProviders(),
+                refreshGlobalAgents(),
+                refreshAgentFiles(),
+              ])
+            },
+            onRefreshProfiles: refreshProfiles,
           }}
-          onStartLocalProfile={async profileID => {
-            await window.orxa.runtime.startLocal(profileID)
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-            await bootstrap()
+          infoDialogProps={{
+            isOpen: memoryComingSoonOpen,
+            title: 'Memory coming soon',
+            message:
+              'Workspace-scoped memory that lets your agents recall project context, decisions, and preferences across sessions. Coming soon.',
+            dismissLabel: 'Close',
+            onDismiss: () => setMemoryComingSoonOpen(false),
           }}
-          onStopLocalProfile={async () => {
-            await window.orxa.runtime.stopLocal()
-            await refreshProfiles()
-            await Promise.all([
-              refreshConfigModels(),
-              refreshGlobalProviders(),
-              refreshGlobalAgents(),
-              refreshAgentFiles(),
-            ])
-          }}
-          onRefreshProfiles={refreshProfiles}
-        />
-        <InfoDialog
-          isOpen={memoryComingSoonOpen}
-          title="Memory coming soon"
-          message="Workspace-scoped memory that lets your agents recall project context, decisions, and preferences across sessions. Coming soon."
-          dismissLabel="Close"
-          onDismiss={() => setMemoryComingSoonOpen(false)}
         />
       </div>
     </AppErrorBoundary>
