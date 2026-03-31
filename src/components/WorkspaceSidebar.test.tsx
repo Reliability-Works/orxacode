@@ -42,6 +42,7 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     getSessionIndicator: vi.fn(() => 'none' as const),
     selectProject: vi.fn(),
     createSession: vi.fn(),
+    openClaudeSessionBrowser: vi.fn(),
     openSession: vi.fn(),
     togglePinSession: vi.fn(),
     archiveSession: vi.fn(),
@@ -169,6 +170,26 @@ function registerWorkspaceSidebarUpdateBasicsTests() {
   })
 }
 
+function registerWorkspaceSidebarClaudeBrowserTests() {
+  it('opens the Claude session browser from the new-session picker', () => {
+    const openClaudeSessionBrowser = vi.fn()
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [
+            { id: 'project-1', worktree: '/workspace/project', name: 'project', source: 'local' },
+          ],
+          openClaudeSessionBrowser,
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /create session for project/i }))
+    fireEvent.click(screen.getByText('browse claude sessions'))
+    expect(openClaudeSessionBrowser).toHaveBeenCalledWith('/workspace/project')
+  })
+}
+
 function registerWorkspaceSidebarUpdateIndicatorTests() {
   it('shows an experimental warning next to the Kanban mode entry', () => {
     render(<WorkspaceSidebar {...buildProps()} />)
@@ -266,6 +287,36 @@ function registerWorkspaceSidebarSessionNavigationTests() {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open me' }))
     expect(openSession).toHaveBeenCalledWith('/workspace/project', 'session-2')
+  })
+
+  it('opens worktree sessions using their real directory while rendering under the root workspace row', () => {
+    const openSession = vi.fn()
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [
+            { id: 'project-root', worktree: '/workspace/project', name: 'project', source: 'local' },
+          ],
+          activeProjectDir: '/workspace/project',
+          sessions: [
+            {
+              id: 'session-worktree',
+              directory: '/workspace/project/.worktrees/feature-a',
+              slug: 'session-worktree',
+              title: 'Feature session',
+              time: { created: NOW - 2_000, updated: 2 },
+            },
+          ],
+          openSession,
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Feature session' }))
+    expect(openSession).toHaveBeenCalledWith(
+      '/workspace/project/.worktrees/feature-a',
+      'session-worktree'
+    )
   })
 }
 
@@ -412,8 +463,9 @@ function registerWorkspaceSidebarSessionActionsTests() {
 }
 
 describe('WorkspaceSidebar update button', () => {
-  registerWorkspaceSidebarUpdateBasicsTests()
-  registerWorkspaceSidebarUpdateIndicatorTests()
+registerWorkspaceSidebarUpdateBasicsTests()
+registerWorkspaceSidebarClaudeBrowserTests()
+registerWorkspaceSidebarUpdateIndicatorTests()
   registerWorkspaceSidebarSessionNavigationTests()
   registerWorkspaceSidebarPinnedSessionTests()
   registerWorkspaceSidebarSessionActionsTests()

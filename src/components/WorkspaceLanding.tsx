@@ -5,6 +5,7 @@ import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from './ProviderL
 type WorkspaceLandingProps = {
   workspaceName: string
   onPickSession: (type: SessionType) => void
+  onBrowseClaudeSessions?: () => void
 }
 
 const SESSION_OPTIONS: Array<{
@@ -51,7 +52,11 @@ const SESSION_OPTIONS: Array<{
   },
 ]
 
-export function WorkspaceLanding({ workspaceName, onPickSession }: WorkspaceLandingProps) {
+export function WorkspaceLanding({
+  workspaceName,
+  onPickSession,
+  onBrowseClaudeSessions,
+}: WorkspaceLandingProps) {
   const [hoveredType, setHoveredType] = useState<SessionType | null>(null)
 
   return (
@@ -81,6 +86,17 @@ export function WorkspaceLanding({ workspaceName, onPickSession }: WorkspaceLand
           )
         })}
       </div>
+      {onBrowseClaudeSessions ? (
+        <div className="workspace-landing-secondary-actions">
+          <button
+            type="button"
+            className="workspace-landing-secondary-button"
+            onClick={onBrowseClaudeSessions}
+          >
+            Browse Claude sessions
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

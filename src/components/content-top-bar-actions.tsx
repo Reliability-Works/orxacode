@@ -2,7 +2,11 @@ import type { ReactNode } from 'react'
 import { ChevronDown, ChevronsUpDown, Play } from 'lucide-react'
 import type { CommitNextStep, GitDiffStats } from '../hooks/useGitPanel'
 import { IconButton } from './IconButton'
-import type { CustomRunCommandInput, CustomRunCommandPreset } from './ContentTopBar'
+import type {
+  ActiveWorkspaceWorktree,
+  CustomRunCommandInput,
+  CustomRunCommandPreset,
+} from './ContentTopBar'
 import { RunCommandMenu } from './content-top-bar-run-command-menu'
 import { RunCommandModal } from './content-top-bar-run-command-modal'
 import { useContentTopBarRunCommands } from './use-content-top-bar-run-commands'
@@ -41,6 +45,8 @@ type ContentTopBarActionsProps = {
   onUpsertCustomRunCommand: (input: CustomRunCommandInput) => CustomRunCommandPreset
   onRunCustomRunCommand: (command: CustomRunCommandPreset) => Promise<void>
   onDeleteCustomRunCommand: (id: string) => void
+  activeWorkspaceWorktree: ActiveWorkspaceWorktree | null
+  onOpenWorkspaceDetail: () => void
 }
 
 function ContentTopBarRunCommandsControl({
@@ -267,6 +273,35 @@ function ContentTopBarCommitGroup({
   )
 }
 
+function ContentTopBarWorktreeGroup({
+  hasProjectContext,
+  activeWorkspaceWorktree,
+  onOpenWorkspaceDetail,
+}: Pick<
+  ContentTopBarActionsProps,
+  'hasProjectContext' | 'activeWorkspaceWorktree' | 'onOpenWorkspaceDetail'
+>) {
+  if (!activeWorkspaceWorktree) {
+    return null
+  }
+
+  return (
+    <button
+      type="button"
+      className="titlebar-action titlebar-worktree-btn"
+      disabled={!hasProjectContext}
+      onClick={onOpenWorkspaceDetail}
+      title={activeWorkspaceWorktree.directory}
+    >
+      <span className="titlebar-worktree-label">{activeWorkspaceWorktree.label}</span>
+      <small>
+        {activeWorkspaceWorktree.branch ??
+          (activeWorkspaceWorktree.isMain ? 'main workspace' : 'worktree')}
+      </small>
+    </button>
+  )
+}
+
 function ContentTopBarGitToggleGroup({
   gitDiffStats,
   showGitPane,
@@ -323,6 +358,8 @@ export function ContentTopBarActions({
   onUpsertCustomRunCommand,
   onRunCustomRunCommand,
   onDeleteCustomRunCommand,
+  activeWorkspaceWorktree,
+  onOpenWorkspaceDetail,
 }: ContentTopBarActionsProps) {
   return (
     <div className="topbar-right-group">
@@ -350,6 +387,11 @@ export function ContentTopBarActions({
         closeOpenMenu={() => setOpenMenuOpen(false)}
         closeCommitMenu={() => setCommitMenuOpen(false)}
         closeTitleMenu={() => setTitleMenuOpen(false)}
+      />
+      <ContentTopBarWorktreeGroup
+        hasProjectContext={hasProjectContext}
+        activeWorkspaceWorktree={activeWorkspaceWorktree}
+        onOpenWorkspaceDetail={onOpenWorkspaceDetail}
       />
       <ContentTopBarOpenTargetGroup
         hasProjectContext={hasProjectContext}

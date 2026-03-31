@@ -68,6 +68,26 @@ export function createLocalProviderSessionRecord(
   }
 }
 
+export function createBoundLocalProviderSessionRecord(
+  directory: string,
+  type: SyntheticSessionType,
+  sessionID: string,
+  title: string,
+  options?: { draft?: boolean }
+): LocalProviderSessionRecord {
+  const now = Date.now()
+  return {
+    sessionID,
+    directory,
+    type,
+    title,
+    slug: type,
+    createdAt: now,
+    updatedAt: now,
+    draft: options?.draft ?? false,
+  }
+}
+
 export function normalizeSyntheticSessionRecord(
   record: Partial<LocalProviderSessionRecord> | null | undefined
 ): LocalProviderSessionRecord | null {

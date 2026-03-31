@@ -43,6 +43,16 @@ export type ClaudeChatMessageItem =
     }
   | {
       id: string
+      kind: 'diff'
+      path: string
+      type: 'modified' | 'created'
+      diff?: string
+      insertions?: number
+      deletions?: number
+      timestamp: number
+    }
+  | {
+      id: string
       kind: 'notice'
       label: string
       detail?: string
@@ -62,6 +72,16 @@ const CLAUDE_READ_ONLY_TOOL_NAMES = new Set([
   'list',
   'tree',
 ])
+
+const CLAUDE_FILE_EDIT_TOOL_NAMES = new Set(['edit', 'multiedit', 'write', 'notebookedit'])
+
+function asToolString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeClaudeToolName(toolName: string | undefined) {
+  return toolName?.trim().toLowerCase() ?? ''
+}
 
 export function nextClaudeMessageId(sessionKey: string) {
   const persisted = getPersistedClaudeChatState(sessionKey)
@@ -164,6 +184,117 @@ function compactClaudeExploreLabel(value: string, fallback: string) {
   return normalized.length > 96 ? `${normalized.slice(0, 93).trimEnd()}...` : normalized
 }
 
+function firstNonEmptyToolString(record: Record<string, unknown> | undefined, keys: string[]) {
+  if (!record) {
+    return ''
+  }
+  for (const key of keys) {
+    const value = asToolString(record[key])
+    if (value) {
+      return value
+    }
+  }
+  return ''
+}
+
+function getClaudeToolPath(toolInput: Record<string, unknown> | undefined) {
+  return firstNonEmptyToolString(toolInput, ['file_path', 'path'])
+}
+
+function getClaudeToolCommand(toolInput: Record<string, unknown> | undefined) {
+  if (!toolInput) {
+    return ''
+  }
+  const command = toolInput.command ?? toolInput.cmd
+  if (typeof command === 'string') {
+    return command.trim()
+  }
+  if (Array.isArray(command)) {
+    return command.map(part => asToolString(part)).filter(Boolean).join(' ').trim()
+  }
+  return ''
+}
+
+function buildClaudeExploreLabel(
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined,
+  fallback: string
+) {
+  const normalizedTool = normalizeClaudeToolName(toolName)
+  const path = getClaudeToolPath(toolInput)
+  const query = firstNonEmptyToolString(toolInput, ['query', 'pattern', 'url', 'prompt'])
+  if (normalizedTool === 'read' || normalizedTool === 'view') {
+    return path ? `Read ${path}` : fallback
+  }
+  if (normalizedTool === 'grep' || normalizedTool === 'search' || normalizedTool === 'websearch') {
+    return query ? `Search ${query}` : fallback
+  }
+  if (normalizedTool === 'webfetch') {
+    const url = firstNonEmptyToolString(toolInput, ['url'])
+    return url ? `Read ${url}` : fallback
+  }
+  if (normalizedTool === 'glob' || normalizedTool === 'ls' || normalizedTool === 'list' || normalizedTool === 'tree') {
+    const target = firstNonEmptyToolString(toolInput, ['pattern', 'path'])
+    return target ? `List ${target}` : fallback
+  }
+  return fallback
+}
+
+function buildClaudeToolTitle(
+  toolName: string | undefined,
+  toolInput: Record<string, unknown> | undefined
+) {
+  const fallback = toolName?.trim() || 'Tool'
+  const path = getClaudeToolPath(toolInput)
+  if (path && CLAUDE_FILE_EDIT_TOOL_NAMES.has(normalizeClaudeToolName(toolName))) {
+    return `${fallback} ${path}`
+  }
+  return fallback
+}
+
+function summarizeWrittenContent(content: string) {
+  if (!content) {
+    return ''
+  }
+  const lines = content.split('\n')
+  const maxLines = 24
+  const clipped = lines.slice(0, maxLines)
+  return lines.length > maxLines ? [...clipped, '...'].join('\n') : clipped.join('\n')
+}
+
+function buildInlineDiff(oldText: string, newText: string) {
+  const diffLines = ['@@']
+  if (oldText) {
+    diffLines.push(...oldText.split('\n').map(line => `-${line}`))
+  }
+  if (newText) {
+    diffLines.push(...newText.split('\n').map(line => `+${line}`))
+  }
+  return diffLines.join('\n')
+}
+
+function measureDiff(diff: string | undefined) {
+  if (!diff) {
+    return { insertions: undefined, deletions: undefined }
+  }
+  let insertions = 0
+  let deletions = 0
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---') || line.startsWith('@@')) {
+      continue
+    }
+    if (line.startsWith('+')) {
+      insertions += 1
+    } else if (line.startsWith('-')) {
+      deletions += 1
+    }
+  }
+  return {
+    insertions: insertions || undefined,
+    deletions: deletions || undefined,
+  }
+}
+
 function pickClaudeExploreKind(toolName: string | undefined, text: string) {
   const normalizedTool = toolName?.trim().toLowerCase() ?? ''
   const normalizedText = text.trim().toLowerCase()
@@ -224,20 +355,85 @@ export function buildClaudeExploreEntry(input: {
   description?: string
   summary?: string
   taskType?: string
+  toolInput?: Record<string, unknown>
+  source?: 'main' | 'delegated'
   status: ExploreEntry['status']
 }) {
   const labelSource =
     input.summary?.trim() || input.description?.trim() || input.toolName?.trim() || 'Explore'
+  const toolLabel =
+    input.toolName?.trim() && input.toolName.trim() !== labelSource.trim()
+      ? input.toolName.trim()
+      : undefined
+  const detailParts = [
+    input.source === 'delegated' ? 'Subagent' : undefined,
+    toolLabel,
+  ].filter(Boolean)
   return {
     id: input.id,
     kind: pickClaudeExploreKind(input.toolName, labelSource),
-    label: compactClaudeExploreLabel(labelSource, 'Explore'),
-    detail:
-      input.toolName?.trim() && input.toolName.trim() !== labelSource.trim()
-        ? input.toolName.trim()
-        : undefined,
+    label: compactClaudeExploreLabel(
+      buildClaudeExploreLabel(input.toolName, input.toolInput, labelSource),
+      'Explore'
+    ),
+    detail: detailParts.length > 0 ? detailParts.join(' · ') : undefined,
     status: input.status,
   } satisfies ExploreEntry
+}
+
+export function buildClaudeToolMessageItem(input: {
+  id: string
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  summary?: string
+  source: 'main' | 'delegated'
+  status: 'running' | 'completed' | 'error'
+  timestamp: number
+}): Extract<ClaudeChatMessageItem, { kind: 'tool' }> {
+  return {
+    id: input.id,
+    kind: 'tool',
+    source: input.source,
+    title: buildClaudeToolTitle(input.toolName, input.toolInput),
+    toolType: input.toolName?.trim() || 'Tool',
+    status: input.status,
+    command: getClaudeToolCommand(input.toolInput) || undefined,
+    output: input.summary?.trim() || undefined,
+    timestamp: input.timestamp,
+  }
+}
+
+export function buildClaudeDiffMessageItem(input: {
+  id: string
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  timestamp: number
+}): Extract<ClaudeChatMessageItem, { kind: 'diff' }> | null {
+  const normalizedTool = normalizeClaudeToolName(input.toolName)
+  if (!CLAUDE_FILE_EDIT_TOOL_NAMES.has(normalizedTool)) {
+    return null
+  }
+  const path = getClaudeToolPath(input.toolInput)
+  if (!path) {
+    return null
+  }
+  const oldText = firstNonEmptyToolString(input.toolInput, ['old_string'])
+  const newText =
+    normalizedTool === 'write'
+      ? summarizeWrittenContent(firstNonEmptyToolString(input.toolInput, ['content']))
+      : firstNonEmptyToolString(input.toolInput, ['new_string', 'newText'])
+  const diff = buildInlineDiff(oldText, newText)
+  const stats = measureDiff(diff)
+  return {
+    id: input.id,
+    kind: 'diff',
+    path,
+    type: normalizedTool === 'write' ? 'created' : 'modified',
+    diff: diff || undefined,
+    insertions: stats.insertions,
+    deletions: stats.deletions,
+    timestamp: input.timestamp,
+  }
 }
 
 export function upsertExploreRow(
@@ -271,15 +467,15 @@ export function upsertExploreRow(
   ]
 }
 
-export function upsertClaudeTool(
+export function upsertClaudeActivityItem(
   messages: ClaudeChatMessageItem[],
-  toolItem: Extract<ClaudeChatMessageItem, { kind: 'tool' }>
+  nextItem: Extract<ClaudeChatMessageItem, { kind: 'tool' | 'diff' }>
 ) {
-  const existing = messages.findIndex(item => item.id === toolItem.id && item.kind === 'tool')
+  const existing = messages.findIndex(item => item.id === nextItem.id)
   if (existing >= 0) {
     const next = [...messages]
-    next[existing] = toolItem
+    next[existing] = nextItem
     return next
   }
-  return [...messages, toolItem]
+  return [...messages, nextItem]
 }

@@ -124,6 +124,9 @@ function registerCodexLifecycleHandlers(codexService: CodexService) {
     }
     return codexService.startThread(opts)
   })
+  ipcMain.handle(IPC.codexListWorkspaceThreads, async (_event, workspaceRoot: unknown) =>
+    codexService.listWorkspaceThreads(assertString(workspaceRoot, 'workspaceRoot'))
+  )
   ipcMain.handle(IPC.codexListThreads, async (_event, options?: unknown) => {
     const opts = (options ?? {}) as { cursor?: string | null; limit?: number; archived?: boolean }
     return codexService.listThreads(opts)

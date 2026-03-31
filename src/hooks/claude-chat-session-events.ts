@@ -8,16 +8,28 @@ import type {
 import type { ClaudeChatMessageItem, ClaudeChatSubagentState } from './claude-chat-session-utils'
 import {
   assistantMessageIdForTurn,
+  buildClaudeDiffMessageItem,
   buildClaudeExploreEntry,
+  buildClaudeToolMessageItem,
   ensureThinkingRow,
   isClaudeExploreCandidate,
   nextClaudeMessageId,
   appendAssistantDelta,
   removeThinkingRow,
+  upsertClaudeActivityItem,
   upsertAssistantMessage,
-  upsertClaudeTool,
   upsertExploreRow,
 } from './claude-chat-session-utils'
+import {
+  appendClaudeApprovalNotice,
+  appendClaudeResultNotice,
+  appendClaudeRetryNotice,
+  appendClaudeTaskCompletedNotice,
+  appendClaudeTaskProgressNotice,
+  appendClaudeTaskStartedNotice,
+  appendClaudeUserInputNotice,
+  appendClaudeNotice,
+} from './claude-chat-session-notices'
 
 export type ClaudeChatSessionEventContext = {
   directory: string
@@ -133,6 +145,10 @@ function handleToolProgress(
 ) {
   const id = readString(params.id) ?? nextClaudeMessageId(context.sessionKey)
   const toolName = readString(params.toolName) ?? 'Tool'
+  const toolInput =
+    params.toolInput && typeof params.toolInput === 'object' && !Array.isArray(params.toolInput)
+      ? (params.toolInput as Record<string, unknown>)
+      : undefined
   const taskId = readString(params.taskId) ?? ''
   const timestamp = readNumber(params.timestamp) ?? Date.now()
   const source = taskId ? ('delegated' as const) : ('main' as const)
@@ -140,6 +156,8 @@ function handleToolProgress(
     const entry = buildClaudeExploreEntry({
       id,
       toolName,
+      toolInput,
+      source,
       status: 'running',
     })
     context.updateClaudeChatMessages(context.sessionKey, messages =>
@@ -147,22 +165,23 @@ function handleToolProgress(
     )
     return
   }
-  context.updateClaudeChatMessages(context.sessionKey, messages => {
-    const toolItem: ClaudeChatMessageItem = {
-      id,
-      kind: 'tool',
-      source,
-      title: toolName,
-      toolType: toolName,
-      status: 'running',
-      output:
-        typeof params.elapsedTimeSeconds === 'number'
-          ? `Running for ${params.elapsedTimeSeconds.toFixed(1)}s`
-          : undefined,
-      timestamp,
-    }
-    return upsertClaudeTool(messages, toolItem)
-  })
+  context.updateClaudeChatMessages(context.sessionKey, messages =>
+    upsertClaudeActivityItem(
+      messages,
+      buildClaudeToolMessageItem({
+        id,
+        toolName,
+        toolInput,
+        source,
+        status: 'running',
+        summary:
+          typeof params.elapsedTimeSeconds === 'number'
+            ? `Running for ${params.elapsedTimeSeconds.toFixed(1)}s`
+            : undefined,
+        timestamp,
+      })
+    )
+  )
 }
 
 function handleToolCompleted(
@@ -172,6 +191,10 @@ function handleToolCompleted(
   const id = readString(params.id) ?? nextClaudeMessageId(context.sessionKey)
   const timestamp = readNumber(params.timestamp) ?? Date.now()
   const toolName = readString(params.toolName) ?? 'Tool call'
+  const toolInput =
+    params.toolInput && typeof params.toolInput === 'object' && !Array.isArray(params.toolInput)
+      ? (params.toolInput as Record<string, unknown>)
+      : undefined
   const summary = readString(params.summary)
   const taskId = readString(params.taskId) ?? ''
   const source = taskId ? ('delegated' as const) : ('main' as const)
@@ -180,6 +203,8 @@ function handleToolCompleted(
       id,
       toolName,
       summary,
+      toolInput,
+      source,
       status: 'completed',
     })
     context.updateClaudeChatMessages(context.sessionKey, messages =>
@@ -187,19 +212,27 @@ function handleToolCompleted(
     )
     return
   }
-  context.updateClaudeChatMessages(context.sessionKey, messages => {
-    const toolItem: ClaudeChatMessageItem = {
-      id,
-      kind: 'tool',
-      source,
-      title: toolName,
-      toolType: toolName,
-      status: 'completed',
-      output: summary,
-      timestamp,
-    }
-    return upsertClaudeTool(messages, toolItem)
+  const diffItem = buildClaudeDiffMessageItem({
+    id,
+    toolName,
+    toolInput,
+    timestamp,
   })
+  context.updateClaudeChatMessages(context.sessionKey, messages =>
+    upsertClaudeActivityItem(
+      messages,
+      diffItem ??
+        buildClaudeToolMessageItem({
+          id,
+          toolName,
+          toolInput,
+          summary,
+          source,
+          status: 'completed',
+          timestamp,
+        })
+    )
+  )
 }
 
 function handleTaskStarted(
@@ -229,12 +262,15 @@ function handleTaskStarted(
       description,
       summary: prompt,
       taskType,
+      source: 'delegated',
       status: 'running',
     })
     context.updateClaudeChatMessages(context.sessionKey, messages =>
       upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, 'exploring', 'delegated')
     )
+    return
   }
+  appendClaudeTaskStartedNotice(context, params)
 }
 
 function handleTaskProgress(
@@ -263,11 +299,16 @@ function handleTaskProgress(
       toolName: lastToolName,
       description,
       summary,
+      source: 'delegated',
       status: 'running',
     })
     context.updateClaudeChatMessages(context.sessionKey, messages =>
       upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, 'exploring', 'delegated')
     )
+    return
+  }
+  if (summary?.trim()) {
+    appendClaudeTaskProgressNotice(context, params)
   }
 }
 
@@ -297,12 +338,15 @@ function handleTaskCompleted(
     const entry = buildClaudeExploreEntry({
       id: taskId,
       summary,
+      source: 'delegated',
       status,
     })
     context.updateClaudeChatMessages(context.sessionKey, messages =>
       upsertExploreRow(messages, `task:${taskId}`, entry, timestamp, 'explored', 'delegated')
     )
+    return
   }
+  appendClaudeTaskCompletedNotice(context, params)
 }
 
 function handleTurnCompleted(
@@ -323,18 +367,28 @@ function handleTurnError(
   const turnId = readString(params.turnId) ?? ''
   const timestamp = readNumber(params.timestamp) ?? Date.now()
   const message = readString(params.message) ?? 'Claude turn failed.'
-  context.updateClaudeChatMessages(context.sessionKey, messages => [
-    ...removeThinkingRow(messages, turnId),
-    {
-      id: nextClaudeMessageId(context.sessionKey),
-      kind: 'notice',
-      label: 'Claude error',
-      detail: message,
-      tone: 'error',
-      timestamp,
-    },
-  ])
+  context.updateClaudeChatMessages(context.sessionKey, messages => removeThinkingRow(messages, turnId))
+  appendClaudeNotice(context, {
+    label: 'Claude error',
+    detail: message,
+    tone: 'error',
+    timestamp,
+  })
   context.setClaudeChatStreaming(context.sessionKey, false)
+}
+
+function handleRetryStatus(
+  context: ClaudeChatSessionEventContext,
+  params: Record<string, unknown>
+) {
+  appendClaudeRetryNotice(context, params)
+}
+
+function handleResultNotice(
+  context: ClaudeChatSessionEventContext,
+  params: Record<string, unknown>
+) {
+  appendClaudeResultNotice(context, params)
 }
 
 function handleClaudeChatNotification(
@@ -373,6 +427,12 @@ function handleClaudeChatNotification(
     case 'task/completed':
       handleTaskCompleted(context, params)
       return
+    case 'status/retry':
+      handleRetryStatus(context, params)
+      return
+    case 'result':
+      handleResultNotice(context, params)
+      return
     case 'turn/completed':
       handleTurnCompleted(context, params)
       return
@@ -397,10 +457,12 @@ export function subscribeClaudeChatSessionEvents(
     }
     if (event.type === 'claude-chat.approval' && event.payload.sessionKey === context.sessionKey) {
       context.setClaudeChatPendingApproval(context.sessionKey, event.payload)
+      appendClaudeApprovalNotice(context, event.payload)
       return
     }
     if (event.type === 'claude-chat.userInput' && event.payload.sessionKey === context.sessionKey) {
       context.setClaudeChatPendingUserInput(context.sessionKey, event.payload)
+      appendClaudeUserInputNotice(context, event.payload)
       return
     }
     if (event.type !== 'claude-chat.notification' || event.payload.sessionKey !== context.sessionKey) {

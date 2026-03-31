@@ -32,6 +32,7 @@ import {
   getCodexThreadRuntime,
   listCodexThreads,
   listCodexThreadRecords,
+  listWorkspaceCodexThreads,
   resumeCodexThread,
   setCodexThreadName,
   startCodexThread,
@@ -230,6 +231,7 @@ export class CodexService extends EventEmitter {
   }
 
   async startThread(params: { model?: string; cwd?: string; approvalPolicy?: string; sandbox?: string; title?: string }): Promise<CodexThread> { return startCodexThread(this.getThreadOpsContext(), params) }
+  async listWorkspaceThreads(workspaceRoot: string) { return listWorkspaceCodexThreads(this.getThreadOpsContext(), workspaceRoot) }
   async listThreads(params?: { cursor?: string | null; limit?: number; archived?: boolean }): Promise<{ threads: CodexThread[]; nextCursor?: string }> { return listCodexThreads(this.getThreadOpsContext(), params) }
   async getThreadRuntime(threadId: string): Promise<CodexThreadRuntime> { return getCodexThreadRuntime(this.getThreadOpsContext(), threadId) }
   async resumeThread(threadId: string): Promise<Record<string, unknown>> { return resumeCodexThread(this.getThreadOpsContext(), threadId) }

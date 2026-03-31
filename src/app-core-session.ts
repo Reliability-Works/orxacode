@@ -3,6 +3,7 @@ import type { ClaudeChatHealthStatus, SessionPermissionMode } from '@shared/ipc'
 import type { SessionType } from '~/types/canvas'
 import { buildWorkspaceSessionMetadataKey } from './lib/workspace-session-metadata'
 import {
+  createBoundLocalProviderSessionRecord,
   createLocalProviderSessionRecord,
   isLocalProviderSessionType,
   type SyntheticSessionType,
@@ -198,6 +199,58 @@ async function createLocalProviderSession(
     markSessionUsed(record.sessionID)
   }
   setStatusLine('Session created')
+}
+
+type BoundLocalProviderSessionIntent = {
+  directory: string
+  sessionID: string
+  sessionType: SyntheticSessionType
+  title: string
+}
+
+export async function openBoundLocalProviderSessionAction(
+  context: Pick<
+    CreateSessionContext,
+    | 'activeProjectDir'
+    | 'clearPendingSession'
+    | 'markSessionUsed'
+    | 'registerLocalProviderSession'
+    | 'selectProject'
+    | 'setActiveProjectDir'
+    | 'setActiveSessionID'
+    | 'setManualSessionTitles'
+    | 'setSessionTitles'
+    | 'setSessionTypes'
+    | 'setSidebarMode'
+    | 'setStatusLine'
+  >,
+  intent: BoundLocalProviderSessionIntent
+) {
+  if (context.activeProjectDir !== intent.directory) {
+    await context.selectProject(intent.directory)
+  }
+
+  const record = context.registerLocalProviderSession(
+    createBoundLocalProviderSessionRecord(
+      intent.directory,
+      intent.sessionType,
+      intent.sessionID,
+      intent.title,
+      { draft: false }
+    )
+  )
+  const scopedSessionKey = buildWorkspaceSessionMetadataKey(intent.directory, record.sessionID)
+  applyStructuredSessionMetadata(scopedSessionKey, intent.sessionType, record.title, {
+    setManualSessionTitles: context.setManualSessionTitles,
+    setSessionTitles: context.setSessionTitles,
+    setSessionTypes: context.setSessionTypes,
+  })
+  context.setSidebarMode('projects')
+  context.setActiveProjectDir(intent.directory)
+  context.setActiveSessionID(record.sessionID)
+  context.clearPendingSession()
+  context.markSessionUsed(record.sessionID)
+  context.setStatusLine('Session opened')
 }
 
 export async function createSessionAction(

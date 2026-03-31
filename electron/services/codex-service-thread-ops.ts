@@ -6,6 +6,7 @@ import type {
   CodexRunMetadata,
   CodexThread,
   CodexThreadRuntime,
+  CodexWorkspaceThreadEntry,
 } from '@shared/ipc'
 import type { ProviderSessionDirectory } from './provider-session-directory'
 import {
@@ -111,6 +112,49 @@ export async function listCodexThreadRecords(
   return threads
     .map(thread => asRecord(thread))
     .filter((thread): thread is Record<string, unknown> => Boolean(thread))
+}
+
+export async function listWorkspaceCodexThreads(
+  context: CodexServiceThreadOpsContext,
+  workspaceRoot: string
+): Promise<CodexWorkspaceThreadEntry[]> {
+  const normalizedWorkspaceRoot = workspaceRoot.trim()
+  if (!normalizedWorkspaceRoot) {
+    throw new Error('workspaceRoot is required')
+  }
+  await context.ensureConnected()
+  const threadRecords = await listCodexThreadRecords(context, { archived: false })
+  const threadById = new Map(
+    threadRecords
+      .map(record => [asString(record.id).trim(), record] as const)
+      .filter(([threadId]) => Boolean(threadId))
+  )
+  return (context.providerSessionDirectory?.list('codex') ?? [])
+    .map(binding => {
+      const directory = asString(asRecord(binding.runtimePayload)?.directory).trim()
+      if (
+        !directory ||
+        (directory !== normalizedWorkspaceRoot &&
+          !directory.startsWith(`${normalizedWorkspaceRoot}/.worktrees/`))
+      ) {
+        return null
+      }
+      const threadId = asString(asRecord(binding.resumeCursor)?.threadId).trim()
+      if (!threadId) {
+        return null
+      }
+      const threadRecord = threadById.get(threadId)
+      if (!threadRecord) {
+        return null
+      }
+      return {
+        ...(threadRecord as unknown as CodexThread),
+        directory,
+        sessionKey: binding.sessionKey,
+      } satisfies CodexWorkspaceThreadEntry
+    })
+    .filter((entry): entry is CodexWorkspaceThreadEntry => entry !== null)
+    .sort((left, right) => right.createdAt - left.createdAt)
 }
 
 export async function getCodexThreadRuntime(

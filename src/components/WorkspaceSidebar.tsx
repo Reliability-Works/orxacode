@@ -10,6 +10,7 @@ type SessionSidebarIndicator = 'busy' | 'awaiting' | 'unread' | 'none'
 
 type SessionListItem = {
   id: string
+  directory?: string
   title?: string
   slug: string
   time: {
@@ -56,6 +57,7 @@ export type WorkspaceSidebarProps = {
   ) => SessionSidebarIndicator
   selectProject: (directory: string) => Promise<void> | void
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void
+  openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   openSession: (directory: string, sessionID: string) => Promise<void> | void
   togglePinSession: (directory: string, sessionID: string) => void
   archiveSession: (directory: string, sessionID: string) => Promise<void> | void
@@ -94,9 +96,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const pinnedSessionRows = useMemo<PinnedSessionRow[]>(() => {
     return props.filteredProjects.flatMap(project => {
       const projectSessions =
-        project.worktree === props.activeProjectDir
-          ? props.sessions
-          : (props.cachedSessionsByProject?.[project.worktree] ?? [])
+        props.cachedSessionsByProject?.[project.worktree] ??
+        (project.worktree === props.activeProjectDir ? props.sessions : [])
       const hiddenSessionIDs = new Set(props.hiddenSessionIDsByProject?.[project.worktree] ?? [])
       const pinnedSessionIDs = props.pinnedSessionsByProject?.[project.worktree] ?? []
 
@@ -150,6 +151,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       getSessionIndicator={props.getSessionIndicator}
       selectProject={props.selectProject}
       createSession={props.createSession}
+      openClaudeSessionBrowser={props.openClaudeSessionBrowser}
       openSession={props.openSession}
       togglePinSession={props.togglePinSession}
       archiveSession={props.archiveSession}

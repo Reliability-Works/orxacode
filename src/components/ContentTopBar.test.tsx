@@ -55,6 +55,13 @@ function buildProps() {
       })),
       onRunCustomRunCommand: vi.fn(async () => undefined),
       onDeleteCustomRunCommand: vi.fn(),
+      activeWorkspaceWorktree: {
+        directory: '/tmp/workspace/.worktrees/feature-a',
+        label: 'feature-a',
+        branch: 'feature-a',
+        isMain: false,
+      },
+      onOpenWorkspaceDetail: vi.fn(),
     },
     onSelectOpenTarget,
     openDirectoryInTarget,
@@ -177,5 +184,14 @@ describe('ContentTopBar open target control', () => {
     render(<ContentTopBar {...props} />)
 
     expect(screen.getByText('orxa code')).toBeInTheDocument()
+  })
+
+  it('shows the active worktree button and opens workspace detail from it', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /feature-a/i }))
+
+    expect(props.onOpenWorkspaceDetail).toHaveBeenCalledTimes(1)
   })
 })

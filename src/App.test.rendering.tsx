@@ -127,7 +127,15 @@ it('keeps inactive Codex sessions polling in the background', async () => {
   const getThreadRuntimeMock = vi.fn(async (threadId: string) => ({ thread: { id: threadId, preview: 'Create a booking site', modelProvider: 'openai', createdAt: Date.now(), status: { type: 'inProgress' as const } }, childThreads: [] }))
 
   Object.defineProperty(window, 'orxa', {
-    value: { ...window.orxa, codex: { getThreadRuntime: getThreadRuntimeMock }, opencode: { ...window.orxa!.opencode, bootstrap: bootstrapMock, selectProject: selectProjectMock } },
+    value: {
+      ...window.orxa,
+      codex: { ...window.orxa!.codex, getThreadRuntime: getThreadRuntimeMock },
+      opencode: {
+        ...window.orxa!.opencode,
+        bootstrap: bootstrapMock,
+        selectProject: selectProjectMock,
+      },
+    },
     configurable: true,
   })
 

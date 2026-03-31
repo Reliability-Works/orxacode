@@ -43,6 +43,11 @@ function trackProviderSession(
   sessionId: string
 ) {
   if (!runtime.mainProviderThreadId) {
+    const previousThreadId = runtime.approvalThreadId?.trim()
+    if (previousThreadId && previousThreadId !== sessionId) {
+      context.remapProviderThreadApproval(previousThreadId, sessionId)
+    }
+    runtime.approvalThreadId = sessionId
     runtime.mainProviderThreadId = sessionId
     runtime.state = { ...runtime.state, status: 'connected', providerThreadId: sessionId }
     context.upsertProviderBinding(runtime, {
@@ -123,6 +128,7 @@ function handleToolProgressMsg(
       toolName: message.tool_name,
       parentToolUseId: message.parent_tool_use_id,
       taskId: message.task_id,
+      toolInput: runtime.toolInputsById.get(message.tool_use_id),
       elapsedTimeSeconds: message.elapsed_time_seconds,
       timestamp: Date.now(),
     },
@@ -145,6 +151,7 @@ function handleToolUseSummaryMsg(
       turnId,
       toolUseId,
       toolName: toolUseId ? runtime.toolNamesById.get(toolUseId) : undefined,
+      toolInput: toolUseId ? runtime.toolInputsById.get(toolUseId) : undefined,
       summary: message.summary,
       precedingToolUseIds: message.preceding_tool_use_ids,
       timestamp: Date.now(),

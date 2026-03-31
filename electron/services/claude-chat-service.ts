@@ -7,15 +7,18 @@ import {
   tagSession,
   type Options as ClaudeQueryOptions,
   type ElicitationRequest,
+  type PermissionMode,
   type SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import type {
   ClaudeChatApprovalDecision,
   ClaudeChatApprovalRequest,
+  ClaudeBrowserSessionSummary,
   ClaudeChatHealthStatus,
   ClaudeChatHistoryMessage,
   ClaudeChatModelEntry,
   ClaudeChatNotification,
+  ClaudeResumeProviderSessionResult,
   ClaudeChatState,
   ClaudeChatTurnOptions,
   ClaudeChatUserInputRequest,
@@ -45,23 +48,25 @@ import {
   readClaudeResumeCursor,
   resolveClaudeEffort,
 } from './claude-chat-service-runtime'
+import { getClaudeInventoryRootForTests } from './claude-chat-session-inventory'
+import { listClaudeSessionsWithCache, readClaudeDisconnectedState, resumeClaudeProviderSession, type ClaudeBrowserSessionCache } from './claude-chat-service-browser'
+import { resolveClaudeUserInputResponse } from './claude-chat-service-input'
 
 export class ClaudeChatService extends EventEmitter {
   private providerSessionDirectory: ProviderSessionDirectory | null
-
   private readonly sessions = new Map<string, ClaudeSessionRuntime>()
-
   private readonly pendingApprovals = new Map<string, PendingApproval>()
-
   private readonly pendingUserInputs = new Map<string, PendingUserInput>()
-
+  private readonly allowedProviderThreads = new Set<string>()
   private cachedHealth: CachedClaudeHealth | null = null
-
   private inflightHealth: Promise<ClaudeChatHealthStatus> | null = null
+  private readonly claudeInventoryRoot: string
+  private cachedBrowserSessions: ClaudeBrowserSessionCache | null = null
 
-  constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
+  constructor(providerSessionDirectory: ProviderSessionDirectory | null = null, claudeInventoryRoot = getClaudeInventoryRootForTests()) {
     super()
     this.providerSessionDirectory = providerSessionDirectory
+    this.claudeInventoryRoot = claudeInventoryRoot
   }
 
   setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
@@ -69,11 +74,14 @@ export class ClaudeChatService extends EventEmitter {
   }
 
   getState(sessionKey: string): ClaudeChatState {
-    return (
-      this.sessions.get(sessionKey)?.state ?? {
-        sessionKey,
-        status: 'disconnected',
-      }
+    const runtime = this.sessions.get(sessionKey)
+    if (runtime) {
+      return runtime.state
+    }
+    return readClaudeDisconnectedState(
+      sessionKey,
+      this.providerSessionDirectory,
+      this.readClaudeResumeCursor.bind(this)
     )
   }
 
@@ -109,6 +117,7 @@ export class ClaudeChatService extends EventEmitter {
       throw new Error('Claude chat session already has an active turn.')
     }
     runtime.toolNamesById.clear()
+    runtime.toolInputsById.clear()
 
     const turnId = randomUUID()
     runtime.state = {
@@ -142,6 +151,7 @@ export class ClaudeChatService extends EventEmitter {
       this.emitState(runtime.state)
     }
     const providerSessionId = resumeSessionId ?? randomUUID()
+    runtime.approvalThreadId = providerSessionId
     this.upsertProviderBinding(runtime, {
       status: 'starting',
       ...(resumeSessionId ? { resumeCursor: { resume: resumeSessionId } } : {}),
@@ -151,10 +161,13 @@ export class ClaudeChatService extends EventEmitter {
       },
     })
 
-    const shouldInterceptToolPermissions = permissionMode === 'default'
-    const canUseTool = shouldInterceptToolPermissions
-      ? this.buildCanUseToolHandler(sessionKey, turnId)
-      : undefined
+    const canUseTool = this.buildCanUseToolHandler(
+      runtime,
+      sessionKey,
+      turnId,
+      providerSessionId,
+      permissionMode
+    )
     const queryOptions = this.buildStartTurnQueryOptions({
       directory,
       options,
@@ -219,6 +232,9 @@ export class ClaudeChatService extends EventEmitter {
     }
     this.pendingApprovals.delete(requestId)
     if (decision === 'accept' || decision === 'acceptForSession') {
+      if (decision === 'acceptForSession') {
+        this.allowProviderThread(pending.providerThreadId)
+      }
       pending.resolve({
         behavior: 'allow',
         toolUseID: pending.itemId,
@@ -240,28 +256,7 @@ export class ClaudeChatService extends EventEmitter {
       return
     }
     this.pendingUserInputs.delete(requestId)
-    if (response.trim().length === 0) {
-      pending.resolve({ action: 'cancel' })
-      return
-    }
-    const schema = pending.request.requestedSchema
-    const firstField =
-      schema && typeof schema === 'object' && !Array.isArray(schema)
-        ? Object.keys((schema as { properties?: Record<string, unknown> }).properties ?? {})[0]
-        : undefined
-    let content: Record<string, unknown> | undefined
-    try {
-      const parsed = JSON.parse(response) as unknown
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        content = parsed as Record<string, unknown>
-      }
-    } catch {
-      content = firstField ? { [firstField]: response } : { value: response }
-    }
-    pending.resolve({
-      action: 'accept',
-      ...(content ? { content } : {}),
-    })
+    pending.resolve(resolveClaudeUserInputResponse(response, pending.request.requestedSchema))
   }
 
   async getSessionMessages(
@@ -274,6 +269,30 @@ export class ClaudeChatService extends EventEmitter {
 
   async renameProviderSession(sessionId: string, title: string, directory?: string) {
     await renameSession(sessionId, title, directory ? { dir: directory } : undefined)
+    this.cachedBrowserSessions = null
+  }
+
+  async listSessions(): Promise<ClaudeBrowserSessionSummary[]> {
+    this.cachedBrowserSessions = await listClaudeSessionsWithCache({
+      cachedBrowserSessions: this.cachedBrowserSessions,
+      providerSessionDirectory: this.providerSessionDirectory,
+      claudeInventoryRoot: this.claudeInventoryRoot,
+    })
+    return this.cachedBrowserSessions.value
+  }
+
+  async resumeProviderSession(
+    providerThreadId: string,
+    directory: string
+  ): Promise<ClaudeResumeProviderSessionResult> {
+    const resumed = await resumeClaudeProviderSession({
+      providerThreadId,
+      directory,
+      sessions: await this.listSessions(),
+      providerSessionDirectory: this.providerSessionDirectory,
+    })
+    this.cachedBrowserSessions = null
+    return resumed
   }
 
   async archiveSession(sessionKey: string) {
@@ -281,8 +300,10 @@ export class ClaudeChatService extends EventEmitter {
     if (runtime?.activeQuery) {
       await runtime.activeQuery.interrupt()
     }
+    this.clearProviderThreadAllowances(runtime)
     this.sessions.delete(sessionKey)
     this.providerSessionDirectory?.remove(sessionKey, 'claude-chat')
+    this.cachedBrowserSessions = null
     this.emitState({
       sessionKey,
       status: 'disconnected',
@@ -290,12 +311,14 @@ export class ClaudeChatService extends EventEmitter {
   }
 
   async archiveProviderSession(sessionId: string, directory?: string) {
+    this.allowedProviderThreads.delete(sessionId)
     await tagSession(sessionId, 'archived', directory ? { dir: directory } : undefined)
     for (const binding of this.providerSessionDirectory?.list('claude-chat') ?? []) {
       if (this.readClaudeResumeCursor(binding.resumeCursor) === sessionId) {
         this.providerSessionDirectory?.remove(binding.sessionKey, 'claude-chat')
       }
     }
+    this.cachedBrowserSessions = null
   }
 
   private getOrCreateSession(sessionKey: string, directory: string): ClaudeSessionRuntime {
@@ -309,6 +332,7 @@ export class ClaudeChatService extends EventEmitter {
       activeQuery: null,
       runningTasks: [],
       toolNamesById: new Map(),
+      toolInputsById: new Map(),
       state: {
         sessionKey,
         status: 'disconnected',
@@ -342,6 +366,8 @@ export class ClaudeChatService extends EventEmitter {
       emitUserInputRequest: this.emitUserInputRequest.bind(this),
       pendingApprovals: this.pendingApprovals,
       pendingUserInputs: this.pendingUserInputs,
+      isProviderThreadAllowed: this.isProviderThreadAllowed.bind(this),
+      remapProviderThreadApproval: this.remapProviderThreadApproval.bind(this),
       readClaudeResumeCursor: this.readClaudeResumeCursor.bind(this),
       upsertProviderBinding: this.upsertProviderBinding.bind(this),
     }
@@ -443,10 +469,20 @@ export class ClaudeChatService extends EventEmitter {
   }
 
   private buildCanUseToolHandler(
+    runtime: ClaudeSessionRuntime,
     sessionKey: string,
-    turnId: string
+    turnId: string,
+    providerThreadId: string,
+    permissionMode: PermissionMode | undefined
   ): NonNullable<ClaudeQueryOptions['canUseTool']> {
-    return buildCanUseToolHandler(this.getHandlerContext(), sessionKey, turnId)
+    return buildCanUseToolHandler(
+      this.getHandlerContext(),
+      runtime,
+      sessionKey,
+      turnId,
+      providerThreadId,
+      permissionMode
+    )
   }
 
   private finalizeTurnSuccess(runtime: ClaudeSessionRuntime, turnId: string) {
@@ -455,6 +491,46 @@ export class ClaudeChatService extends EventEmitter {
 
   private finalizeTurnError(runtime: ClaudeSessionRuntime, turnId: string, error: unknown) {
     finalizeTurnError(this.getHandlerContext(), runtime, turnId, error)
+  }
+
+  private allowProviderThread(providerThreadId: string | undefined) {
+    const normalized = providerThreadId?.trim()
+    if (!normalized) {
+      return
+    }
+    this.allowedProviderThreads.add(normalized)
+  }
+
+  private isProviderThreadAllowed(providerThreadId: string) {
+    return this.allowedProviderThreads.has(providerThreadId.trim())
+  }
+
+  private remapProviderThreadApproval(fromProviderThreadId: string, toProviderThreadId: string) {
+    const from = fromProviderThreadId.trim()
+    const to = toProviderThreadId.trim()
+    if (!from || !to || from === to) {
+      return
+    }
+    if (this.allowedProviderThreads.delete(from)) {
+      this.allowedProviderThreads.add(to)
+    }
+  }
+
+  private clearProviderThreadAllowances(runtime: ClaudeSessionRuntime | undefined) {
+    if (!runtime) {
+      return
+    }
+    const providerThreadIds = [
+      runtime.approvalThreadId,
+      runtime.mainProviderThreadId,
+      runtime.state.providerThreadId,
+    ]
+    for (const providerThreadId of providerThreadIds) {
+      const normalized = providerThreadId?.trim()
+      if (normalized) {
+        this.allowedProviderThreads.delete(normalized)
+      }
+    }
   }
 
   private handleMessage(runtime: ClaudeSessionRuntime, turnId: string, message: SDKMessage) {

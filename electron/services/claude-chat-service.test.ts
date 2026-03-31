@@ -90,6 +90,7 @@ function createTaskNotificationEvents() {
 
 function captureClaudeChatServiceEvents(service: ClaudeChatService) {
   const notifications: Array<{ method: string; params: Record<string, unknown> }> = []
+  const approvals: Array<{ id: string; toolName: string; threadId: string }> = []
   const states: Array<{
     status: string
     providerThreadId?: string
@@ -99,11 +100,14 @@ function captureClaudeChatServiceEvents(service: ClaudeChatService) {
   service.on('notification', payload => {
     notifications.push(payload)
   })
+  service.on('approval', payload => {
+    approvals.push(payload)
+  })
   service.on('state', payload => {
     states.push(payload)
   })
 
-  return { notifications, states }
+  return { approvals, notifications, states }
 }
 
 beforeEach(() => {
@@ -202,28 +206,6 @@ it('maps task and child-thread events into structured background-agent notificat
         }),
       })
     )
-  })
-
-  it('does not install a tool-approval interceptor in yolo mode', async () => {
-    const service = new ClaudeChatService(new ProviderSessionDirectory())
-
-    vi.mocked(query).mockReturnValue(createQueryStream([]) as never)
-
-    await service.startTurn('session-yolo', '/tmp/project', 'apply the fix', {
-      model: 'claude-sonnet-4-6',
-      permissionMode: 'yolo-write',
-    })
-
-    expect(vi.mocked(query)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          permissionMode: 'bypassPermissions',
-          allowDangerouslySkipPermissions: true,
-        }),
-      })
-    )
-    const queryOptions = vi.mocked(query).mock.calls[0]?.[0]?.options
-    expect(queryOptions?.canUseTool).toBeUndefined()
   })
 
   it('migrates a legacy Claude renderer session id into the provider directory and resumes it', async () => {
@@ -501,6 +483,7 @@ it('maps task and child-thread events into structured background-agent notificat
         turnId: 'turn-1',
         itemId: 'item-1',
         toolName: 'Task',
+        providerThreadId: 'claude-thread-1',
         resolve: resolveApproval,
       }
     )

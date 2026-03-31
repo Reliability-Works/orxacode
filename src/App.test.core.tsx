@@ -435,6 +435,7 @@ it('renders the shell', async () => {
       value: {
         ...window.orxa,
         codex: {
+          ...window.orxa!.codex,
           getThreadRuntime: getThreadRuntimeMock,
         },
         opencode: {

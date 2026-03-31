@@ -56,6 +56,11 @@ export type CodexThreadRuntime = {
   childThreads: CodexThread[]
 }
 
+export type CodexWorkspaceThreadEntry = CodexThread & {
+  directory: string
+  sessionKey: string
+}
+
 export type CodexNotification = {
   method: string
   params: Record<string, unknown>

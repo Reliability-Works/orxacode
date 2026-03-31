@@ -6,8 +6,8 @@ describe('session-context-menu', () => {
     expect(getSessionContextActions('canvas')).toEqual(['archive', 'rename'])
   })
 
-  it('keeps worktree creation only for opencode sessions', () => {
-    expect(getSessionContextActions('opencode')).toContain('create_worktree')
+  it('removes session-context worktree creation in favor of the workspace detail modal', () => {
+    expect(getSessionContextActions('opencode')).not.toContain('create_worktree')
     expect(getSessionContextActions('codex')).not.toContain('create_worktree')
     expect(getSessionContextActions('claude-chat')).not.toContain('create_worktree')
   })

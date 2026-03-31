@@ -1,4 +1,11 @@
 import type { CodexMessageItem } from '../hooks/codex-session-types'
+import type { ExploreEntry } from './explore-utils'
+import {
+  commandToExploreEntry,
+  fileReadToExploreEntry,
+  mcpToolCallToExploreEntry,
+  webSearchToExploreEntry,
+} from './explore-utils'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -20,6 +27,18 @@ function asNumber(value: unknown) {
     return Number.isFinite(parsed) ? parsed : undefined
   }
   return undefined
+}
+
+function stringifyCommand(value: unknown) {
+  if (Array.isArray(value)) {
+    const tokens = value.map(part => asString(part)).filter(Boolean)
+    const [first = '', second = '', third = ''] = tokens
+    if (/(?:^|\/)(?:zsh|bash|sh)$/.test(first) && (second === '-lc' || second === '-c') && third) {
+      return third
+    }
+    return tokens.join(' ').trim()
+  }
+  return asString(value).trim()
 }
 
 function parseUserContent(content: unknown) {
@@ -46,10 +65,7 @@ function buildCommandExecutionToolMessage(
   timestamp: number
 ): CodexMessageItem {
   const command = Array.isArray(item.command)
-    ? item.command
-        .map(part => asString(part))
-        .filter(Boolean)
-        .join(' ')
+    ? stringifyCommand(item.command)
     : asString(item.command)
   return {
     id,
@@ -59,10 +75,7 @@ function buildCommandExecutionToolMessage(
     command: command || undefined,
     output: asString(item.aggregatedOutput).trim() || undefined,
     status:
-      asString(item.status).toLowerCase().includes('error') ||
-      asString(item.status).toLowerCase().includes('fail')
-        ? 'error'
-        : 'completed',
+      getItemStatus(item),
     exitCode: asNumber(item.exitCode ?? item.exit_code),
     durationMs: asNumber(item.durationMs ?? item.duration_ms),
     timestamp,
@@ -83,10 +96,7 @@ function buildFileChangeToolMessage(
     path,
     type: asString(firstChange?.kind ?? item.changeType ?? 'modified').trim() || 'modified',
     status:
-      asString(item.status).toLowerCase().includes('error') ||
-      asString(item.status).toLowerCase().includes('fail')
-        ? 'error'
-        : 'completed',
+      getItemStatus(item),
     diff:
       changes
         .map(change => asString(asRecord(change)?.diff).trim())
@@ -96,6 +106,11 @@ function buildFileChangeToolMessage(
     deletions: asNumber(item.deletions),
     timestamp,
   }
+}
+
+function getItemStatus(item: Record<string, unknown>): 'completed' | 'error' {
+  const normalized = asString(item.status).trim().toLowerCase()
+  return normalized.includes('error') || normalized.includes('fail') ? 'error' : 'completed'
 }
 
 function buildCollabToolMessage(
@@ -159,6 +174,33 @@ function buildToolMessage(item: Record<string, unknown>, timestamp: number): Cod
   return null
 }
 
+function buildExploreEntry(item: Record<string, unknown>) {
+  const id = asString(item.id).trim()
+  const type = asString(item.type).trim()
+  if (!id || !type) {
+    return null
+  }
+  const status = getItemStatus(item)
+  if (type === 'fileRead') {
+    return fileReadToExploreEntry(id, asString(item.path).trim() || 'file', status)
+  }
+  if (type === 'webSearch') {
+    return webSearchToExploreEntry(id, asString(item.query).trim() || 'search', status)
+  }
+  if (type === 'mcpToolCall') {
+    return mcpToolCallToExploreEntry(
+      id,
+      asString(item.toolName ?? item.tool ?? item.name).trim() || 'mcp tool',
+      status
+    )
+  }
+  if (type === 'commandExecution') {
+    const command = stringifyCommand(item.command)
+    return commandToExploreEntry(id, command, status)
+  }
+  return null
+}
+
 function buildThreadItemMessage(
   item: Record<string, unknown>,
   timestamp: number
@@ -216,6 +258,27 @@ export function extractThreadFromResumeResponse(
 export function buildCodexMessagesFromThread(thread: Record<string, unknown>): CodexMessageItem[] {
   const turns = Array.isArray(thread.turns) ? thread.turns : []
   const messages: CodexMessageItem[] = []
+  let pendingExploreEntries: Array<ReturnType<typeof buildExploreEntry>> = []
+  let pendingExploreTimestamp = 0
+
+  const flushExploreEntries = () => {
+    const entries = pendingExploreEntries.filter(
+      (entry): entry is ExploreEntry => entry !== null
+    )
+    if (entries.length === 0) {
+      pendingExploreEntries = []
+      return
+    }
+    messages.push({
+      id: `resume-explore:${messages.length}:${pendingExploreTimestamp}`,
+      kind: 'explore',
+      status: 'explored',
+      entries,
+      timestamp: pendingExploreTimestamp,
+    })
+    pendingExploreEntries = []
+  }
+
   turns.forEach((turn, turnIndex) => {
     const turnRecord = asRecord(turn)
     const turnItems = Array.isArray(turnRecord?.items) ? turnRecord?.items : []
@@ -227,11 +290,24 @@ export function buildCodexMessagesFromThread(thread: Record<string, unknown>): C
           turnRecord?.started_at
       ) ?? turnIndex
     turnItems.forEach((item, itemIndex) => {
-      const converted = buildThreadItemMessage(asRecord(item) ?? {}, timestamp + itemIndex)
+      const itemRecord = asRecord(item) ?? {}
+      const itemTimestamp = timestamp + itemIndex
+      const exploreEntry = buildExploreEntry(itemRecord)
+      if (exploreEntry) {
+        if (pendingExploreEntries.length === 0) {
+          pendingExploreTimestamp = itemTimestamp
+        }
+        pendingExploreEntries.push(exploreEntry)
+        return
+      }
+      flushExploreEntries()
+      const converted = buildThreadItemMessage(itemRecord, itemTimestamp)
       if (converted) {
         messages.push(converted)
       }
     })
+    flushExploreEntries()
   })
+  flushExploreEntries()
   return messages
 }

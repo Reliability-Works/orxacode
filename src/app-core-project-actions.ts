@@ -8,7 +8,6 @@ import type {
 import type { SkillPromptTarget, SkillUseModalState } from './components/GlobalModalsHost'
 import type {
   AppShellConfirmDialogRequest,
-  AppShellTextInputDialogState,
 } from './hooks/useAppShellDialogs'
 import type { SetMessages, SetProjectData } from './hooks/useWorkspaceState-store'
 import type { SidebarMode } from './hooks/useWorkspaceState-shared'
@@ -54,12 +53,8 @@ type DirectoryActionsArgs = SharedProjectActionsArgs & {
   setTerminalOpen: Dispatch<SetStateAction<boolean>>
 }
 
-type WorktreeActionsArgs = {
-  bootstrap: () => Promise<void>
-  selectProject: (directory: string) => Promise<unknown>
-  setActiveSessionID: (value: string | undefined) => void
+type UtilityActionsArgs = {
   setStatusLine: (message: string) => void
-  setTextInputDialog: Dispatch<SetStateAction<AppShellTextInputDialogState | null>>
 }
 
 function useSkillActions({
@@ -403,12 +398,8 @@ function useRemoveDirectoryAction({
 }
 
 function useUtilityActions({
-  bootstrap,
-  selectProject,
-  setActiveSessionID,
   setStatusLine,
-  setTextInputDialog,
-}: WorktreeActionsArgs) {
+}: UtilityActionsArgs) {
   const copyProjectPath = useCallback(
     async (directory: string) => {
       try {
@@ -421,44 +412,7 @@ function useUtilityActions({
     [setStatusLine]
   )
 
-  const createWorktreeSession = useCallback(
-    (directory: string, sessionID: string, currentTitle: string) => {
-      const suggested = currentTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 32)
-      setTextInputDialog({
-        title: 'New worktree name',
-        defaultValue: suggested || 'feature',
-        placeholder: 'feature/my-worktree',
-        confirmLabel: 'Create',
-        validate: value => (!value.trim() ? 'Worktree name is required' : null),
-        onConfirm: async value => {
-          const nameInput = value.trim()
-          if (!nameInput) {
-            return
-          }
-          try {
-            const result = await window.orxa.opencode.createWorktreeSession(
-              directory,
-              sessionID,
-              nameInput || undefined
-            )
-            await bootstrap()
-            await selectProject(result.worktree.directory)
-            setActiveSessionID(result.session.id)
-            setStatusLine(`Worktree session created: ${result.worktree.name}`)
-          } catch (error) {
-            setStatusLine(error instanceof Error ? error.message : String(error))
-          }
-        },
-      })
-    },
-    [bootstrap, selectProject, setActiveSessionID, setStatusLine, setTextInputDialog]
-  )
-
-  return { copyProjectPath, createWorktreeSession }
+  return { copyProjectPath }
 }
 
 export function useAppCoreProjectActions(args: UseAppCoreProjectActionsArgs) {
@@ -475,4 +429,4 @@ export function useAppCoreProjectActions(args: UseAppCoreProjectActionsArgs) {
 
 type UseAppCoreProjectActionsArgs = SkillActionsArgs &
   DirectoryActionsArgs &
-  WorktreeActionsArgs
+  UtilityActionsArgs

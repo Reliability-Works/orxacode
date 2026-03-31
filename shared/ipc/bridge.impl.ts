@@ -77,10 +77,17 @@ import type {
   AppDiagnosticInput,
 } from './app'
 import type {
+  CreateWorkspaceWorktreeInput,
+  WorkspaceWorktree,
+  WorkspaceWorktreeOpenResult,
+} from './worktrees'
+import type {
   ClaudeChatApprovalDecision,
+  ClaudeBrowserSessionSummary,
   ClaudeChatHealthStatus,
   ClaudeChatHistoryMessage,
   ClaudeChatModelEntry,
+  ClaudeResumeProviderSessionResult,
   ClaudeChatState,
   ClaudeChatTurnOptions,
 } from './claude-chat'
@@ -94,6 +101,7 @@ import type {
   CodexState,
   CodexThreadRuntime,
   CodexThread,
+  CodexWorkspaceThreadEntry,
   CodexUpdateResult,
 } from './codex'
 import type {
@@ -144,6 +152,12 @@ export interface OrxaBridge {
     attach: (profileID: string) => Promise<RuntimeState>
     startLocal: (profileID: string) => Promise<RuntimeState>
     stopLocal: () => Promise<RuntimeState>
+  }
+  worktrees: {
+    list: (workspaceDir: string) => Promise<WorkspaceWorktree[]>
+    create: (input: CreateWorkspaceWorktreeInput) => Promise<WorkspaceWorktree>
+    open: (directory: string, target: OpenDirectoryTarget) => Promise<WorkspaceWorktreeOpenResult>
+    delete: (workspaceDir: string, directory: string) => Promise<boolean>
   }
   opencode: {
     bootstrap: () => Promise<GlobalBootstrap>
@@ -307,6 +321,11 @@ export interface OrxaBridge {
       sessionId: string,
       directory?: string
     ) => Promise<ClaudeChatHistoryMessage[]>
+    listSessions: () => Promise<ClaudeBrowserSessionSummary[]>
+    resumeProviderSession: (
+      providerThreadId: string,
+      directory: string
+    ) => Promise<ClaudeResumeProviderSessionResult>
     renameProviderSession: (sessionId: string, title: string, directory?: string) => Promise<void>
     archiveSession: (sessionKey: string) => Promise<void>
     archiveProviderSession: (sessionId: string, directory?: string) => Promise<void>
@@ -357,6 +376,7 @@ export interface OrxaBridge {
       approvalPolicy?: string
       sandbox?: string
     }) => Promise<CodexThread>
+    listWorkspaceThreads: (workspaceRoot: string) => Promise<CodexWorkspaceThreadEntry[]>
     listThreads: (options?: {
       cursor?: string | null
       limit?: number

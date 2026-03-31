@@ -7,6 +7,7 @@ import { AnthropicLogo, CanvasLogo, OpenAILogo, OpenCodeLogo } from './ProviderL
 
 type SessionListItem = {
   id: string
+  directory?: string
   title?: string
   slug: string
   time: {
@@ -36,6 +37,7 @@ export type WorkspaceSidebarProjectItemProps = {
   getSessionIndicator: WorkspaceSidebarViewProps['getSessionIndicator']
   selectProject: WorkspaceSidebarViewProps['selectProject']
   createSession: WorkspaceSidebarViewProps['createSession']
+  openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
   openSession: WorkspaceSidebarViewProps['openSession']
   togglePinSession: WorkspaceSidebarViewProps['togglePinSession']
   archiveSession: WorkspaceSidebarViewProps['archiveSession']
@@ -115,6 +117,7 @@ function WorkspaceProjectHeader({
   setCollapsedProjects,
   setPickerOpenForProject,
   createSession,
+  openClaudeSessionBrowser,
 }: {
   isActiveProject: boolean
   isExpanded: boolean
@@ -126,6 +129,7 @@ function WorkspaceProjectHeader({
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>
   setPickerOpenForProject: Dispatch<SetStateAction<string | null>>
   createSession: WorkspaceSidebarViewProps['createSession']
+  openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
 }) {
   return (
     <div className="project-item-header">
@@ -181,6 +185,10 @@ function WorkspaceProjectHeader({
             setPickerOpenForProject(null)
             void createSession(project.worktree, sessionType)
           }}
+          onBrowseClaudeSessions={() => {
+            setPickerOpenForProject(null)
+            openClaudeSessionBrowser(project.worktree)
+          }}
           onClose={() => setPickerOpenForProject(null)}
         />
       </div>
@@ -223,15 +231,16 @@ function WorkspaceProjectSessionList({
     <div className="project-session-list">
       {visibleSessions.length === 0 ? <p>No sessions yet</p> : null}
       {displayedSessions.map(session => {
+        const sessionDirectory = session.directory ?? projectWorktree
         const sessionTitle =
-          getSessionTitle(session.id, projectWorktree, session.title ?? session.slug) ??
+          getSessionTitle(session.id, sessionDirectory, session.title ?? session.slug) ??
           session.title ??
           session.slug
         return (
           <WorkspaceSessionRow
-            key={`${projectWorktree}:${session.id}`}
+            key={`${sessionDirectory}:${session.id}`}
             now={now}
-            directory={projectWorktree}
+            projectDirectory={projectWorktree}
             session={session}
             sessionTitle={sessionTitle}
             activeSessionID={activeSessionID}
@@ -256,7 +265,7 @@ function WorkspaceProjectSessionList({
 
 function WorkspaceSessionRow({
   now,
-  directory,
+  projectDirectory,
   session,
   sessionTitle,
   activeSessionID,
@@ -269,7 +278,7 @@ function WorkspaceSessionRow({
   openSessionContextMenu,
 }: {
   now: number
-  directory: string
+  projectDirectory: string
   session: SessionListItem
   sessionTitle: string
   activeSessionID?: string
@@ -281,15 +290,18 @@ function WorkspaceSessionRow({
   togglePinSession: WorkspaceSidebarViewProps['togglePinSession']
   openSessionContextMenu: WorkspaceSidebarViewProps['openSessionContextMenu']
 }) {
-  const indicator = getSessionIndicator(session.id, directory, session.time.updated)
-  const sessionType = getSessionType(session.id, directory)
-  const isPinned = (pinnedSessionsByProject?.[directory] ?? []).includes(session.id)
+  const sessionDirectory = session.directory ?? projectDirectory
+  const indicator = getSessionIndicator(session.id, sessionDirectory, session.time.updated)
+  const sessionType = getSessionType(session.id, sessionDirectory)
+  const isPinned = (pinnedSessionsByProject?.[projectDirectory] ?? []).includes(session.id)
   const sessionAge = formatSessionAge(now, session.time.created)
 
   return (
     <div
       className={`workspace-session-row ${session.id === activeSessionID ? 'active' : ''}`.trim()}
-      onContextMenu={event => openSessionContextMenu(event, directory, session.id, sessionTitle)}
+      onContextMenu={event =>
+        openSessionContextMenu(event, sessionDirectory, session.id, sessionTitle)
+      }
     >
       <span className="workspace-session-row-pin-slot">
         <button
@@ -299,7 +311,7 @@ function WorkspaceSessionRow({
           title={isPinned ? 'Unpin session' : 'Pin session'}
           onClick={event => {
             event.stopPropagation()
-            togglePinSession(directory, session.id)
+            togglePinSession(projectDirectory, session.id)
           }}
         >
           <Pin size={11} aria-hidden="true" />
@@ -312,7 +324,7 @@ function WorkspaceSessionRow({
             ? 'active workspace-session-row-main-button'
             : 'workspace-session-row-main-button'
         }
-        onClick={() => void openSession(directory, session.id)}
+        onClick={() => void openSession(sessionDirectory, session.id)}
         title={sessionTitle}
       >
         <span className="workspace-session-row-leading" aria-hidden="true">
@@ -338,7 +350,7 @@ function WorkspaceSessionRow({
             title="Archive session"
             onClick={event => {
               event.stopPropagation()
-              void archiveSession(directory, session.id)
+              void archiveSession(sessionDirectory, session.id)
             }}
           >
             <Archive size={11} aria-hidden="true" />
@@ -366,6 +378,7 @@ export function WorkspaceProjectItem({
   getSessionIndicator,
   selectProject,
   createSession,
+  openClaudeSessionBrowser,
   openSession,
   togglePinSession,
   archiveSession,
@@ -403,6 +416,7 @@ export function WorkspaceProjectItem({
         setCollapsedProjects={setCollapsedProjects}
         setPickerOpenForProject={setPickerOpenForProject}
         createSession={createSession}
+        openClaudeSessionBrowser={openClaudeSessionBrowser}
       />
       {isExpanded ? (
         <WorkspaceProjectSessionList

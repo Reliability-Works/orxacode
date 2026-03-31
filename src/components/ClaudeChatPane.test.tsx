@@ -8,13 +8,19 @@ const startTurnMock = vi.fn()
 const archiveProviderSessionMock = vi.fn()
 const loadSubagentMessagesMock = vi.fn(async () => [])
 const onTitleChangeMock = vi.fn()
+const approveActionMock = vi.fn(async () => undefined)
 const pickImageMock = vi.fn<() => Promise<ImageSelection | undefined>>(async () => undefined)
 let mockSubagents: ClaudeChatSubagentState[] = []
+let pendingApprovalMock: {
+  id: string
+  reason: string
+  command?: string
+} | null = null
 
 vi.mock('../hooks/useClaudeChatSession', () => ({
   useClaudeChatSession: () => ({
     messages: [],
-    pendingApproval: null,
+    pendingApproval: pendingApprovalMock,
     pendingUserInput: null,
     isStreaming: false,
     subagents: mockSubagents,
@@ -30,7 +36,7 @@ vi.mock('../hooks/useClaudeChatSession', () => ({
     ],
     startTurn: startTurnMock,
     interruptTurn: vi.fn(),
-    approveAction: vi.fn(),
+    approveAction: approveActionMock,
     respondToUserInput: vi.fn(),
     archiveProviderSession: archiveProviderSessionMock,
     loadSubagentMessages: loadSubagentMessagesMock,
@@ -45,13 +51,13 @@ vi.mock('./chat/UnifiedTimelineRow', () => ({
   UnifiedTimelineRowView: () => null,
 }))
 
-function renderClaudeChatPane() {
+function renderClaudeChatPane(permissionMode: 'ask-write' | 'yolo-write' = 'ask-write') {
   return render(
     <ClaudeChatPane
       directory="/tmp/project"
       sessionStorageKey="session-1"
       onTitleChange={onTitleChangeMock}
-      permissionMode="ask-write"
+      permissionMode={permissionMode}
       onPermissionModeChange={vi.fn()}
       branchMenuOpen={false}
       setBranchMenuOpen={vi.fn()}
@@ -196,6 +202,23 @@ function registerClaudeAttachmentTests() {
   })
 }
 
+function registerClaudePermissionTests() {
+  it('auto-approves Claude permissions in yolo mode and hides the permission dock', async () => {
+    pendingApprovalMock = {
+      id: 'approval-1',
+      reason: 'WebFetch: https://example.com',
+      command: 'curl https://example.com',
+    }
+
+    renderClaudeChatPane('yolo-write')
+
+    await waitFor(() => {
+      expect(approveActionMock).toHaveBeenCalledWith('approval-1', 'acceptForSession')
+    })
+    expect(screen.queryByText('WebFetch: https://example.com')).not.toBeInTheDocument()
+  })
+}
+
 describe('ClaudeChatPane', () => {
   beforeEach(() => {
     startTurnMock.mockReset()
@@ -203,9 +226,11 @@ describe('ClaudeChatPane', () => {
     loadSubagentMessagesMock.mockReset()
     loadSubagentMessagesMock.mockResolvedValue([])
     onTitleChangeMock.mockReset()
+    approveActionMock.mockReset()
     pickImageMock.mockReset()
     pickImageMock.mockResolvedValue(undefined)
     mockSubagents = []
+    pendingApprovalMock = null
     window.orxa = {
       opencode: {
         pickImage: pickImageMock,
@@ -217,4 +242,5 @@ describe('ClaudeChatPane', () => {
   registerClaudeBackgroundArchiveTests()
   registerClaudeBackgroundPollingTests()
   registerClaudeAttachmentTests()
+  registerClaudePermissionTests()
 })

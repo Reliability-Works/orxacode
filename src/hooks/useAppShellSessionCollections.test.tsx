@@ -9,6 +9,7 @@ function resetAppShellSessionCollectionsState() {
     codexSessions: {},
     claudeSessions: {},
     claudeChatSessions: {},
+    workspaceRootByDirectory: {},
     sessionReadTimestamps: {},
     projectDataByDirectory: {},
   })
@@ -19,6 +20,11 @@ describe('useAppShellSessionCollections', () => {
     resetAppShellSessionCollectionsState()
   })
 
+  registerBackgroundSessionHidingTest()
+  registerWorkspaceDetailAggregationTest()
+})
+
+function registerBackgroundSessionHidingTest() {
   it('hides live background Claude Chat session ids from the active project session list', () => {
     const now = Date.now()
     const projectData = {
@@ -111,4 +117,95 @@ describe('useAppShellSessionCollections', () => {
       expect.arrayContaining(['session-bg-1', 'session-bg-2'])
     )
   })
-})
+}
+
+function registerWorkspaceDetailAggregationTest() {
+  it('aggregates root-workspace and worktree sessions into the workspace detail collection', () => {
+    const now = Date.now()
+    const rootProjectData = {
+      directory: '/repo/project',
+      path: {} as never,
+      sessions: [
+        {
+          id: 'session-root',
+          projectID: 'proj-root',
+          directory: '/repo/project',
+          slug: 'opencode',
+          title: 'Root Session',
+          version: '1',
+          time: { created: now - 10, updated: now - 5 },
+        },
+      ],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {} as never,
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }
+    const worktreeProjectData = {
+      ...rootProjectData,
+      directory: '/repo/project/.worktrees/feature-a',
+      sessions: [
+        {
+          id: 'session-worktree',
+          projectID: 'proj-worktree',
+          directory: '/repo/project/.worktrees/feature-a',
+          slug: 'codex',
+          title: 'Feature Session',
+          version: '1',
+          time: { created: now - 3, updated: now - 1 },
+        },
+      ],
+    }
+
+    useUnifiedRuntimeStore.setState(state => ({
+      ...state,
+      workspaceRootByDirectory: {
+        '/repo/project': '/repo/project',
+        '/repo/project/.worktrees/feature-a': '/repo/project',
+      },
+    }))
+
+    const { result } = renderHook(() =>
+      useAppShellSessionCollections({
+        projectData: worktreeProjectData,
+        projectDataByDirectory: {
+          '/repo/project': rootProjectData,
+        },
+        activeProjectDir: '/repo/project/.worktrees/feature-a',
+        activeSessionID: 'session-worktree',
+        projectCacheVersion: 0,
+        pinnedSessions: {},
+        archivedBackgroundAgentIds: {},
+        hiddenBackgroundSessionIdsByProject: {},
+        backgroundSessionDescriptors: [],
+        getSessionType: sessionID =>
+          sessionID === 'session-worktree' ? 'codex' : 'opencode',
+        normalizePresentationProvider: sessionType =>
+          sessionType === 'codex' || sessionType === 'claude' || sessionType === 'claude-chat'
+            ? sessionType
+            : sessionType
+              ? 'opencode'
+              : undefined,
+      })
+    )
+
+    expect(result.current.workspaceDetailDirectory).toBe('/repo/project')
+    expect(result.current.workspaceDetailSessions).toEqual([
+      expect.objectContaining({
+        id: 'session-worktree',
+        directory: '/repo/project/.worktrees/feature-a',
+      }),
+      expect.objectContaining({
+        id: 'session-root',
+        directory: '/repo/project',
+      }),
+    ])
+  })
+}

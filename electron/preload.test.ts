@@ -39,7 +39,8 @@ async function loadBridge() {
 type OrxaBridge = {
   app: { openExternal: (url: string) => Promise<unknown>; listDiagnostics: (limit?: number) => Promise<unknown>; reportRendererDiagnostic: (input: unknown) => Promise<unknown> }
   opencode: { getArtifactRetentionPolicy: () => Promise<unknown>; setArtifactRetentionPolicy: (input: unknown) => Promise<unknown>; pruneArtifactsNow: (workspace?: string) => Promise<unknown>; exportArtifactBundle: (input: unknown) => Promise<unknown> }
-  codex: { resumeThread: (threadId: string) => Promise<unknown>; archiveThreadTree: (threadId: string) => Promise<unknown>; setThreadName: (threadId: string, name: string) => Promise<unknown>; generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>; steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>; interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown> }
+  claudeChat: { listSessions: () => Promise<unknown>; resumeProviderSession: (providerThreadId: string, directory: string) => Promise<unknown> }
+  codex: { listWorkspaceThreads: (workspaceRoot: string) => Promise<unknown>; resumeThread: (threadId: string) => Promise<unknown>; archiveThreadTree: (threadId: string) => Promise<unknown>; setThreadName: (threadId: string, name: string) => Promise<unknown>; generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>; steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>; interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown> }
   browser: { getState: () => Promise<unknown>; setVisible: (visible: boolean) => Promise<unknown>; setBounds: (bounds: unknown) => Promise<unknown>; openTab: (url?: string, activate?: boolean) => Promise<unknown>; closeTab: (tabID?: string) => Promise<unknown>; switchTab: (tabID: string) => Promise<unknown>; navigate: (url: string, tabID?: string) => Promise<unknown>; back: (tabID?: string) => Promise<unknown>; forward: (tabID?: string) => Promise<unknown>; reload: (tabID?: string) => Promise<unknown>; listHistory: (limit?: number) => Promise<unknown>; clearHistory: () => Promise<unknown>; performAgentAction: (request: unknown) => Promise<unknown> }
 }
 
@@ -199,6 +200,12 @@ describe('preload codex bridge', () => {
     const bridge = await loadBridge()
     electronMocks.invoke.mockResolvedValue(undefined)
 
+    await bridge.codex.listWorkspaceThreads('/repo')
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+      IPC.codexListWorkspaceThreads,
+      '/repo'
+    )
+
     await bridge.codex.archiveThreadTree('thread-1')
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexArchiveThreadTree, 'thread-1')
 
@@ -237,6 +244,27 @@ describe('preload codex bridge', () => {
       IPC.codexInterruptThreadTree,
       'thread-1',
       'turn-1'
+    )
+  })
+})
+
+describe('preload claude chat bridge', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('wires session browser actions to expected IPC channels', async () => {
+    const bridge = await loadBridge()
+    electronMocks.invoke.mockResolvedValue(undefined)
+
+    await bridge.claudeChat.listSessions()
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.claudeChatListSessions)
+
+    await bridge.claudeChat.resumeProviderSession('provider-thread-1', '/repo')
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+      IPC.claudeChatResumeProviderSession,
+      'provider-thread-1',
+      '/repo'
     )
   })
 })

@@ -3,23 +3,28 @@ import type {
   PermissionRequest,
   QuestionAnswer,
   QuestionRequest,
-  Session,
 } from '@opencode-ai/sdk/v2/client'
 import type {
+  ClaudeBrowserSessionSummary,
   ProjectListItem,
   RuntimeDependencyReport,
   RuntimeProfile,
   RuntimeProfileInput,
   RuntimeState,
   SkillEntry,
+  WorkspaceWorktree,
+  CodexWorkspaceThreadEntry,
 } from '@shared/ipc'
 import type { CommitNextStep } from '../hooks/useGitPanel'
+import type { WorkspaceDetailSessionEntry } from '../hooks/useAppShellSessionCollections'
 import type { PermissionMode } from '../types/app'
+import type { SessionType } from '../types/canvas'
 import {
-  BranchCreateModal,
   DependencyModal,
-  SessionListModal,
+  WorkspaceDetailModal,
 } from './global-modals-host-sections'
+import { BranchCreateModal } from './BranchCreateModal'
+import { ClaudeSessionBrowserModal } from './ClaudeSessionBrowserModal'
 import {
   CommitFlowModal,
   CommitModal,
@@ -46,6 +51,7 @@ export type CommitFlowState = {
 
 export type GlobalModalsHostProps = {
   activeProjectDir?: string
+  workspaceDetailDirectory?: string
   permissionMode: PermissionMode
   dependencyReport: RuntimeDependencyReport | null
   dependencyModalOpen: boolean
@@ -59,7 +65,24 @@ export type GlobalModalsHostProps = {
   rejectQuestion: () => void | Promise<void>
   allSessionsModalOpen: boolean
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>
-  sessions: Session[]
+  claudeSessionBrowserOpen: boolean
+  setClaudeSessionBrowserOpen: Dispatch<SetStateAction<boolean>>
+  claudeBrowserSessions: ClaudeBrowserSessionSummary[]
+  claudeBrowserSessionsLoading: boolean
+  selectedClaudeBrowserWorkspace: string
+  setSelectedClaudeBrowserWorkspace: (directory: string) => void
+  openClaudeBrowserSession: (session: ClaudeBrowserSessionSummary) => Promise<void>
+  sessions: WorkspaceDetailSessionEntry[]
+  workspaceWorktrees: WorkspaceWorktree[]
+  workspaceWorktreesLoading: boolean
+  workspaceCodexThreads: CodexWorkspaceThreadEntry[]
+  selectedWorktreeDirectory: string
+  setSelectedWorktreeDirectory: (directory: string) => void
+  createWorkspaceWorktree: (name: string) => Promise<void>
+  openWorkspaceWorktree: (directory: string) => Promise<void>
+  deleteWorkspaceWorktree: (directory: string) => Promise<void>
+  launchSessionInWorktree: (directory: string, sessionType: SessionType) => Promise<void>
+  openWorkspaceCodexThread: (directory: string, threadId: string, title?: string) => Promise<void>
   getSessionStatusType: (sessionID: string, directory?: string) => string
   activeSessionID?: string
   openSession: (directory: string, sessionID: string) => void | Promise<void>
@@ -137,6 +160,43 @@ function GlobalModalsContent({
 }) {
   return (
     <>
+      <WorkspaceAndCommitModals
+        props={props}
+        dependencyReport={dependencyReport}
+        copiedDependencyKey={copiedDependencyKey}
+        copyDependencyCommand={copyDependencyCommand}
+        dependencyRequiredMissing={dependencyRequiredMissing}
+        closeDependencyModal={closeDependencyModal}
+      />
+      <SkillAndProfileModals
+        props={props}
+        skillUseModal={skillUseModal}
+        skillTargetSelectorOpen={skillTargetSelectorOpen}
+        setSkillTargetSelectorOpen={setSkillTargetSelectorOpen}
+        skillPreparing={skillPreparing}
+        submitSkillPrompt={submitSkillPrompt}
+      />
+    </>
+  )
+}
+
+function WorkspaceAndCommitModals({
+  props,
+  dependencyReport,
+  copiedDependencyKey,
+  copyDependencyCommand,
+  dependencyRequiredMissing,
+  closeDependencyModal,
+}: {
+  props: Omit<GlobalModalsHostProps, 'dependencyReport' | 'setDependencyModalOpen' | 'applySkillToProject' | 'skillUseModal'>
+  dependencyReport: RuntimeDependencyReport | null
+  copiedDependencyKey: string | null
+  copyDependencyCommand: (installCommand: string, key: string) => Promise<void>
+  dependencyRequiredMissing: boolean
+  closeDependencyModal: () => void
+}) {
+  return (
+    <>
       <DependencyModal
         dependencyModalOpen={props.dependencyModalOpen}
         dependencyReport={dependencyReport}
@@ -146,14 +206,34 @@ function GlobalModalsContent({
         closeDependencyModal={closeDependencyModal}
         onCheckDependencies={props.onCheckDependencies}
       />
-      <SessionListModal
+      <WorkspaceDetailModal
         allSessionsModalOpen={props.allSessionsModalOpen}
         setAllSessionsModalOpen={props.setAllSessionsModalOpen}
-        activeProjectDir={props.activeProjectDir}
+        workspaceDetailDirectory={props.workspaceDetailDirectory}
         sessions={props.sessions}
+        workspaceWorktrees={props.workspaceWorktrees}
+        workspaceWorktreesLoading={props.workspaceWorktreesLoading}
+        workspaceCodexThreads={props.workspaceCodexThreads}
+        selectedWorktreeDirectory={props.selectedWorktreeDirectory}
+        setSelectedWorktreeDirectory={props.setSelectedWorktreeDirectory}
+        createWorkspaceWorktree={props.createWorkspaceWorktree}
+        openWorkspaceWorktree={props.openWorkspaceWorktree}
+        deleteWorkspaceWorktree={props.deleteWorkspaceWorktree}
+        launchSessionInWorktree={props.launchSessionInWorktree}
+        openWorkspaceCodexThread={props.openWorkspaceCodexThread}
         getSessionStatusType={props.getSessionStatusType}
         activeSessionID={props.activeSessionID}
         openSession={props.openSession}
+      />
+      <ClaudeSessionBrowserModal
+        isOpen={props.claudeSessionBrowserOpen}
+        setIsOpen={props.setClaudeSessionBrowserOpen}
+        sessions={props.claudeBrowserSessions}
+        loading={props.claudeBrowserSessionsLoading}
+        projects={props.projects}
+        selectedWorkspaceDirectory={props.selectedClaudeBrowserWorkspace}
+        setSelectedWorkspaceDirectory={props.setSelectedClaudeBrowserWorkspace}
+        onOpenSession={props.openClaudeBrowserSession}
       />
       <BranchCreateModal
         branchCreateModalOpen={props.branchCreateModalOpen}
@@ -185,7 +265,31 @@ function GlobalModalsContent({
         commitBaseBranchLoading={props.commitBaseBranchLoading}
         submitCommit={props.submitCommit}
       />
-      <CommitFlowModal commitFlowState={props.commitFlowState} dismissCommitFlowState={props.dismissCommitFlowState} />
+      <CommitFlowModal
+        commitFlowState={props.commitFlowState}
+        dismissCommitFlowState={props.dismissCommitFlowState}
+      />
+    </>
+  )
+}
+
+function SkillAndProfileModals({
+  props,
+  skillUseModal,
+  skillTargetSelectorOpen,
+  setSkillTargetSelectorOpen,
+  skillPreparing,
+  submitSkillPrompt,
+}: {
+  props: Omit<GlobalModalsHostProps, 'dependencyReport' | 'setDependencyModalOpen' | 'applySkillToProject' | 'skillUseModal'>
+  skillUseModal: SkillUseModalState
+  skillTargetSelectorOpen: boolean
+  setSkillTargetSelectorOpen: Dispatch<SetStateAction<boolean>>
+  skillPreparing: boolean
+  submitSkillPrompt: (sessionTarget: SkillPromptTarget) => Promise<void>
+}) {
+  return (
+    <>
       <SkillUseModalSection
         skillUseModal={skillUseModal}
         setSkillUseModal={props.setSkillUseModal}

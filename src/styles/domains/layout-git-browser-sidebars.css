@@ -1236,6 +1236,19 @@
   font-size: 10px;
 }
 
+.titlebar-worktree-btn {
+  min-width: 0;
+  justify-content: flex-start;
+  padding-inline: 10px;
+}
+
+.titlebar-worktree-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .titlebar-commit-btn {
   background: var(--accent-green) !important;
   color: #0c0c0c !important;

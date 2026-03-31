@@ -199,6 +199,24 @@ function createDefaultRuntimeApi() {
   }
 }
 
+function createDefaultWorktreesApi() {
+  return {
+    list: mockAsync([]),
+    create: mockAsync({
+      id: '/tmp/project/.worktrees/feature-test',
+      name: 'feature-test',
+      directory: '/tmp/project/.worktrees/feature-test',
+      repoRoot: '/tmp/project',
+      branch: 'feature-test',
+      isMain: false,
+      locked: false,
+      prunable: false,
+    }),
+    open: mockAsync({ target: 'zed', ok: true, detail: 'opened' }),
+    delete: mockAsync(true),
+  }
+}
+
 function createDefaultOpencodeApi(checkDependenciesMock: AsyncMock) {
   const opencodeMock = {
     bootstrap: mockAsync({ projects: [], runtime: { status: 'disconnected', managedServer: false } }),
@@ -283,9 +301,63 @@ function createDefaultClaudeChatApi() {
     approve: mockAsync(undefined),
     respondToUserInput: mockAsync(undefined),
     getSessionMessages: mockAsync([]),
+    listSessions: mockAsync([]),
+    resumeProviderSession: mockAsync({
+      providerThreadId: 'claude-thread-1',
+      sessionKey: '/tmp/project::claude-thread-1',
+      sessionID: 'claude-thread-1',
+      directory: '/tmp/project',
+      title: 'Recovered Claude Session',
+    }),
     renameProviderSession: mockAsync(undefined),
     archiveSession: mockAsync(undefined),
     archiveProviderSession: mockAsync(undefined),
+  }
+}
+
+function createDefaultCodexApi() {
+  return {
+    doctor: mockAsync({ ok: true, issues: [] }),
+    update: mockAsync({ ok: true }),
+    listModels: mockAsync([]),
+    listCollaborationModes: mockAsync([]),
+    start: mockAsync({ status: 'disconnected' }),
+    stop: mockAsync({ status: 'disconnected' }),
+    getState: mockAsync({ status: 'disconnected' }),
+    startThread: mockAsync({
+      id: 'thr-1',
+      preview: 'Test thread',
+      modelProvider: 'openai',
+      createdAt: Date.now(),
+      status: { type: 'idle' as const },
+    }),
+    listWorkspaceThreads: mockAsync([]),
+    listThreads: mockAsync({ threads: [], nextCursor: undefined }),
+    getThreadRuntime: mockAsync({
+      thread: {
+        id: 'thr-1',
+        preview: 'Test thread',
+        modelProvider: 'openai',
+        createdAt: Date.now(),
+        status: { type: 'idle' as const },
+      },
+      childThreads: [],
+    }),
+    resumeThread: mockAsync({}),
+    archiveThreadTree: mockAsync(undefined),
+    setThreadName: mockAsync(undefined),
+    generateRunMetadata: mockAsync({
+      cwd: '/tmp/project',
+      prompt: 'Test prompt',
+      title: 'Test thread',
+    }),
+    startTurn: mockAsync(undefined),
+    steerTurn: mockAsync(undefined),
+    approve: mockAsync(undefined),
+    deny: mockAsync(undefined),
+    respondToUserInput: mockAsync(undefined),
+    interruptTurn: mockAsync(undefined),
+    interruptThreadTree: mockAsync(undefined),
   }
 }
 
@@ -405,7 +477,9 @@ export function installAppTestEnvironment() {
       app: createDefaultAppApi(),
       updates: createDefaultUpdatesApi(),
       runtime: createDefaultRuntimeApi(),
+      worktrees: createDefaultWorktreesApi(),
       opencode: createDefaultOpencodeApi(checkDependenciesMock as AsyncMock),
+      codex: createDefaultCodexApi(),
       claudeChat: createDefaultClaudeChatApi(),
       kanban: createDefaultKanbanApi(),
       terminal: createDefaultTerminalApi(),

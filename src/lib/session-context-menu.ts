@@ -1,6 +1,6 @@
 import type { SessionType } from '../types/canvas'
 
-export type SessionContextAction = 'archive' | 'copy_id' | 'create_worktree' | 'rename'
+export type SessionContextAction = 'archive' | 'copy_id' | 'rename'
 
 export function getSessionContextActions(
   sessionType: SessionType | undefined
@@ -15,7 +15,7 @@ export function getSessionContextActions(
       return ['archive', 'rename']
     case 'opencode':
     default:
-      return ['archive', 'copy_id', 'create_worktree', 'rename']
+      return ['archive', 'copy_id', 'rename']
   }
 }
 

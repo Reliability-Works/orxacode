@@ -55,6 +55,7 @@ type BuildAppSessionContentPropsArgs = {
   activeSessionKey: string | null
   setBrowserModeBySession: Dispatch<SetStateAction<Record<string, boolean>>>
   openWorkspaceDashboard: () => void
+  openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   manualSessionTitles: Record<string, boolean>
   openReferencedFile: (reference: string) => Promise<void>
   setBrowserMode: (enabled: boolean) => Promise<void> | void
@@ -163,6 +164,7 @@ function buildWorkspaceLandingProps(args: BuildAppSessionContentPropsArgs) {
   return {
     workspaceName: args.activeProjectDir?.split('/').pop() ?? args.activeProjectDir ?? '',
     onPickSession: (type: SessionType) => void args.createSession(args.activeProjectDir, type),
+    onBrowseClaudeSessions: () => args.openClaudeSessionBrowser(args.activeProjectDir),
   }
 }
 

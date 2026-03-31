@@ -40,6 +40,13 @@ const bridge: OrxaBridge = {
     startLocal: profileID => ipcRenderer.invoke(IPC.runtimeStartLocal, profileID),
     stopLocal: () => ipcRenderer.invoke(IPC.runtimeStopLocal),
   },
+  worktrees: {
+    list: workspaceDir => ipcRenderer.invoke(IPC.worktreesList, workspaceDir),
+    create: input => ipcRenderer.invoke(IPC.worktreesCreate, input),
+    open: (directory, target) => ipcRenderer.invoke(IPC.worktreesOpen, directory, target),
+    delete: (workspaceDir, directory) =>
+      ipcRenderer.invoke(IPC.worktreesDelete, workspaceDir, directory),
+  },
   opencode: {
     bootstrap: () => ipcRenderer.invoke(IPC.opencodeBootstrap),
     checkDependencies: () => ipcRenderer.invoke(IPC.opencodeCheckDependencies),
@@ -189,6 +196,9 @@ const bridge: OrxaBridge = {
       ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
     getSessionMessages: (sessionId, directory) =>
       ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+    listSessions: () => ipcRenderer.invoke(IPC.claudeChatListSessions),
+    resumeProviderSession: (providerThreadId, directory) =>
+      ipcRenderer.invoke(IPC.claudeChatResumeProviderSession, providerThreadId, directory),
     renameProviderSession: (sessionId, title, directory) =>
       ipcRenderer.invoke(IPC.claudeChatRenameProviderSession, sessionId, title, directory),
     archiveSession: sessionKey => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
@@ -329,6 +339,8 @@ const bridge: OrxaBridge = {
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
     startThread: options => ipcRenderer.invoke(IPC.codexStartThread, options),
+    listWorkspaceThreads: workspaceRoot =>
+      ipcRenderer.invoke(IPC.codexListWorkspaceThreads, workspaceRoot),
     listThreads: options => ipcRenderer.invoke(IPC.codexListThreads, options),
     getThreadRuntime: threadId => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
     resumeThread: threadId => ipcRenderer.invoke(IPC.codexResumeThread, threadId),

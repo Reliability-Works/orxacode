@@ -22,7 +22,6 @@ type AppTransientOverlaysProps = {
   getSessionType: (sessionID: string, directory?: string) => SessionType | undefined
   archiveSession: (directory: string, sessionID: string) => Promise<void>
   copySessionID: (directory: string, sessionID: string) => Promise<void>
-  createWorktreeSession: (directory: string, sessionID: string, currentTitle: string) => void
   renameSession: (directory: string, sessionID: string, currentTitle: string) => void
   debugModalOpen: boolean
   setDebugModalOpen: Dispatch<SetStateAction<boolean>>
@@ -41,7 +40,6 @@ function renderContextMenu(props: AppTransientOverlaysProps) {
     changeProjectDirectory,
     contextMenu,
     copySessionID,
-    createWorktreeSession,
     getSessionType,
     removeProjectDirectory,
     renameSession,
@@ -72,7 +70,6 @@ function renderContextMenu(props: AppTransientOverlaysProps) {
             getSessionType,
             archiveSession,
             copySessionID,
-            createWorktreeSession,
             renameSession
           )
         )}
@@ -120,7 +117,6 @@ function renderSessionContextMenu(
   getSessionType: AppTransientOverlaysProps['getSessionType'],
   archiveSession: AppTransientOverlaysProps['archiveSession'],
   copySessionID: AppTransientOverlaysProps['copySessionID'],
-  createWorktreeSession: AppTransientOverlaysProps['createWorktreeSession'],
   renameSession: AppTransientOverlaysProps['renameSession']
 ) {
   const sessionType = getSessionType(contextMenu.sessionID, contextMenu.directory) ?? 'opencode'
@@ -153,18 +149,6 @@ function renderSessionContextMenu(
             : sessionType === 'claude-chat'
               ? 'Copy Claude Thread ID'
               : 'Copy Session ID'}
-        </button>
-      ) : null}
-      {actions.includes('create_worktree') ? (
-        <button
-          type="button"
-          onClick={() => {
-            const { directory, sessionID, title } = contextMenu
-            setContextMenu(null)
-            void createWorktreeSession(directory, sessionID, title)
-          }}
-        >
-          Create Worktree Session
         </button>
       ) : null}
       {actions.includes('rename') ? (

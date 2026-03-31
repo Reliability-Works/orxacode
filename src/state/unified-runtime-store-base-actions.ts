@@ -21,6 +21,9 @@ type UnifiedRuntimeBaseState = Pick<
   | 'pendingSessionId'
   | 'activeProvider'
   | 'projectDataByDirectory'
+  | 'workspaceRootByDirectory'
+  | 'worktreesByWorkspace'
+  | 'selectedWorktreeByWorkspace'
   | 'workspaceMetaByDirectory'
   | 'opencodeSessions'
   | 'codexSessions'
@@ -38,6 +41,9 @@ export function createUnifiedRuntimeBaseState(): UnifiedRuntimeBaseState {
     pendingSessionId: undefined,
     activeProvider: undefined,
     projectDataByDirectory: hydrateProjectDataFromCache(),
+    workspaceRootByDirectory: {},
+    worktreesByWorkspace: {},
+    selectedWorktreeByWorkspace: {},
     workspaceMetaByDirectory: {},
     opencodeSessions: {},
     codexSessions: {},
@@ -64,11 +70,46 @@ type UnifiedRuntimeBaseActions = Pick<
   | 'setPendingSessionId'
   | 'setProjectData'
   | 'removeProjectData'
+  | 'replaceWorkspaceDirectoryAssociations'
+  | 'setWorkspaceRootForDirectory'
+  | 'setWorkspaceWorktrees'
+  | 'setSelectedWorkspaceWorktree'
   | 'setWorkspaceMeta'
   | 'setOpencodeMessages'
   | 'setOpencodeRuntimeSnapshot'
   | 'setOpencodeTodoItems'
   | 'removeOpencodeSession'
+  | 'setCollapsedProject'
+  | 'replaceCollapsedProjects'
+  | 'setSessionReadAt'
+  | 'clearSessionReadAt'
+  | 'markSessionAbortRequestedAt'
+>
+
+type UnifiedRuntimeProjectActions = Pick<
+  UnifiedRuntimeBaseActions,
+  | 'setActiveWorkspaceDirectory'
+  | 'setActiveSession'
+  | 'setPendingSessionId'
+  | 'setProjectData'
+  | 'removeProjectData'
+  | 'replaceWorkspaceDirectoryAssociations'
+  | 'setWorkspaceRootForDirectory'
+  | 'setWorkspaceWorktrees'
+  | 'setSelectedWorkspaceWorktree'
+  | 'setWorkspaceMeta'
+>
+
+type UnifiedRuntimeOpencodeActions = Pick<
+  UnifiedRuntimeBaseActions,
+  | 'setOpencodeMessages'
+  | 'setOpencodeRuntimeSnapshot'
+  | 'setOpencodeTodoItems'
+  | 'removeOpencodeSession'
+>
+
+type UnifiedRuntimeUiActions = Pick<
+  UnifiedRuntimeBaseActions,
   | 'setCollapsedProject'
   | 'replaceCollapsedProjects'
   | 'setSessionReadAt'
@@ -101,6 +142,23 @@ function mergeWorkspaceMeta(
   }
 }
 
+function mergeWorkspaceDirectoryAssociations(
+  current: Record<string, string>,
+  workspaceRoot: string,
+  directories: string[]
+) {
+  const next = { ...current }
+  for (const [directory, root] of Object.entries(next)) {
+    if (root === workspaceRoot && !directories.includes(directory)) {
+      delete next[directory]
+    }
+  }
+  for (const directory of directories) {
+    next[directory] = workspaceRoot
+  }
+  return next
+}
+
 function updateOpencodeSessionState(
   state: UnifiedRuntimeStoreState,
   directory: string,
@@ -125,6 +183,16 @@ function updateOpencodeSessionState(
 
 export function createUnifiedRuntimeBaseActions(set: UnifiedRuntimeStoreSet): UnifiedRuntimeBaseActions {
   return {
+    ...createUnifiedRuntimeProjectActions(set),
+    ...createUnifiedRuntimeOpencodeActions(set),
+    ...createUnifiedRuntimeUiActions(set),
+  }
+}
+
+function createUnifiedRuntimeProjectActions(
+  set: UnifiedRuntimeStoreSet
+): UnifiedRuntimeProjectActions {
+  return {
     setActiveWorkspaceDirectory: directory => set({ activeWorkspaceDirectory: directory }),
     setActiveSession: (sessionID, provider) =>
       set({ activeSessionID: sessionID, activeProvider: provider }),
@@ -143,10 +211,53 @@ export function createUnifiedRuntimeBaseActions(set: UnifiedRuntimeStoreSet): Un
         removeCachedProjectSessions(directory)
         return { projectDataByDirectory: next }
       }),
+    replaceWorkspaceDirectoryAssociations: (workspaceRoot, directories) =>
+      set(state => ({
+        workspaceRootByDirectory: mergeWorkspaceDirectoryAssociations(
+          state.workspaceRootByDirectory,
+          workspaceRoot,
+          directories
+        ),
+      })),
+    setWorkspaceRootForDirectory: (directory, workspaceRoot) =>
+      set(state => {
+        const next = { ...state.workspaceRootByDirectory }
+        if (!workspaceRoot) {
+          delete next[directory]
+        } else {
+          next[directory] = workspaceRoot
+        }
+        return { workspaceRootByDirectory: next }
+      }),
+    setWorkspaceWorktrees: (workspaceRoot, worktrees) =>
+      set(state => ({
+        worktreesByWorkspace: { ...state.worktreesByWorkspace, [workspaceRoot]: worktrees },
+      })),
+    setSelectedWorkspaceWorktree: (workspaceRoot, directory) =>
+      set(state => {
+        const next = { ...state.selectedWorktreeByWorkspace }
+        if (!directory) {
+          delete next[workspaceRoot]
+        } else {
+          next[workspaceRoot] = directory
+        }
+        return { selectedWorktreeByWorkspace: next }
+      }),
     setWorkspaceMeta: (directory, meta) =>
       set(state => ({
-        workspaceMetaByDirectory: mergeWorkspaceMeta(state.workspaceMetaByDirectory, directory, meta),
+        workspaceMetaByDirectory: mergeWorkspaceMeta(
+          state.workspaceMetaByDirectory,
+          directory,
+          meta
+        ),
       })),
+  }
+}
+
+function createUnifiedRuntimeOpencodeActions(
+  set: UnifiedRuntimeStoreSet
+): UnifiedRuntimeOpencodeActions {
+  return {
     setOpencodeMessages: (directory, sessionID, messages) =>
       set(state => {
         setPersistedOpencodeState(buildOpencodeKey(directory, sessionID), { messages })
@@ -180,6 +291,13 @@ export function createUnifiedRuntimeBaseActions(set: UnifiedRuntimeStoreSet): Un
         clearPersistedOpencodeState(key)
         return { opencodeSessions: next }
       }),
+  }
+}
+
+function createUnifiedRuntimeUiActions(
+  set: UnifiedRuntimeStoreSet
+): UnifiedRuntimeUiActions {
+  return {
     setCollapsedProject: (directory, collapsed) =>
       set(state => {
         const next = { ...state.collapsedProjects, [directory]: collapsed }

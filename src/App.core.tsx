@@ -58,11 +58,16 @@ import { useWorkspaceState } from './hooks/useWorkspaceState'
 import { useWorkspaceSessionMetadata } from './hooks/useWorkspaceSessionMetadata'
 import { useWorkspaceSessionMetadataMigration } from './hooks/useWorkspaceSessionMetadataMigration'
 import { useAppShellSessionCollections } from './hooks/useAppShellSessionCollections'
+import { useWorkspaceDetailSurface } from './hooks/useWorkspaceDetailSurface'
+import { useWorkspaceCodexThreads } from './hooks/useWorkspaceCodexThreads'
+import { useClaudeSessionBrowser } from './hooks/useClaudeSessionBrowser'
+import { useWorkspaceShellSurface } from './hooks/useWorkspaceShellSurface'
 import { useAppCoreAwaitingInput } from './app-core-awaiting-input'
 import { useAppCoreBootstrap } from './app-core-bootstrap'
 import { useAppCoreDiagnostics } from './app-core-debug'
 import { useAppCoreBrowser } from './app-core-browser'
 import { createSessionAction } from './app-core-session'
+import { openBoundLocalProviderSessionAction } from './app-core-session'
 import { useAppCoreSidebarResize } from './app-core-sidebar-resize'
 import { useAppCoreTerminal } from './app-core-terminal'
 // TODO: streaming buffer removed — needs reimplementation at the message-part delta
@@ -999,6 +1004,11 @@ export default function App() {
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null)
   const terminalAutoCreateTried = useRef(false)
   const abortActiveSessionRef = useRef<(() => Promise<void>) | null>(null)
+  const workspaceRootByDirectory = useUnifiedRuntimeStore(state => state.workspaceRootByDirectory)
+  const worktreesByWorkspace = useUnifiedRuntimeStore(state => state.worktreesByWorkspace)
+  const setSelectedWorkspaceWorktree = useUnifiedRuntimeStore(
+    state => state.setSelectedWorkspaceWorktree
+  )
 
   useEffect(() => {
     scheduleGitRefreshRef.current = scheduleGitRefresh
@@ -1027,6 +1037,8 @@ export default function App() {
     hiddenSessionIDsByProject,
     sessions,
     cachedSessionsByProject,
+    workspaceDetailDirectory,
+    workspaceDetailSessions,
     getSessionStatusType,
     getSessionIndicator,
   } = useAppShellSessionCollections({
@@ -1856,51 +1868,21 @@ export default function App() {
     isRecoverableSessionError,
   })
 
-  const activeProject = useMemo(
-    () => projects.find(item => item.worktree === activeProjectDir),
-    [projects, activeProjectDir]
-  )
-
-  const filteredProjects = useMemo(() => {
-    const query = projectSearchQuery.trim().toLowerCase()
-    const filtered = projects.filter(project => {
-      const name = (
-        project.name ||
-        project.worktree.split('/').at(-1) ||
-        project.worktree
-      ).toLowerCase()
-      return query ? name.includes(query) : true
-    })
-    const withIndex = filtered.map((project, index) => ({ project, index }))
-    withIndex.sort((left, right) => {
-      const leftName =
-        left.project.name || left.project.worktree.split('/').at(-1) || left.project.worktree
-      const rightName =
-        right.project.name || right.project.worktree.split('/').at(-1) || right.project.worktree
-      if (projectSortMode === 'alpha-asc') {
-        return leftName.localeCompare(rightName)
-      }
-      if (projectSortMode === 'alpha-desc') {
-        return rightName.localeCompare(leftName)
-      }
-      if (projectSortMode === 'recent') {
-        const leftTime = workspaceMetaByDirectory[left.project.worktree]?.lastOpenedAt ?? 0
-        const rightTime = workspaceMetaByDirectory[right.project.worktree]?.lastOpenedAt ?? 0
-        if (rightTime !== leftTime) {
-          return rightTime - leftTime
-        }
-      }
-      if (projectSortMode === 'updated') {
-        const leftTime = workspaceMetaByDirectory[left.project.worktree]?.lastUpdatedAt ?? 0
-        const rightTime = workspaceMetaByDirectory[right.project.worktree]?.lastUpdatedAt ?? 0
-        if (rightTime !== leftTime) {
-          return rightTime - leftTime
-        }
-      }
-      return left.index - right.index
-    })
-    return withIndex.map(item => item.project)
-  }, [projectSearchQuery, projectSortMode, projects, workspaceMetaByDirectory])
+  const {
+    activeProject,
+    activeWorkspaceWorktree,
+    filteredProjects,
+    sidebarActiveProjectDir,
+  } = useWorkspaceShellSurface({
+    projects,
+    activeProjectDir,
+    projectSearchQuery,
+    projectSortMode,
+    workspaceMetaByDirectory,
+    workspaceRootByDirectory,
+    worktreesByWorkspace,
+    setSelectedWorkspaceWorktree,
+  })
 
   const allProjectSessions = useMemo(() => {
     const map: Record<string, Array<{ id: string; title?: string; slug: string }>> = {}
@@ -2054,12 +2036,51 @@ export default function App() {
     ]
   )
 
+  const openWorkspaceCodexThread = useCallback(
+    async (directory: string, threadId: string, title?: string) =>
+      openBoundLocalProviderSessionAction(
+        {
+          activeProjectDir,
+          clearPendingSession,
+          markSessionUsed,
+          registerLocalProviderSession: registerSyntheticSession,
+          selectProject,
+          setActiveProjectDir,
+          setActiveSessionID,
+          setManualSessionTitles,
+          setSessionTitles,
+          setSessionTypes,
+          setSidebarMode,
+          setStatusLine,
+        },
+        {
+          directory,
+          sessionID: threadId,
+          sessionType: 'codex',
+          title: title?.trim() || 'Recovered Codex Thread',
+        }
+      ),
+    [
+      activeProjectDir,
+      clearPendingSession,
+      markSessionUsed,
+      registerSyntheticSession,
+      selectProject,
+      setActiveProjectDir,
+      setActiveSessionID,
+      setManualSessionTitles,
+      setSessionTitles,
+      setSessionTypes,
+      setSidebarMode,
+      setStatusLine,
+    ]
+  )
+
   const {
     addProjectDirectory,
     applySkillToProject,
     changeProjectDirectory,
     copyProjectPath,
-    createWorktreeSession,
     loadSkills,
     openSkillUseModal,
     removeProjectDirectory,
@@ -2086,7 +2107,6 @@ export default function App() {
     setTerminalTabs,
     setActiveTerminalId,
     setTerminalOpen,
-    setTextInputDialog,
   })
 
   useEffect(() => {
@@ -2106,6 +2126,85 @@ export default function App() {
   useEffect(() => {
     setAllSessionsModalOpen(false)
   }, [activeProjectDir])
+
+  const {
+    workspaceRoot: workspaceDetailRoot,
+    worktrees: workspaceWorktrees,
+    worktreesLoading: workspaceWorktreesLoading,
+    selectedWorktreeDirectory,
+    setSelectedWorktreeDirectory,
+    createWorktree: createWorkspaceWorktree,
+    openWorktree: openWorkspaceWorktree,
+    deleteWorktree: deleteWorkspaceWorktree,
+    launchSessionInWorktree,
+  } = useWorkspaceDetailSurface({
+    workspaceDetailDirectory,
+    createSession,
+    setStatusLine,
+  })
+  const {
+    codexThreads: workspaceCodexThreads,
+  } = useWorkspaceCodexThreads({
+    modalOpen: allSessionsModalOpen,
+    workspaceRoot: workspaceDetailRoot,
+    setStatusLine,
+  })
+
+  const openBoundClaudeSession = useCallback(
+    async (directory: string, sessionID: string, title: string) =>
+      openBoundLocalProviderSessionAction(
+        {
+          activeProjectDir,
+          clearPendingSession,
+          markSessionUsed,
+          registerLocalProviderSession: registerSyntheticSession,
+          selectProject,
+          setActiveProjectDir,
+          setActiveSessionID,
+          setManualSessionTitles,
+          setSessionTitles,
+          setSessionTypes,
+          setSidebarMode,
+          setStatusLine,
+        },
+        {
+          directory,
+          sessionID,
+          sessionType: 'claude-chat',
+          title: title.trim() || 'Claude Code (Chat)',
+        }
+      ),
+    [
+      activeProjectDir,
+      clearPendingSession,
+      markSessionUsed,
+      registerSyntheticSession,
+      selectProject,
+      setActiveProjectDir,
+      setActiveSessionID,
+      setManualSessionTitles,
+      setSessionTitles,
+      setSessionTypes,
+      setSidebarMode,
+      setStatusLine,
+    ]
+  )
+
+  const {
+    claudeSessionBrowserOpen,
+    setClaudeSessionBrowserOpen,
+    claudeBrowserSessions,
+    claudeBrowserSessionsLoading,
+    selectedClaudeBrowserWorkspace,
+    setSelectedClaudeBrowserWorkspace,
+    openClaudeSessionBrowser,
+    openClaudeBrowserSession,
+  } = useClaudeSessionBrowser({
+    activeProjectDir,
+    projects,
+    setStatusLine,
+    openBoundClaudeSession,
+  })
 
   const renameSession = useCallback(
     (directory: string, sessionID: string, currentTitle: string) => {
@@ -3163,6 +3262,7 @@ export default function App() {
     loadSkills,
     openSkillUseModal,
     createSession,
+    openClaudeSessionBrowser,
     canvasState,
     mcpDevToolsState,
     activeLocalProviderSessionKey,
@@ -3294,6 +3394,8 @@ export default function App() {
     upsertCustomRunCommand,
     runCustomRunCommand,
     deleteCustomRunCommand,
+    activeWorkspaceWorktree,
+    openWorkspaceDetail: () => setAllSessionsModalOpen(true),
   })
   const workspaceSidebarProps = buildWorkspaceSidebarProps({
     sidebarMode,
@@ -3311,7 +3413,7 @@ export default function App() {
     projectSortMode,
     setProjectSortMode,
     filteredProjects,
-    activeProjectDir,
+    activeProjectDir: sidebarActiveProjectDir,
     collapsedProjects,
     setCollapsedProjects,
     sessions,
@@ -3325,6 +3427,7 @@ export default function App() {
     getSessionIndicator,
     selectProject,
     createSession,
+    openClaudeSessionBrowser,
     openSession,
     togglePinSession,
     setStatusLine,
@@ -3479,7 +3582,6 @@ export default function App() {
           getSessionType={getSessionType}
           archiveSession={archiveSession}
           copySessionID={copySessionID}
-          createWorktreeSession={createWorktreeSession}
           renameSession={renameSession}
           debugModalOpen={debugModalOpen}
           setDebugModalOpen={setDebugModalOpen}
@@ -3516,6 +3618,7 @@ export default function App() {
           }}
           globalModalsProps={{
             activeProjectDir,
+            workspaceDetailDirectory: workspaceDetailRoot,
             permissionMode: appPreferences.permissionMode,
             dependencyReport,
             dependencyModalOpen,
@@ -3529,7 +3632,24 @@ export default function App() {
             rejectQuestion: rejectPendingQuestion,
             allSessionsModalOpen,
             setAllSessionsModalOpen,
-            sessions,
+            claudeSessionBrowserOpen,
+            setClaudeSessionBrowserOpen,
+            claudeBrowserSessions,
+            claudeBrowserSessionsLoading,
+            selectedClaudeBrowserWorkspace,
+            setSelectedClaudeBrowserWorkspace,
+            openClaudeBrowserSession,
+            sessions: workspaceDetailSessions,
+            workspaceWorktrees,
+            workspaceWorktreesLoading,
+            workspaceCodexThreads,
+            selectedWorktreeDirectory,
+            setSelectedWorktreeDirectory,
+            createWorkspaceWorktree,
+            openWorkspaceWorktree,
+            deleteWorkspaceWorktree,
+            launchSessionInWorktree,
+            openWorkspaceCodexThread,
             getSessionStatusType,
             activeSessionID,
             openSession,

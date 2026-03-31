@@ -3057,6 +3057,12 @@ button.primary {
   background: var(--bg-input);
 }
 
+.new-session-picker-option--secondary {
+  border-top: 1px solid var(--border-primary, #232323);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
 .new-session-picker-icon {
   display: inline-flex;
   align-items: center;
@@ -4203,6 +4209,25 @@ button.primary {
   gap: 16px;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+.workspace-landing-secondary-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.workspace-landing-secondary-button {
+  border: 1px solid var(--border-secondary);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  padding: 10px 16px;
+  font-size: 12px;
+}
+
+.workspace-landing-secondary-button:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
 }
 
 .workspace-landing-card {

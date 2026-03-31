@@ -9,6 +9,7 @@ export type PendingApproval = {
   turnId: string
   itemId: string
   toolName: string
+  providerThreadId: string
   resolve: (result: PermissionResult) => void
 }
 
@@ -38,8 +39,10 @@ export type ClaudeSessionRuntime = {
   directory: string
   activeQuery: Query | null
   runningTasks: ClaudeSubagentRuntime[]
+  approvalThreadId?: string
   mainProviderThreadId?: string
   toolNamesById: Map<string, string>
+  toolInputsById: Map<string, Record<string, unknown>>
 }
 
 export type CachedClaudeHealth = {

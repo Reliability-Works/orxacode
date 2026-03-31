@@ -22,6 +22,7 @@ type SessionSidebarIndicator = 'busy' | 'awaiting' | 'unread' | 'none'
 
 type SessionListItem = {
   id: string
+  directory?: string
   title?: string
   slug: string
   time: {
@@ -74,6 +75,7 @@ export type WorkspaceSidebarViewProps = {
   ) => SessionSidebarIndicator
   selectProject: (directory: string) => Promise<void> | void
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void
+  openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   openSession: (directory: string, sessionID: string) => Promise<void> | void
   togglePinSession: (directory: string, sessionID: string) => void
   archiveSession: (directory: string, sessionID: string) => Promise<void> | void
@@ -140,7 +142,7 @@ function renderSessionTypeIcon(sessionType: SessionType | undefined) {
 
 function WorkspaceSessionRow({
   now,
-  directory,
+  projectDirectory,
   session,
   sessionTitle,
   activeSessionID,
@@ -153,7 +155,7 @@ function WorkspaceSessionRow({
   openSessionContextMenu,
 }: {
   now: number
-  directory: string
+  projectDirectory: string
   session: SessionListItem
   sessionTitle: string
   activeSessionID?: string
@@ -165,15 +167,16 @@ function WorkspaceSessionRow({
   togglePinSession: WorkspaceSidebarViewProps['togglePinSession']
   openSessionContextMenu: WorkspaceSidebarViewProps['openSessionContextMenu']
 }) {
-  const indicator = getSessionIndicator(session.id, directory, session.time.updated)
-  const sessionType = getSessionType(session.id, directory)
-  const isPinned = (pinnedSessionsByProject?.[directory] ?? []).includes(session.id)
+  const sessionDirectory = session.directory ?? projectDirectory
+  const indicator = getSessionIndicator(session.id, sessionDirectory, session.time.updated)
+  const sessionType = getSessionType(session.id, sessionDirectory)
+  const isPinned = (pinnedSessionsByProject?.[projectDirectory] ?? []).includes(session.id)
   const sessionAge = formatSessionAge(now, session.time.created)
 
   return (
     <div
       className={`workspace-session-row ${session.id === activeSessionID ? 'active' : ''}`.trim()}
-      onContextMenu={event => openSessionContextMenu(event, directory, session.id, sessionTitle)}
+      onContextMenu={event => openSessionContextMenu(event, sessionDirectory, session.id, sessionTitle)}
     >
       <span className="workspace-session-row-pin-slot">
         <button
@@ -183,7 +186,7 @@ function WorkspaceSessionRow({
           title={isPinned ? 'Unpin session' : 'Pin session'}
           onClick={event => {
             event.stopPropagation()
-            togglePinSession(directory, session.id)
+            togglePinSession(projectDirectory, session.id)
           }}
         >
           <Pin size={11} aria-hidden="true" />
@@ -196,7 +199,7 @@ function WorkspaceSessionRow({
             ? 'active workspace-session-row-main-button'
             : 'workspace-session-row-main-button'
         }
-        onClick={() => void openSession(directory, session.id)}
+        onClick={() => void openSession(sessionDirectory, session.id)}
         title={sessionTitle}
       >
         <span className="workspace-session-row-leading" aria-hidden="true">
@@ -222,7 +225,7 @@ function WorkspaceSessionRow({
             title="Archive session"
             onClick={event => {
               event.stopPropagation()
-              void archiveSession(directory, session.id)
+              void archiveSession(sessionDirectory, session.id)
             }}
           >
             <Archive size={11} aria-hidden="true" />
@@ -349,7 +352,7 @@ function PinnedSessionsSection(props: WorkspaceSidebarViewProps) {
             <WorkspaceSessionRow
               key={`${directory}:${session.id}`}
               now={now}
-              directory={directory}
+              projectDirectory={directory}
               session={session}
               sessionTitle={sessionTitle}
               activeSessionID={props.activeSessionID}
@@ -383,10 +386,11 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
     setAllSessionsModalOpen,
     getSessionTitle,
     getSessionType,
-    getSessionIndicator,
-    selectProject,
-    createSession,
-    openSession,
+  getSessionIndicator,
+  selectProject,
+  createSession,
+  openClaudeSessionBrowser,
+  openSession,
     togglePinSession,
     archiveSession,
     openProjectContextMenu,
@@ -417,6 +421,7 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
           getSessionIndicator={getSessionIndicator}
           selectProject={selectProject}
           createSession={createSession}
+          openClaudeSessionBrowser={openClaudeSessionBrowser}
           openSession={openSession}
           togglePinSession={togglePinSession}
           archiveSession={archiveSession}

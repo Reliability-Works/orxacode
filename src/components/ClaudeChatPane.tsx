@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useClaudeChatSession } from '../hooks/useClaudeChatSession'
 import { ClaudeTraitsPicker } from './ClaudeTraitsPicker'
 import { projectClaudeChatProjectedSessionPresentation } from '../lib/claude-chat-session-presentation'
@@ -71,9 +71,10 @@ function buildPendingQuestion(
 
 function buildPendingPermission(
   pendingApproval: ReturnType<typeof useClaudeChatSession>['pendingApproval'],
-  approveAction: ReturnType<typeof useClaudeChatSession>['approveAction']
+  approveAction: ReturnType<typeof useClaudeChatSession>['approveAction'],
+  permissionMode: PermissionMode
 ): ComposerPanelProps['pendingPermission'] {
-  if (!pendingApproval) {
+  if (!pendingApproval || permissionMode === 'yolo-write') {
     return null
   }
   return {
@@ -165,7 +166,15 @@ export function ClaudeChatPane({
   const composerState = useClaudeChatPaneComposer({ messages, modelOptions, permissionMode, onFirstMessage, onTitleChange, startTurn, interruptTurn })
   const subagentState = useClaudeChatPaneSubagents({ subagents, loadSubagentMessages, archiveProviderSession })
   const pendingQuestion = buildPendingQuestion(pendingUserInput, respondToUserInput)
-  const pendingPermission = buildPendingPermission(pendingApproval, approveAction)
+  const pendingPermission = buildPendingPermission(pendingApproval, approveAction, permissionMode)
+
+  useEffect(() => {
+    if (permissionMode !== 'yolo-write' || !pendingApproval) {
+      return
+    }
+    void approveAction(pendingApproval.id, 'acceptForSession')
+  }, [approveAction, pendingApproval, permissionMode])
+
   const customControls = (
     <ClaudeChatTraitControls
       selectedModelId={composerState.selectedModelId}

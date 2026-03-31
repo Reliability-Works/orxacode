@@ -13,6 +13,10 @@ type SessionListEntry = {
   time: { created: number; updated: number }
 }
 
+export type WorkspaceDetailSessionEntry = SessionListEntry & {
+  directory: string
+}
+
 type UseAppShellSessionCollectionsInput = {
   projectData?: ProjectBootstrap
   projectDataByDirectory: Record<string, ProjectBootstrap>
@@ -80,6 +84,134 @@ function mergeHiddenSessionIDsByProject({
     next[directory] = [...ids]
   }
   return next
+}
+
+function resolveWorkspaceRoot(
+  directory: string,
+  workspaceRootByDirectory: Record<string, string>
+) {
+  return workspaceRootByDirectory[directory] ?? directory
+}
+
+function mergeProjectsForSessionCollections(
+  projectData: ProjectBootstrap | undefined,
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+) {
+  const merged = { ...projectDataByDirectory }
+  if (projectData?.directory) {
+    merged[projectData.directory] = projectData
+  }
+  return merged
+}
+
+function sortWorkspaceSessionEntries(
+  entries: WorkspaceDetailSessionEntry[],
+  activeProjectDir: string | undefined
+) {
+  return [...entries].sort((left, right) => {
+    if (left.directory !== right.directory) {
+      if (left.directory === activeProjectDir) return -1
+      if (right.directory === activeProjectDir) return 1
+    }
+    return right.time.updated - left.time.updated
+  })
+}
+
+function buildSidebarSessionsByRoot({
+  activeProjectDir,
+  hiddenSessionIDsByProject,
+  projectData,
+  projectDataByDirectory,
+  workspaceRootByDirectory,
+}: {
+  activeProjectDir?: string
+  hiddenSessionIDsByProject: Record<string, string[]>
+  projectData?: ProjectBootstrap
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceRootByDirectory: Record<string, string>
+}) {
+  const mergedProjects = mergeProjectsForSessionCollections(projectData, projectDataByDirectory)
+  const sessionsByRoot: Record<string, WorkspaceDetailSessionEntry[]> = {}
+  for (const [directory, data] of Object.entries(mergedProjects)) {
+    const workspaceRoot = resolveWorkspaceRoot(directory, workspaceRootByDirectory)
+    const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[directory] ?? [])
+    const nextEntries = data.sessions
+      .filter(session => !session.time.archived && !hiddenSessionIDs.has(session.id))
+      .map(session => ({
+        id: session.id,
+        title: session.title,
+        slug: session.slug,
+        time: session.time,
+        directory,
+      }))
+    sessionsByRoot[workspaceRoot] = sortWorkspaceSessionEntries(
+      [...(sessionsByRoot[workspaceRoot] ?? []), ...nextEntries],
+      activeProjectDir
+    )
+  }
+  return sessionsByRoot
+}
+
+function buildHiddenSessionIDsByRoot({
+  hiddenSessionIDsByProject,
+  projectData,
+  projectDataByDirectory,
+  workspaceRootByDirectory,
+}: {
+  hiddenSessionIDsByProject: Record<string, string[]>
+  projectData?: ProjectBootstrap
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceRootByDirectory: Record<string, string>
+}) {
+  const mergedProjects = mergeProjectsForSessionCollections(projectData, projectDataByDirectory)
+  const next: Record<string, string[]> = {}
+  for (const directory of Object.keys(mergedProjects)) {
+    const workspaceRoot = resolveWorkspaceRoot(directory, workspaceRootByDirectory)
+    const ids = new Set([...(next[workspaceRoot] ?? []), ...(hiddenSessionIDsByProject[directory] ?? [])])
+    next[workspaceRoot] = [...ids]
+  }
+  return next
+}
+
+function buildWorkspaceDetailSessions({
+  activeProjectDir,
+  hiddenSessionIDsByProject,
+  projectData,
+  projectDataByDirectory,
+  workspaceDetailDirectory,
+  workspaceRootByDirectory,
+}: {
+  activeProjectDir?: string
+  hiddenSessionIDsByProject: Record<string, string[]>
+  projectData?: ProjectBootstrap
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceDetailDirectory?: string
+  workspaceRootByDirectory: Record<string, string>
+}) {
+  if (!workspaceDetailDirectory) {
+    return []
+  }
+  const mergedProjects = mergeProjectsForSessionCollections(projectData, projectDataByDirectory)
+  const entries: WorkspaceDetailSessionEntry[] = []
+  for (const [directory, data] of Object.entries(mergedProjects)) {
+    const resolvedWorkspaceRoot = resolveWorkspaceRoot(directory, workspaceRootByDirectory)
+    if (resolvedWorkspaceRoot !== workspaceDetailDirectory) {
+      continue
+    }
+    const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[directory] ?? [])
+    entries.push(
+      ...data.sessions
+        .filter(session => !session.time.archived && !hiddenSessionIDs.has(session.id))
+        .map(session => ({
+          id: session.id,
+          title: session.title,
+          slug: session.slug,
+          time: session.time,
+          directory,
+        }))
+    )
+  }
+  return sortWorkspaceSessionEntries(entries, activeProjectDir)
 }
 
 function useSidebarSessionIndicators({
@@ -185,6 +317,111 @@ function useSidebarSessionIndicators({
   return { getSessionIndicator, getSessionStatusType }
 }
 
+function useDerivedSessionCollections({
+  activeProjectDir,
+  hiddenSessionIDsByProject,
+  pinnedSessions,
+  projectCacheVersion,
+  projectData,
+  projectDataByDirectory,
+  workspaceRootByDirectory,
+}: {
+  activeProjectDir?: string
+  hiddenSessionIDsByProject: Record<string, string[]>
+  pinnedSessions: Record<string, string[]>
+  projectCacheVersion: number
+  projectData?: ProjectBootstrap
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceRootByDirectory: Record<string, string>
+}) {
+  const sidebarSessionsByRoot = useMemo(
+    () =>
+      buildSidebarSessionsByRoot({
+        activeProjectDir,
+        hiddenSessionIDsByProject,
+        projectData,
+        projectDataByDirectory,
+        workspaceRootByDirectory,
+      }),
+    [
+      activeProjectDir,
+      hiddenSessionIDsByProject,
+      projectData,
+      projectDataByDirectory,
+      workspaceRootByDirectory,
+    ]
+  )
+
+  const hiddenSessionIDsBySidebarProject = useMemo(
+    () =>
+      buildHiddenSessionIDsByRoot({
+        hiddenSessionIDsByProject,
+        projectData,
+        projectDataByDirectory,
+        workspaceRootByDirectory,
+      }),
+    [hiddenSessionIDsByProject, projectData, projectDataByDirectory, workspaceRootByDirectory]
+  )
+
+  const sessions = useMemo(() => {
+    const activeWorkspaceRoot = activeProjectDir
+      ? resolveWorkspaceRoot(activeProjectDir, workspaceRootByDirectory)
+      : undefined
+    if (!activeWorkspaceRoot) {
+      return []
+    }
+    const pinned = new Set(pinnedSessions[activeWorkspaceRoot] ?? [])
+    return [...(sidebarSessionsByRoot[activeWorkspaceRoot] ?? [])].sort((a, b) => {
+      const aPinned = pinned.has(a.id) ? 1 : 0
+      const bPinned = pinned.has(b.id) ? 1 : 0
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned
+      }
+      return b.time.updated - a.time.updated
+    })
+  }, [activeProjectDir, pinnedSessions, sidebarSessionsByRoot, workspaceRootByDirectory])
+
+  const cachedSessionsByProject = useMemo(() => {
+    void projectCacheVersion
+    return sidebarSessionsByRoot
+  }, [projectCacheVersion, sidebarSessionsByRoot])
+
+  const workspaceDetailDirectory = useMemo(() => {
+    if (!activeProjectDir) {
+      return undefined
+    }
+    return workspaceRootByDirectory[activeProjectDir] ?? activeProjectDir
+  }, [activeProjectDir, workspaceRootByDirectory])
+
+  const workspaceDetailSessions = useMemo(
+    () =>
+      buildWorkspaceDetailSessions({
+        activeProjectDir,
+        hiddenSessionIDsByProject,
+        projectData,
+        projectDataByDirectory,
+        workspaceDetailDirectory,
+        workspaceRootByDirectory,
+      }),
+    [
+      activeProjectDir,
+      hiddenSessionIDsByProject,
+      projectData,
+      projectDataByDirectory,
+      workspaceDetailDirectory,
+      workspaceRootByDirectory,
+    ]
+  )
+
+  return {
+    cachedSessionsByProject,
+    hiddenSessionIDsBySidebarProject,
+    sessions,
+    workspaceDetailDirectory,
+    workspaceDetailSessions,
+  }
+}
+
 export function useAppShellSessionCollections({
   projectData, projectDataByDirectory, activeProjectDir, activeSessionID, projectCacheVersion,
   pinnedSessions, archivedBackgroundAgentIds, hiddenBackgroundSessionIdsByProject,
@@ -192,6 +429,7 @@ export function useAppShellSessionCollections({
 }: UseAppShellSessionCollectionsInput) {
   const opencodeSessions = useUnifiedRuntimeStore(state => state.opencodeSessions), codexSessions = useUnifiedRuntimeStore(state => state.codexSessions), claudeChatSessions = useUnifiedRuntimeStore(state => state.claudeChatSessions)
   const claudeSessions = useUnifiedRuntimeStore(state => state.claudeSessions)
+  const workspaceRootByDirectory = useUnifiedRuntimeStore(state => state.workspaceRootByDirectory)
   const sessionReadTimestamps = useUnifiedRuntimeStore(state => state.sessionReadTimestamps), storeProjects = useUnifiedRuntimeStore(state => state.projectDataByDirectory)
 
   const liveBackgroundSessionIDsByProject = useMemo(() => {
@@ -207,39 +445,24 @@ export function useAppShellSessionCollections({
   }, [
     archivedBackgroundAgentIds,
     hiddenBackgroundSessionIdsByProject,
-    liveBackgroundSessionIDsByProject,
-  ])
+      liveBackgroundSessionIDsByProject,
+    ])
 
-  const sessions = useMemo(() => {
-    if (!projectData) {
-      return []
-    }
-    const pinned = new Set(pinnedSessions[projectData.directory] ?? [])
-    const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[projectData.directory] ?? [])
-    return [...projectData.sessions]
-      .filter(item => !item.time.archived && !hiddenSessionIDs.has(item.id))
-      .sort((a, b) => {
-        const aPinned = pinned.has(a.id) ? 1 : 0
-        const bPinned = pinned.has(b.id) ? 1 : 0
-        if (aPinned !== bPinned) {
-          return bPinned - aPinned
-        }
-        return b.time.updated - a.time.updated
-      })
-  }, [hiddenSessionIDsByProject, pinnedSessions, projectData])
-
-  const cachedSessionsByProject = useMemo(() => {
-    void projectCacheVersion
-    const result: Record<string, SessionListEntry[]> = {}
-    for (const [directory, data] of Object.entries(projectDataByDirectory)) {
-      if (directory === activeProjectDir) {
-        continue
-      }
-      const hiddenSessionIDs = new Set(hiddenSessionIDsByProject[directory] ?? [])
-      result[directory] = [...data.sessions].filter(session => !session.time.archived && !hiddenSessionIDs.has(session.id)).sort((a, b) => b.time.updated - a.time.updated)
-    }
-    return result
-  }, [activeProjectDir, hiddenSessionIDsByProject, projectCacheVersion, projectDataByDirectory])
+  const {
+    sessions,
+    cachedSessionsByProject,
+    hiddenSessionIDsBySidebarProject,
+    workspaceDetailDirectory,
+    workspaceDetailSessions,
+  } = useDerivedSessionCollections({
+    activeProjectDir,
+    hiddenSessionIDsByProject,
+    pinnedSessions,
+    projectCacheVersion,
+    projectData,
+    projectDataByDirectory,
+    workspaceRootByDirectory,
+  })
 
   const { getSessionIndicator, getSessionStatusType } = useSidebarSessionIndicators({
     activeProjectDir,
@@ -254,5 +477,13 @@ export function useAppShellSessionCollections({
     storeProjects,
   })
 
-  return { hiddenSessionIDsByProject, sessions, cachedSessionsByProject, getSessionStatusType, getSessionIndicator }
+  return {
+    hiddenSessionIDsByProject: hiddenSessionIDsBySidebarProject,
+    sessions,
+    cachedSessionsByProject,
+    workspaceDetailDirectory,
+    workspaceDetailSessions,
+    getSessionStatusType,
+    getSessionIndicator,
+  }
 }

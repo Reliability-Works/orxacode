@@ -32,7 +32,10 @@ type BuildContentTopBarPropsArgs = {
   isActiveSessionPinned: boolean
   togglePinSession: (directory: string, sessionID: string) => void
   setStatusLine: (message: string) => void
-  activeSession: ProjectBootstrap['sessions'][number] | null | undefined
+  activeSession:
+    | { title?: ProjectBootstrap['sessions'][number]['title']; slug: string }
+    | null
+    | undefined
   renameSession: (directory: string, sessionID: string, currentTitle: string) => void
   archiveSession: (directory: string, sessionID: string) => Promise<void>
   openWorkspaceDashboard: () => void
@@ -51,6 +54,8 @@ type BuildContentTopBarPropsArgs = {
   upsertCustomRunCommand: ComponentProps<typeof ContentTopBar>['onUpsertCustomRunCommand']
   runCustomRunCommand: ComponentProps<typeof ContentTopBar>['onRunCustomRunCommand']
   deleteCustomRunCommand: ComponentProps<typeof ContentTopBar>['onDeleteCustomRunCommand']
+  activeWorkspaceWorktree: ComponentProps<typeof ContentTopBar>['activeWorkspaceWorktree']
+  openWorkspaceDetail: () => void
 }
 
 type BuildWorkspaceSidebarPropsArgs = {
@@ -83,6 +88,7 @@ type BuildWorkspaceSidebarPropsArgs = {
   getSessionIndicator: ComponentProps<typeof WorkspaceSidebar>['getSessionIndicator']
   selectProject: ComponentProps<typeof WorkspaceSidebar>['selectProject']
   createSession: ComponentProps<typeof WorkspaceSidebar>['createSession']
+  openClaudeSessionBrowser: ComponentProps<typeof WorkspaceSidebar>['openClaudeSessionBrowser']
   openSession: ComponentProps<typeof WorkspaceSidebar>['openSession']
   togglePinSession: (directory: string, sessionID: string) => void
   setStatusLine: (message: string) => void
@@ -141,6 +147,8 @@ export function buildContentTopBarProps(args: BuildContentTopBarPropsArgs): Comp
     onUpsertCustomRunCommand: args.upsertCustomRunCommand,
     onRunCustomRunCommand: args.runCustomRunCommand,
     onDeleteCustomRunCommand: args.deleteCustomRunCommand,
+    activeWorkspaceWorktree: args.activeWorkspaceWorktree,
+    onOpenWorkspaceDetail: args.openWorkspaceDetail,
   }
 }
 
@@ -177,6 +185,7 @@ export function buildWorkspaceSidebarProps(
     getSessionIndicator: args.getSessionIndicator,
     selectProject: args.selectProject,
     createSession: args.createSession,
+    openClaudeSessionBrowser: args.openClaudeSessionBrowser,
     openSession: args.openSession,
     togglePinSession: (directory, sessionID) => {
       args.togglePinSession(directory, sessionID)

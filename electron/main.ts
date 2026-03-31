@@ -6,6 +6,7 @@ import type { OrxaEvent } from '../shared/ipc'
 import { OpencodeService } from './services/opencode-service'
 import { CodexService } from './services/codex-service'
 import { ClaudeChatService } from './services/claude-chat-service'
+import { WorktreeCoordinatorService } from './services/worktree-coordinator-service'
 import { BrowserController } from './services/browser-controller'
 import { OrxaTerminalService } from './services/orxa-terminal-service'
 import { PersistenceService } from './services/persistence-service'
@@ -32,6 +33,7 @@ import { registerBrowserHandlers } from './ipc/browser-handlers'
 import { registerClaudeChatHandlers } from './ipc/claude-chat-handlers'
 import { registerCodexHandlers } from './ipc/codex-handlers'
 import { registerKanbanHandlers } from './ipc/kanban-handlers'
+import { registerWorktreeHandlers } from './ipc/worktree-handlers'
 import { createAssertBrowserSender } from './ipc/validators'
 
 // Prime PATH on macOS without blocking cold startup on a login-shell spawn.
@@ -51,6 +53,10 @@ const dirname = path.dirname(filename)
 const service = new OpencodeService()
 const codexService = new CodexService()
 const claudeChatService = new ClaudeChatService()
+const worktreeCoordinator = new WorktreeCoordinatorService({
+  openDirectoryIn: (directory, target) => service.openDirectoryIn(directory, target),
+  removeProjectDirectory: directory => service.removeProjectDirectory(directory),
+})
 const terminalService = new OrxaTerminalService()
 let persistenceService: PersistenceService | null = null
 let providerSessionDirectory: ProviderSessionDirectory | null = null
@@ -336,6 +342,10 @@ function registerIpcHandlers() {
     startupBootstrap,
     getMainWindow: () => mainWindow,
     inferMimeFromPath,
+  })
+
+  registerWorktreeHandlers({
+    worktreeCoordinator,
   })
 
   registerArtifactHandlers({

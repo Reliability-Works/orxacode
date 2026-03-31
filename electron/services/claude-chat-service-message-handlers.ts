@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type {
   ElicitationRequest,
   Options as ClaudeQueryOptions,
+  PermissionMode,
   PermissionResult,
   SDKAssistantMessage,
   SDKMessage,
@@ -26,6 +27,8 @@ export type ClaudeChatHandlerContext = {
   emitUserInputRequest: (payload: ClaudeChatUserInputRequest) => void
   pendingApprovals: Map<string, PendingApproval>
   pendingUserInputs: Map<string, PendingUserInput>
+  isProviderThreadAllowed: (providerThreadId: string) => boolean
+  remapProviderThreadApproval: (fromProviderThreadId: string, toProviderThreadId: string) => void
   readClaudeResumeCursor: (resumeCursor: unknown) => string | undefined
   upsertProviderBinding: (
     runtime: ClaudeSessionRuntime,
@@ -169,8 +172,11 @@ export function buildElicitationHandler(
 
 export function buildCanUseToolHandler(
   context: ClaudeChatHandlerContext,
+  runtime: ClaudeSessionRuntime,
   sessionKey: string,
-  turnId: string
+  turnId: string,
+  providerThreadId: string,
+  permissionMode: PermissionMode | undefined
 ): NonNullable<ClaudeQueryOptions['canUseTool']> {
   return async (
     toolName: string,
@@ -178,12 +184,25 @@ export function buildCanUseToolHandler(
     callbackOptions: Parameters<NonNullable<ClaudeQueryOptions['canUseTool']>>[2]
   ) =>
     await new Promise<PermissionResult>(resolve => {
+      runtime.toolNamesById.set(callbackOptions.toolUseID, toolName)
+      runtime.toolInputsById.set(callbackOptions.toolUseID, { ...toolInput })
+      if (
+        permissionMode === 'bypassPermissions' ||
+        context.isProviderThreadAllowed(providerThreadId)
+      ) {
+        resolve({
+          behavior: 'allow',
+          toolUseID: callbackOptions.toolUseID,
+        })
+        return
+      }
       const requestId = randomUUID()
       context.pendingApprovals.set(requestId, {
         sessionKey,
         turnId,
         itemId: callbackOptions.toolUseID,
         toolName,
+        providerThreadId,
         resolve,
       })
       const rawCommand = toolInput.command ?? toolInput.cmd

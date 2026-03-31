@@ -171,7 +171,7 @@ export function ClaudePermissionsSection({
         }
       >
         <option value="ask-write">ask-write (prompt before writing)</option>
-        <option value="yolo-write">yolo-write (auto-approve writes)</option>
+        <option value="yolo-write">yolo-write (skip Claude tool permission prompts)</option>
       </select>
     </section>
   )

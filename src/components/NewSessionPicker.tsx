@@ -5,6 +5,7 @@ import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from './ProviderL
 type NewSessionPickerProps = {
   isOpen: boolean
   onPick: (type: SessionType) => void
+  onBrowseClaudeSessions?: () => void
   onClose: () => void
 }
 
@@ -71,7 +72,12 @@ function SessionOptionButton({
   )
 }
 
-export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerProps) {
+export function NewSessionPicker({
+  isOpen,
+  onPick,
+  onBrowseClaudeSessions,
+  onClose,
+}: NewSessionPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -107,6 +113,22 @@ export function NewSessionPicker({ isOpen, onPick, onClose }: NewSessionPickerPr
       {SESSION_OPTIONS.map(option => (
         <SessionOptionButton key={option.type} onPick={onPick} option={option} />
       ))}
+      {onBrowseClaudeSessions ? (
+        <button
+          type="button"
+          className="new-session-picker-option new-session-picker-option--secondary"
+          role="menuitem"
+          onClick={onBrowseClaudeSessions}
+        >
+          <span className="new-session-picker-icon new-session-picker-icon--claude" aria-hidden="true">
+            <AnthropicLogo size={14} />
+          </span>
+          <span className="new-session-picker-text">
+            <span className="new-session-picker-title">browse claude sessions</span>
+            <span className="new-session-picker-subtitle">// import or resume a past Claude chat</span>
+          </span>
+        </button>
+      ) : null}
     </div>
   )
 }

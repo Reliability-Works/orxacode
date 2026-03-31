@@ -8,6 +8,7 @@ import type {
   CodexUserInputRequest,
   ProjectBootstrap,
   SessionMessageBundle,
+  WorkspaceWorktree,
 } from '@shared/ipc'
 import type { TodoItem } from '../components/chat/TodoDock'
 import type { CodexMessageItem } from '../hooks/codex-session-types'
@@ -48,6 +49,9 @@ export type UnifiedRuntimeStoreState = {
   pendingSessionId?: string
   activeProvider?: UnifiedProvider
   projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceRootByDirectory: Record<string, string>
+  worktreesByWorkspace: Record<string, WorkspaceWorktree[]>
+  selectedWorktreeByWorkspace: Record<string, string>
   workspaceMetaByDirectory: Record<string, UnifiedWorkspaceMeta>
   opencodeSessions: Record<string, UnifiedOpencodeSessionRuntime>
   codexSessions: Record<string, UnifiedCodexSessionRuntime>
@@ -61,6 +65,10 @@ export type UnifiedRuntimeStoreState = {
   setPendingSessionId: (sessionID?: string) => void
   setProjectData: (directory: string, project: ProjectBootstrap) => void
   removeProjectData: (directory: string) => void
+  replaceWorkspaceDirectoryAssociations: (workspaceRoot: string, directories: string[]) => void
+  setWorkspaceRootForDirectory: (directory: string, workspaceRoot?: string) => void
+  setWorkspaceWorktrees: (workspaceRoot: string, worktrees: WorkspaceWorktree[]) => void
+  setSelectedWorkspaceWorktree: (workspaceRoot: string, directory?: string) => void
   setWorkspaceMeta: (directory: string, meta: Partial<UnifiedWorkspaceMeta>) => void
   setOpencodeMessages: (
     directory: string,

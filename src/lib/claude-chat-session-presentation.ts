@@ -68,6 +68,7 @@ function createClaudeToolRow(item: ClaudeChatMessageItem & { kind: 'tool' }) {
     id: item.id,
     kind: 'tool' as const,
     title: item.title,
+    subtitle: item.source === 'delegated' ? 'Subagent' : undefined,
     status: item.status,
     command: item.command,
     output: item.output,
@@ -97,6 +98,18 @@ function createClaudeNoticeRow(item: ClaudeChatMessageItem & { kind: 'notice' })
     detail: item.detail,
     tone: item.tone,
     timestamp: item.timestamp,
+  } satisfies UnifiedTimelineRenderRow
+}
+
+function createClaudeDiffRow(item: ClaudeChatMessageItem & { kind: 'diff' }) {
+  return {
+    id: item.id,
+    kind: 'diff' as const,
+    path: item.path,
+    type: item.type,
+    diff: item.diff,
+    insertions: item.insertions,
+    deletions: item.deletions,
   } satisfies UnifiedTimelineRenderRow
 }
 
@@ -160,16 +173,14 @@ export function projectClaudeChatSessionPresentation(
       continue
     }
     if (item.kind === 'tool') {
-      if (item.source === 'delegated') {
-        continue
-      }
       rawRows.push(createClaudeToolRow(item))
       continue
     }
+    if (item.kind === 'diff') {
+      rawRows.push(createClaudeDiffRow(item))
+      continue
+    }
     if (item.kind === 'explore') {
-      if (item.source === 'delegated') {
-        continue
-      }
       rawRows.push(createClaudeExploreRow(item))
       continue
     }

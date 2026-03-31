@@ -51,6 +51,18 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
+  ipcMain.handle(IPC.claudeChatListSessions, async () => {
+    return claudeChatService.listSessions()
+  })
+  ipcMain.handle(
+    IPC.claudeChatResumeProviderSession,
+    async (_event, providerThreadId: unknown, directory: unknown) => {
+      return claudeChatService.resumeProviderSession(
+        assertString(providerThreadId, 'providerThreadId'),
+        assertString(directory, 'directory')
+      )
+    }
+  )
   ipcMain.handle(
     IPC.claudeChatRenameProviderSession,
     async (_event, sessionId: unknown, title: unknown, directory?: unknown) => {

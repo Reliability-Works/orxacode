@@ -20,6 +20,30 @@ export type ClaudeChatState = {
   activeTurnId?: string | null
 }
 
+export type ClaudeBrowserImportedSession = {
+  sessionKey: string
+  sessionID: string
+  directory: string
+}
+
+export type ClaudeBrowserSessionSummary = {
+  providerThreadId: string
+  title: string
+  lastUpdatedAt: number
+  cwd?: string
+  preview?: string
+  isArchived: boolean
+  importedSession?: ClaudeBrowserImportedSession
+}
+
+export type ClaudeResumeProviderSessionResult = {
+  providerThreadId: string
+  sessionKey: string
+  sessionID: string
+  directory: string
+  title: string
+}
+
 export type ClaudeChatApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel'
 
 export type ClaudeChatApprovalRequest = {
