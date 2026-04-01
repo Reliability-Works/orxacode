@@ -16,6 +16,7 @@ import type { McpDevToolsServerStatus } from './mcp-devtools'
 import type { RuntimeState } from './runtime'
 import type { UpdateReleaseChannel } from './updates'
 import type { AppDiagnosticEntry } from './app'
+import type { PerfAlert } from './perf'
 import type {
   KanbanBoardSnapshot,
   KanbanManagementSession,
@@ -46,6 +47,10 @@ export type OrxaEvent =
   | {
       type: 'app.diagnostic'
       payload: AppDiagnosticEntry
+    }
+  | {
+      type: 'perf.alert'
+      payload: PerfAlert
     }
   | {
       type: 'opencode.global'

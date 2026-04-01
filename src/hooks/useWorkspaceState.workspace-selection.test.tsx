@@ -37,6 +37,18 @@ it('keeps previously loaded workspace sessions cached when selecting another wor
           if (directory === targetDirectory) return targetBootstrap
           throw new Error(`unexpected directory ${directory}`)
         }),
+        refreshProjectDelta: vi.fn(async (directory: string) => {
+          const bootstrap = directory === sourceDirectory ? sourceBootstrap : targetBootstrap
+          return {
+            directory,
+            sessions: bootstrap.sessions,
+            sessionStatus: bootstrap.sessionStatus,
+            permissions: bootstrap.permissions,
+            questions: bootstrap.questions,
+            commands: bootstrap.commands,
+            ptys: bootstrap.ptys,
+          }
+        }),
         createSession: vi.fn(),
         getSessionRuntime: vi.fn(async (directory: string, sessionID: string) =>
           createRuntimeSnapshot(directory, sessionID, [])
@@ -58,12 +70,12 @@ it('keeps previously loaded workspace sessions cached when selecting another wor
   })
 
   const state = useUnifiedRuntimeStore.getState()
-  expect(state.projectDataByDirectory[sourceDirectory]?.sessions.map(session => session.id)).toEqual([
-    'session-source',
-  ])
-  expect(state.projectDataByDirectory[targetDirectory]?.sessions.map(session => session.id)).toEqual([
-    'session-target',
-  ])
+  expect(
+    state.projectDataByDirectory[sourceDirectory]?.sessions.map(session => session.id)
+  ).toEqual(['session-source'])
+  expect(
+    state.projectDataByDirectory[targetDirectory]?.sessions.map(session => session.id)
+  ).toEqual(['session-target'])
 })
 
 it('closes the integrated terminal when switching workspaces', async () => {
@@ -77,6 +89,15 @@ it('closes the integrated terminal when switching workspaces', async () => {
       opencode: {
         selectProject: vi.fn(async () => projectBootstrap),
         refreshProject: vi.fn(async () => projectBootstrap),
+        refreshProjectDelta: vi.fn(async () => ({
+          directory,
+          sessions: projectBootstrap.sessions,
+          sessionStatus: projectBootstrap.sessionStatus,
+          permissions: projectBootstrap.permissions,
+          questions: projectBootstrap.questions,
+          commands: projectBootstrap.commands,
+          ptys: projectBootstrap.ptys,
+        })),
         createSession: vi.fn(async () => ({
           id: 'unused',
           slug: 'unused',
@@ -103,19 +124,23 @@ it('closes the integrated terminal when switching workspaces', async () => {
 
 it('hydrates integrated terminal tabs from workspace-owned PTYs', async () => {
   const directory = '/repo/target'
-  const projectBootstrap = createProjectBootstrap(directory, [], [
-    {
-      id: 'pty-shell',
-      title: 'shell',
-      directory,
-      cwd: directory,
-      owner: 'workspace',
-      status: 'running',
-      pid: 1,
-      exitCode: null,
-      createdAt: Date.now(),
-    },
-  ])
+  const projectBootstrap = createProjectBootstrap(
+    directory,
+    [],
+    [
+      {
+        id: 'pty-shell',
+        title: 'shell',
+        directory,
+        cwd: directory,
+        owner: 'workspace',
+        status: 'running',
+        pid: 1,
+        exitCode: null,
+        createdAt: Date.now(),
+      },
+    ]
+  )
   const setTerminalTabs = vi.fn()
   const setActiveTerminalId = vi.fn()
 
@@ -125,6 +150,15 @@ it('hydrates integrated terminal tabs from workspace-owned PTYs', async () => {
       opencode: {
         selectProject: vi.fn(async () => projectBootstrap),
         refreshProject: vi.fn(async () => projectBootstrap),
+        refreshProjectDelta: vi.fn(async () => ({
+          directory,
+          sessions: projectBootstrap.sessions,
+          sessionStatus: projectBootstrap.sessionStatus,
+          permissions: projectBootstrap.permissions,
+          questions: projectBootstrap.questions,
+          commands: projectBootstrap.commands,
+          ptys: projectBootstrap.ptys,
+        })),
         createSession: vi.fn(async () => ({
           id: 'unused',
           slug: 'unused',

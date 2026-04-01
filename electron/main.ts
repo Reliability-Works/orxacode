@@ -23,6 +23,7 @@ import {
 } from './services/startup-environment'
 import { resolveRendererHtmlPath } from './services/renderer-entry'
 import { DiagnosticsService } from './services/diagnostics-service'
+import { PerformanceTelemetryService } from './services/performance-telemetry-service'
 import { registerAppHandlers } from './ipc/app-handlers'
 import { registerPersistenceHandlers } from './ipc/persistence-handlers'
 import { registerUpdatesHandlers } from './ipc/updates-handlers'
@@ -65,6 +66,7 @@ let mainWindow: BrowserWindow | null = null
 let browserController: BrowserController | null = null
 let autoUpdaterController: AutoUpdaterController | undefined
 let diagnosticsService: DiagnosticsService | null = null
+let performanceTelemetryService: PerformanceTelemetryService | null = null
 let resolvedCdpPort: number | null = null
 const startupBootstrap = createStartupBootstrapTracker()
 const SMOKE_TEST_FLAG = '--smoke-test'
@@ -308,6 +310,9 @@ function registerIpcHandlers() {
   if (!diagnosticsService) {
     throw new Error('Diagnostics service not initialized')
   }
+  if (!performanceTelemetryService) {
+    throw new Error('Performance telemetry service not initialized')
+  }
   if (!providerSessionDirectory) {
     providerSessionDirectory = new ProviderSessionDirectory(persistenceService)
     service.setProviderSessionDirectory(providerSessionDirectory)
@@ -330,6 +335,8 @@ function registerIpcHandlers() {
   registerAppHandlers({
     getMainWindow: () => mainWindow,
     diagnosticsService,
+    performanceTelemetryService,
+    publishEvent,
   })
 
   registerUpdatesHandlers({
@@ -339,6 +346,7 @@ function registerIpcHandlers() {
   registerRuntimeOpencodeHandlers({
     service,
     terminalService,
+    performanceTelemetryService,
     startupBootstrap,
     getMainWindow: () => mainWindow,
     inferMimeFromPath,
@@ -355,6 +363,7 @@ function registerIpcHandlers() {
   registerTerminalHandlers({
     service: terminalService,
     claudeState: claudeTerminalState,
+    performanceTelemetryService,
   })
 
   registerBrowserHandlers({
@@ -363,14 +372,17 @@ function registerIpcHandlers() {
     assertBrowserSender: createAssertBrowserSender(() => mainWindow),
     resolveCdpPort,
     publishEvent,
+    performanceTelemetryService,
   })
 
   registerCodexHandlers({
     codexService,
+    performanceTelemetryService,
   })
 
   registerClaudeChatHandlers({
     claudeChatService,
+    performanceTelemetryService,
   })
 
   registerKanbanHandlers({
@@ -408,6 +420,10 @@ async function boot() {
   await app.whenReady()
   diagnosticsService = new DiagnosticsService()
   await diagnosticsService.hydrate()
+  performanceTelemetryService = new PerformanceTelemetryService()
+  eventPublisher.setPerformanceTelemetryService(performanceTelemetryService)
+  service.setPerformanceTelemetryService(performanceTelemetryService)
+  codexService.setPerformanceTelemetryService(performanceTelemetryService)
   process.on('uncaughtException', error => {
     recordMainDiagnostic({
       level: 'error',
@@ -438,8 +454,10 @@ async function boot() {
     })
   })
   persistenceService = new PersistenceService()
+  terminalService.performanceTelemetryService = performanceTelemetryService
   browserController = new BrowserController({
     onEvent: event => publishEvent(event),
+    performanceTelemetryService,
   })
   registerIpcHandlers()
 

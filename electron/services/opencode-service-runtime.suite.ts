@@ -8,9 +8,7 @@ import {
   pickLatestManagedOpencodeBinary,
   resolveManagedServerLaunchPort,
 } from './opencode-service'
-import {
-  createSessionMessageBundle,
-} from '../../src/test/session-message-bundle-factory'
+import { createSessionMessageBundle } from '../../src/test/session-message-bundle-factory'
 
 vi.mock('electron', () => ({
   app: {
@@ -93,6 +91,75 @@ describe('OpencodeService abortSession', () => {
         return payload?.sessionID
       })
     ).toEqual(['grandchild-session', 'child-session', 'root-session'])
+  })
+})
+
+describe('OpencodeService refreshProjectDelta', () => {
+  it('fetches only dynamic workspace slices for high-frequency sync paths', async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      refreshProjectDelta: (directory: string) => Promise<{
+        directory: string
+        sessions: unknown[]
+        sessionStatus: Record<string, unknown>
+        permissions: unknown[]
+        questions: unknown[]
+        commands: unknown[]
+        ptys: unknown[]
+      }>
+      ensureWorkspaceDirectory: (directory: string) => string
+      unwrap: <T>(value: T) => Promise<T>
+      client: (directory: string) => {
+        session: {
+          list: (payload: unknown) => Promise<unknown[]>
+          status: (payload: unknown) => Promise<Record<string, unknown>>
+        }
+        permission: { list: (payload: unknown) => Promise<unknown[]> }
+        question: { list: (payload: unknown) => Promise<unknown[]> }
+        command: { list: (payload: unknown) => Promise<unknown[]> }
+      }
+      recordPerf: ReturnType<typeof vi.fn>
+    }
+
+    const listSessions = vi.fn(async () => [{ id: 'session-1' }])
+    const listStatus = vi.fn(async () => ({ 'session-1': { type: 'busy' } }))
+    const listPermissions = vi.fn(async () => [{ id: 'perm-1' }])
+    const listQuestions = vi.fn(async () => [{ id: 'question-1' }])
+    const listCommands = vi.fn(async () => [{ id: 'command-1' }])
+
+    service.ensureWorkspaceDirectory = directory => directory
+    service.unwrap = vi.fn(async value => value)
+    service.client = () => ({
+      session: {
+        list: listSessions,
+        status: listStatus,
+      },
+      permission: { list: listPermissions },
+      question: { list: listQuestions },
+      command: { list: listCommands },
+    })
+    service.recordPerf = vi.fn()
+
+    const result = await service.refreshProjectDelta('/repo')
+
+    expect(result).toEqual({
+      directory: '/repo',
+      sessions: [{ id: 'session-1' }],
+      sessionStatus: { 'session-1': { type: 'busy' } },
+      permissions: [{ id: 'perm-1' }],
+      questions: [{ id: 'question-1' }],
+      commands: [{ id: 'command-1' }],
+      ptys: [],
+    })
+    expect(listSessions).toHaveBeenCalledTimes(1)
+    expect(listStatus).toHaveBeenCalledTimes(1)
+    expect(listPermissions).toHaveBeenCalledTimes(1)
+    expect(listQuestions).toHaveBeenCalledTimes(1)
+    expect(listCommands).toHaveBeenCalledTimes(1)
+    expect(service.recordPerf).toHaveBeenCalledWith(
+      'opencode.refresh_project_delta_ms',
+      expect.any(Number),
+      expect.objectContaining({ workspaceHash: '/repo' })
+    )
   })
 })
 

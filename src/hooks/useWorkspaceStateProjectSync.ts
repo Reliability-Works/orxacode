@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { Event as OpencodeEvent, Session } from '@opencode-ai/sdk/v2/client'
-import type { ProjectBootstrap, SessionRuntimeSnapshot } from '@shared/ipc'
+import type { ProjectBootstrap, ProjectRefreshDelta, SessionRuntimeSnapshot } from '@shared/ipc'
 import type { TerminalTab } from '../components/TerminalPanel'
 import { makeUnifiedSessionKey } from '../state/unified-runtime'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
@@ -17,6 +17,7 @@ import {
 } from './useWorkspaceState-shared'
 import { useWorkspaceQueuedRefresh } from './useWorkspaceQueuedRefresh'
 import type { SetMessages, SetProjectData, UnifiedRuntimeState } from './useWorkspaceState-store'
+import { measurePerf, reportPerf } from '../lib/performance'
 
 type UseWorkspaceStateProjectSyncArgs = {
   activeProjectDir?: string
@@ -29,7 +30,10 @@ type UseWorkspaceStateProjectSyncArgs = {
   getRuntimeState: () => UnifiedRuntimeState
   setProjectData: SetProjectData
   setProjectDataForDirectory: (directory: string, data: ProjectBootstrap) => void
-  setWorkspaceMeta: (directory: string, meta: { lastUpdatedAt?: number; lastOpenedAt?: number }) => void
+  setWorkspaceMeta: (
+    directory: string,
+    meta: { lastUpdatedAt?: number; lastOpenedAt?: number }
+  ) => void
   setOpencodeRuntimeSnapshot: (
     directory: string,
     sessionID: string,
@@ -38,13 +42,18 @@ type UseWorkspaceStateProjectSyncArgs = {
   setOpencodeTodoItems: (
     directory: string,
     sessionID: string,
-    items: Array<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled' }>
+    items: Array<{
+      id: string
+      content: string
+      status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+    }>
   ) => void
   setActiveSessionID: (sessionID: string | undefined) => void
   setMessages: SetMessages
 }
 
 type RuntimeSnapshot = Awaited<ReturnType<typeof loadOpencodeRuntimeSnapshot>>
+const BACKGROUND_REFRESH_COOLDOWN_MS = 1_500
 
 function computeLastUpdated(sessions: Array<{ time: { updated: number } }>) {
   return sessions.reduce((max, session) => Math.max(max, session.time.updated), 0)
@@ -83,7 +92,28 @@ function resolveNextSessionID(
   return nextSessionID
 }
 
-function useWorkspaceRuntimeProjection({ terminalTabIds, setTerminalTabs, setActiveTerminalId, mergeProjectData, getRuntimeState, setProjectData, setProjectDataForDirectory, setWorkspaceMeta, setOpencodeRuntimeSnapshot }: Pick<UseWorkspaceStateProjectSyncArgs, 'terminalTabIds' | 'setTerminalTabs' | 'setActiveTerminalId' | 'mergeProjectData' | 'getRuntimeState' | 'setProjectData' | 'setProjectDataForDirectory' | 'setWorkspaceMeta' | 'setOpencodeRuntimeSnapshot'>) {
+function useWorkspaceRuntimeProjection({
+  terminalTabIds,
+  setTerminalTabs,
+  setActiveTerminalId,
+  mergeProjectData,
+  getRuntimeState,
+  setProjectData,
+  setProjectDataForDirectory,
+  setWorkspaceMeta,
+  setOpencodeRuntimeSnapshot,
+}: Pick<
+  UseWorkspaceStateProjectSyncArgs,
+  | 'terminalTabIds'
+  | 'setTerminalTabs'
+  | 'setActiveTerminalId'
+  | 'mergeProjectData'
+  | 'getRuntimeState'
+  | 'setProjectData'
+  | 'setProjectDataForDirectory'
+  | 'setWorkspaceMeta'
+  | 'setOpencodeRuntimeSnapshot'
+>) {
   const buildRuntimeProjectSlice = useCallback(
     (
       directory: string,
@@ -101,7 +131,10 @@ function useWorkspaceRuntimeProjection({ terminalTabIds, setTerminalTabs, setAct
         directory,
         sessionStatus: {
           ...(cachedProject?.sessionStatus ?? {}),
-          [runtime.sessionID]: resolveRecoveredOpencodeSessionStatus(runtime.sessionStatus, cachedStatus),
+          [runtime.sessionID]: resolveRecoveredOpencodeSessionStatus(
+            runtime.sessionStatus,
+            cachedStatus
+          ),
         },
         permissions: runtime.permissions ?? [],
         questions: runtime.questions ?? [],
@@ -122,7 +155,34 @@ function useWorkspaceRuntimeProjection({ terminalTabIds, setTerminalTabs, setAct
       setWorkspaceMeta(directory, { lastUpdatedAt: computeLastUpdated(merged.sessions) })
       return merged
     },
-    [getRuntimeState, mergeProjectData, setProjectData, setProjectDataForDirectory, setWorkspaceMeta]
+    [
+      getRuntimeState,
+      mergeProjectData,
+      setProjectData,
+      setProjectDataForDirectory,
+      setWorkspaceMeta,
+    ]
+  )
+
+  const commitProjectDelta = useCallback(
+    (directory: string, delta: ProjectRefreshDelta) => {
+      const runtimeState = getRuntimeState()
+      const cachedProject = runtimeState.projectDataByDirectory[directory]
+      if (!cachedProject) {
+        throw new Error(`Cannot apply project delta before bootstrap for ${directory}`)
+      }
+      const mergedProject: ProjectBootstrap = {
+        ...cachedProject,
+        sessions: delta.sessions,
+        sessionStatus: delta.sessionStatus,
+        permissions: delta.permissions,
+        questions: delta.questions,
+        commands: delta.commands,
+        ptys: delta.ptys,
+      }
+      return commitProjectData(directory, mergedProject)
+    },
+    [commitProjectData, getRuntimeState]
   )
 
   const syncTerminalTabs = useCallback(
@@ -143,7 +203,8 @@ function useWorkspaceRuntimeProjection({ terminalTabIds, setTerminalTabs, setAct
       const messages = mergePersisted
         ? mergeOpencodeMessages(
             normalized,
-            getPersistedOpencodeState(makeUnifiedSessionKey('opencode', directory, sessionID)).messages
+            getPersistedOpencodeState(makeUnifiedSessionKey('opencode', directory, sessionID))
+              .messages
           )
         : normalized
       const runtimeProject = buildRuntimeProjectSlice(directory, runtime)
@@ -160,7 +221,13 @@ function useWorkspaceRuntimeProjection({ terminalTabIds, setTerminalTabs, setAct
     [buildRuntimeProjectSlice, setOpencodeRuntimeSnapshot]
   )
 
-  return { buildRuntimeProjectSlice, commitProjectData, syncTerminalTabs, applyRuntimeSnapshot }
+  return {
+    buildRuntimeProjectSlice,
+    commitProjectData,
+    commitProjectDelta,
+    syncTerminalTabs,
+    applyRuntimeSnapshot,
+  }
 }
 
 function useWorkspaceRefreshActions({
@@ -182,58 +249,141 @@ function useWorkspaceRefreshActions({
   setMessages: SetMessages
   projection: ReturnType<typeof useWorkspaceRuntimeProjection>
 }) {
+  const runtimeLoadInFlightRef = useRef(new Map<string, Promise<RuntimeSnapshot | undefined>>())
+  const projectRefreshInFlightRef = useRef(new Map<string, Promise<ProjectBootstrap>>())
+  const projectRefreshLastAtRef = useRef(new Map<string, number>())
+
+  const loadRuntimeForSession = useCallback(
+    (
+      directory: string,
+      sessionID: string,
+      options?: { bypassCache?: boolean; reuseWindowMs?: number }
+    ) => {
+      const key = `${directory}::${sessionID}`
+      const inFlight = runtimeLoadInFlightRef.current.get(key)
+      if (inFlight) {
+        return inFlight
+      }
+      const request = loadOpencodeRuntimeSnapshot(directory, sessionID, {
+        bypassCache: options?.bypassCache,
+        reuseWindowMs: options?.reuseWindowMs,
+      })
+        .then(runtime => runtime)
+        .catch(error => {
+          setStatusLine(error instanceof Error ? error.message : String(error))
+          return undefined
+        })
+        .finally(() => {
+          runtimeLoadInFlightRef.current.delete(key)
+        })
+      runtimeLoadInFlightRef.current.set(key, request)
+      return request
+    },
+    [setStatusLine]
+  )
+
   const refreshProject = useCallback(
     async (directory: string, skipMessageLoad = false) => {
-      try {
-        const data = await window.orxa.opencode.refreshProject(directory)
-        const merged = projection.commitProjectData(directory, data)
-        const currentState = getRuntimeState()
-        if (currentState.activeWorkspaceDirectory === directory) {
-          setProjectData(merged)
-        }
-        const sortedSessions = [...merged.sessions].sort((a, b) => b.time.updated - a.time.updated)
-        const staleBusySessionIDs = getStaleBusySessionIDs(merged.sessions, merged.sessionStatus)
-        const currentActiveSessionID =
-          currentState.activeWorkspaceDirectory === directory ? currentState.activeSessionID : undefined
-        const sessionStatusSlice = currentState.projectDataByDirectory[directory]?.sessionStatus
-        const nextSessionID = resolveNextSessionID(
-          currentActiveSessionID,
-          sortedSessions,
-          sessionStatusSlice ?? {},
-          setActiveSessionID,
-          setMessages
-        )
-
-        projection.syncTerminalTabs(merged.ptys)
-
-        if (nextSessionID && !skipMessageLoad) {
-          const latest = await loadOpencodeRuntimeSnapshot(directory, nextSessionID).catch(
-            () => undefined
-          )
-          if (latest && getRuntimeState().activeSessionID === nextSessionID) {
-            projection.applyRuntimeSnapshot(directory, nextSessionID, latest)
-          }
-        }
-
-        for (const busySessionID of staleBusySessionIDs) {
-          if (busySessionID === nextSessionID && !skipMessageLoad) {
-            continue
-          }
-          void loadOpencodeRuntimeSnapshot(directory, busySessionID)
-            .then(runtime => {
-              projection.applyRuntimeSnapshot(directory, busySessionID, runtime)
-            })
-            .catch(() => undefined)
-        }
-
-        return merged
-      } catch (error) {
-        setStatusLine(error instanceof Error ? error.message : String(error))
-        throw error
+      const inFlightRefresh = projectRefreshInFlightRef.current.get(directory)
+      if (inFlightRefresh) {
+        return inFlightRefresh
       }
+
+      if (skipMessageLoad) {
+        const lastRefreshedAt = projectRefreshLastAtRef.current.get(directory) ?? 0
+        if (Date.now() - lastRefreshedAt < BACKGROUND_REFRESH_COOLDOWN_MS) {
+          const cachedProject = getRuntimeState().projectDataByDirectory[directory]
+          if (cachedProject) {
+            return cachedProject
+          }
+        }
+      }
+
+      const refreshPromise = (async () => {
+        try {
+          const useDeltaRefresh = skipMessageLoad
+            ? Boolean(getRuntimeState().projectDataByDirectory[directory])
+            : false
+          const data = await measurePerf(
+            {
+              surface: 'workspace',
+              metric: 'workspace.refresh_ms',
+              kind: 'span',
+              unit: 'ms',
+              process: 'renderer',
+              component: 'workspace-state-project-sync',
+              workspaceHash: directory,
+            },
+            () =>
+              useDeltaRefresh
+                ? window.orxa.opencode.refreshProjectDelta(directory)
+                : window.orxa.opencode.refreshProject(directory)
+          )
+          const merged = useDeltaRefresh
+            ? projection.commitProjectDelta(directory, data as ProjectRefreshDelta)
+            : projection.commitProjectData(directory, data as ProjectBootstrap)
+          const currentState = getRuntimeState()
+          if (currentState.activeWorkspaceDirectory === directory) {
+            setProjectData(merged)
+          }
+          const sortedSessions = [...merged.sessions].sort(
+            (a, b) => b.time.updated - a.time.updated
+          )
+          const staleBusySessionIDs = getStaleBusySessionIDs(merged.sessions, merged.sessionStatus)
+          const currentActiveSessionID =
+            currentState.activeWorkspaceDirectory === directory
+              ? currentState.activeSessionID
+              : undefined
+          const sessionStatusSlice = currentState.projectDataByDirectory[directory]?.sessionStatus
+          const nextSessionID = resolveNextSessionID(
+            currentActiveSessionID,
+            sortedSessions,
+            sessionStatusSlice ?? {},
+            setActiveSessionID,
+            setMessages
+          )
+
+          projection.syncTerminalTabs(merged.ptys)
+
+          if (nextSessionID && !skipMessageLoad) {
+            const latest = await loadRuntimeForSession(directory, nextSessionID, {
+              reuseWindowMs: 900,
+            })
+            if (latest && getRuntimeState().activeSessionID === nextSessionID) {
+              projection.applyRuntimeSnapshot(directory, nextSessionID, latest)
+            }
+          }
+
+          for (const busySessionID of staleBusySessionIDs) {
+            if (busySessionID === nextSessionID && !skipMessageLoad) {
+              continue
+            }
+            void loadRuntimeForSession(directory, busySessionID, { reuseWindowMs: 900 }).then(
+              runtime => {
+                if (!runtime) {
+                  return
+                }
+                projection.applyRuntimeSnapshot(directory, busySessionID, runtime)
+              }
+            )
+          }
+
+          projectRefreshLastAtRef.current.set(directory, Date.now())
+          return merged
+        } catch (error) {
+          setStatusLine(error instanceof Error ? error.message : String(error))
+          throw error
+        }
+      })().finally(() => {
+        projectRefreshInFlightRef.current.delete(directory)
+      })
+
+      projectRefreshInFlightRef.current.set(directory, refreshPromise)
+      return refreshPromise
     },
     [
       getRuntimeState,
+      loadRuntimeForSession,
       projection,
       setActiveSessionID,
       setMessages,
@@ -252,16 +402,47 @@ function useWorkspaceRefreshActions({
       if (getRuntimeState().activeSessionID !== sessionAtStart) {
         return undefined
       }
-      const runtime = await loadOpencodeRuntimeSnapshot(activeProjectDir, sessionAtStart)
+      const startedAt = performance.now()
+      const runtime = await measurePerf(
+        {
+          surface: 'session',
+          metric: 'session.runtime.load_ms',
+          kind: 'span',
+          unit: 'ms',
+          process: 'renderer',
+          component: 'workspace-state-project-sync',
+          workspaceHash: activeProjectDir,
+          sessionHash: sessionAtStart,
+        },
+        () =>
+          loadRuntimeForSession(activeProjectDir, sessionAtStart, {
+            reuseWindowMs: 900,
+          }).then(snapshot => {
+            if (!snapshot) {
+              throw new Error('runtime snapshot unavailable')
+            }
+            return snapshot
+          })
+      )
+      reportPerf({
+        surface: 'session',
+        metric: 'session.messages.load_ms',
+        kind: 'span',
+        value: performance.now() - startedAt,
+        unit: 'ms',
+        process: 'renderer',
+        component: 'workspace-state-project-sync',
+        workspaceHash: activeProjectDir,
+        sessionHash: sessionAtStart,
+      })
       if (getRuntimeState().activeSessionID === sessionAtStart) {
         projection.applyRuntimeSnapshot(activeProjectDir, sessionAtStart, runtime, true)
       }
       return runtime
-    } catch (error) {
-      setStatusLine(error instanceof Error ? error.message : String(error))
+    } catch {
       return undefined
     }
-  }, [activeProjectDir, activeSessionID, getRuntimeState, projection, setStatusLine])
+  }, [activeProjectDir, activeSessionID, getRuntimeState, loadRuntimeForSession, projection])
 
   return {
     refreshProject,
@@ -277,6 +458,12 @@ function useWorkspaceResponsePolling({
   projection: ReturnType<typeof useWorkspaceRuntimeProjection>
 }) {
   const responsePollTimer = useRef<number | undefined>(undefined)
+  const promptLifecycleRef = useRef<
+    Record<
+      string,
+      { startedAt: number; firstEventRecorded: boolean; firstAssistantRecorded: boolean }
+    >
+  >({})
 
   const stopResponsePolling = useCallback(() => {
     if (responsePollTimer.current) {
@@ -288,6 +475,12 @@ function useWorkspaceResponsePolling({
   const startResponsePolling = useCallback(
     (directory: string, sessionID: string) => {
       stopResponsePolling()
+      const lifecycleKey = `${directory}::${sessionID}`
+      promptLifecycleRef.current[lifecycleKey] = {
+        startedAt: performance.now(),
+        firstEventRecorded: false,
+        firstAssistantRecorded: false,
+      }
       const poll = () => {
         responsePollTimer.current = window.setTimeout(() => {
           const state = getRuntimeState()
@@ -295,9 +488,67 @@ function useWorkspaceResponsePolling({
             stopResponsePolling()
             return
           }
-          void loadOpencodeRuntimeSnapshot(directory, sessionID)
+          void measurePerf(
+            {
+              surface: 'background',
+              metric: 'background.poll_ms',
+              kind: 'span',
+              unit: 'ms',
+              process: 'renderer',
+              trigger: 'poll',
+              component: 'workspace-response-polling',
+              workspaceHash: directory,
+              sessionHash: sessionID,
+            },
+            () => loadOpencodeRuntimeSnapshot(directory, sessionID, { reuseWindowMs: 900 })
+          )
             .then(runtime => {
+              reportPerf({
+                surface: 'background',
+                metric: 'background.poll_count',
+                kind: 'counter',
+                value: 1,
+                unit: 'count',
+                process: 'renderer',
+                trigger: 'poll',
+                component: 'workspace-response-polling',
+                workspaceHash: directory,
+                sessionHash: sessionID,
+              })
               const merged = projection.applyRuntimeSnapshot(directory, sessionID, runtime, true)
+              const lifecycle = promptLifecycleRef.current[lifecycleKey]
+              if (lifecycle && !lifecycle.firstEventRecorded) {
+                lifecycle.firstEventRecorded = true
+                reportPerf({
+                  surface: 'session',
+                  metric: 'prompt.first_event_ms',
+                  kind: 'span',
+                  value: performance.now() - lifecycle.startedAt,
+                  unit: 'ms',
+                  process: 'renderer',
+                  component: 'workspace-response-polling',
+                  workspaceHash: directory,
+                  sessionHash: sessionID,
+                })
+              }
+              if (
+                lifecycle &&
+                !lifecycle.firstAssistantRecorded &&
+                merged.some(message => message.info.role === 'assistant')
+              ) {
+                lifecycle.firstAssistantRecorded = true
+                reportPerf({
+                  surface: 'session',
+                  metric: 'prompt.first_assistant_output_ms',
+                  kind: 'span',
+                  value: performance.now() - lifecycle.startedAt,
+                  unit: 'ms',
+                  process: 'renderer',
+                  component: 'workspace-response-polling',
+                  workspaceHash: directory,
+                  sessionHash: sessionID,
+                })
+              }
               const sessionStatusType = (
                 (runtime.sessionStatus as { type?: string } | undefined)?.type ?? ''
               ).toLowerCase()
@@ -310,9 +561,24 @@ function useWorkspaceResponsePolling({
                 poll()
                 return
               }
+              if (lifecycle) {
+                reportPerf({
+                  surface: 'session',
+                  metric: 'prompt.complete_ms',
+                  kind: 'span',
+                  value: performance.now() - lifecycle.startedAt,
+                  unit: 'ms',
+                  process: 'renderer',
+                  component: 'workspace-response-polling',
+                  workspaceHash: directory,
+                  sessionHash: sessionID,
+                })
+                delete promptLifecycleRef.current[lifecycleKey]
+              }
               stopResponsePolling()
             })
             .catch(() => {
+              delete promptLifecycleRef.current[lifecycleKey]
               stopResponsePolling()
             })
         }, 700)

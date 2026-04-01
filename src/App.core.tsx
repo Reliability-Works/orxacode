@@ -3,6 +3,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  Profiler,
   useRef,
   useState,
   type CSSProperties,
@@ -26,13 +27,14 @@ import type {
   SessionMessageBundle,
   ProviderUsageStats,
   AppDiagnosticInput,
+  PerfSnapshotExport,
+  PerfSnapshotExportInput,
+  PerfSummaryRow,
 } from '@shared/ipc'
+import { type PerfExportOptions, DEFAULT_PERF_EXPORT_OPTIONS } from './perf-export-options'
 import type { Agent, ProviderListResponse } from '@opencode-ai/sdk/v2/client'
 import { BackgroundSessionSupervisorHost } from './components/BackgroundSessionSupervisorHost'
-import {
-  ContentTopBar,
-  type CustomRunCommandPreset,
-} from './components/ContentTopBar'
+import { ContentTopBar, type CustomRunCommandPreset } from './components/ContentTopBar'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
 import { WorkspaceSidebar } from './components/WorkspaceSidebar'
 import { useAppCoreBackgroundAgents } from './app-core-background-agents'
@@ -108,6 +110,7 @@ import {
   buildProviderArchiveRequest,
   clearLocalProviderArchiveState,
 } from './lib/provider-session-archive'
+import { measurePerf, usePerfProfiler } from './lib/performance'
 import { resolveSessionCopyIdentifier } from './lib/session-context-menu'
 import { isOpencodeRuntimeSession } from './lib/session-types'
 import {
@@ -428,6 +431,17 @@ export default function App() {
   const [debugModalOpen, setDebugModalOpen] = useState(false)
   const [debugLogLevelFilter, setDebugLogLevelFilter] = useState<'all' | DebugLogLevel>('all')
   const [debugLogs, setDebugLogs] = useState<DebugLogEntry[]>([])
+  const [perfSummaryRows, setPerfSummaryRows] = useState<PerfSummaryRow[]>([])
+  const [perfSummaryLoading, setPerfSummaryLoading] = useState(false)
+  const [perfSummaryError, setPerfSummaryError] = useState<string | null>(null)
+  const [perfWindowMs, setPerfWindowMs] = usePersistedState<number>(
+    'orxa:debug:perf-window-ms',
+    30 * 60_000
+  )
+  const [perfExportOptions, setPerfExportOptions] = useState<PerfExportOptions>(
+    DEFAULT_PERF_EXPORT_OPTIONS
+  )
+  const perfProfiler = usePerfProfiler()
   const appendDebugLog = useCallback((entry: Omit<DebugLogEntry, 'id' | 'time'>) => {
     setDebugLogs(current => {
       const next: DebugLogEntry = {
@@ -528,7 +542,8 @@ export default function App() {
     [shouldUseOpencodeRuntimeSession]
   )
   const shouldSkipRuntimeSessionLoad = useCallback(
-    (directory: string, sessionID: string) => !shouldUseOpencodeRuntimeSession(directory, sessionID),
+    (directory: string, sessionID: string) =>
+      !shouldUseOpencodeRuntimeSession(directory, sessionID),
     [shouldUseOpencodeRuntimeSession]
   )
   const {
@@ -1079,7 +1094,12 @@ export default function App() {
         ),
         discoverableProviderIDs
       ),
-    [codexServiceModelOptions, configModelOptions, discoverableProviderIDs, globalServerModelOptions]
+    [
+      codexServiceModelOptions,
+      configModelOptions,
+      discoverableProviderIDs,
+      globalServerModelOptions,
+    ]
   )
   const settingsModelsRef = useRef<ModelOption[]>([])
   const settingsModelOptions = useMemo(() => {
@@ -1131,9 +1151,9 @@ export default function App() {
   )
   const activeOpencodeRuntime =
     activeProjectDir && activeSessionID
-      ? opencodeSessionStateMap[
+      ? (opencodeSessionStateMap[
           buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-        ] ?? null
+        ] ?? null)
       : null
   const opencodeSessionControls = useOpencodeSessionControls({
     sessionKey:
@@ -1194,6 +1214,92 @@ export default function App() {
       pushToast(`Failed to copy debug logs: ${message}`, 'error')
     }
   }, [debugLogLevelFilter, filteredDebugLogs, pushToast, setStatusLine])
+
+  const refreshPerfSummary = useCallback(async () => {
+    if (!window.orxa?.app?.listPerfSummary) {
+      setPerfSummaryError('Performance summary bridge is unavailable.')
+      return
+    }
+    setPerfSummaryLoading(true)
+    setPerfSummaryError(null)
+    try {
+      const windowMinutes = Math.max(1, Math.round(perfWindowMs / 60_000))
+      const rows = await window.orxa.app.listPerfSummary({
+        limit: 5000,
+        sinceMs: perfWindowMs,
+        includeInternalTelemetry: false,
+      })
+      setPerfSummaryRows(rows)
+      setStatusLine(`Loaded ${rows.length} performance summary rows (${windowMinutes}m window)`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setPerfSummaryError(message)
+      setStatusLine(`Failed to load performance summary: ${message}`)
+    } finally {
+      setPerfSummaryLoading(false)
+    }
+  }, [perfWindowMs, setStatusLine])
+
+  const exportPerfSnapshotAsJson = useCallback(async () => {
+    if (!window.orxa?.app?.exportPerfSnapshot) {
+      setStatusLine('Performance export is unavailable.')
+      return
+    }
+    try {
+      const exportFilter: PerfSnapshotExportInput = {
+        sinceMs: perfWindowMs,
+        summaryLimit: 5_000,
+        includeEvents: true,
+        eventLimit: 5_000,
+        includeInternalTelemetry: false,
+        slowOnly: perfExportOptions.slowOnly,
+        minDurationMs: perfExportOptions.minDurationMs,
+        surfaces: perfExportOptions.surfaces.length > 0 ? perfExportOptions.surfaces : undefined,
+      }
+      const snapshot = (await window.orxa.app.exportPerfSnapshot(
+        exportFilter
+      )) as PerfSnapshotExport
+      const payload =
+        'path' in snapshot
+          ? snapshot
+          : {
+              exportedAt: new Date().toISOString(),
+              telemetryMode: 'always_on_local_only',
+              summaries: snapshot.rows,
+              events: snapshot.events,
+              filter: snapshot.filter,
+              eventStats: snapshot.eventStats,
+            }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `orxa-performance-${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      URL.revokeObjectURL(url)
+      if ('path' in snapshot) {
+        setStatusLine(`Exported performance snapshot to ${snapshot.path}`)
+      } else {
+        const windowMinutes = Math.max(1, Math.round((snapshot.filter.sinceMs ?? 0) / 60_000))
+        setStatusLine(
+          `Exported ${snapshot.eventStats.exported}/${snapshot.eventStats.matched} events (${windowMinutes}m; priority ${snapshot.eventStats.priorityExported}/${snapshot.eventStats.priorityMatched})`
+        )
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setStatusLine(`Failed to export performance snapshot: ${message}`)
+      pushToast(`Failed to export performance snapshot: ${message}`, 'error')
+    }
+  }, [perfExportOptions, perfWindowMs, pushToast, setStatusLine])
+
+  useEffect(() => {
+    if (!debugModalOpen) {
+      return
+    }
+    void refreshPerfSummary()
+  }, [debugModalOpen, refreshPerfSummary])
 
   const storeMarkSessionAbortRequestedAt = useUnifiedRuntimeStore(
     state => state.markSessionAbortRequestedAt
@@ -1374,9 +1480,7 @@ export default function App() {
 
       const [models, collaborationModes] = await Promise.all([
         window.orxa.codex.listModels().catch(() => [] as CodexModelEntry[]),
-        window.orxa.codex
-          .listCollaborationModes()
-          .catch(() => [] as CodexCollaborationMode[]),
+        window.orxa.codex.listCollaborationModes().catch(() => [] as CodexCollaborationMode[]),
       ])
       if (models.length > 0) {
         setCodexServiceModels(models)
@@ -1397,9 +1501,7 @@ export default function App() {
     const loadConnectedMetadata = async () => {
       const [models, collaborationModes] = await Promise.all([
         window.orxa.codex.listModels().catch(() => [] as CodexModelEntry[]),
-        window.orxa.codex
-          .listCollaborationModes()
-          .catch(() => [] as CodexCollaborationMode[]),
+        window.orxa.codex.listCollaborationModes().catch(() => [] as CodexCollaborationMode[]),
       ])
       if (cancelled) {
         return
@@ -1446,12 +1548,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [
-    activeProjectDir,
-    activeSessionType,
-    appPreferences.codexArgs,
-    appPreferences.codexPath,
-  ])
+  }, [activeProjectDir, activeSessionType, appPreferences.codexArgs, appPreferences.codexPath])
 
   useEffect(() => {
     void refreshCodexServiceSnapshot()
@@ -1722,8 +1819,7 @@ export default function App() {
     ): string | undefined => {
       const agentDef = agentOptionsList.find(agent => agent.name === nextAgent)
       const savedModel = nextAgent ? modelPrefs[nextAgent] : undefined
-      const preferredModelValue =
-        savedModel ?? agentDef?.model ?? preferredModel ?? projectModel
+      const preferredModelValue = savedModel ?? agentDef?.model ?? preferredModel ?? projectModel
       if (preferredModelValue && modelOptions.some(item => item.key === preferredModelValue)) {
         return preferredModelValue
       }
@@ -1822,21 +1918,17 @@ export default function App() {
     isRecoverableSessionError,
   })
 
-  const {
-    activeProject,
-    activeWorkspaceWorktree,
-    filteredProjects,
-    sidebarActiveProjectDir,
-  } = useWorkspaceShellSurface({
-    projects,
-    activeProjectDir,
-    projectSearchQuery,
-    projectSortMode,
-    workspaceMetaByDirectory,
-    workspaceRootByDirectory,
-    worktreesByWorkspace,
-    setSelectedWorkspaceWorktree,
-  })
+  const { activeProject, activeWorkspaceWorktree, filteredProjects, sidebarActiveProjectDir } =
+    useWorkspaceShellSurface({
+      projects,
+      activeProjectDir,
+      projectSearchQuery,
+      projectSortMode,
+      workspaceMetaByDirectory,
+      workspaceRootByDirectory,
+      worktreesByWorkspace,
+      setSelectedWorkspaceWorktree,
+    })
 
   const allProjectSessions = useMemo(() => {
     const map: Record<string, Array<{ id: string; title?: string; slug: string }>> = {}
@@ -1992,10 +2084,7 @@ export default function App() {
     ]
   )
 
-  const {
-    openBoundClaudeSession,
-    openBoundCodexSession,
-  } = useBoundProviderSessionOpeners({
+  const { openBoundClaudeSession, openBoundCodexSession } = useBoundProviderSessionOpeners({
     activeProjectDir,
     clearPendingSession,
     markSessionUsed,
@@ -2078,9 +2167,7 @@ export default function App() {
     createSession,
     setStatusLine,
   })
-  const {
-    codexThreads: workspaceCodexThreads,
-  } = useWorkspaceCodexThreads({
+  const { codexThreads: workspaceCodexThreads } = useWorkspaceCodexThreads({
     modalOpen: allSessionsModalOpen,
     workspaceRoot: workspaceDetailRoot,
     setStatusLine,
@@ -2385,8 +2472,6 @@ export default function App() {
     }
   }, [setBranchMenuOpen])
 
-
-
   useEffect(() => {
     setTitleMenuOpen(false)
     setOpenMenuOpen(false)
@@ -2587,38 +2672,120 @@ export default function App() {
       unsubscribe?.()
     }
   }, [setHiddenBackgroundSessionIdsByProject])
+  const resumeRefreshActiveProjectDirRef = useRef(activeProjectDir)
+  const resumeRefreshCachedProjectsRef = useRef(cachedProjects)
+  const resumeRefreshProjectRef = useRef(refreshProject)
+  const resumeRefreshDiagnosticsRef = useRef(reportRendererDiagnostic)
+
   useEffect(() => {
-    const refreshBackgroundProjects = () => {
-      const directories = Object.keys(cachedProjects).filter(
-        directory => directory !== activeProjectDir
-      )
-      for (const directory of directories) {
-        void refreshProject(directory, true).catch(error => {
-          reportRendererDiagnostic({
-            level: 'warn',
-            source: 'renderer',
-            category: 'background.refresh-project',
-            message: `Failed to refresh background workspace ${directory}`,
-            details: error instanceof Error ? (error.stack ?? error.message) : String(error),
-          })
-        })
+    resumeRefreshActiveProjectDirRef.current = activeProjectDir
+    resumeRefreshCachedProjectsRef.current = cachedProjects
+    resumeRefreshProjectRef.current = refreshProject
+    resumeRefreshDiagnosticsRef.current = reportRendererDiagnostic
+  }, [activeProjectDir, cachedProjects, refreshProject, reportRendererDiagnostic])
+
+  useEffect(() => {
+    let cancelled = false
+    let refreshInFlight = false
+    let refreshQueued = false
+    let resumeRefreshTimer: number | undefined
+
+    const runBackgroundRefresh = async () => {
+      if (refreshInFlight) {
+        refreshQueued = true
+        return
+      }
+      refreshInFlight = true
+      try {
+        do {
+          refreshQueued = false
+          const currentActiveProjectDir = resumeRefreshActiveProjectDirRef.current
+          const projects = resumeRefreshCachedProjectsRef.current
+          const directories = Object.entries(projects)
+            .filter(([directory, project]) => {
+              if (directory === currentActiveProjectDir) {
+                return false
+              }
+              if (!project) {
+                return false
+              }
+              const hasWorkflowBacklog =
+                (project.permissions?.length ?? 0) > 0 ||
+                (project.questions?.length ?? 0) > 0 ||
+                (project.commands?.length ?? 0) > 0
+              if (hasWorkflowBacklog) {
+                return true
+              }
+              const hasActiveSessionState = Object.values(project.sessionStatus ?? {}).some(
+                status => Boolean(status?.type) && status.type !== 'idle'
+              )
+              return hasActiveSessionState
+            })
+            .map(([directory]) => directory)
+          for (const directory of directories) {
+            if (cancelled) {
+              return
+            }
+            await measurePerf(
+              {
+                surface: 'background',
+                metric: 'background.workspace_refresh_ms',
+                kind: 'span',
+                unit: 'ms',
+                process: 'renderer',
+                trigger: 'resume',
+                component: 'app-core',
+                workspaceHash: directory,
+              },
+              () => resumeRefreshProjectRef.current(directory, true)
+            ).catch(error => {
+              resumeRefreshDiagnosticsRef.current({
+                level: 'warn',
+                source: 'renderer',
+                category: 'background.refresh-project',
+                message: `Failed to refresh background workspace ${directory}`,
+                details: error instanceof Error ? (error.stack ?? error.message) : String(error),
+              })
+            })
+            if (cancelled) {
+              return
+            }
+            await new Promise(resolve => window.setTimeout(resolve, 60))
+          }
+        } while (!cancelled && refreshQueued)
+      } finally {
+        refreshInFlight = false
       }
     }
+
     const onResume = () => {
       if (document.visibilityState === 'hidden') {
         return
       }
-      refreshBackgroundProjects()
+      if (resumeRefreshTimer) {
+        window.clearTimeout(resumeRefreshTimer)
+      }
+      resumeRefreshTimer = window.setTimeout(() => {
+        if (cancelled) {
+          return
+        }
+        void runBackgroundRefresh()
+      }, 260)
     }
+
     document.addEventListener('visibilitychange', onResume)
     window.addEventListener('focus', onResume)
     window.addEventListener('pageshow', onResume)
     return () => {
+      cancelled = true
+      if (resumeRefreshTimer) {
+        window.clearTimeout(resumeRefreshTimer)
+      }
       document.removeEventListener('visibilitychange', onResume)
       window.removeEventListener('focus', onResume)
       window.removeEventListener('pageshow', onResume)
     }
-  }, [activeProjectDir, cachedProjects, refreshProject, reportRendererDiagnostic])
+  }, [])
   const effectiveBrowserState = useMemo(
     () =>
       buildAppShellBrowserSidebarState({
@@ -3079,8 +3246,8 @@ export default function App() {
   })
   const activeLocalProviderSessionKey =
     activeProjectDir && activeSessionID
-      ? activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-      : activeSessionKey ?? ''
+      ? (activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID))
+      : (activeSessionKey ?? '')
   const handleActiveLocalProviderInteraction = useCallback(() => {
     if (!activeProjectDir || !activeSessionID) {
       return
@@ -3095,42 +3262,45 @@ export default function App() {
     markSyntheticSessionStarted,
     touchSyntheticSession,
   ])
-  const handleActiveLocalProviderTitleChange = useCallback((title: string) => {
-    if (!activeSessionID || !activeProjectDir) {
-      return
-    }
-    const scopedSessionKey = buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-    if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
-      return
-    }
-    if (manualSessionTitles[scopedSessionKey]) {
-      return
-    }
-    setSessionTitles(prev => {
-      const currentTitle = prev[scopedSessionKey]
-      if (currentTitle === title) {
-        return prev
+  const handleActiveLocalProviderTitleChange = useCallback(
+    (title: string) => {
+      if (!activeSessionID || !activeProjectDir) {
+        return
       }
-      if (
-        currentTitle &&
-        !looksAutoGeneratedSessionTitle(currentTitle) &&
-        currentTitle !== title
-      ) {
-        return prev
+      const scopedSessionKey = buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+      if (!title.trim() || looksAutoGeneratedSessionTitle(title)) {
+        return
       }
-      return {
-        ...prev,
-        [scopedSessionKey]: title,
+      if (manualSessionTitles[scopedSessionKey]) {
+        return
       }
-    })
-    renameSyntheticSession(activeProjectDir, activeSessionID, title)
-  }, [
-    activeProjectDir,
-    activeSessionID,
-    manualSessionTitles,
-    renameSyntheticSession,
-    setSessionTitles,
-  ])
+      setSessionTitles(prev => {
+        const currentTitle = prev[scopedSessionKey]
+        if (currentTitle === title) {
+          return prev
+        }
+        if (
+          currentTitle &&
+          !looksAutoGeneratedSessionTitle(currentTitle) &&
+          currentTitle !== title
+        ) {
+          return prev
+        }
+        return {
+          ...prev,
+          [scopedSessionKey]: title,
+        }
+      })
+      renameSyntheticSession(activeProjectDir, activeSessionID, title)
+    },
+    [
+      activeProjectDir,
+      activeSessionID,
+      manualSessionTitles,
+      renameSyntheticSession,
+      setSessionTitles,
+    ]
+  )
   const runQueuedMessage = useCallback(
     (id: string) => {
       const item = followupQueue.find(message => message.id === id)
@@ -3405,8 +3575,7 @@ export default function App() {
     onBrowserHandBack: browserHandBack,
     onBrowserStop: browserStop,
     onStatusChange: setStatusLine,
-    onSendAnnotations: (text: string) =>
-      setComposer(prev => (prev ? `${prev}\n\n${text}` : text)),
+    onSendAnnotations: (text: string) => setComposer(prev => (prev ? `${prev}\n\n${text}` : text)),
     mcpDevToolsState,
   }
   const gitSidebarProps = {
@@ -3450,297 +3619,314 @@ export default function App() {
         })
       }}
     >
-      <div className="app-shell">
-        <BackgroundSessionSupervisorHost
-          sessions={backgroundSessionDescriptors}
-          codexPath={appPreferences.codexPath}
-          codexArgs={appPreferences.codexArgs}
-        />
-        <div className="window-drag-region" />
-        {startupState.phase === 'running' ? (
-          <section className="startup-overlay" aria-live="polite" role="status">
-            <div className="startup-card">
-              <h2>Initializing Orxa Code</h2>
-              <p>{startupState.message}</p>
-              <div className="startup-meter" aria-label="Startup progress">
-                <div
-                  className="startup-meter-fill"
-                  style={{ width: `${startupProgressPercent}%` }}
-                />
+      <Profiler id="AppCoreShell" onRender={perfProfiler('AppCoreShell')}>
+        <div className="app-shell">
+          <BackgroundSessionSupervisorHost
+            sessions={backgroundSessionDescriptors}
+            codexPath={appPreferences.codexPath}
+            codexArgs={appPreferences.codexArgs}
+          />
+          <div className="window-drag-region" />
+          {startupState.phase === 'running' ? (
+            <section className="startup-overlay" aria-live="polite" role="status">
+              <div className="startup-card">
+                <h2>Initializing Orxa Code</h2>
+                <p>{startupState.message}</p>
+                <div className="startup-meter" aria-label="Startup progress">
+                  <div
+                    className="startup-meter-fill"
+                    style={{ width: `${startupProgressPercent}%` }}
+                  />
+                </div>
+                <small>{startupProgressPercent}%</small>
               </div>
-              <small>{startupProgressPercent}%</small>
+            </section>
+          ) : null}
+          {hasProjectContext && !settingsOpen ? <ContentTopBar {...contentTopBarProps} /> : null}
+          <div ref={workspaceRef} className={workspaceClassName} style={workspaceStyle}>
+            <div
+              className={`workspace-left-pane ${showProjectsPane ? 'open' : 'collapsed'}`.trim()}
+            >
+              <Profiler id="WorkspaceSidebar" onRender={perfProfiler('WorkspaceSidebar')}>
+                <WorkspaceSidebar {...workspaceSidebarProps} />
+              </Profiler>
             </div>
-          </section>
-        ) : null}
-        {hasProjectContext && !settingsOpen ? (
-          <ContentTopBar {...contentTopBarProps} />
-        ) : null}
-        <div ref={workspaceRef} className={workspaceClassName} style={workspaceStyle}>
-          <div className={`workspace-left-pane ${showProjectsPane ? 'open' : 'collapsed'}`.trim()}>
-            <WorkspaceSidebar {...workspaceSidebarProps} />
+            <button
+              type="button"
+              className={`sidebar-resizer sidebar-resizer-left ${showProjectsPane ? '' : 'is-collapsed'}`.trim()}
+              aria-label="Resize workspaces sidebar"
+              onMouseDown={event => startSidebarResize('left', event)}
+              disabled={!showProjectsPane}
+            />
+
+            <main
+              className={`content-pane ${activeProjectDir ? '' : 'content-pane-dashboard'}`.trim()}
+            >
+              <Profiler id="AppSessionContent" onRender={perfProfiler('AppSessionContent')}>
+                <AppSessionContent {...appSessionContentProps} />
+              </Profiler>
+              {toasts.length > 0 ? (
+                <div
+                  className="composer-toast-stack"
+                  style={composerToastStyle}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {toasts.map(toast => (
+                    <article key={toast.id} className={`composer-toast ${toast.tone}`.trim()}>
+                      <p>{toast.message}</p>
+                      <button
+                        type="button"
+                        onClick={() => dismissToast(toast.id)}
+                        aria-label="Dismiss notification"
+                      >
+                        ×
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </main>
+            <Profiler id="AppSidePanes" onRender={perfProfiler('AppSidePanes')}>
+              <AppSidePanes
+                hasProjectContext={hasProjectContext}
+                browserSidebarOpen={browserSidebarOpen}
+                showGitPane={showGitPane}
+                startSidebarResize={startSidebarResize}
+                setBrowserSidebarOpen={setBrowserSidebarOpen}
+                browserSidebarProps={browserSidebarProps}
+                gitSidebarProps={gitSidebarProps}
+              />
+            </Profiler>
           </div>
-          <button
-            type="button"
-            className={`sidebar-resizer sidebar-resizer-left ${showProjectsPane ? '' : 'is-collapsed'}`.trim()}
-            aria-label="Resize workspaces sidebar"
-            onMouseDown={event => startSidebarResize('left', event)}
-            disabled={!showProjectsPane}
+
+          <AppTransientOverlays
+            contextMenu={contextMenu}
+            setContextMenu={setContextMenu}
+            changeProjectDirectory={changeProjectDirectory}
+            removeProjectDirectory={removeProjectDirectory}
+            getSessionType={getSessionType}
+            archiveSession={archiveSession}
+            copySessionID={copySessionID}
+            renameSession={renameSession}
+            debugModalOpen={debugModalOpen}
+            setDebugModalOpen={setDebugModalOpen}
+            statusLine={statusLine}
+            debugLogLevelFilter={debugLogLevelFilter}
+            setDebugLogLevelFilter={setDebugLogLevelFilter}
+            filteredDebugLogs={filteredDebugLogs}
+            copyDebugLogsAsJson={copyDebugLogsAsJson}
+            perfSummaryRows={perfSummaryRows}
+            perfSummaryLoading={perfSummaryLoading}
+            perfSummaryError={perfSummaryError}
+            perfWindowMs={perfWindowMs}
+            setPerfWindowMs={setPerfWindowMs}
+            refreshPerfSummary={refreshPerfSummary}
+            exportPerfSnapshotAsJson={exportPerfSnapshotAsJson}
+            perfExportOptions={perfExportOptions}
+            setPerfExportOptions={setPerfExportOptions}
+            updateProgressState={updateProgressState}
+            setUpdateProgressState={setUpdateProgressState}
           />
 
-          <main
-            className={`content-pane ${activeProjectDir ? '' : 'content-pane-dashboard'}`.trim()}
-          >
-            <AppSessionContent {...appSessionContentProps} />
-            {toasts.length > 0 ? (
-              <div
-                className="composer-toast-stack"
-                style={composerToastStyle}
-                role="status"
-                aria-live="polite"
-              >
-                {toasts.map(toast => (
-                  <article key={toast.id} className={`composer-toast ${toast.tone}`.trim()}>
-                    <p>{toast.message}</p>
-                    <button
-                      type="button"
-                      onClick={() => dismissToast(toast.id)}
-                      aria-label="Dismiss notification"
-                    >
-                      ×
-                    </button>
-                  </article>
-                ))}
-              </div>
-            ) : null}
-          </main>
-          <AppSidePanes
-            hasProjectContext={hasProjectContext}
-            browserSidebarOpen={browserSidebarOpen}
-            showGitPane={showGitPane}
-            startSidebarResize={startSidebarResize}
-            setBrowserSidebarOpen={setBrowserSidebarOpen}
-            browserSidebarProps={browserSidebarProps}
-            gitSidebarProps={gitSidebarProps}
+          <AppGlobalDialogs
+            confirmDialogProps={{
+              isOpen: Boolean(confirmDialogRequest),
+              title: confirmDialogRequest?.title ?? 'Confirm',
+              message: confirmDialogRequest?.message ?? 'Are you sure?',
+              confirmLabel: confirmDialogRequest?.confirmLabel,
+              cancelLabel: confirmDialogRequest?.cancelLabel,
+              variant: confirmDialogRequest?.variant,
+              onConfirm: () => closeConfirmDialog(true),
+              onCancel: () => closeConfirmDialog(false),
+            }}
+            textInputDialogProps={{
+              isOpen: Boolean(textInputDialog),
+              title: textInputDialog?.title ?? '',
+              placeholder: textInputDialog?.placeholder,
+              defaultValue: textInputDialog?.defaultValue,
+              confirmLabel: textInputDialog?.confirmLabel,
+              cancelLabel: textInputDialog?.cancelLabel,
+              validate: textInputDialog?.validate,
+              onConfirm: submitTextInputDialog,
+              onCancel: closeTextInputDialog,
+            }}
+            globalModalsProps={{
+              activeProjectDir,
+              workspaceDetailDirectory: workspaceDetailRoot,
+              permissionMode: appPreferences.permissionMode,
+              dependencyReport,
+              dependencyModalOpen,
+              setDependencyModalOpen,
+              onCheckDependencies: refreshRuntimeDependencies,
+              permissionRequest: pendingPermission ?? null,
+              permissionDecisionInFlight: isPermissionDecisionInFlight,
+              replyPermission: replyPendingPermission,
+              questionRequest: pendingQuestion,
+              replyQuestion: replyPendingQuestion,
+              rejectQuestion: rejectPendingQuestion,
+              allSessionsModalOpen,
+              setAllSessionsModalOpen,
+              claudeSessionBrowserOpen,
+              setClaudeSessionBrowserOpen,
+              codexSessionBrowserOpen,
+              setCodexSessionBrowserOpen,
+              claudeBrowserSessions,
+              claudeBrowserSessionsLoading,
+              codexBrowserThreads,
+              codexBrowserThreadsLoading,
+              selectedClaudeBrowserWorkspace,
+              setSelectedClaudeBrowserWorkspace,
+              selectedCodexBrowserWorkspace,
+              setSelectedCodexBrowserWorkspace,
+              openClaudeBrowserSession,
+              openCodexBrowserThread,
+              sessions: workspaceDetailSessions,
+              workspaceWorktrees,
+              workspaceWorktreesLoading,
+              workspaceCodexThreads,
+              selectedWorktreeDirectory,
+              setSelectedWorktreeDirectory,
+              createWorkspaceWorktree,
+              openWorkspaceWorktree,
+              deleteWorkspaceWorktree,
+              launchSessionInWorktree,
+              openWorkspaceCodexThread,
+              getSessionStatusType,
+              activeSessionID,
+              openSession,
+              projects,
+              branchCreateModalOpen,
+              setBranchCreateModalOpen,
+              branchCreateName,
+              setBranchCreateName,
+              branchCreateError,
+              setBranchCreateError,
+              submitBranchCreate,
+              branchSwitching,
+              commitModalOpen,
+              setCommitModalOpen,
+              commitSummary,
+              commitSummaryLoading,
+              commitIncludeUnstaged,
+              setCommitIncludeUnstaged,
+              commitMessageDraft,
+              setCommitMessageDraft,
+              commitNextStepOptions,
+              commitNextStep,
+              setCommitNextStep,
+              commitSubmitting,
+              commitBaseBranch,
+              setCommitBaseBranch,
+              commitBaseBranchOptions,
+              commitBaseBranchLoading: branchLoading,
+              commitFlowState,
+              dismissCommitFlowState,
+              submitCommit,
+              addProjectDirectory,
+              skillUseModal,
+              setSkillUseModal,
+              applySkillToProject,
+              profileModalOpen,
+              setProfileModalOpen,
+              profiles,
+              runtime,
+              ...profileActions,
+            }}
+            globalSearchProps={{
+              open: globalSearchModalOpen,
+              onClose: () => setGlobalSearchModalOpen(false),
+              projects,
+              projectSessions: allProjectSessions,
+              getSessionTitle,
+              getSessionType,
+              openSession,
+            }}
+            settingsDrawerProps={{
+              open: settingsOpen,
+              directory: activeProjectDir,
+              onClose: () => setSettingsOpen(false),
+              onReadRaw: (scope, directory) => window.orxa.opencode.readRawConfig(scope, directory),
+              onWriteRaw: async (scope, content, directory) => {
+                const doc = await window.orxa.opencode.writeRawConfig(scope, content, directory)
+                if (scope === 'global') {
+                  await Promise.all([refreshConfigModels(), refreshGlobalProviders()])
+                }
+                if (directory) {
+                  await refreshProject(directory)
+                }
+                setStatusLine('Raw config saved')
+                return doc
+              },
+              onReadGlobalAgentsMd: () => window.orxa.opencode.readGlobalAgentsMd(),
+              onWriteGlobalAgentsMd: async content => {
+                const doc = await window.orxa.opencode.writeGlobalAgentsMd(content)
+                setStatusLine('Global AGENTS.md saved')
+                return doc
+              },
+              appPreferences,
+              onAppPreferencesChange: setAppPreferences,
+              onGetServerDiagnostics: () => window.orxa.opencode.getServerDiagnostics(),
+              onRepairRuntime: () => window.orxa.opencode.repairRuntime(),
+              onGetUpdatePreferences: () => window.orxa.updates.getPreferences(),
+              onSetUpdatePreferences: input => window.orxa.updates.setPreferences(input),
+              onCheckForUpdates: () => window.orxa.updates.checkNow(),
+              allModelOptions: settingsModelOptions,
+              profiles,
+              runtime,
+              onSaveProfile: async profile => {
+                await window.orxa.runtime.saveProfile(profile)
+                await refreshProfiles()
+              },
+              onDeleteProfile: async profileID => {
+                await window.orxa.runtime.deleteProfile(profileID)
+                await refreshProfiles()
+              },
+              onAttachProfile: async profileID => {
+                await window.orxa.runtime.attach(profileID)
+                await refreshProfiles()
+                await Promise.all([
+                  refreshConfigModels(),
+                  refreshGlobalProviders(),
+                  refreshGlobalAgents(),
+                  refreshAgentFiles(),
+                ])
+                await bootstrap()
+              },
+              onStartLocalProfile: async profileID => {
+                await window.orxa.runtime.startLocal(profileID)
+                await refreshProfiles()
+                await Promise.all([
+                  refreshConfigModels(),
+                  refreshGlobalProviders(),
+                  refreshGlobalAgents(),
+                  refreshAgentFiles(),
+                ])
+                await bootstrap()
+              },
+              onStopLocalProfile: async () => {
+                await window.orxa.runtime.stopLocal()
+                await refreshProfiles()
+                await Promise.all([
+                  refreshConfigModels(),
+                  refreshGlobalProviders(),
+                  refreshGlobalAgents(),
+                  refreshAgentFiles(),
+                ])
+              },
+              onRefreshProfiles: refreshProfiles,
+            }}
+            infoDialogProps={{
+              isOpen: memoryComingSoonOpen,
+              title: 'Memory coming soon',
+              message:
+                'Workspace-scoped memory that lets your agents recall project context, decisions, and preferences across sessions. Coming soon.',
+              dismissLabel: 'Close',
+              onDismiss: () => setMemoryComingSoonOpen(false),
+            }}
           />
         </div>
-
-        <AppTransientOverlays
-          contextMenu={contextMenu}
-          setContextMenu={setContextMenu}
-          changeProjectDirectory={changeProjectDirectory}
-          removeProjectDirectory={removeProjectDirectory}
-          getSessionType={getSessionType}
-          archiveSession={archiveSession}
-          copySessionID={copySessionID}
-          renameSession={renameSession}
-          debugModalOpen={debugModalOpen}
-          setDebugModalOpen={setDebugModalOpen}
-          statusLine={statusLine}
-          debugLogLevelFilter={debugLogLevelFilter}
-          setDebugLogLevelFilter={setDebugLogLevelFilter}
-          filteredDebugLogs={filteredDebugLogs}
-          copyDebugLogsAsJson={copyDebugLogsAsJson}
-          updateProgressState={updateProgressState}
-          setUpdateProgressState={setUpdateProgressState}
-        />
-
-        <AppGlobalDialogs
-          confirmDialogProps={{
-            isOpen: Boolean(confirmDialogRequest),
-            title: confirmDialogRequest?.title ?? 'Confirm',
-            message: confirmDialogRequest?.message ?? 'Are you sure?',
-            confirmLabel: confirmDialogRequest?.confirmLabel,
-            cancelLabel: confirmDialogRequest?.cancelLabel,
-            variant: confirmDialogRequest?.variant,
-            onConfirm: () => closeConfirmDialog(true),
-            onCancel: () => closeConfirmDialog(false),
-          }}
-          textInputDialogProps={{
-            isOpen: Boolean(textInputDialog),
-            title: textInputDialog?.title ?? '',
-            placeholder: textInputDialog?.placeholder,
-            defaultValue: textInputDialog?.defaultValue,
-            confirmLabel: textInputDialog?.confirmLabel,
-            cancelLabel: textInputDialog?.cancelLabel,
-            validate: textInputDialog?.validate,
-            onConfirm: submitTextInputDialog,
-            onCancel: closeTextInputDialog,
-          }}
-          globalModalsProps={{
-            activeProjectDir,
-            workspaceDetailDirectory: workspaceDetailRoot,
-            permissionMode: appPreferences.permissionMode,
-            dependencyReport,
-            dependencyModalOpen,
-            setDependencyModalOpen,
-            onCheckDependencies: refreshRuntimeDependencies,
-            permissionRequest: pendingPermission ?? null,
-            permissionDecisionInFlight: isPermissionDecisionInFlight,
-            replyPermission: replyPendingPermission,
-            questionRequest: pendingQuestion,
-            replyQuestion: replyPendingQuestion,
-            rejectQuestion: rejectPendingQuestion,
-            allSessionsModalOpen,
-            setAllSessionsModalOpen,
-            claudeSessionBrowserOpen,
-            setClaudeSessionBrowserOpen,
-            codexSessionBrowserOpen,
-            setCodexSessionBrowserOpen,
-            claudeBrowserSessions,
-            claudeBrowserSessionsLoading,
-            codexBrowserThreads,
-            codexBrowserThreadsLoading,
-            selectedClaudeBrowserWorkspace,
-            setSelectedClaudeBrowserWorkspace,
-            selectedCodexBrowserWorkspace,
-            setSelectedCodexBrowserWorkspace,
-            openClaudeBrowserSession,
-            openCodexBrowserThread,
-            sessions: workspaceDetailSessions,
-            workspaceWorktrees,
-            workspaceWorktreesLoading,
-            workspaceCodexThreads,
-            selectedWorktreeDirectory,
-            setSelectedWorktreeDirectory,
-            createWorkspaceWorktree,
-            openWorkspaceWorktree,
-            deleteWorkspaceWorktree,
-            launchSessionInWorktree,
-            openWorkspaceCodexThread,
-            getSessionStatusType,
-            activeSessionID,
-            openSession,
-            projects,
-            branchCreateModalOpen,
-            setBranchCreateModalOpen,
-            branchCreateName,
-            setBranchCreateName,
-            branchCreateError,
-            setBranchCreateError,
-            submitBranchCreate,
-            branchSwitching,
-            commitModalOpen,
-            setCommitModalOpen,
-            commitSummary,
-            commitSummaryLoading,
-            commitIncludeUnstaged,
-            setCommitIncludeUnstaged,
-            commitMessageDraft,
-            setCommitMessageDraft,
-            commitNextStepOptions,
-            commitNextStep,
-            setCommitNextStep,
-            commitSubmitting,
-            commitBaseBranch,
-            setCommitBaseBranch,
-            commitBaseBranchOptions,
-            commitBaseBranchLoading: branchLoading,
-            commitFlowState,
-            dismissCommitFlowState,
-            submitCommit,
-            addProjectDirectory,
-            skillUseModal,
-            setSkillUseModal,
-            applySkillToProject,
-            profileModalOpen,
-            setProfileModalOpen,
-            profiles,
-            runtime,
-            ...profileActions,
-          }}
-          globalSearchProps={{
-            open: globalSearchModalOpen,
-            onClose: () => setGlobalSearchModalOpen(false),
-            projects,
-            projectSessions: allProjectSessions,
-            getSessionTitle,
-            getSessionType,
-            openSession,
-          }}
-          settingsDrawerProps={{
-            open: settingsOpen,
-            directory: activeProjectDir,
-            onClose: () => setSettingsOpen(false),
-            onReadRaw: (scope, directory) => window.orxa.opencode.readRawConfig(scope, directory),
-            onWriteRaw: async (scope, content, directory) => {
-              const doc = await window.orxa.opencode.writeRawConfig(scope, content, directory)
-              if (scope === 'global') {
-                await Promise.all([refreshConfigModels(), refreshGlobalProviders()])
-              }
-              if (directory) {
-                await refreshProject(directory)
-              }
-              setStatusLine('Raw config saved')
-              return doc
-            },
-            onReadGlobalAgentsMd: () => window.orxa.opencode.readGlobalAgentsMd(),
-            onWriteGlobalAgentsMd: async content => {
-              const doc = await window.orxa.opencode.writeGlobalAgentsMd(content)
-              setStatusLine('Global AGENTS.md saved')
-              return doc
-            },
-            appPreferences,
-            onAppPreferencesChange: setAppPreferences,
-            onGetServerDiagnostics: () => window.orxa.opencode.getServerDiagnostics(),
-            onRepairRuntime: () => window.orxa.opencode.repairRuntime(),
-            onGetUpdatePreferences: () => window.orxa.updates.getPreferences(),
-            onSetUpdatePreferences: input => window.orxa.updates.setPreferences(input),
-            onCheckForUpdates: () => window.orxa.updates.checkNow(),
-            allModelOptions: settingsModelOptions,
-            profiles,
-            runtime,
-            onSaveProfile: async profile => {
-              await window.orxa.runtime.saveProfile(profile)
-              await refreshProfiles()
-            },
-            onDeleteProfile: async profileID => {
-              await window.orxa.runtime.deleteProfile(profileID)
-              await refreshProfiles()
-            },
-            onAttachProfile: async profileID => {
-              await window.orxa.runtime.attach(profileID)
-              await refreshProfiles()
-              await Promise.all([
-                refreshConfigModels(),
-                refreshGlobalProviders(),
-                refreshGlobalAgents(),
-                refreshAgentFiles(),
-              ])
-              await bootstrap()
-            },
-            onStartLocalProfile: async profileID => {
-              await window.orxa.runtime.startLocal(profileID)
-              await refreshProfiles()
-              await Promise.all([
-                refreshConfigModels(),
-                refreshGlobalProviders(),
-                refreshGlobalAgents(),
-                refreshAgentFiles(),
-              ])
-              await bootstrap()
-            },
-            onStopLocalProfile: async () => {
-              await window.orxa.runtime.stopLocal()
-              await refreshProfiles()
-              await Promise.all([
-                refreshConfigModels(),
-                refreshGlobalProviders(),
-                refreshGlobalAgents(),
-                refreshAgentFiles(),
-              ])
-            },
-            onRefreshProfiles: refreshProfiles,
-          }}
-          infoDialogProps={{
-            isOpen: memoryComingSoonOpen,
-            title: 'Memory coming soon',
-            message:
-              'Workspace-scoped memory that lets your agents recall project context, decisions, and preferences across sessions. Coming soon.',
-            dismissLabel: 'Close',
-            onDismiss: () => setMemoryComingSoonOpen(false),
-          }}
-        />
-      </div>
+      </Profiler>
     </AppErrorBoundary>
   )
 }

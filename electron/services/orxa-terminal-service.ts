@@ -8,6 +8,7 @@ import type {
   OrxaTerminalSession,
   TerminalConnectResult,
 } from '../../shared/ipc'
+import type { PerformanceTelemetryService } from './performance-telemetry-service'
 import { spawnNativePty, type NativePtyProcess } from './native-pty'
 
 type TerminalProcess = {
@@ -24,6 +25,7 @@ type TerminalRecord = {
   process: TerminalProcess
   connected: boolean
   bufferedOutput: string[]
+  firstOutputRecorded: boolean
 }
 
 function resolveTerminalDirectory(input: string) {
@@ -139,6 +141,32 @@ export class OrxaTerminalService {
   private sessions = new Map<string, TerminalRecord>()
 
   onEvent?: (event: OrxaEvent) => void
+  performanceTelemetryService?: PerformanceTelemetryService
+
+  private recordPerf(
+    metric:
+      | 'terminal.service.create_ms'
+      | 'terminal.service.connect_ms'
+      | 'terminal.service.resize_ms'
+      | 'terminal.service.close_ms'
+      | 'terminal.write_ms'
+      | 'terminal.write_count'
+      | 'terminal.create_to_first_output_ms',
+    value: number,
+    unit: 'ms' | 'count',
+    outcome: 'ok' | 'error' = 'ok'
+  ) {
+    this.performanceTelemetryService?.record({
+      surface: 'terminal',
+      metric,
+      kind: unit === 'count' ? 'counter' : 'span',
+      value,
+      unit,
+      outcome,
+      process: 'main',
+      component: 'orxa-terminal-service',
+    })
+  }
 
   listPtys(directory: string, owner: OrxaTerminalOwner = 'workspace') {
     const normalizedDirectory = resolveTerminalDirectory(directory)
@@ -154,6 +182,7 @@ export class OrxaTerminalService {
     title?: string,
     owner: OrxaTerminalOwner = 'workspace'
   ) {
+    const startedAt = performance.now()
     const normalizedDirectory = resolveTerminalDirectory(directory)
     const normalizedCwd = resolveTerminalDirectory(cwd ?? normalizedDirectory)
     const shells = resolveShellCandidates()
@@ -214,9 +243,18 @@ export class OrxaTerminalService {
       process: processHandle,
       connected: false,
       bufferedOutput: [],
+      firstOutputRecorded: false,
     }
 
     processHandle.onData(chunk => {
+      if (!record.firstOutputRecorded) {
+        record.firstOutputRecorded = true
+        this.recordPerf(
+          'terminal.create_to_first_output_ms',
+          Math.max(0, Date.now() - record.session.createdAt),
+          'ms'
+        )
+      }
       if (record.connected) {
         this.emit({
           type: 'pty.output',
@@ -251,18 +289,22 @@ export class OrxaTerminalService {
     })
 
     this.sessions.set(id, record)
+    this.recordPerf('terminal.service.create_ms', performance.now() - startedAt, 'ms')
     return session
   }
 
   connectPty(directory: string, ptyID: string): TerminalConnectResult {
+    const startedAt = performance.now()
     const normalizedDirectory = resolveTerminalDirectory(directory)
     const record = this.getRecord(normalizedDirectory, ptyID)
     if (record.connected) {
-      return {
+      const result = {
         ptyID,
         directory: normalizedDirectory,
         connected: true,
       }
+      this.recordPerf('terminal.service.connect_ms', performance.now() - startedAt, 'ms')
+      return result
     }
 
     record.connected = true
@@ -285,40 +327,49 @@ export class OrxaTerminalService {
       }, 0)
     }
 
-    return {
+    const result = {
       ptyID,
       directory: normalizedDirectory,
       connected: true,
     }
+    this.recordPerf('terminal.service.connect_ms', performance.now() - startedAt, 'ms')
+    return result
   }
 
   writePty(directory: string, ptyID: string, data: string) {
+    const startedAt = performance.now()
     const normalizedDirectory = resolveTerminalDirectory(directory)
     const record = this.getRecord(normalizedDirectory, ptyID)
     if (record.session.status !== 'running') {
       return false
     }
     record.process.write(data)
+    this.recordPerf('terminal.write_ms', performance.now() - startedAt, 'ms')
+    this.recordPerf('terminal.write_count', 1, 'count')
     return true
   }
 
   resizePty(directory: string, ptyID: string, cols: number, rows: number) {
+    const startedAt = performance.now()
     const normalizedDirectory = resolveTerminalDirectory(directory)
     const record = this.getRecord(normalizedDirectory, ptyID)
     if (record.session.status !== 'running') {
       return false
     }
     record.process.resize(Math.max(1, cols), Math.max(1, rows))
+    this.recordPerf('terminal.service.resize_ms', performance.now() - startedAt, 'ms')
     return true
   }
 
   closePty(directory: string, ptyID: string) {
+    const startedAt = performance.now()
     const normalizedDirectory = resolveTerminalDirectory(directory)
     const record = this.getRecord(normalizedDirectory, ptyID)
     this.sessions.delete(ptyID)
     if (record.session.status === 'running') {
       record.process.kill()
     }
+    this.recordPerf('terminal.service.close_ms', performance.now() - startedAt, 'ms')
     return true
   }
 

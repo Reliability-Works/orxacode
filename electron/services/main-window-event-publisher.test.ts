@@ -83,4 +83,25 @@ describe('createMainWindowEventPublisher', () => {
       expect.objectContaining({ type: 'codex.approval' })
     )
   })
+
+  it('ignores sends after the renderer frame is disposed', () => {
+    const send = vi.fn(() => {
+      throw new Error('Render frame was disposed before WebFrameMain could be accessed')
+    })
+    const publisher = createMainWindowEventPublisher(
+      () =>
+        ({
+          isDestroyed: () => false,
+          webContents: { send },
+        }) as never
+    )
+
+    expect(() =>
+      publisher.publish({
+        type: 'runtime.status',
+        payload: { status: 'disconnected', managedServer: false },
+      } as OrxaEvent)
+    ).not.toThrow()
+    expect(send).toHaveBeenCalledTimes(1)
+  })
 })

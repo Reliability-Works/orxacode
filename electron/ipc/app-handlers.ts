@@ -5,20 +5,38 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, dialog, ipcMain, shell, type BrowserWindow } from 'electron'
 import { IPC } from '../../shared/ipc'
-import type { AppDiagnosticInput, SkillEntry } from '../../shared/ipc'
+import type {
+  AppDiagnosticInput,
+  OrxaEvent,
+  PerfAlert,
+  PerfEventInput,
+  PerfMetric,
+  PerfSnapshotExportInput,
+  PerfSurface,
+  PerfSummaryFilter,
+  SkillEntry,
+} from '../../shared/ipc'
 import type { DiagnosticsService } from '../services/diagnostics-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import { assertExternalUrl, assertString } from './validators'
 
 type AppHandlersDeps = {
   getMainWindow: () => BrowserWindow | null
   diagnosticsService: DiagnosticsService
+  performanceTelemetryService: PerformanceTelemetryService
+  publishEvent: (event: OrxaEvent) => void
 }
 
 function resolveHomePath(input: string, homeDir: string) {
   return path.resolve(input.replace(/^~/, homeDir))
 }
 
-function assertAllowedHomePath(resolved: string, homeDir: string, operation: 'Reading' | 'Writing') {
+function assertAllowedHomePath(
+  resolved: string,
+  homeDir: string,
+  operation: 'Reading' | 'Writing'
+) {
   const allowedPrefixes = [path.join(homeDir, '.claude'), path.join(homeDir, '.codex')]
   const isAllowed = allowedPrefixes.some(
     prefix => resolved.startsWith(prefix + path.sep) || resolved === prefix
@@ -54,7 +72,11 @@ async function listSkillsFromDirectory(root: string): Promise<SkillEntry[]> {
         lines = rawLines.slice(closeIdx + 1)
       }
     }
-    const title = lines.find(line => line.startsWith('# '))?.replace(/^#\s+/, '').trim() || entry.name
+    const title =
+      lines
+        .find(line => line.startsWith('# '))
+        ?.replace(/^#\s+/, '')
+        .trim() || entry.name
     const description =
       lines.find(
         line =>
@@ -128,11 +150,14 @@ function registerAppFileHandlers({ getMainWindow }: Pick<AppHandlersDeps, 'getMa
 function registerAppServiceHandlers({
   getMainWindow,
   diagnosticsService,
+  performanceTelemetryService,
+  publishEvent,
 }: AppHandlersDeps) {
   registerAppNetworkHandlers()
   registerAppHttpHandlers()
   registerAppSkillsHandlers()
   registerAppDiagnosticsHandlers({ diagnosticsService })
+  registerAppPerfHandlers({ performanceTelemetryService, publishEvent })
   registerAppWindowHandlers({ getMainWindow })
   registerAppAgentHandlers()
 }
@@ -273,6 +298,98 @@ function registerAppDiagnosticsHandlers({
   })
 }
 
+function sanitizePerfSummaryFilter(input: unknown): PerfSummaryFilter | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+  const candidate = input as Record<string, unknown>
+  return {
+    surface: typeof candidate.surface === 'string' ? (candidate.surface as PerfSurface) : undefined,
+    metric: typeof candidate.metric === 'string' ? (candidate.metric as PerfMetric) : undefined,
+    process:
+      candidate.process === 'renderer' || candidate.process === 'main'
+        ? candidate.process
+        : undefined,
+    limit: typeof candidate.limit === 'number' ? candidate.limit : undefined,
+    sinceMs: typeof candidate.sinceMs === 'number' ? candidate.sinceMs : undefined,
+    includeInternalTelemetry:
+      typeof candidate.includeInternalTelemetry === 'boolean'
+        ? candidate.includeInternalTelemetry
+        : undefined,
+  }
+}
+
+function sanitizePerfSnapshotExportInput(input: unknown): PerfSnapshotExportInput | undefined {
+  if (!input || typeof input !== 'object') {
+    return undefined
+  }
+  const candidate = input as Record<string, unknown>
+  return {
+    sinceMs: typeof candidate.sinceMs === 'number' ? candidate.sinceMs : undefined,
+    summaryLimit: typeof candidate.summaryLimit === 'number' ? candidate.summaryLimit : undefined,
+    includeEvents:
+      typeof candidate.includeEvents === 'boolean' ? candidate.includeEvents : undefined,
+    eventLimit: typeof candidate.eventLimit === 'number' ? candidate.eventLimit : undefined,
+    includeInternalTelemetry:
+      typeof candidate.includeInternalTelemetry === 'boolean'
+        ? candidate.includeInternalTelemetry
+        : undefined,
+    minDurationMs:
+      typeof candidate.minDurationMs === 'number' ? candidate.minDurationMs : undefined,
+    slowOnly: typeof candidate.slowOnly === 'boolean' ? candidate.slowOnly : undefined,
+    surfaces: Array.isArray(candidate.surfaces)
+      ? candidate.surfaces.filter((value): value is PerfSurface => typeof value === 'string')
+      : undefined,
+  }
+}
+
+function publishPerfAlert(
+  publishEvent: ((event: OrxaEvent) => void) | undefined,
+  alert: PerfAlert | null
+) {
+  if (!publishEvent || !alert) {
+    return
+  }
+  publishEvent({
+    type: 'perf.alert',
+    payload: alert,
+  })
+}
+
+function registerAppPerfHandlers({
+  performanceTelemetryService,
+  publishEvent,
+}: Pick<AppHandlersDeps, 'performanceTelemetryService' | 'publishEvent'>) {
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.appReportPerf,
+    'ipc',
+    async (_event, input: unknown) => {
+      if (!input || typeof input !== 'object') {
+        throw new Error('perf input is required')
+      }
+      const result = performanceTelemetryService.record(input as PerfEventInput)
+      publishPerfAlert(publishEvent, result?.alert ?? null)
+    }
+  )
+
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.appListPerfSummary,
+    'ipc',
+    async (_event, filter?: unknown) =>
+      performanceTelemetryService.listSummary(sanitizePerfSummaryFilter(filter))
+  )
+
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.appExportPerfSnapshot,
+    'ipc',
+    async (_event, input?: unknown) =>
+      performanceTelemetryService.exportSnapshot(sanitizePerfSnapshotExportInput(input))
+  )
+}
+
 function registerAppWindowHandlers({ getMainWindow }: Pick<AppHandlersDeps, 'getMainWindow'>) {
   ipcMain.handle(IPC.appSetWindowVibrancy, async (_event, vibrancy: unknown) => {
     const win = getMainWindow()
@@ -367,7 +484,17 @@ function registerAppAgentHandlers() {
   })
 }
 
-export function registerAppHandlers({ getMainWindow, diagnosticsService }: AppHandlersDeps) {
-  registerAppServiceHandlers({ getMainWindow, diagnosticsService })
+export function registerAppHandlers({
+  getMainWindow,
+  diagnosticsService,
+  performanceTelemetryService,
+  publishEvent,
+}: AppHandlersDeps) {
+  registerAppServiceHandlers({
+    getMainWindow,
+    diagnosticsService,
+    performanceTelemetryService,
+    publishEvent,
+  })
   registerAppFileHandlers({ getMainWindow })
 }

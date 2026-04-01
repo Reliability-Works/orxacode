@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useComposerAutocomplete } from './useComposerAutocomplete'
+import { measurePerf } from '../lib/performance'
 
 export type Attachment = {
   url: string
@@ -202,7 +203,11 @@ async function submitComposerPrompt(
   const promptSource: 'user' | 'job' | 'machine' = 'user'
   const toolsKey = ''
   const sendToken = `${activeProjectDir}:${activeSessionID}:${text}:${effectiveAttachments.map(item => item.url).join(',')}:${normalizedSystemAddendum}:${promptSource}:${toolsKey}`
-  if (lastSendRef.current && lastSendRef.current.token === sendToken && Date.now() - lastSendRef.current.at < 6_000) {
+  if (
+    lastSendRef.current &&
+    lastSendRef.current.token === sendToken &&
+    Date.now() - lastSendRef.current.at < 6_000
+  ) {
     return
   }
   lastSendRef.current = { token: sendToken, at: Date.now() }
@@ -211,9 +216,12 @@ async function submitComposerPrompt(
   setComposer('')
   setComposerAttachments([])
 
-  const supportsSelectedAgent = selectedAgent ? options.availableAgentNames.has(selectedAgent) : false
+  const supportsSelectedAgent = selectedAgent
+    ? options.availableAgentNames.has(selectedAgent)
+    : false
   const activeSession = options.sessions.find(item => item.id === activeSessionID)
-  const shouldAutoTitle = text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title)
+  const shouldAutoTitle =
+    text.length > 0 && options.shouldAutoRenameSessionTitle(activeSession?.title)
 
   try {
     sendingPromptRef.current = true
@@ -226,22 +234,35 @@ async function submitComposerPrompt(
       await options.refreshProject(activeProjectDir)
     }
 
-    await window.orxa.opencode.sendPrompt({
-      directory: activeProjectDir,
-      sessionID: activeSessionID,
-      text,
-      system: undefined,
-      promptSource,
-      tools: undefined,
-      attachments: capturedAttachments.map((attachment, index) => ({
-        url: attachment.url,
-        mime: attachment.mime,
-        filename: `image${index + 1}`,
-      })),
-      agent: supportsSelectedAgent ? selectedAgent : undefined,
-      model: buildSelectedModelPayload(selectedModel),
-      variant: selectedVariant,
-    })
+    await measurePerf(
+      {
+        surface: 'session',
+        metric: 'prompt.send_ack_ms',
+        kind: 'span',
+        unit: 'ms',
+        process: 'renderer',
+        component: 'composer-state',
+        workspaceHash: activeProjectDir,
+        sessionHash: activeSessionID,
+      },
+      () =>
+        window.orxa.opencode.sendPrompt({
+          directory: activeProjectDir,
+          sessionID: activeSessionID,
+          text,
+          system: undefined,
+          promptSource,
+          tools: undefined,
+          attachments: capturedAttachments.map((attachment, index) => ({
+            url: attachment.url,
+            mime: attachment.mime,
+            filename: `image${index + 1}`,
+          })),
+          agent: supportsSelectedAgent ? selectedAgent : undefined,
+          model: buildSelectedModelPayload(selectedModel),
+          variant: selectedVariant,
+        })
+    )
 
     options.clearPendingSession()
     options.setStatusLine(shouldAutoTitle ? 'Prompt sent and session titled' : 'Prompt sent')
@@ -287,14 +308,13 @@ function useComposerPromptActions(
         options.setStatusLine('Select a workspace and session first')
         return
       }
-      const target =
-        (await options.ensureSessionForSend?.({
-          directory: activeProjectDir,
-          sessionID: activeSessionID,
-        })) ?? {
-          directory: activeProjectDir,
-          sessionID: activeSessionID,
-        }
+      const target = (await options.ensureSessionForSend?.({
+        directory: activeProjectDir,
+        sessionID: activeSessionID,
+      })) ?? {
+        directory: activeProjectDir,
+        sessionID: activeSessionID,
+      }
       if (!target) {
         return
       }

@@ -1,8 +1,128 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type OrxaBridge } from '../shared/ipc'
+import { IPC, type OrxaBridge, type PerfEventInput, estimateJsonSizeBucket } from '../shared/ipc'
 import { createIpcEventHub } from './services/ipc-event-hub'
 
 const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch])
+const inflightByChannel = new Map<string, number>()
+const dedupedInvokeInFlight = new Map<string, Promise<unknown>>()
+const DEDUPED_IPC_CHANNELS = new Set<string>([
+  IPC.opencodeGetSessionRuntime,
+  IPC.opencodeLoadMessages,
+  IPC.opencodeRefreshProject,
+  IPC.opencodeRefreshProjectDelta,
+  IPC.claudeChatGetState,
+  IPC.claudeChatGetSessionMessages,
+])
+
+function buildInvokeDedupKey(channel: string, requestArgs?: unknown[]) {
+  if (!DEDUPED_IPC_CHANNELS.has(channel)) {
+    return undefined
+  }
+  if (!Array.isArray(requestArgs) || requestArgs.length === 0) {
+    return channel
+  }
+  try {
+    return `${channel}:${JSON.stringify(requestArgs)}`
+  } catch {
+    return channel
+  }
+}
+
+async function reportPerf(input: PerfEventInput) {
+  await ipcRenderer.invoke(IPC.appReportPerf, input)
+}
+
+async function invokeMeasured<T>(
+  channel: string,
+  surface: PerfEventInput['surface'],
+  invoke: () => Promise<T>,
+  requestArgs?: unknown[]
+) {
+  const dedupKey = buildInvokeDedupKey(channel, requestArgs)
+  if (dedupKey) {
+    const existing = dedupedInvokeInFlight.get(dedupKey)
+    if (existing) {
+      return existing as Promise<T>
+    }
+  }
+
+  const run = async () => {
+    const previousInflight = inflightByChannel.get(channel) ?? 0
+    const nextInflight = previousInflight + 1
+    inflightByChannel.set(channel, nextInflight)
+    void reportPerf({
+      surface,
+      metric: 'ipc.inflight_count',
+      kind: 'gauge',
+      value: nextInflight,
+      unit: 'count',
+      process: 'renderer',
+      channel,
+    }).catch(() => undefined)
+
+    const startedAt = performance.now()
+    try {
+      const result = await invoke()
+      void reportPerf({
+        surface,
+        metric: 'ipc.invoke_rtt_ms',
+        kind: 'span',
+        value: performance.now() - startedAt,
+        unit: 'ms',
+        outcome: 'ok',
+        process: 'renderer',
+        channel,
+        requestSizeBucket: estimateJsonSizeBucket(requestArgs ?? []),
+        responseSizeBucket: estimateJsonSizeBucket(result),
+      }).catch(() => undefined)
+      return result
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase()
+      void reportPerf({
+        surface,
+        metric: 'ipc.invoke_rtt_ms',
+        kind: 'span',
+        value: performance.now() - startedAt,
+        unit: 'ms',
+        outcome: message.includes('timeout') ? 'timeout' : 'error',
+        process: 'renderer',
+        channel,
+        requestSizeBucket: estimateJsonSizeBucket(requestArgs ?? []),
+      }).catch(() => undefined)
+      throw error
+    } finally {
+      const currentInflight = inflightByChannel.get(channel) ?? 1
+      const remainingInflight = Math.max(0, currentInflight - 1)
+      if (remainingInflight === 0) {
+        inflightByChannel.delete(channel)
+      } else {
+        inflightByChannel.set(channel, remainingInflight)
+      }
+      void reportPerf({
+        surface,
+        metric: 'ipc.inflight_count',
+        kind: 'gauge',
+        value: remainingInflight,
+        unit: 'count',
+        process: 'renderer',
+        channel,
+      }).catch(() => undefined)
+    }
+  }
+
+  const runPromise = run()
+  if (dedupKey) {
+    dedupedInvokeInFlight.set(dedupKey, runPromise)
+    runPromise.finally(() => {
+      if (dedupedInvokeInFlight.get(dedupKey) === runPromise) {
+        dedupedInvokeInFlight.delete(dedupKey)
+      }
+    })
+  }
+
+  return runPromise
+}
 
 const bridge: OrxaBridge = {
   persistence: {
@@ -23,6 +143,9 @@ const bridge: OrxaBridge = {
     runAgentCli: options => ipcRenderer.invoke(IPC.appRunAgentCli, options),
     listDiagnostics: limit => ipcRenderer.invoke(IPC.appListDiagnostics, limit),
     reportRendererDiagnostic: input => ipcRenderer.invoke(IPC.appReportRendererDiagnostic, input),
+    reportPerf: input => ipcRenderer.invoke(IPC.appReportPerf, input),
+    listPerfSummary: filter => ipcRenderer.invoke(IPC.appListPerfSummary, filter),
+    exportPerfSnapshot: input => ipcRenderer.invoke(IPC.appExportPerfSnapshot, input),
     setWindowVibrancy: vibrancy => ipcRenderer.invoke(IPC.appSetWindowVibrancy, vibrancy),
   },
   updates: {
@@ -48,15 +171,42 @@ const bridge: OrxaBridge = {
       ipcRenderer.invoke(IPC.worktreesDelete, workspaceDir, directory),
   },
   opencode: {
-    bootstrap: () => ipcRenderer.invoke(IPC.opencodeBootstrap),
+    bootstrap: () =>
+      invokeMeasured(IPC.opencodeBootstrap, 'startup', () =>
+        ipcRenderer.invoke(IPC.opencodeBootstrap)
+      ),
     checkDependencies: () => ipcRenderer.invoke(IPC.opencodeCheckDependencies),
     addProjectDirectory: () => ipcRenderer.invoke(IPC.opencodeAddProjectDirectory),
     removeProjectDirectory: directory =>
       ipcRenderer.invoke(IPC.opencodeRemoveProjectDirectory, directory),
-    selectProject: directory => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),
-    refreshProject: directory => ipcRenderer.invoke(IPC.opencodeRefreshProject, directory),
+    selectProject: directory =>
+      invokeMeasured(
+        IPC.opencodeSelectProject,
+        'workspace',
+        () => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),
+        [directory]
+      ),
+    refreshProject: directory =>
+      invokeMeasured(
+        IPC.opencodeRefreshProject,
+        'workspace',
+        () => ipcRenderer.invoke(IPC.opencodeRefreshProject, directory),
+        [directory]
+      ),
+    refreshProjectDelta: directory =>
+      invokeMeasured(
+        IPC.opencodeRefreshProjectDelta,
+        'workspace',
+        () => ipcRenderer.invoke(IPC.opencodeRefreshProjectDelta, directory),
+        [directory]
+      ),
     createSession: (directory, title, permissionMode) =>
-      ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title, permissionMode),
+      invokeMeasured(
+        IPC.opencodeCreateSession,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title, permissionMode),
+        [directory, title, permissionMode]
+      ),
     deleteSession: (directory, sessionID) =>
       ipcRenderer.invoke(IPC.opencodeDeleteSession, directory, sessionID),
     abortSession: (directory, sessionID) =>
@@ -68,9 +218,19 @@ const bridge: OrxaBridge = {
     createWorktreeSession: (directory, sessionID, name) =>
       ipcRenderer.invoke(IPC.opencodeCreateWorktreeSession, directory, sessionID, name),
     getSessionRuntime: (directory, sessionID) =>
-      ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
+      invokeMeasured(
+        IPC.opencodeGetSessionRuntime,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
+        [directory, sessionID]
+      ),
     loadMessages: (directory, sessionID) =>
-      ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
+      invokeMeasured(
+        IPC.opencodeLoadMessages,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
+        [directory, sessionID]
+      ),
     loadExecutionLedger: (directory, sessionID, cursor) =>
       ipcRenderer.invoke(IPC.opencodeLoadExecutionLedger, directory, sessionID, cursor),
     clearExecutionLedger: (directory, sessionID) =>
@@ -79,7 +239,13 @@ const bridge: OrxaBridge = {
       ipcRenderer.invoke(IPC.opencodeLoadChangeProvenance, directory, sessionID, cursor),
     getFileProvenance: (directory, sessionID, relativePath) =>
       ipcRenderer.invoke(IPC.opencodeGetFileProvenance, directory, sessionID, relativePath),
-    sendPrompt: input => ipcRenderer.invoke(IPC.opencodeSendPrompt, input),
+    sendPrompt: input =>
+      invokeMeasured(
+        IPC.opencodeSendPrompt,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeSendPrompt, input),
+        [input]
+      ),
     replyPermission: (directory, requestID, reply, message) =>
       ipcRenderer.invoke(IPC.opencodeReplyPermission, directory, requestID, reply, message),
     replyQuestion: (directory, requestID, answers) =>
@@ -167,38 +333,117 @@ const bridge: OrxaBridge = {
   terminal: {
     list: (directory, owner) => ipcRenderer.invoke(IPC.terminalList, directory, owner),
     create: (directory, cwd, title, owner) =>
-      ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
-    connect: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
+      invokeMeasured(
+        IPC.terminalCreate,
+        'terminal',
+        () => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
+        [directory, cwd, title, owner]
+      ),
+    connect: (directory, ptyID) =>
+      invokeMeasured(
+        IPC.terminalConnect,
+        'terminal',
+        () => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
+        [directory, ptyID]
+      ),
     write: (directory, ptyID, data) =>
-      ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
+      invokeMeasured(
+        IPC.terminalWrite,
+        'terminal',
+        () => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
+        [directory, ptyID, data]
+      ),
     resize: (directory, ptyID, cols, rows) =>
-      ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
-    close: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
+      invokeMeasured(
+        IPC.terminalResize,
+        'terminal',
+        () => ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
+        [directory, ptyID, cols, rows]
+      ),
+    close: (directory, ptyID) =>
+      invokeMeasured(
+        IPC.terminalClose,
+        'terminal',
+        () => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
+        [directory, ptyID]
+      ),
   },
   claudeTerminal: {
     create: (directory, mode, cols, rows) =>
-      ipcRenderer.invoke(IPC.claudeTerminalCreate, directory, mode, cols, rows),
-    write: (processId, data) => ipcRenderer.invoke(IPC.claudeTerminalWrite, processId, data),
+      invokeMeasured(
+        IPC.claudeTerminalCreate,
+        'claude',
+        () => ipcRenderer.invoke(IPC.claudeTerminalCreate, directory, mode, cols, rows),
+        [directory, mode, cols, rows]
+      ),
+    write: (processId, data) =>
+      invokeMeasured(
+        IPC.claudeTerminalWrite,
+        'claude',
+        () => ipcRenderer.invoke(IPC.claudeTerminalWrite, processId, data),
+        [processId, data]
+      ),
     resize: (processId, cols, rows) =>
-      ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
-    close: processId => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
+      invokeMeasured(
+        IPC.claudeTerminalResize,
+        'claude',
+        () => ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
+        [processId, cols, rows]
+      ),
+    close: processId =>
+      invokeMeasured(
+        IPC.claudeTerminalClose,
+        'claude',
+        () => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
+        [processId]
+      ),
   },
   claudeChat: {
-    health: () => ipcRenderer.invoke(IPC.claudeChatHealth),
+    health: () =>
+      invokeMeasured(IPC.claudeChatHealth, 'claude_chat', () =>
+        ipcRenderer.invoke(IPC.claudeChatHealth)
+      ),
     listModels: () => ipcRenderer.invoke(IPC.claudeChatListModels),
-    getState: sessionKey => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
+    getState: sessionKey =>
+      invokeMeasured(
+        IPC.claudeChatGetState,
+        'claude_chat',
+        () => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
+        [sessionKey]
+      ),
     startTurn: (sessionKey, directory, prompt, options) =>
-      ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
-    interruptTurn: sessionKey => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
+      invokeMeasured(
+        IPC.claudeChatStartTurn,
+        'claude_chat',
+        () => ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
+        [sessionKey, directory, prompt, options]
+      ),
+    interruptTurn: sessionKey =>
+      invokeMeasured(
+        IPC.claudeChatInterruptTurn,
+        'claude_chat',
+        () => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
+        [sessionKey]
+      ),
     approve: (requestId, decision) =>
       ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
     respondToUserInput: (requestId, response) =>
       ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
     getSessionMessages: (sessionId, directory) =>
-      ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+      invokeMeasured(
+        IPC.claudeChatGetSessionMessages,
+        'claude_chat',
+        () => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+        [sessionId, directory]
+      ),
     listSessions: () => ipcRenderer.invoke(IPC.claudeChatListSessions),
     resumeProviderSession: (providerThreadId, directory) =>
-      ipcRenderer.invoke(IPC.claudeChatResumeProviderSession, providerThreadId, directory),
+      invokeMeasured(
+        IPC.claudeChatResumeProviderSession,
+        'claude_chat',
+        () => ipcRenderer.invoke(IPC.claudeChatResumeProviderSession, providerThreadId, directory),
+        [providerThreadId, directory]
+      ),
     renameProviderSession: (sessionId, title, directory) =>
       ipcRenderer.invoke(IPC.claudeChatRenameProviderSession, sessionId, title, directory),
     archiveSession: sessionKey => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
@@ -307,17 +552,47 @@ const bridge: OrxaBridge = {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),
     setVisible: visible => ipcRenderer.invoke(IPC.browserSetVisible, visible),
     setBounds: bounds => ipcRenderer.invoke(IPC.browserSetBounds, bounds),
-    openTab: (url, activate) => ipcRenderer.invoke(IPC.browserOpenTab, url, activate),
+    openTab: (url, activate) =>
+      invokeMeasured(
+        IPC.browserOpenTab,
+        'browser',
+        () => ipcRenderer.invoke(IPC.browserOpenTab, url, activate),
+        [url, activate]
+      ),
     closeTab: tabID => ipcRenderer.invoke(IPC.browserCloseTab, tabID),
     switchTab: tabID => ipcRenderer.invoke(IPC.browserSwitchTab, tabID),
-    navigate: (url, tabID) => ipcRenderer.invoke(IPC.browserNavigate, url, tabID),
+    navigate: (url, tabID) =>
+      invokeMeasured(
+        IPC.browserNavigate,
+        'browser',
+        () => ipcRenderer.invoke(IPC.browserNavigate, url, tabID),
+        [url, tabID]
+      ),
     back: tabID => ipcRenderer.invoke(IPC.browserBack, tabID),
     forward: tabID => ipcRenderer.invoke(IPC.browserForward, tabID),
-    reload: tabID => ipcRenderer.invoke(IPC.browserReload, tabID),
+    reload: tabID =>
+      invokeMeasured(
+        IPC.browserReload,
+        'browser',
+        () => ipcRenderer.invoke(IPC.browserReload, tabID),
+        [tabID]
+      ),
     listHistory: limit => ipcRenderer.invoke(IPC.browserListHistory, limit),
     clearHistory: () => ipcRenderer.invoke(IPC.browserClearHistory),
-    performAgentAction: request => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
-    inspectEnable: () => ipcRenderer.invoke(IPC.browserInspectEnable),
+    performAgentAction: request =>
+      invokeMeasured(
+        IPC.browserPerformAgentAction,
+        'browser',
+        () => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
+        [request]
+      ),
+    inspectEnable: () =>
+      invokeMeasured(
+        IPC.browserInspectEnable,
+        'browser',
+        () => ipcRenderer.invoke(IPC.browserInspectEnable),
+        []
+      ),
     inspectDisable: () => ipcRenderer.invoke(IPC.browserInspectDisable),
   },
   mcpDevTools: {
@@ -335,41 +610,80 @@ const bridge: OrxaBridge = {
     update: () => ipcRenderer.invoke(IPC.codexUpdate),
     listModels: () => ipcRenderer.invoke(IPC.codexListModels),
     listCollaborationModes: () => ipcRenderer.invoke(IPC.codexListCollaborationModes),
-    start: (cwd, options) => ipcRenderer.invoke(IPC.codexStart, cwd, options),
+    start: (cwd, options) =>
+      invokeMeasured(
+        IPC.codexStart,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexStart, cwd, options),
+        [cwd, options]
+      ),
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
-    startThread: options => ipcRenderer.invoke(IPC.codexStartThread, options),
+    startThread: options =>
+      invokeMeasured(
+        IPC.codexStartThread,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexStartThread, options),
+        [options]
+      ),
     listBrowserThreads: () => ipcRenderer.invoke(IPC.codexListBrowserThreads),
     listWorkspaceThreads: workspaceRoot =>
       ipcRenderer.invoke(IPC.codexListWorkspaceThreads, workspaceRoot),
     listThreads: options => ipcRenderer.invoke(IPC.codexListThreads, options),
     getThreadRuntime: threadId => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
-    resumeThread: threadId => ipcRenderer.invoke(IPC.codexResumeThread, threadId),
+    resumeThread: threadId =>
+      invokeMeasured(
+        IPC.codexResumeThread,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexResumeThread, threadId),
+        [threadId]
+      ),
     resumeProviderThread: (threadId, directory) =>
-      ipcRenderer.invoke(IPC.codexResumeProviderThread, threadId, directory),
+      invokeMeasured(
+        IPC.codexResumeProviderThread,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexResumeProviderThread, threadId, directory),
+        [threadId, directory]
+      ),
     archiveThreadTree: threadId => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
     setThreadName: (threadId, name) => ipcRenderer.invoke(IPC.codexSetThreadName, threadId, name),
     generateRunMetadata: (cwd, prompt) =>
       ipcRenderer.invoke(IPC.codexGenerateRunMetadata, cwd, prompt),
     startTurn: (threadId, prompt, cwd, model, effort, collaborationMode, attachments) =>
-      ipcRenderer.invoke(
+      invokeMeasured(
         IPC.codexStartTurn,
-        threadId,
-        prompt,
-        cwd,
-        model,
-        effort,
-        collaborationMode,
-        attachments
+        'codex',
+        () =>
+          ipcRenderer.invoke(
+            IPC.codexStartTurn,
+            threadId,
+            prompt,
+            cwd,
+            model,
+            effort,
+            collaborationMode,
+            attachments
+          ),
+        [threadId, prompt, cwd, model, effort, collaborationMode, attachments]
       ),
     steerTurn: (threadId, turnId, prompt) =>
-      ipcRenderer.invoke(IPC.codexSteerTurn, threadId, turnId, prompt),
+      invokeMeasured(
+        IPC.codexSteerTurn,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexSteerTurn, threadId, turnId, prompt),
+        [threadId, turnId, prompt]
+      ),
     approve: (requestId, decision) => ipcRenderer.invoke(IPC.codexApprove, requestId, decision),
     deny: requestId => ipcRenderer.invoke(IPC.codexDeny, requestId),
     respondToUserInput: (requestId, response) =>
       ipcRenderer.invoke(IPC.codexRespondToUserInput, requestId, response),
     interruptTurn: (threadId, turnId) =>
-      ipcRenderer.invoke(IPC.codexInterruptTurn, threadId, turnId),
+      invokeMeasured(
+        IPC.codexInterruptTurn,
+        'codex',
+        () => ipcRenderer.invoke(IPC.codexInterruptTurn, threadId, turnId),
+        [threadId, turnId]
+      ),
     interruptThreadTree: (threadId, turnId) =>
       ipcRenderer.invoke(IPC.codexInterruptThreadTree, threadId, turnId),
   },

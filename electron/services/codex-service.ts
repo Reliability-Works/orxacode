@@ -55,10 +55,12 @@ import {
   startCodexTurn,
   steerCodexTurn,
 } from './codex-service-turn-ops'
+import type { PerformanceTelemetryService } from './performance-telemetry-service'
 export { buildRunMetadataPrompt, parseRunMetadataValue } from './codex-service-parsers'
 
 export class CodexService extends EventEmitter {
   private providerSessionDirectory: ProviderSessionDirectory | null
+  private performanceTelemetryService: PerformanceTelemetryService | null = null
   private process: ChildProcess | null = null
   private readline: Interface | null = null
   private startPromise: Promise<CodexState> | null = null
@@ -89,15 +91,51 @@ export class CodexService extends EventEmitter {
   setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
     this.providerSessionDirectory = providerSessionDirectory
   }
-  get state(): CodexState { return { ...this._state } }
-  get models(): CodexModelEntry[] { return [...this._models] }
-  get collaborationModes(): CodexCollaborationMode[] { return [...this._collaborationModes] }
+  setPerformanceTelemetryService(performanceTelemetryService: PerformanceTelemetryService | null) {
+    this.performanceTelemetryService = performanceTelemetryService
+  }
+  private recordPerf(
+    metric:
+      | 'codex.start_ms'
+      | 'codex.start_thread_ms'
+      | 'codex.resume_thread_ms'
+      | 'codex.resume_provider_thread_ms'
+      | 'codex.start_turn_ms'
+      | 'codex.interrupt_turn_ms',
+    startedAt: number,
+    outcome: 'ok' | 'error' | 'timeout' = 'ok',
+    threadHash?: string
+  ) {
+    this.performanceTelemetryService?.record({
+      surface: 'codex',
+      metric,
+      kind: 'span',
+      value: performance.now() - startedAt,
+      unit: 'ms',
+      outcome,
+      process: 'main',
+      component: 'codex-service',
+      threadHash,
+    })
+  }
+  get state(): CodexState {
+    return { ...this._state }
+  }
+  get models(): CodexModelEntry[] {
+    return [...this._models]
+  }
+  get collaborationModes(): CodexCollaborationMode[] {
+    return [...this._collaborationModes]
+  }
   async start(
     cwd?: string,
     options?: { codexPath?: string; codexArgs?: string }
   ): Promise<CodexState> {
+    const startedAt = performance.now()
     if (this.process && this._state.status !== 'connecting') {
-      return this.state
+      const state = this.state
+      this.recordPerf('codex.start_ms', startedAt)
+      return state
     }
     if (this.startPromise) {
       return this.startPromise
@@ -105,7 +143,9 @@ export class CodexService extends EventEmitter {
     const startPromise = this.startInternal(cwd, options)
     this.startPromise = startPromise
     try {
-      return await startPromise
+      const state = await startPromise
+      this.recordPerf('codex.start_ms', startedAt)
+      return state
     } finally {
       if (this.startPromise === startPromise) {
         this.startPromise = null
@@ -211,9 +251,13 @@ export class CodexService extends EventEmitter {
       process: this.process,
       providerSessionDirectory: this.providerSessionDirectory,
       models: this._models,
-      setModels: models => { this._models = models },
+      setModels: models => {
+        this._models = models
+      },
       collaborationModes: this._collaborationModes,
-      setCollaborationModes: modes => { this._collaborationModes = modes },
+      setCollaborationModes: modes => {
+        this._collaborationModes = modes
+      },
       threadSettings: this.threadSettings,
       hydratedThreadIds: this.hydratedThreadIds,
       request: this.request.bind(this),
@@ -227,26 +271,116 @@ export class CodexService extends EventEmitter {
       cleanupThreadMappings: this.cleanupThreadMappings.bind(this),
     }
   }
-  async startThread(params: { model?: string; cwd?: string; approvalPolicy?: string; sandbox?: string; title?: string }): Promise<CodexThread> { return startCodexThread(this.getThreadOpsContext(), params) }
-  async listBrowserThreads(): Promise<CodexBrowserThreadSummary[]> { const cache = await listCodexBrowserThreadsWithCache({ cachedBrowserThreads: this.cachedBrowserThreads, providerSessionDirectory: this.providerSessionDirectory, context: this.getThreadOpsContext() }); this.cachedBrowserThreads = cache; return cache.value }
-  async listWorkspaceThreads(workspaceRoot: string) { return listWorkspaceCodexThreads(this.getThreadOpsContext(), workspaceRoot) }
-  async listThreads(params?: { cursor?: string | null; limit?: number; archived?: boolean }): Promise<{ threads: CodexThread[]; nextCursor?: string }> { return listCodexThreads(this.getThreadOpsContext(), params) }
-  async getThreadRuntime(threadId: string): Promise<CodexThreadRuntime> { return getCodexThreadRuntime(this.getThreadOpsContext(), threadId) }
-  async resumeThread(threadId: string): Promise<Record<string, unknown>> { return resumeCodexThread(this.getThreadOpsContext(), threadId) }
-  async resumeProviderThread(threadId: string, directory: string): Promise<CodexResumeProviderThreadResult> { const resumed = await resumeCodexProviderThread({ threadId, directory, threads: await this.listBrowserThreads(), providerSessionDirectory: this.providerSessionDirectory, context: this.getThreadOpsContext() }); this.cachedBrowserThreads = null; return resumed }
-  async archiveThread(threadId: string): Promise<void> { return archiveCodexThread(this.getThreadOpsContext(), threadId) }
-  async archiveThreadTree(rootThreadId: string): Promise<void> { return archiveCodexThreadTree(this.getThreadOpsContext(), rootThreadId) }
-  async setThreadName(threadId: string, name: string): Promise<void> { return setCodexThreadName(this.getThreadOpsContext(), threadId, name) }
-  async generateRunMetadata(cwd: string, prompt: string): Promise<CodexRunMetadata> { return generateCodexRunMetadata(this.getThreadOpsContext(), cwd, prompt) }
-  async captureAssistantReply(threadId: string, prompt: string, cwd?: string): Promise<string> { return captureCodexAssistantReply(this.getThreadOpsContext(), threadId, prompt, cwd) }
-  async startTurn(params: { threadId: string; prompt: string; cwd?: string; model?: string; effort?: string; collaborationMode?: string; attachments?: CodexAttachment[] }): Promise<void> { return startCodexTurn(this.getThreadOpsContext(), params) }
-  async steerTurn(threadId: string, turnId: string, prompt: string): Promise<void> { return steerCodexTurn(this.getThreadOpsContext(), threadId, turnId, prompt) }
-  async interruptTurn(threadId: string, turnId: string): Promise<void> { return interruptCodexTurn(this.getThreadOpsContext(), threadId, turnId) }
-  async interruptThreadTree(rootThreadId: string, rootTurnId?: string): Promise<void> { return interruptCodexThreadTree(this.getThreadOpsContext(), rootThreadId, rootTurnId) }
-  async listModels(): Promise<CodexModelEntry[]> { return listCodexModels(this.getThreadOpsContext()) }
-  async listCollaborationModes(): Promise<CodexCollaborationMode[]> { return listCodexCollaborationModes(this.getThreadOpsContext()) }
-  async respondToApproval(requestId: number, decision: string): Promise<void> { return respondToCodexApproval(this.getThreadOpsContext(), requestId, decision) }
-  async respondToUserInput(requestId: number, answers: Record<string, { answers: string[] }>): Promise<void> { return respondToCodexUserInput(this.getThreadOpsContext(), requestId, answers) }
+  async startThread(params: {
+    model?: string
+    cwd?: string
+    approvalPolicy?: string
+    sandbox?: string
+    title?: string
+  }): Promise<CodexThread> {
+    const startedAt = performance.now()
+    const result = await startCodexThread(this.getThreadOpsContext(), params)
+    this.recordPerf('codex.start_thread_ms', startedAt, 'ok', result.id)
+    return result
+  }
+  async listBrowserThreads(): Promise<CodexBrowserThreadSummary[]> {
+    const cache = await listCodexBrowserThreadsWithCache({
+      cachedBrowserThreads: this.cachedBrowserThreads,
+      providerSessionDirectory: this.providerSessionDirectory,
+      context: this.getThreadOpsContext(),
+    })
+    this.cachedBrowserThreads = cache
+    return cache.value
+  }
+  async listWorkspaceThreads(workspaceRoot: string) {
+    return listWorkspaceCodexThreads(this.getThreadOpsContext(), workspaceRoot)
+  }
+  async listThreads(params?: {
+    cursor?: string | null
+    limit?: number
+    archived?: boolean
+  }): Promise<{ threads: CodexThread[]; nextCursor?: string }> {
+    return listCodexThreads(this.getThreadOpsContext(), params)
+  }
+  async getThreadRuntime(threadId: string): Promise<CodexThreadRuntime> {
+    return getCodexThreadRuntime(this.getThreadOpsContext(), threadId)
+  }
+  async resumeThread(threadId: string): Promise<Record<string, unknown>> {
+    const startedAt = performance.now()
+    const result = await resumeCodexThread(this.getThreadOpsContext(), threadId)
+    this.recordPerf('codex.resume_thread_ms', startedAt, 'ok', threadId)
+    return result
+  }
+  async resumeProviderThread(
+    threadId: string,
+    directory: string
+  ): Promise<CodexResumeProviderThreadResult> {
+    const startedAt = performance.now()
+    const resumed = await resumeCodexProviderThread({
+      threadId,
+      directory,
+      threads: await this.listBrowserThreads(),
+      providerSessionDirectory: this.providerSessionDirectory,
+      context: this.getThreadOpsContext(),
+    })
+    this.cachedBrowserThreads = null
+    this.recordPerf('codex.resume_provider_thread_ms', startedAt, 'ok', threadId)
+    return resumed
+  }
+  async archiveThread(threadId: string): Promise<void> {
+    return archiveCodexThread(this.getThreadOpsContext(), threadId)
+  }
+  async archiveThreadTree(rootThreadId: string): Promise<void> {
+    return archiveCodexThreadTree(this.getThreadOpsContext(), rootThreadId)
+  }
+  async setThreadName(threadId: string, name: string): Promise<void> {
+    return setCodexThreadName(this.getThreadOpsContext(), threadId, name)
+  }
+  async generateRunMetadata(cwd: string, prompt: string): Promise<CodexRunMetadata> {
+    return generateCodexRunMetadata(this.getThreadOpsContext(), cwd, prompt)
+  }
+  async captureAssistantReply(threadId: string, prompt: string, cwd?: string): Promise<string> {
+    return captureCodexAssistantReply(this.getThreadOpsContext(), threadId, prompt, cwd)
+  }
+  async startTurn(params: {
+    threadId: string
+    prompt: string
+    cwd?: string
+    model?: string
+    effort?: string
+    collaborationMode?: string
+    attachments?: CodexAttachment[]
+  }): Promise<void> {
+    const startedAt = performance.now()
+    await startCodexTurn(this.getThreadOpsContext(), params)
+    this.recordPerf('codex.start_turn_ms', startedAt, 'ok', params.threadId)
+  }
+  async steerTurn(threadId: string, turnId: string, prompt: string): Promise<void> {
+    return steerCodexTurn(this.getThreadOpsContext(), threadId, turnId, prompt)
+  }
+  async interruptTurn(threadId: string, turnId: string): Promise<void> {
+    const startedAt = performance.now()
+    await interruptCodexTurn(this.getThreadOpsContext(), threadId, turnId)
+    this.recordPerf('codex.interrupt_turn_ms', startedAt, 'ok', threadId)
+  }
+  async interruptThreadTree(rootThreadId: string, rootTurnId?: string): Promise<void> {
+    return interruptCodexThreadTree(this.getThreadOpsContext(), rootThreadId, rootTurnId)
+  }
+  async listModels(): Promise<CodexModelEntry[]> {
+    return listCodexModels(this.getThreadOpsContext())
+  }
+  async listCollaborationModes(): Promise<CodexCollaborationMode[]> {
+    return listCodexCollaborationModes(this.getThreadOpsContext())
+  }
+  async respondToApproval(requestId: number, decision: string): Promise<void> {
+    return respondToCodexApproval(this.getThreadOpsContext(), requestId, decision)
+  }
+  async respondToUserInput(
+    requestId: number,
+    answers: Record<string, { answers: string[] }>
+  ): Promise<void> {
+    return respondToCodexUserInput(this.getThreadOpsContext(), requestId, answers)
+  }
 
   private request(method: string, params: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {

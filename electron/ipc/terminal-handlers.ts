@@ -1,6 +1,8 @@
 import { ipcMain } from 'electron'
 import { IPC, type ClaudeTerminalMode, type OrxaTerminalOwner } from '../../shared/ipc'
 import type { OrxaTerminalService } from '../services/orxa-terminal-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import { assertString } from './validators'
 
 type ClaudeTerminalState = {
@@ -10,9 +12,14 @@ type ClaudeTerminalState = {
 type TerminalHandlersDeps = {
   service: OrxaTerminalService
   claudeState: ClaudeTerminalState
+  performanceTelemetryService: PerformanceTelemetryService
 }
 
-export function registerTerminalHandlers({ service, claudeState }: TerminalHandlersDeps) {
+export function registerTerminalHandlers({
+  service,
+  claudeState,
+  performanceTelemetryService,
+}: TerminalHandlersDeps) {
   ipcMain.handle(IPC.terminalList, async (_event, directory: unknown, owner?: unknown) =>
     service.listPtys(
       assertString(directory, 'directory'),
@@ -21,8 +28,10 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
         : 'workspace'
     )
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.terminalCreate,
+    'terminal',
     async (_event, directory: unknown, cwd?: unknown, title?: unknown, owner?: unknown) =>
       service.createPty(
         assertString(directory, 'directory'),
@@ -33,11 +42,17 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
           : 'workspace'
       )
   )
-  ipcMain.handle(IPC.terminalConnect, async (_event, directory: unknown, ptyID: unknown) =>
-    service.connectPty(assertString(directory, 'directory'), assertString(ptyID, 'ptyID'))
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.terminalConnect,
+    'terminal',
+    async (_event, directory: unknown, ptyID: unknown) =>
+      service.connectPty(assertString(directory, 'directory'), assertString(ptyID, 'ptyID'))
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.terminalWrite,
+    'terminal',
     async (_event, directory: unknown, ptyID: unknown, data: unknown) =>
       service.writePty(
         assertString(directory, 'directory'),
@@ -45,8 +60,10 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
         typeof data === 'string' ? data : ''
       )
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.terminalResize,
+    'terminal',
     async (_event, directory: unknown, ptyID: unknown, cols: unknown, rows: unknown) => {
       if (typeof cols !== 'number' || typeof rows !== 'number') {
         throw new Error('cols and rows must be numbers')
@@ -59,12 +76,18 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
       )
     }
   )
-  ipcMain.handle(IPC.terminalClose, async (_event, directory: unknown, ptyID: unknown) =>
-    service.closePty(assertString(directory, 'directory'), assertString(ptyID, 'ptyID'))
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.terminalClose,
+    'terminal',
+    async (_event, directory: unknown, ptyID: unknown) =>
+      service.closePty(assertString(directory, 'directory'), assertString(ptyID, 'ptyID'))
   )
 
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeTerminalCreate,
+    'claude',
     async (_event, directory: unknown, mode: unknown, cols?: unknown, rows?: unknown) => {
       const dir = assertString(directory, 'directory')
       const m = assertString(mode, 'mode') as ClaudeTerminalMode
@@ -79,17 +102,24 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
     }
   )
 
-  ipcMain.handle(IPC.claudeTerminalWrite, async (_event, processId: unknown, data: unknown) => {
-    const id = assertString(processId, 'processId')
-    const entry = claudeState.processes.get(id)
-    if (entry?.directory) {
-      return service.writePty(entry.directory, id, typeof data === 'string' ? data : '')
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeTerminalWrite,
+    'claude',
+    async (_event, processId: unknown, data: unknown) => {
+      const id = assertString(processId, 'processId')
+      const entry = claudeState.processes.get(id)
+      if (entry?.directory) {
+        return service.writePty(entry.directory, id, typeof data === 'string' ? data : '')
+      }
+      return false
     }
-    return false
-  })
+  )
 
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeTerminalResize,
+    'claude',
     async (_event, processId: unknown, cols: unknown, rows: unknown) => {
       const id = assertString(processId, 'processId')
       const entry = claudeState.processes.get(id)
@@ -104,14 +134,19 @@ export function registerTerminalHandlers({ service, claudeState }: TerminalHandl
     }
   )
 
-  ipcMain.handle(IPC.claudeTerminalClose, async (_event, processId: unknown) => {
-    const id = assertString(processId, 'processId')
-    const entry = claudeState.processes.get(id)
-    if (entry?.directory) {
-      claudeState.processes.delete(id)
-      await service.closePty(entry.directory, id)
-      return true
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeTerminalClose,
+    'claude',
+    async (_event, processId: unknown) => {
+      const id = assertString(processId, 'processId')
+      const entry = claudeState.processes.get(id)
+      if (entry?.directory) {
+        claudeState.processes.delete(id)
+        await service.closePty(entry.directory, id)
+        return true
+      }
+      return false
     }
-    return false
-  })
+  )
 }

@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { normalizeMessageBundles } from '../lib/opencode-event-reducer'
+import { measurePerf, reportPerf } from '../lib/performance'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
 
 type Props = {
@@ -22,7 +23,32 @@ export function OpencodeBackgroundSessionManager({ directory, sessionID }: Props
         return
       }
       try {
-        const runtime = await window.orxa.opencode.getSessionRuntime(directory, sessionID)
+        const runtime = await measurePerf(
+          {
+            surface: 'background',
+            metric: 'background.poll_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            trigger: 'poll',
+            component: 'opencode-background-session-manager',
+            workspaceHash: directory,
+            sessionHash: sessionID,
+          },
+          () => window.orxa.opencode.getSessionRuntime(directory, sessionID)
+        )
+        reportPerf({
+          surface: 'background',
+          metric: 'background.poll_count',
+          kind: 'counter',
+          value: 1,
+          unit: 'count',
+          process: 'renderer',
+          trigger: 'poll',
+          component: 'opencode-background-session-manager',
+          workspaceHash: directory,
+          sessionHash: sessionID,
+        })
         if (cancelled) {
           return
         }
@@ -40,7 +66,20 @@ export function OpencodeBackgroundSessionManager({ directory, sessionID }: Props
       void sync()
     }, OPENCODE_BACKGROUND_POLL_MS)
     const onResume = () => {
-      void sync()
+      void measurePerf(
+        {
+          surface: 'background',
+          metric: 'background.resume_sync_ms',
+          kind: 'span',
+          unit: 'ms',
+          process: 'renderer',
+          trigger: 'resume',
+          component: 'opencode-background-session-manager',
+          workspaceHash: directory,
+          sessionHash: sessionID,
+        },
+        sync
+      ).catch(() => undefined)
     }
     document.addEventListener('visibilitychange', onResume)
     window.addEventListener('focus', onResume)

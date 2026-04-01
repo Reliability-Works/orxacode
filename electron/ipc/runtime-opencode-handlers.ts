@@ -1,9 +1,16 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { dialog, ipcMain, type BrowserWindow } from 'electron'
-import { IPC, type GitCommitRequest, type ProjectBootstrap } from '../../shared/ipc'
+import {
+  IPC,
+  type GitCommitRequest,
+  type ProjectBootstrap,
+  type ProjectRefreshDelta,
+} from '../../shared/ipc'
 import type { OpencodeService } from '../services/opencode-service'
 import type { OrxaTerminalService } from '../services/orxa-terminal-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import {
   assertBoolean,
   assertConfigPatch,
@@ -16,6 +23,7 @@ import {
 type RuntimeOpencodeHandlersDeps = {
   service: OpencodeService
   terminalService: OrxaTerminalService
+  performanceTelemetryService: PerformanceTelemetryService
   startupBootstrap: { wait: () => Promise<void> }
   getMainWindow: () => BrowserWindow | null
   inferMimeFromPath: (filePath: string) => string
@@ -41,6 +49,7 @@ function registerRuntimeStateHandlers({ service }: Pick<RuntimeOpencodeHandlersD
 
 function registerProjectHandlers({
   service,
+  performanceTelemetryService,
   startupBootstrap,
   getMainWindow,
   terminalService,
@@ -56,11 +65,32 @@ function registerProjectHandlers({
     }
   }
 
-  ipcMain.handle(IPC.opencodeBootstrap, async () => {
-    await startupBootstrap.wait()
-    return service.bootstrap()
-  })
-  ipcMain.handle(IPC.opencodeCheckDependencies, async () => service.checkRuntimeDependencies())
+  const attachWorkspaceTerminalsDelta = async (
+    directory: string,
+    loader: () => Promise<ProjectRefreshDelta>
+  ) => {
+    const project = await loader()
+    return {
+      ...project,
+      ptys: terminalService.listPtys(directory, 'workspace'),
+    }
+  }
+
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeBootstrap,
+    'startup',
+    async () => {
+      await startupBootstrap.wait()
+      return service.bootstrap()
+    }
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeCheckDependencies,
+    'opencode',
+    async () => service.checkRuntimeDependencies()
+  )
   ipcMain.handle(IPC.opencodeAddProjectDirectory, async () => {
     const options: Electron.OpenDialogOptions = {
       properties: ['openDirectory', 'createDirectory'],
@@ -78,29 +108,52 @@ function registerProjectHandlers({
   ipcMain.handle(IPC.opencodeRemoveProjectDirectory, async (_event, directory: unknown) =>
     service.removeProjectDirectory(assertString(directory, 'directory'))
   )
-  ipcMain.handle(IPC.opencodeSelectProject, async (_event, directory: unknown) =>
-    attachWorkspaceTerminals(assertString(directory, 'directory'), () =>
-      service.selectProject(assertString(directory, 'directory'))
-    )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeSelectProject,
+    'workspace',
+    async (_event, directory: unknown) =>
+      attachWorkspaceTerminals(assertString(directory, 'directory'), () =>
+        service.selectProject(assertString(directory, 'directory'))
+      )
   )
-  ipcMain.handle(IPC.opencodeRefreshProject, async (_event, directory: unknown) =>
-    attachWorkspaceTerminals(assertString(directory, 'directory'), () =>
-      service.refreshProject(assertString(directory, 'directory'))
-    )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeRefreshProject,
+    'workspace',
+    async (_event, directory: unknown) =>
+      attachWorkspaceTerminals(assertString(directory, 'directory'), () =>
+        service.refreshProject(assertString(directory, 'directory'))
+      )
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeRefreshProjectDelta,
+    'workspace',
+    async (_event, directory: unknown) =>
+      attachWorkspaceTerminalsDelta(assertString(directory, 'directory'), () =>
+        service.refreshProjectDelta(assertString(directory, 'directory'))
+      )
   )
 }
 
-function registerSessionHandlers({ service }: Pick<RuntimeOpencodeHandlersDeps, 'service'>) {
-  registerSessionLifecycleHandlers({ service })
+function registerSessionHandlers({
+  service,
+  performanceTelemetryService,
+}: Pick<RuntimeOpencodeHandlersDeps, 'service' | 'performanceTelemetryService'>) {
+  registerSessionLifecycleHandlers({ service, performanceTelemetryService })
   registerSessionDataHandlers({ service })
-  registerSessionPromptHandlers({ service })
+  registerSessionPromptHandlers({ service, performanceTelemetryService })
 }
 
 function registerSessionLifecycleHandlers({
   service,
-}: Pick<RuntimeOpencodeHandlersDeps, 'service'>) {
-  ipcMain.handle(
+  performanceTelemetryService,
+}: Pick<RuntimeOpencodeHandlersDeps, 'service' | 'performanceTelemetryService'>) {
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.opencodeCreateSession,
+    'session',
     async (_event, directory: unknown, title?: unknown, permissionMode?: unknown) =>
       service.createSession(
         assertString(directory, 'directory'),
@@ -147,16 +200,25 @@ function registerSessionLifecycleHandlers({
         typeof name === 'string' ? name : undefined
       )
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.opencodeGetSessionRuntime,
+    'session',
     async (_event, directory: unknown, sessionID: unknown) =>
       service.getSessionRuntime(
         assertString(directory, 'directory'),
         assertString(sessionID, 'sessionID')
       )
   )
-  ipcMain.handle(IPC.opencodeLoadMessages, async (_event, directory: unknown, sessionID: unknown) =>
-    service.loadMessages(assertString(directory, 'directory'), assertString(sessionID, 'sessionID'))
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeLoadMessages,
+    'session',
+    async (_event, directory: unknown, sessionID: unknown) =>
+      service.loadMessages(
+        assertString(directory, 'directory'),
+        assertString(sessionID, 'sessionID')
+      )
   )
 }
 
@@ -200,9 +262,13 @@ function registerSessionDataHandlers({ service }: Pick<RuntimeOpencodeHandlersDe
 
 function registerSessionPromptHandlers({
   service,
-}: Pick<RuntimeOpencodeHandlersDeps, 'service'>) {
-  ipcMain.handle(IPC.opencodeSendPrompt, async (_event, request: unknown) =>
-    service.sendPrompt(assertPromptRequestInput(request))
+  performanceTelemetryService,
+}: Pick<RuntimeOpencodeHandlersDeps, 'service' | 'performanceTelemetryService'>) {
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeSendPrompt,
+    'session',
+    async (_event, request: unknown) => service.sendPrompt(assertPromptRequestInput(request))
   )
   ipcMain.handle(
     IPC.opencodeReplyPermission,
@@ -488,13 +554,21 @@ function registerToolHandlers({
 export function registerRuntimeOpencodeHandlers({
   service,
   terminalService,
+  performanceTelemetryService,
   startupBootstrap,
   getMainWindow,
   inferMimeFromPath,
 }: RuntimeOpencodeHandlersDeps) {
   registerRuntimeStateHandlers({ service })
-  registerProjectHandlers({ service, terminalService, startupBootstrap, getMainWindow, inferMimeFromPath })
-  registerSessionHandlers({ service })
+  registerProjectHandlers({
+    service,
+    terminalService,
+    performanceTelemetryService,
+    startupBootstrap,
+    getMainWindow,
+    inferMimeFromPath,
+  })
+  registerSessionHandlers({ service, performanceTelemetryService })
   registerConfigHandlers({ service })
   registerGitAndFilesHandlers({ service })
   registerToolHandlers({ service, getMainWindow, inferMimeFromPath })

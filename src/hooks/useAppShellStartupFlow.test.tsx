@@ -53,4 +53,47 @@ describe('useAppShellStartupFlow', () => {
     expect(result.current.startupProgressPercent).toBe(100)
     expect(onStepError).not.toHaveBeenCalled()
   })
+
+  it('does not restart when onComplete callback identity changes mid-startup', async () => {
+    const firstStep = deferred()
+    const stepOne = vi.fn(async () => {
+      await firstStep.promise
+    })
+    const stepTwo = vi.fn(async () => undefined)
+    const onStepError = vi.fn()
+    const firstOnComplete = vi.fn()
+    const secondOnComplete = vi.fn()
+
+    const { result, rerender } = renderHook(
+      ({ revision }) =>
+        useAppShellStartupFlow({
+          initialMessage: 'Initializing Orxa Code…',
+          totalSteps: 2,
+          stepTimeoutMs: 1_000,
+          steps: [
+            { message: 'Step one', action: stepOne },
+            { message: 'Step two', action: stepTwo },
+          ],
+          onStepError,
+          onComplete: revision === 1 ? firstOnComplete : secondOnComplete,
+        }),
+      { initialProps: { revision: 1 } }
+    )
+
+    expect(result.current.startupState.phase).toBe('running')
+    expect(result.current.startupState.message).toBe('Step one')
+
+    rerender({ revision: 2 })
+    firstStep.resolve()
+
+    await waitFor(() => {
+      expect(result.current.startupState.phase).toBe('done')
+    })
+
+    expect(stepOne).toHaveBeenCalledTimes(1)
+    expect(stepTwo).toHaveBeenCalledTimes(1)
+    expect(firstOnComplete).not.toHaveBeenCalled()
+    expect(secondOnComplete).toHaveBeenCalledTimes(1)
+    expect(onStepError).not.toHaveBeenCalled()
+  })
 })

@@ -44,6 +44,11 @@ export type ProjectBootstrap = {
   ptys: OrxaTerminalSession[]
 }
 
+export type ProjectRefreshDelta = Pick<
+  ProjectBootstrap,
+  'directory' | 'sessions' | 'sessionStatus' | 'permissions' | 'questions' | 'commands' | 'ptys'
+>
+
 export type ProjectListItem = {
   id: string
   name?: string

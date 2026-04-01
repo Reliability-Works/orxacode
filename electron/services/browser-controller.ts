@@ -16,6 +16,7 @@ import type {
   OrxaEvent,
 } from '../../shared/ipc'
 import { ArtifactStore } from './artifact-store'
+import type { PerformanceTelemetryService } from './performance-telemetry-service'
 import { readHistory, recordHistoryEntry } from './browser-controller-history'
 import { isAllowedBrowserUrl, toSafeBrowserUrl } from './browser-controller-utils'
 import {
@@ -48,6 +49,7 @@ type BrowserHistoryStore = {
 
 type BrowserControllerOptions = {
   onEvent?: (event: OrxaEvent) => void
+  performanceTelemetryService?: PerformanceTelemetryService
   partition?: string
   historyLimit?: number
   historyStore?: BrowserHistoryStore
@@ -77,6 +79,8 @@ export class BrowserController {
 
   readonly artifactStore: ArtifactStore
 
+  private readonly performanceTelemetryService?: PerformanceTelemetryService
+
   private readonly tabs = new Map<string, BrowserTabRecord>()
 
   private activeTabID: string | undefined
@@ -96,6 +100,7 @@ export class BrowserController {
 
   constructor(options: BrowserControllerOptions = {}) {
     this.onEvent = options.onEvent ?? (() => undefined)
+    this.performanceTelemetryService = options.performanceTelemetryService
     this.partition = options.partition ?? DEFAULT_BROWSER_PARTITION
     this.historyLimit = options.historyLimit ?? DEFAULT_HISTORY_LIMIT
     this.historyStore =
@@ -127,6 +132,28 @@ export class BrowserController {
     this.artifactStore = options.artifactStore ?? new ArtifactStore()
 
     this.configureSessionSecurityGuards()
+  }
+
+  private recordPerf(
+    metric:
+      | 'browser.controller.open_tab_ms'
+      | 'browser.controller.navigate_ms'
+      | 'browser.controller.reload_ms'
+      | 'browser.controller.inspect_enable_ms'
+      | 'browser.controller.agent_action_ms',
+    value: number,
+    outcome: 'ok' | 'error' = 'ok'
+  ) {
+    this.performanceTelemetryService?.record({
+      surface: 'browser',
+      metric,
+      kind: 'span',
+      value,
+      unit: 'ms',
+      outcome,
+      process: 'main',
+      component: 'browser-controller',
+    })
   }
 
   setWindow(window: BrowserWindow | null): BrowserState {
@@ -222,6 +249,7 @@ export class BrowserController {
   }
 
   async openTab(url?: string, activate = true): Promise<BrowserState> {
+    const startedAt = performance.now()
     const target = toSafeBrowserUrl(url)
     const tabID = this.createID()
     const record: BrowserTabRecord = {
@@ -252,7 +280,9 @@ export class BrowserController {
     }
 
     this.emitState()
-    return this.getState()
+    const state = this.getState()
+    this.recordPerf('browser.controller.open_tab_ms', performance.now() - startedAt)
+    return state
   }
 
   closeTab(tabID?: string): BrowserState {
@@ -274,6 +304,7 @@ export class BrowserController {
   }
 
   async navigate(url: string, tabID?: string): Promise<BrowserState> {
+    const startedAt = performance.now()
     const target = toSafeBrowserUrl(url)
     if (!tabID && !this.activeTabID) {
       return this.openTab(target, true)
@@ -281,7 +312,9 @@ export class BrowserController {
     const record = requireTab(tabID, this.activeTabID, this.tabs)
     await record.view.webContents.loadURL(target)
     this.emitState()
-    return this.getState()
+    const state = this.getState()
+    this.recordPerf('browser.controller.navigate_ms', performance.now() - startedAt)
+    return state
   }
 
   back(tabID?: string): BrowserState {
@@ -305,10 +338,13 @@ export class BrowserController {
   }
 
   reload(tabID?: string): BrowserState {
+    const startedAt = performance.now()
     const record = requireTab(tabID, this.activeTabID, this.tabs)
     record.view.webContents.reload()
     this.emitState()
-    return this.getState()
+    const state = this.getState()
+    this.recordPerf('browser.controller.reload_ms', performance.now() - startedAt)
+    return state
   }
 
   listHistory(limit = DEFAULT_HISTORY_READ_LIMIT): BrowserHistoryItem[] {
@@ -331,10 +367,18 @@ export class BrowserController {
   }
 
   async performAgentAction(request: BrowserAgentActionRequest): Promise<BrowserAgentActionResult> {
-    return performBrowserAgentAction(
-      this as unknown as Parameters<typeof performBrowserAgentAction>[0],
-      request
-    )
+    const startedAt = performance.now()
+    try {
+      const result = await performBrowserAgentAction(
+        this as unknown as Parameters<typeof performBrowserAgentAction>[0],
+        request
+      )
+      this.recordPerf('browser.controller.agent_action_ms', performance.now() - startedAt)
+      return result
+    } catch (error) {
+      this.recordPerf('browser.controller.agent_action_ms', performance.now() - startedAt, 'error')
+      throw error
+    }
   }
 
   private emitState() {
@@ -579,10 +623,22 @@ export class BrowserController {
   inspectEventCallback: ((annotation: unknown) => void) | null = null
 
   async enableInspect(onAnnotation: (annotation: unknown) => void): Promise<void> {
-    return enableBrowserInspect(
-      this as unknown as Parameters<typeof enableBrowserInspect>[0],
-      onAnnotation
-    )
+    const startedAt = performance.now()
+    try {
+      const result = await enableBrowserInspect(
+        this as unknown as Parameters<typeof enableBrowserInspect>[0],
+        onAnnotation
+      )
+      this.recordPerf('browser.controller.inspect_enable_ms', performance.now() - startedAt)
+      return result
+    } catch (error) {
+      this.recordPerf(
+        'browser.controller.inspect_enable_ms',
+        performance.now() - startedAt,
+        'error'
+      )
+      throw error
+    }
   }
 
   async disableInspect(): Promise<void> {

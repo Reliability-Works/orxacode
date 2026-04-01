@@ -15,6 +15,7 @@
     "dist:dir": "pnpm build && electron-builder --dir",
     "typecheck": "tsc -b",
     "test": "vitest run",
+    "test:perf-guard": "vitest run electron/preload.test.ts electron/services/performance-telemetry-service.test.ts src/hooks/useWorkspaceState.runtime-sync.test.tsx src/hooks/useClaudeChatSession.test.tsx src/hooks/useClaudeChatSessionLiveSync.test.tsx",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "ci": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm knip && pnpm test:coverage",

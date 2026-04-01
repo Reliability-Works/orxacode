@@ -7,6 +7,7 @@ import {
   type SetStateAction,
 } from 'react'
 import type { CustomRunCommandInput, CustomRunCommandPreset } from './components/ContentTopBar'
+import { measurePerf, reportPerf } from './lib/performance'
 
 const DEFAULT_TERMINAL_TITLE_PREFIX = 'Tab'
 const MIN_TERMINAL_PANEL_HEIGHT = 120
@@ -60,10 +61,21 @@ function useCreateTerminalTab(context: AppCoreTerminalContext) {
     }
     const cwd = projectDirectory ?? activeProjectDir
     const tabNum = terminalTabs.length + 1
-    const pty = await window.orxa.terminal.create(
-      activeProjectDir,
-      cwd,
-      `${DEFAULT_TERMINAL_TITLE_PREFIX} ${tabNum}`
+    const pty = await measurePerf(
+      {
+        surface: 'terminal',
+        metric: 'terminal.create_ms',
+        kind: 'span',
+        unit: 'ms',
+        process: 'renderer',
+        component: 'app-core-terminal',
+      },
+      () =>
+        window.orxa.terminal.create(
+          activeProjectDir,
+          cwd,
+          `${DEFAULT_TERMINAL_TITLE_PREFIX} ${tabNum}`
+        )
     )
     const newTab = { id: pty.id, label: `${DEFAULT_TERMINAL_TITLE_PREFIX} ${tabNum}` }
     setTerminalTabs(prev => [...prev, newTab])
@@ -237,10 +249,29 @@ function useCustomRunCommands(
           setActiveTerminalId(targetPtyID)
         }
         setTerminalOpen(true)
-        await window.orxa.terminal.connect(activeProjectDir, targetPtyID)
+        await measurePerf(
+          {
+            surface: 'terminal',
+            metric: 'terminal.connect_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            component: 'app-core-terminal',
+          },
+          () => window.orxa.terminal.connect(activeProjectDir, targetPtyID)
+        )
         for (const command of commandLines) {
           await window.orxa.terminal.write(activeProjectDir, targetPtyID, `${command}\n`)
         }
+        reportPerf({
+          surface: 'terminal',
+          metric: 'terminal.write_count',
+          kind: 'counter',
+          value: commandLines.length,
+          unit: 'count',
+          process: 'renderer',
+          component: 'app-core-terminal',
+        })
         setStatusLine(
           `Ran ${commandLines.length} command${commandLines.length === 1 ? '' : 's'} from ${preset.title}.`
         )

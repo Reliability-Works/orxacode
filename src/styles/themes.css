@@ -550,7 +550,8 @@
 }
 
 [data-theme='glass'] .claude-session-browser-modal,
-[data-theme='glass'] .workspace-detail-modal {
+[data-theme='glass'] .workspace-detail-modal,
+[data-theme='glass'] .debug-log-modal {
   background: rgba(9, 10, 18, 0.98);
   border-color: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(48px) saturate(1.35);

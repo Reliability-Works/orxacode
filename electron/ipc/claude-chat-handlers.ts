@@ -1,20 +1,41 @@
-import { ipcMain } from 'electron'
 import { IPC } from '../../shared/ipc'
 import type { ClaudeChatService } from '../services/claude-chat-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import { assertString } from './validators'
 
 type ClaudeChatHandlersDeps = {
   claudeChatService: ClaudeChatService
+  performanceTelemetryService: PerformanceTelemetryService
 }
 
-export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHandlersDeps) {
-  ipcMain.handle(IPC.claudeChatHealth, async () => claudeChatService.health())
-  ipcMain.handle(IPC.claudeChatListModels, async () => claudeChatService.listModels())
-  ipcMain.handle(IPC.claudeChatGetState, async (_event, sessionKey: unknown) => {
-    return claudeChatService.getState(assertString(sessionKey, 'sessionKey'))
-  })
-  ipcMain.handle(
+export function registerClaudeChatHandlers({
+  claudeChatService,
+  performanceTelemetryService,
+}: ClaudeChatHandlersDeps) {
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatHealth,
+    'claude_chat',
+    async () => claudeChatService.health()
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatListModels,
+    'claude_chat',
+    async () => claudeChatService.listModels()
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatGetState,
+    'claude_chat',
+    async (_event, sessionKey: unknown) =>
+      claudeChatService.getState(assertString(sessionKey, 'sessionKey'))
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatStartTurn,
+    'claude_chat',
     async (_event, sessionKey: unknown, directory: unknown, prompt: unknown, options?: unknown) => {
       return claudeChatService.startTurn(
         assertString(sessionKey, 'sessionKey'),
@@ -24,17 +45,27 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
-  ipcMain.handle(IPC.claudeChatInterruptTurn, async (_event, sessionKey: unknown) => {
-    return claudeChatService.interruptTurn(assertString(sessionKey, 'sessionKey'))
-  })
-  ipcMain.handle(IPC.claudeChatApprove, async (_event, requestId: unknown, decision: unknown) => {
-    return claudeChatService.approve(
-      assertString(requestId, 'requestId'),
-      assertString(decision, 'decision') as Parameters<ClaudeChatService['approve']>[1]
-    )
-  })
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatInterruptTurn,
+    'claude_chat',
+    async (_event, sessionKey: unknown) =>
+      claudeChatService.interruptTurn(assertString(sessionKey, 'sessionKey'))
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatApprove,
+    'claude_chat',
+    async (_event, requestId: unknown, decision: unknown) =>
+      claudeChatService.approve(
+        assertString(requestId, 'requestId'),
+        assertString(decision, 'decision') as Parameters<ClaudeChatService['approve']>[1]
+      )
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatRespondToUserInput,
+    'claude_chat',
     async (_event, requestId: unknown, response: unknown) => {
       return claudeChatService.respondToUserInput(
         assertString(requestId, 'requestId'),
@@ -42,8 +73,10 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatGetSessionMessages,
+    'claude_chat',
     async (_event, sessionId: unknown, directory?: unknown) => {
       return claudeChatService.getSessionMessages(
         assertString(sessionId, 'sessionId'),
@@ -51,11 +84,16 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
-  ipcMain.handle(IPC.claudeChatListSessions, async () => {
-    return claudeChatService.listSessions()
-  })
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatListSessions,
+    'claude_chat',
+    async () => claudeChatService.listSessions()
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatResumeProviderSession,
+    'claude_chat',
     async (_event, providerThreadId: unknown, directory: unknown) => {
       return claudeChatService.resumeProviderSession(
         assertString(providerThreadId, 'providerThreadId'),
@@ -63,8 +101,10 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatRenameProviderSession,
+    'claude_chat',
     async (_event, sessionId: unknown, title: unknown, directory?: unknown) => {
       return claudeChatService.renameProviderSession(
         assertString(sessionId, 'sessionId'),
@@ -73,11 +113,17 @@ export function registerClaudeChatHandlers({ claudeChatService }: ClaudeChatHand
       )
     }
   )
-  ipcMain.handle(IPC.claudeChatArchiveSession, async (_event, sessionKey: unknown) => {
-    return claudeChatService.archiveSession(assertString(sessionKey, 'sessionKey'))
-  })
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.claudeChatArchiveSession,
+    'claude_chat',
+    async (_event, sessionKey: unknown) =>
+      claudeChatService.archiveSession(assertString(sessionKey, 'sessionKey'))
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.claudeChatArchiveProviderSession,
+    'claude_chat',
     async (_event, sessionId: unknown, directory?: unknown) => {
       return claudeChatService.archiveProviderSession(
         assertString(sessionId, 'sessionId'),

@@ -37,6 +37,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Performance guards
+        run: pnpm test:perf-guard
+
       - name: Test with coverage
         run: pnpm test:coverage
 

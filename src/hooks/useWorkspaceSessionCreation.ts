@@ -1,7 +1,13 @@
 import { useCallback } from 'react'
 import type { ProjectBootstrap, SessionMessageBundle } from '@shared/ipc'
-import { deriveSessionTitleFromPrompt, loadOpencodeRuntimeSnapshot, type CreateSessionPromptOptions, type SelectProjectOptions } from './useWorkspaceState-shared'
+import {
+  deriveSessionTitleFromPrompt,
+  loadOpencodeRuntimeSnapshot,
+  type CreateSessionPromptOptions,
+  type SelectProjectOptions,
+} from './useWorkspaceState-shared'
 import type { SetMessages, UnifiedRuntimeState } from './useWorkspaceState-store'
+import { measurePerf } from '../lib/performance'
 
 type ApplyRuntimeSnapshot = (
   directory: string,
@@ -47,14 +53,27 @@ async function sendInitialPrompt({
   const supportsSelectedAgent = promptOptions?.selectedAgent
     ? promptOptions.availableAgentNames.has(promptOptions.selectedAgent)
     : false
-  await window.orxa.opencode.sendPrompt({
-    directory: targetDirectory,
-    sessionID: resolvedSessionID,
-    text: firstPrompt,
-    agent: supportsSelectedAgent ? promptOptions?.selectedAgent : undefined,
-    model: promptOptions?.selectedModelPayload,
-    variant: promptOptions?.selectedVariant,
-  })
+  await measurePerf(
+    {
+      surface: 'session',
+      metric: 'prompt.send_ack_ms',
+      kind: 'span',
+      unit: 'ms',
+      process: 'renderer',
+      component: 'workspace-session-creation',
+      workspaceHash: targetDirectory,
+      sessionHash: resolvedSessionID,
+    },
+    () =>
+      window.orxa.opencode.sendPrompt({
+        directory: targetDirectory,
+        sessionID: resolvedSessionID,
+        text: firstPrompt,
+        agent: supportsSelectedAgent ? promptOptions?.selectedAgent : undefined,
+        model: promptOptions?.selectedModelPayload,
+        variant: promptOptions?.selectedVariant,
+      })
+  )
   startResponsePolling(targetDirectory, resolvedSessionID)
   void loadOpencodeRuntimeSnapshot(targetDirectory, resolvedSessionID)
     .then(runtime => {
@@ -75,13 +94,34 @@ function resolveSessionID(
   return sorted[0]?.id
 }
 
-export function useWorkspaceSessionCreation({ activeProjectDir, setStatusLine, getRuntimeState, rememberEmptySession, setActiveProjectDir, setActiveSessionID, setPendingSessionId, setMessages, refreshProject, startResponsePolling, stopResponsePolling, applyRuntimeSnapshot, selectProject, cleanupEmptySession }: WorkspaceSessionCreationArgs) {
-  return useCallback(async (directory?: string, initialPrompt?: string, promptOptions?: CreateSessionPromptOptions): Promise<string | undefined> => {
+export function useWorkspaceSessionCreation({
+  activeProjectDir,
+  setStatusLine,
+  getRuntimeState,
+  rememberEmptySession,
+  setActiveProjectDir,
+  setActiveSessionID,
+  setPendingSessionId,
+  setMessages,
+  refreshProject,
+  startResponsePolling,
+  stopResponsePolling,
+  applyRuntimeSnapshot,
+  selectProject,
+  cleanupEmptySession,
+}: WorkspaceSessionCreationArgs) {
+  return useCallback(
+    async (
+      directory?: string,
+      initialPrompt?: string,
+      promptOptions?: CreateSessionPromptOptions
+    ): Promise<string | undefined> => {
       const targetDirectory = directory ?? activeProjectDir
       if (!targetDirectory) return undefined
 
       const firstPrompt = initialPrompt?.trim() ?? ''
-      const title = firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : 'OpenCode Session'
+      const title =
+        firstPrompt.length > 0 ? deriveSessionTitleFromPrompt(firstPrompt) : 'OpenCode Session'
 
       await cleanupEmptySession(getRuntimeState().activeSessionID)
       stopResponsePolling()
@@ -92,12 +132,35 @@ export function useWorkspaceSessionCreation({ activeProjectDir, setStatusLine, g
       }
 
       try {
-        const createdSession = await window.orxa.opencode.createSession(
-          targetDirectory,
-          title,
-          promptOptions?.permissionMode ?? 'ask-write'
+        const createdSession = await measurePerf(
+          {
+            surface: 'session',
+            metric: 'session.create_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            component: 'workspace-session-creation',
+            workspaceHash: targetDirectory,
+          },
+          () =>
+            window.orxa.opencode.createSession(
+              targetDirectory,
+              title,
+              promptOptions?.permissionMode ?? 'ask-write'
+            )
         )
-        const next = await refreshProject(targetDirectory, true)
+        const next = await measurePerf(
+          {
+            surface: 'workspace',
+            metric: 'workspace.refresh_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            component: 'workspace-session-creation',
+            workspaceHash: targetDirectory,
+          },
+          () => refreshProject(targetDirectory, true)
+        )
         setPendingSessionId(undefined)
         setActiveSessionID(createdSession.id)
         setActiveProjectDir(targetDirectory)
@@ -131,5 +194,22 @@ export function useWorkspaceSessionCreation({ activeProjectDir, setStatusLine, g
         setStatusLine(error instanceof Error ? error.message : String(error))
         return undefined
       }
-    }, [activeProjectDir, applyRuntimeSnapshot, cleanupEmptySession, getRuntimeState, refreshProject, rememberEmptySession, selectProject, setActiveProjectDir, setActiveSessionID, setMessages, setPendingSessionId, setStatusLine, startResponsePolling, stopResponsePolling])
+    },
+    [
+      activeProjectDir,
+      applyRuntimeSnapshot,
+      cleanupEmptySession,
+      getRuntimeState,
+      refreshProject,
+      rememberEmptySession,
+      selectProject,
+      setActiveProjectDir,
+      setActiveSessionID,
+      setMessages,
+      setPendingSessionId,
+      setStatusLine,
+      startResponsePolling,
+      stopResponsePolling,
+    ]
+  )
 }

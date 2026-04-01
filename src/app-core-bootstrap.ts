@@ -11,6 +11,7 @@ import type {
 } from '@shared/ipc'
 import { useAppShellStartupFlow } from './hooks/useAppShellStartupFlow'
 import { listModelOptionsFromConfigReferences, type ModelOption } from './lib/models'
+import { measurePerf, reportPerf } from './lib/performance'
 
 const STARTUP_STEP_TIMEOUT_MS = 12_000
 
@@ -36,7 +37,10 @@ type AppCoreBootstrapContext = {
   syncBrowserSnapshot: () => Promise<void>
 }
 
-function reportBootstrapError(error: unknown, setStatusLine: AppCoreBootstrapContext['setStatusLine']) {
+function reportBootstrapError(
+  error: unknown,
+  setStatusLine: AppCoreBootstrapContext['setStatusLine']
+) {
   setStatusLine(error instanceof Error ? error.message : String(error))
 }
 
@@ -175,21 +179,58 @@ function useStartupState(args: {
   refreshProfiles: () => Promise<void>
   setStatusLine: AppCoreBootstrapContext['setStatusLine']
 }) {
-  const {
-    bootstrap,
-    cleanupPersistedEmptySessions,
-    refreshProfiles,
-    setStatusLine,
-  } = args
+  const { bootstrap, cleanupPersistedEmptySessions, refreshProfiles, setStatusLine } = args
 
   const startupSteps = useMemo(
     () => [
-      { message: 'Loading runtime profiles…', action: refreshProfiles },
+      {
+        message: 'Loading runtime profiles…',
+        action: () =>
+          measurePerf(
+            {
+              surface: 'startup',
+              metric: 'startup.step.runtime_profiles_ms',
+              kind: 'span',
+              unit: 'ms',
+              process: 'renderer',
+              trigger: 'bootstrap',
+              component: 'app-core-bootstrap',
+            },
+            refreshProfiles
+          ),
+      },
       {
         message: 'Cleaning temporary sessions…',
-        action: async () => void (await cleanupPersistedEmptySessions()),
+        action: async () =>
+          void (await measurePerf(
+            {
+              surface: 'startup',
+              metric: 'startup.step.cleanup_sessions_ms',
+              kind: 'span',
+              unit: 'ms',
+              process: 'renderer',
+              trigger: 'bootstrap',
+              component: 'app-core-bootstrap',
+            },
+            async () => void (await cleanupPersistedEmptySessions())
+          )),
       },
-      { message: 'Bootstrapping workspaces…', action: bootstrap },
+      {
+        message: 'Bootstrapping workspaces…',
+        action: () =>
+          measurePerf(
+            {
+              surface: 'startup',
+              metric: 'startup.step.workspace_bootstrap_ms',
+              kind: 'span',
+              unit: 'ms',
+              process: 'renderer',
+              trigger: 'bootstrap',
+              component: 'app-core-bootstrap',
+            },
+            bootstrap
+          ),
+      },
     ],
     [bootstrap, cleanupPersistedEmptySessions, refreshProfiles]
   )
@@ -200,6 +241,17 @@ function useStartupState(args: {
     stepTimeoutMs: STARTUP_STEP_TIMEOUT_MS,
     steps: startupSteps,
     onStepError: error => reportBootstrapError(error, setStatusLine),
+    onComplete: durationMs =>
+      reportPerf({
+        surface: 'startup',
+        metric: 'startup.total_ms',
+        kind: 'span',
+        value: durationMs,
+        unit: 'ms',
+        process: 'renderer',
+        trigger: 'bootstrap',
+        component: 'app-core-bootstrap',
+      }),
   })
 }
 

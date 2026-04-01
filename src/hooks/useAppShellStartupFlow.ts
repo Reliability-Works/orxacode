@@ -18,10 +18,11 @@ type UseAppShellStartupFlowInput = {
   stepTimeoutMs: number
   steps: StartupStep[]
   onStepError: (error: unknown) => void
+  onComplete?: (durationMs: number) => void
 }
 
 export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
-  const { initialMessage, onStepError, stepTimeoutMs, steps, totalSteps } = input
+  const { initialMessage, onStepError, onComplete, stepTimeoutMs, steps, totalSteps } = input
   const [startupState, setStartupState] = useState<AppShellStartupState>({
     phase: 'running',
     message: initialMessage,
@@ -32,10 +33,12 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
   const startupCompletedRef = useRef(false)
   const stepsRef = useRef(steps)
   const onStepErrorRef = useRef(onStepError)
+  const onCompleteRef = useRef(onComplete)
   const totalStepsRef = useRef(totalSteps)
 
   stepsRef.current = steps
   onStepErrorRef.current = onStepError
+  onCompleteRef.current = onComplete
   totalStepsRef.current = totalSteps
 
   useEffect(() => {
@@ -47,6 +50,7 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
     let cancelled = false
     let completed = 0
     const total = totalStepsRef.current
+    const startedAt = performance.now()
 
     const updateStartup = (message: string, phase: AppShellStartupState['phase'] = 'running') => {
       if (cancelled) {
@@ -100,6 +104,7 @@ export function useAppShellStartupFlow(input: UseAppShellStartupFlowInput) {
       } finally {
         startupCompletedRef.current = true
         updateStartup('Initialization complete', 'done')
+        onCompleteRef.current?.(performance.now() - startedAt)
       }
     })()
 

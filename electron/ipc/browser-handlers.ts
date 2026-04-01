@@ -2,6 +2,8 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { IPC, type OrxaEvent } from '../../shared/ipc'
 import type { BrowserController } from '../services/browser-controller'
 import type { OpencodeService } from '../services/opencode-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import {
   assertBoolean,
   assertBrowserAgentActionRequest,
@@ -16,6 +18,7 @@ type BrowserHandlersDeps = {
   assertBrowserSender: (event: IpcMainInvokeEvent) => void
   resolveCdpPort: () => Promise<number>
   publishEvent: (event: OrxaEvent) => void
+  performanceTelemetryService: PerformanceTelemetryService
 }
 
 function requireBrowserController(
@@ -29,13 +32,19 @@ function requireBrowserController(
 }
 
 function registerBrowserStateHandlers(
+  performanceTelemetryService: PerformanceTelemetryService,
   getBrowserController: () => BrowserController | null,
   assertBrowserSender: (event: IpcMainInvokeEvent) => void
 ) {
-  ipcMain.handle(IPC.browserGetState, async event => {
-    assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).getState()
-  })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserGetState,
+    'browser',
+    async event => {
+      assertBrowserSender(event)
+      return requireBrowserController(getBrowserController).getState()
+    }
+  )
   ipcMain.handle(IPC.browserSetVisible, async (event, visible: unknown) => {
     assertBrowserSender(event)
     return requireBrowserController(getBrowserController).setVisible(
@@ -44,15 +53,22 @@ function registerBrowserStateHandlers(
   })
   ipcMain.handle(IPC.browserSetBounds, async (event, bounds: unknown) => {
     assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).setBounds(assertBrowserBoundsInput(bounds))
-  })
-  ipcMain.handle(IPC.browserOpenTab, async (event, url?: unknown, activate?: unknown) => {
-    assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).openTab(
-      typeof url === 'string' ? url : undefined,
-      activate === undefined ? true : assertBoolean(activate, 'activate')
+    return requireBrowserController(getBrowserController).setBounds(
+      assertBrowserBoundsInput(bounds)
     )
   })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserOpenTab,
+    'browser',
+    async (event, url?: unknown, activate?: unknown) => {
+      assertBrowserSender(event)
+      return requireBrowserController(getBrowserController).openTab(
+        typeof url === 'string' ? url : undefined,
+        activate === undefined ? true : assertBoolean(activate, 'activate')
+      )
+    }
+  )
   ipcMain.handle(IPC.browserCloseTab, async (event, tabID?: unknown) => {
     assertBrowserSender(event)
     return requireBrowserController(getBrowserController).closeTab(
@@ -63,13 +79,18 @@ function registerBrowserStateHandlers(
     assertBrowserSender(event)
     return requireBrowserController(getBrowserController).switchTab(assertString(tabID, 'tabID'))
   })
-  ipcMain.handle(IPC.browserNavigate, async (event, url: unknown, tabID?: unknown) => {
-    assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).navigate(
-      assertString(url, 'url'),
-      typeof tabID === 'string' ? tabID : undefined
-    )
-  })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserNavigate,
+    'browser',
+    async (event, url: unknown, tabID?: unknown) => {
+      assertBrowserSender(event)
+      return requireBrowserController(getBrowserController).navigate(
+        assertString(url, 'url'),
+        typeof tabID === 'string' ? tabID : undefined
+      )
+    }
+  )
   ipcMain.handle(IPC.browserBack, async (event, tabID?: unknown) => {
     assertBrowserSender(event)
     return requireBrowserController(getBrowserController).back(
@@ -82,12 +103,17 @@ function registerBrowserStateHandlers(
       typeof tabID === 'string' ? tabID : undefined
     )
   })
-  ipcMain.handle(IPC.browserReload, async (event, tabID?: unknown) => {
-    assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).reload(
-      typeof tabID === 'string' ? tabID : undefined
-    )
-  })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserReload,
+    'browser',
+    async (event, tabID?: unknown) => {
+      assertBrowserSender(event)
+      return requireBrowserController(getBrowserController).reload(
+        typeof tabID === 'string' ? tabID : undefined
+      )
+    }
+  )
   ipcMain.handle(IPC.browserListHistory, async (event, limit?: unknown) => {
     assertBrowserSender(event)
     const parsedLimit =
@@ -98,27 +124,38 @@ function registerBrowserStateHandlers(
     assertBrowserSender(event)
     return requireBrowserController(getBrowserController).clearHistory()
   })
-  ipcMain.handle(IPC.browserPerformAgentAction, async (event, request: unknown) => {
-    assertBrowserSender(event)
-    return requireBrowserController(getBrowserController).performAgentAction(
-      assertBrowserAgentActionRequest(request)
-    )
-  })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserPerformAgentAction,
+    'browser',
+    async (event, request: unknown) => {
+      assertBrowserSender(event)
+      return requireBrowserController(getBrowserController).performAgentAction(
+        assertBrowserAgentActionRequest(request)
+      )
+    }
+  )
 }
 
 function registerBrowserInspectHandlers(
+  performanceTelemetryService: PerformanceTelemetryService,
   getBrowserController: () => BrowserController | null,
   assertBrowserSender: (event: IpcMainInvokeEvent) => void,
   publishEvent: (event: OrxaEvent) => void
 ) {
-  ipcMain.handle(IPC.browserInspectEnable, async event => {
-    assertBrowserSender(event)
-    const controller = requireBrowserController(getBrowserController)
-    await controller.enableInspect(annotation => {
-      publishEvent({ type: 'browser.inspect.annotation', payload: annotation } as OrxaEvent)
-    })
-    return { ok: true }
-  })
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.browserInspectEnable,
+    'browser',
+    async event => {
+      assertBrowserSender(event)
+      const controller = requireBrowserController(getBrowserController)
+      await controller.enableInspect(annotation => {
+        publishEvent({ type: 'browser.inspect.annotation', payload: annotation } as OrxaEvent)
+      })
+      return { ok: true }
+    }
+  )
 
   ipcMain.handle(IPC.browserInspectDisable, async event => {
     assertBrowserSender(event)
@@ -208,8 +245,18 @@ export function registerBrowserHandlers({
   assertBrowserSender,
   resolveCdpPort,
   publishEvent,
+  performanceTelemetryService,
 }: BrowserHandlersDeps) {
-  registerBrowserStateHandlers(getBrowserController, assertBrowserSender)
-  registerBrowserInspectHandlers(getBrowserController, assertBrowserSender, publishEvent)
+  registerBrowserStateHandlers(
+    performanceTelemetryService,
+    getBrowserController,
+    assertBrowserSender
+  )
+  registerBrowserInspectHandlers(
+    performanceTelemetryService,
+    getBrowserController,
+    assertBrowserSender,
+    publishEvent
+  )
   registerMcpDevToolsHandlers(service, assertBrowserSender, resolveCdpPort, publishEvent)
 }

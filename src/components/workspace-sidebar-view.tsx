@@ -1,13 +1,10 @@
-import { type Dispatch, type MouseEvent as ReactMouseEvent, type SetStateAction, useMemo } from 'react'
 import {
-  Archive,
-  Brain,
-  LayoutDashboard,
-  Pin,
-  Rows3,
-  Search,
-  Zap,
-} from 'lucide-react'
+  type Dispatch,
+  type MouseEvent as ReactMouseEvent,
+  type SetStateAction,
+  useMemo,
+} from 'react'
+import { Archive, Brain, LayoutDashboard, Pin, Rows3, Search, Zap } from 'lucide-react'
 import type { ProjectListItem } from '@shared/ipc'
 import type { SessionType } from '../types/canvas'
 import type { AppShellUpdateStatusMessage } from '../hooks/useAppShellUpdateFlow'
@@ -171,7 +168,9 @@ function WorkspaceSessionRow({
   return (
     <div
       className={`workspace-session-row ${session.id === activeSessionID ? 'active' : ''}`.trim()}
-      onContextMenu={event => openSessionContextMenu(event, sessionDirectory, session.id, sessionTitle)}
+      onContextMenu={event =>
+        openSessionContextMenu(event, sessionDirectory, session.id, sessionTitle)
+      }
     >
       <span className="workspace-session-row-pin-slot">
         <button
@@ -266,7 +265,9 @@ function SidebarModes({
         <Rows3 size={16} aria-hidden="true" />
         Orxa KanBan
         <span className="sidebar-mode-warning">Experimental</span>
-        {unreadJobRunsCount > 0 ? <span className="sidebar-mode-badge">{unreadJobRunsCount}</span> : null}
+        {unreadJobRunsCount > 0 ? (
+          <span className="sidebar-mode-badge">{unreadJobRunsCount}</span>
+        ) : null}
       </button>
       <button
         type="button"
@@ -302,16 +303,44 @@ function WorkspaceSortPopover({
   }
   return (
     <div className="project-sort-popover">
-      <button type="button" className={projectSortMode === 'updated' ? 'active' : ''} onClick={() => { setProjectSortMode('updated'); setProjectSortOpen(false) }}>
+      <button
+        type="button"
+        className={projectSortMode === 'updated' ? 'active' : ''}
+        onClick={() => {
+          setProjectSortMode('updated')
+          setProjectSortOpen(false)
+        }}
+      >
         Last updated
       </button>
-      <button type="button" className={projectSortMode === 'recent' ? 'active' : ''} onClick={() => { setProjectSortMode('recent'); setProjectSortOpen(false) }}>
+      <button
+        type="button"
+        className={projectSortMode === 'recent' ? 'active' : ''}
+        onClick={() => {
+          setProjectSortMode('recent')
+          setProjectSortOpen(false)
+        }}
+      >
         Most recent
       </button>
-      <button type="button" className={projectSortMode === 'alpha-asc' ? 'active' : ''} onClick={() => { setProjectSortMode('alpha-asc'); setProjectSortOpen(false) }}>
+      <button
+        type="button"
+        className={projectSortMode === 'alpha-asc' ? 'active' : ''}
+        onClick={() => {
+          setProjectSortMode('alpha-asc')
+          setProjectSortOpen(false)
+        }}
+      >
         Alphabetical (A-Z)
       </button>
-      <button type="button" className={projectSortMode === 'alpha-desc' ? 'active' : ''} onClick={() => { setProjectSortMode('alpha-desc'); setProjectSortOpen(false) }}>
+      <button
+        type="button"
+        className={projectSortMode === 'alpha-desc' ? 'active' : ''}
+        onClick={() => {
+          setProjectSortMode('alpha-desc')
+          setProjectSortOpen(false)
+        }}
+      >
         Alphabetical (Z-A)
       </button>
     </div>
@@ -380,12 +409,12 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
     setAllSessionsModalOpen,
     getSessionTitle,
     getSessionType,
-  getSessionIndicator,
-  selectProject,
-  createSession,
-  openClaudeSessionBrowser,
-  openCodexSessionBrowser,
-  openSession,
+    getSessionIndicator,
+    selectProject,
+    createSession,
+    openClaudeSessionBrowser,
+    openCodexSessionBrowser,
+    openSession,
     togglePinSession,
     archiveSession,
     openProjectContextMenu,
@@ -432,6 +461,70 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
   )
 }
 
+function SidebarFooterActions({
+  updateAvailableVersion,
+  isCheckingForUpdates,
+  updateInstallPending,
+  updateStatusMessage,
+  onCheckForUpdates,
+  onDownloadAndInstallUpdate,
+  onOpenDebugLogs,
+  setSettingsOpen,
+}: Pick<
+  WorkspaceSidebarViewProps,
+  | 'updateAvailableVersion'
+  | 'isCheckingForUpdates'
+  | 'updateInstallPending'
+  | 'updateStatusMessage'
+  | 'onCheckForUpdates'
+  | 'onDownloadAndInstallUpdate'
+  | 'onOpenDebugLogs'
+  | 'setSettingsOpen'
+>) {
+  const updateButtonLabel = updateAvailableVersion
+    ? `Install update ${updateAvailableVersion}`
+    : isCheckingForUpdates
+      ? 'Checking for updates…'
+      : 'Check for updates'
+
+  return (
+    <div className="sidebar-footer-actions">
+      <div className="sidebar-footer-update">
+        {updateStatusMessage && !updateAvailableVersion ? (
+          <div
+            className={`sidebar-update-status sidebar-update-status--${updateStatusMessage.tone}`.trim()}
+          >
+            {updateStatusMessage.text}
+          </div>
+        ) : (
+          <div
+            className="sidebar-update-status sidebar-update-status--placeholder"
+            aria-hidden="true"
+          >
+            &nbsp;
+          </div>
+        )}
+        <IconButton
+          icon="refresh"
+          label={updateButtonLabel}
+          className={`sidebar-update-button ${isCheckingForUpdates ? 'is-spinning' : ''}`.trim()}
+          onClick={() =>
+            void (updateAvailableVersion ? onDownloadAndInstallUpdate() : onCheckForUpdates())
+          }
+          disabled={isCheckingForUpdates || updateInstallPending}
+        />
+      </div>
+      <IconButton
+        icon="settings"
+        label="Settings"
+        onClick={() => setSettingsOpen(value => !value)}
+      />
+      <IconButton icon="log" label="Debug" onClick={onOpenDebugLogs} />
+      <span className="sidebar-footer-spacer" />
+    </div>
+  )
+}
+
 export function WorkspaceSidebarView(props: WorkspaceSidebarViewProps) {
   const pinnedSessionRows = useMemo(() => {
     return props.filteredProjects.flatMap(project => {
@@ -451,7 +544,14 @@ export function WorkspaceSidebarView(props: WorkspaceSidebarViewProps) {
           session,
         }))
     })
-  }, [props.activeProjectDir, props.cachedSessionsByProject, props.filteredProjects, props.hiddenSessionIDsByProject, props.pinnedSessionsByProject, props.sessions])
+  }, [
+    props.activeProjectDir,
+    props.cachedSessionsByProject,
+    props.filteredProjects,
+    props.hiddenSessionIDsByProject,
+    props.pinnedSessionsByProject,
+    props.sessions,
+  ])
 
   return (
     <aside className="sidebar projects-pane">
@@ -496,7 +596,24 @@ export function WorkspaceSidebarView(props: WorkspaceSidebarViewProps) {
           <PinnedSessionsSection {...props} pinnedSessionRows={pinnedSessionRows} />
           <WorkspaceProjectsSection {...props} />
         </div>
-        <WorkspaceSidebarUpdateCard updateAvailableVersion={props.updateAvailableVersion} isCheckingForUpdates={props.isCheckingForUpdates} updateInstallPending={props.updateInstallPending} updateStatusMessage={props.updateStatusMessage} onCheckForUpdates={props.onCheckForUpdates} onDownloadAndInstallUpdate={props.onDownloadAndInstallUpdate} />
+        <WorkspaceSidebarUpdateCard
+          updateAvailableVersion={props.updateAvailableVersion}
+          isCheckingForUpdates={props.isCheckingForUpdates}
+          updateInstallPending={props.updateInstallPending}
+          updateStatusMessage={props.updateStatusMessage}
+          onCheckForUpdates={props.onCheckForUpdates}
+          onDownloadAndInstallUpdate={props.onDownloadAndInstallUpdate}
+        />
+        <SidebarFooterActions
+          updateAvailableVersion={props.updateAvailableVersion}
+          isCheckingForUpdates={props.isCheckingForUpdates}
+          updateInstallPending={props.updateInstallPending}
+          updateStatusMessage={props.updateStatusMessage}
+          onCheckForUpdates={props.onCheckForUpdates}
+          onDownloadAndInstallUpdate={props.onDownloadAndInstallUpdate}
+          onOpenDebugLogs={props.onOpenDebugLogs}
+          setSettingsOpen={props.setSettingsOpen}
+        />
       </div>
     </aside>
   )

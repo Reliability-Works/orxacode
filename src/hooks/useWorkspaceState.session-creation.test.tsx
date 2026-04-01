@@ -139,6 +139,23 @@ it('opens the created session when creating in another workspace', async () => {
           if (directory === sourceDirectory) return sourceBootstrap
           throw new Error(`unexpected directory ${directory}`)
         }),
+        refreshProjectDelta: vi.fn(async (directory: string) => {
+          const bootstrap =
+            directory === targetDirectory
+              ? targetWithCreatedSession
+              : directory === sourceDirectory
+                ? sourceBootstrap
+                : targetBootstrap
+          return {
+            directory,
+            sessions: bootstrap.sessions,
+            sessionStatus: bootstrap.sessionStatus,
+            permissions: bootstrap.permissions,
+            questions: bootstrap.questions,
+            commands: bootstrap.commands,
+            ptys: bootstrap.ptys,
+          }
+        }),
         createSession: vi.fn(async () => createdSession),
         getSessionRuntime: vi.fn(async (directory: string, sessionID: string) =>
           createRuntimeSnapshot(directory, sessionID, [])
@@ -203,6 +220,20 @@ it('deletes an empty OpenCode session before creating the next one in the same w
       opencode: {
         selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
         refreshProject: refreshProjectMock,
+        refreshProjectDelta: vi.fn(async () => {
+          const bootstrap = createProjectBootstrap(directory, [
+            { id: 'session-empty', time: { updated: now } },
+          ])
+          return {
+            directory,
+            sessions: bootstrap.sessions,
+            sessionStatus: bootstrap.sessionStatus,
+            permissions: bootstrap.permissions,
+            questions: bootstrap.questions,
+            commands: bootstrap.commands,
+            ptys: bootstrap.ptys,
+          }
+        }),
         createSession: createSessionMock,
         deleteSession: deleteSessionMock,
         getSessionRuntime: vi.fn(async (currentDirectory: string, sessionID: string) =>
@@ -217,11 +248,15 @@ it('deletes an empty OpenCode session before creating the next one in the same w
 
   await act(async () => {
     result.current.setActiveProjectDir(directory)
-    await (result.current.createSession as unknown as (directory: string) => Promise<void>)(directory)
+    await (result.current.createSession as unknown as (directory: string) => Promise<void>)(
+      directory
+    )
   })
 
   await act(async () => {
-    await (result.current.createSession as unknown as (directory: string) => Promise<void>)(directory)
+    await (result.current.createSession as unknown as (directory: string) => Promise<void>)(
+      directory
+    )
   })
 
   expect(deleteSessionMock).toHaveBeenCalledWith(directory, 'session-empty')
@@ -245,6 +280,15 @@ it('can switch workspaces without forcing the landing state when a target sessio
       opencode: {
         selectProject: vi.fn(async () => targetBootstrap),
         refreshProject: vi.fn(async () => targetBootstrap),
+        refreshProjectDelta: vi.fn(async () => ({
+          directory: targetDirectory,
+          sessions: targetBootstrap.sessions,
+          sessionStatus: targetBootstrap.sessionStatus,
+          permissions: targetBootstrap.permissions,
+          questions: targetBootstrap.questions,
+          commands: targetBootstrap.commands,
+          ptys: targetBootstrap.ptys,
+        })),
         createSession: vi.fn(async () => ({
           id: 'unused',
           slug: 'unused',
@@ -293,6 +337,18 @@ it('cleans up persisted empty sessions on startup', async () => {
       opencode: {
         selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
         refreshProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+        refreshProjectDelta: vi.fn(async () => {
+          const bootstrap = createProjectBootstrap(directory, [])
+          return {
+            directory,
+            sessions: bootstrap.sessions,
+            sessionStatus: bootstrap.sessionStatus,
+            permissions: bootstrap.permissions,
+            questions: bootstrap.questions,
+            commands: bootstrap.commands,
+            ptys: bootstrap.ptys,
+          }
+        }),
         createSession: vi.fn(async () => ({
           id: 'unused',
           slug: 'unused',

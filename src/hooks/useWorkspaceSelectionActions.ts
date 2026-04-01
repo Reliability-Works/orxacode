@@ -4,8 +4,13 @@ import type { TerminalTab } from '../components/TerminalPanel'
 import { makeUnifiedSessionKey } from '../state/unified-runtime'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
 import { getPersistedOpencodeState } from './opencode-session-storage'
-import { loadOpencodeRuntimeSnapshot, type SelectProjectOptions, type SidebarMode } from './useWorkspaceState-shared'
+import {
+  loadOpencodeRuntimeSnapshot,
+  type SelectProjectOptions,
+  type SidebarMode,
+} from './useWorkspaceState-shared'
 import type { SetProjectData, UnifiedRuntimeState } from './useWorkspaceState-store'
+import { measurePerf } from '../lib/performance'
 
 type ApplyRuntimeSnapshot = (
   directory: string,
@@ -22,13 +27,20 @@ type WorkspaceProjectSelectionArgs = {
   mergeProjectData?: (project: ProjectBootstrap) => ProjectBootstrap
   getRuntimeState: () => UnifiedRuntimeState
   setSidebarMode: (mode: SidebarMode) => void
-  setCollapsedProjects: (updater: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void
+  setCollapsedProjects: (
+    updater:
+      | Record<string, boolean>
+      | ((current: Record<string, boolean>) => Record<string, boolean>)
+  ) => void
   setActiveProjectDir: (directory: string | undefined) => void
   setActiveSessionID: (sessionID: string | undefined) => void
   setPendingSessionId: (sessionID: string | undefined) => void
   setProjectData: SetProjectData
   setProjectDataForDirectory: (directory: string, data: ProjectBootstrap) => void
-  setWorkspaceMeta: (directory: string, meta: { lastUpdatedAt?: number; lastOpenedAt?: number }) => void
+  setWorkspaceMeta: (
+    directory: string,
+    meta: { lastUpdatedAt?: number; lastOpenedAt?: number }
+  ) => void
   cleanupEmptySession: (sessionID: string | undefined) => Promise<void>
 }
 
@@ -45,7 +57,11 @@ function useWorkspaceSessionSelection({
   getRuntimeState: () => UnifiedRuntimeState
   setActiveProjectDir: (directory: string | undefined) => void
   setActiveSessionID: (sessionID: string | undefined) => void
-  setOpencodeMessages: (directory: string, sessionID: string, messages: SessionMessageBundle[]) => void
+  setOpencodeMessages: (
+    directory: string,
+    sessionID: string,
+    messages: SessionMessageBundle[]
+  ) => void
   cleanupEmptySession: (sessionID: string | undefined) => Promise<void>
   applyRuntimeSnapshot: ApplyRuntimeSnapshot
 }) {
@@ -88,8 +104,25 @@ function useWorkspaceSessionSelection({
   )
 }
 
-function useWorkspaceProjectSelection({ setStatusLine, setTerminalTabs, setActiveTerminalId, setTerminalOpen, mergeProjectData, getRuntimeState, setSidebarMode, setCollapsedProjects, setActiveProjectDir, setActiveSessionID, setPendingSessionId, setProjectData, setProjectDataForDirectory, setWorkspaceMeta, cleanupEmptySession }: WorkspaceProjectSelectionArgs) {
-  const selectProject = useCallback(async (directory: string, options?: SelectProjectOptions) => {
+function useWorkspaceProjectSelection({
+  setStatusLine,
+  setTerminalTabs,
+  setActiveTerminalId,
+  setTerminalOpen,
+  mergeProjectData,
+  getRuntimeState,
+  setSidebarMode,
+  setCollapsedProjects,
+  setActiveProjectDir,
+  setActiveSessionID,
+  setPendingSessionId,
+  setProjectData,
+  setProjectDataForDirectory,
+  setWorkspaceMeta,
+  cleanupEmptySession,
+}: WorkspaceProjectSelectionArgs) {
+  const selectProject = useCallback(
+    async (directory: string, options?: SelectProjectOptions) => {
       const showLanding = options?.showLanding ?? true
       const nextSessionID = showLanding ? undefined : options?.sessionID
       try {
@@ -104,11 +137,25 @@ function useWorkspaceProjectSelection({ setStatusLine, setTerminalTabs, setActiv
         setActiveProjectDir(directory)
         setSidebarMode('projects')
         setCollapsedProjects(current => ({ ...current, [directory]: false }))
-        const data = await window.orxa.opencode.selectProject(directory)
+        const data = await measurePerf(
+          {
+            surface: 'workspace',
+            metric: 'workspace.select_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            component: 'workspace-selection-actions',
+            workspaceHash: directory,
+          },
+          () => window.orxa.opencode.selectProject(directory)
+        )
         const merged = mergeProjectData ? mergeProjectData(data) : data
         setProjectDataForDirectory(directory, merged)
         setProjectData(merged)
-        const lastUpdated = merged.sessions.reduce((max, session) => Math.max(max, session.time.updated), 0)
+        const lastUpdated = merged.sessions.reduce(
+          (max, session) => Math.max(max, session.time.updated),
+          0
+        )
         setWorkspaceMeta(directory, { lastUpdatedAt: lastUpdated, lastOpenedAt: Date.now() })
         setTerminalTabs(merged.ptys.map((p, i) => ({ id: p.id, label: `Tab ${i + 1}` })))
         setActiveTerminalId(merged.ptys[0]?.id)
@@ -118,7 +165,25 @@ function useWorkspaceProjectSelection({ setStatusLine, setTerminalTabs, setActiv
         setPendingSessionId(undefined)
         setStatusLine(error instanceof Error ? error.message : String(error))
       }
-    }, [cleanupEmptySession, getRuntimeState, mergeProjectData, setActiveProjectDir, setActiveSessionID, setActiveTerminalId, setCollapsedProjects, setPendingSessionId, setProjectData, setProjectDataForDirectory, setSidebarMode, setStatusLine, setTerminalOpen, setTerminalTabs, setWorkspaceMeta])
+    },
+    [
+      cleanupEmptySession,
+      getRuntimeState,
+      mergeProjectData,
+      setActiveProjectDir,
+      setActiveSessionID,
+      setActiveTerminalId,
+      setCollapsedProjects,
+      setPendingSessionId,
+      setProjectData,
+      setProjectDataForDirectory,
+      setSidebarMode,
+      setStatusLine,
+      setTerminalOpen,
+      setTerminalTabs,
+      setWorkspaceMeta,
+    ]
+  )
 
   const openWorkspaceDashboard = useCallback(async () => {
     await cleanupEmptySession(getRuntimeState().activeSessionID)
@@ -155,14 +220,25 @@ export function useWorkspaceSelectionActions(args: {
   shouldSkipRuntimeSessionLoad?: (directory: string, sessionID: string) => boolean
   getRuntimeState: () => UnifiedRuntimeState
   setSidebarMode: (mode: SidebarMode) => void
-  setCollapsedProjects: (updater: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void
+  setCollapsedProjects: (
+    updater:
+      | Record<string, boolean>
+      | ((current: Record<string, boolean>) => Record<string, boolean>)
+  ) => void
   setActiveProjectDir: (directory: string | undefined) => void
   setActiveSessionID: (sessionID: string | undefined) => void
   setPendingSessionId: (sessionID: string | undefined) => void
   setProjectData: SetProjectData
   setProjectDataForDirectory: (directory: string, data: ProjectBootstrap) => void
-  setWorkspaceMeta: (directory: string, meta: { lastUpdatedAt?: number; lastOpenedAt?: number }) => void
-  setOpencodeMessages: (directory: string, sessionID: string, messages: SessionMessageBundle[]) => void
+  setWorkspaceMeta: (
+    directory: string,
+    meta: { lastUpdatedAt?: number; lastOpenedAt?: number }
+  ) => void
+  setOpencodeMessages: (
+    directory: string,
+    sessionID: string,
+    messages: SessionMessageBundle[]
+  ) => void
   cleanupEmptySession: (sessionID: string | undefined) => Promise<void>
   applyRuntimeSnapshot: ApplyRuntimeSnapshot
 }) {

@@ -1,5 +1,6 @@
 import type { BrowserWindow } from 'electron'
 import { IPC, type OrxaEvent } from '../../shared/ipc'
+import type { PerformanceTelemetryService } from './performance-telemetry-service'
 
 const PTY_OUTPUT_FLUSH_MS = 16
 const STRUCTURED_EVENT_FLUSH_MS = 16
@@ -10,19 +11,53 @@ type PtyBufferedOutput = {
   chunks: string[]
 }
 
+function canSendToWindow(window: BrowserWindow | null): window is BrowserWindow {
+  if (!window || window.isDestroyed()) {
+    return false
+  }
+  const webContents = window.webContents as BrowserWindow['webContents'] & {
+    isDestroyed?: () => boolean
+    isCrashed?: () => boolean
+  }
+  if (typeof webContents.isDestroyed === 'function' && webContents.isDestroyed()) {
+    return false
+  }
+  if (typeof webContents.isCrashed === 'function' && webContents.isCrashed()) {
+    return false
+  }
+  return true
+}
+
+function shouldIgnoreSendError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    message.includes('Render frame was disposed before WebFrameMain could be accessed') ||
+    message.includes('Object has been destroyed') ||
+    message.includes('WebContents was destroyed')
+  )
+}
+
+function safeSend(window: BrowserWindow, channel: string, payload: OrxaEvent | OrxaEvent[]) {
+  try {
+    window.webContents.send(channel, payload)
+  } catch (error) {
+    if (shouldIgnoreSendError(error)) {
+      return
+    }
+    throw error
+  }
+}
+
 function isBatchableStructuredEvent(event: OrxaEvent) {
   return event.type === 'codex.notification' || event.type === 'claude-chat.notification'
 }
 
-function sendSingleEvent(
-  getMainWindow: () => BrowserWindow | null,
-  event: OrxaEvent
-) {
+function sendSingleEvent(getMainWindow: () => BrowserWindow | null, event: OrxaEvent) {
   const window = getMainWindow()
-  if (!window || window.isDestroyed()) {
+  if (!canSendToWindow(window)) {
     return
   }
-  window.webContents.send(IPC.events, event)
+  safeSend(window, IPC.events, event)
 }
 
 export function createMainWindowEventPublisher(getMainWindow: () => BrowserWindow | null) {
@@ -30,8 +65,10 @@ export function createMainWindowEventPublisher(getMainWindow: () => BrowserWindo
   const ptyOutputFlushTimers = new Map<string, ReturnType<typeof setTimeout>>()
   let structuredEventBuffer: OrxaEvent[] = []
   let structuredEventFlushTimer: ReturnType<typeof setTimeout> | null = null
+  let performanceTelemetryService: PerformanceTelemetryService | null = null
 
   const flushStructuredEvents = () => {
+    const startedAt = performance.now()
     if (structuredEventFlushTimer) {
       clearTimeout(structuredEventFlushTimer)
       structuredEventFlushTimer = null
@@ -42,10 +79,28 @@ export function createMainWindowEventPublisher(getMainWindow: () => BrowserWindo
     const window = getMainWindow()
     const payload = structuredEventBuffer
     structuredEventBuffer = []
-    if (!window || window.isDestroyed()) {
+    if (!canSendToWindow(window)) {
       return
     }
-    window.webContents.send(IPC.eventsBatch, payload)
+    safeSend(window, IPC.eventsBatch, payload)
+    performanceTelemetryService?.record({
+      surface: 'event_bus',
+      metric: 'event.batch.flush_ms',
+      kind: 'span',
+      value: performance.now() - startedAt,
+      unit: 'ms',
+      process: 'main',
+      component: 'main-window-event-publisher',
+    })
+    performanceTelemetryService?.record({
+      surface: 'event_bus',
+      metric: 'event.batch.size',
+      kind: 'gauge',
+      value: payload.length,
+      unit: 'count',
+      process: 'main',
+      component: 'main-window-event-publisher',
+    })
   }
 
   const queueStructuredEvent = (event: OrxaEvent) => {
@@ -68,13 +123,52 @@ export function createMainWindowEventPublisher(getMainWindow: () => BrowserWindo
       return
     }
     ptyOutputBuffer.delete(key)
+    const combinedChunk = pending.chunks.join('')
     sendSingleEvent(getMainWindow, {
       type: 'pty.output',
       payload: {
         directory: pending.directory,
         ptyID: pending.ptyID,
-        chunk: pending.chunks.join(''),
+        chunk: combinedChunk,
       },
+    })
+    performanceTelemetryService?.record({
+      surface: 'event_bus',
+      metric: 'pty.output.batch_count',
+      kind: 'counter',
+      value: pending.chunks.length,
+      unit: 'count',
+      process: 'main',
+      component: 'main-window-event-publisher',
+      responseSizeBucket:
+        combinedChunk.length === 0
+          ? '0'
+          : combinedChunk.length < 1_000
+            ? '1k'
+            : combinedChunk.length < 10_000
+              ? '10k'
+              : combinedChunk.length < 100_000
+                ? '100k'
+                : '1m_plus',
+    })
+    performanceTelemetryService?.record({
+      surface: 'event_bus',
+      metric: 'pty.output.batch_bytes_bucket',
+      kind: 'counter',
+      value: 1,
+      unit: 'count',
+      process: 'main',
+      component: 'main-window-event-publisher',
+      responseSizeBucket:
+        combinedChunk.length === 0
+          ? '0'
+          : combinedChunk.length < 1_000
+            ? '1k'
+            : combinedChunk.length < 10_000
+              ? '10k'
+              : combinedChunk.length < 100_000
+                ? '100k'
+                : '1m_plus',
     })
   }
 
@@ -106,9 +200,12 @@ export function createMainWindowEventPublisher(getMainWindow: () => BrowserWindo
   }
 
   return {
+    setPerformanceTelemetryService(service: PerformanceTelemetryService | null) {
+      performanceTelemetryService = service
+    },
     publish(event: OrxaEvent) {
       const window = getMainWindow()
-      if (!window || window.isDestroyed()) {
+      if (!canSendToWindow(window)) {
         return
       }
 

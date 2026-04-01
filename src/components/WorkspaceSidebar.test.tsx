@@ -154,12 +154,28 @@ function registerWorkspaceSidebarUpdateBasicsTests() {
     expect(checkingButton).toBeDisabled()
   })
 
-  it('does not render a legacy debug logs footer button', () => {
+  it('renders the footer action buttons for updates, settings, and debug', () => {
     const onOpenDebugLogs = vi.fn()
-    render(<WorkspaceSidebar {...buildProps({ onOpenDebugLogs })} />)
+    const setSettingsOpen = vi.fn()
+    const onCheckForUpdates = vi.fn()
+    render(
+      <WorkspaceSidebar {...buildProps({ onOpenDebugLogs, setSettingsOpen, onCheckForUpdates })} />
+    )
 
-    expect(screen.queryByRole('button', { name: 'Debug logs' })).not.toBeInTheDocument()
-    expect(onOpenDebugLogs).not.toHaveBeenCalled()
+    const checkBtn = screen.getByRole('button', { name: 'Check for updates' })
+    expect(checkBtn).toBeInTheDocument()
+    fireEvent.click(checkBtn)
+    expect(onCheckForUpdates).toHaveBeenCalledTimes(1)
+
+    const settingsBtn = screen.getByRole('button', { name: 'Settings' })
+    expect(settingsBtn).toBeInTheDocument()
+    fireEvent.click(settingsBtn)
+    expect(setSettingsOpen).toHaveBeenCalledTimes(1)
+
+    const debugBtn = screen.getByRole('button', { name: 'Debug' })
+    expect(debugBtn).toBeInTheDocument()
+    fireEvent.click(debugBtn)
+    expect(onOpenDebugLogs).toHaveBeenCalledTimes(1)
   })
 
   it('opens the coming soon memory modal from the sidebar', () => {
@@ -314,7 +330,12 @@ function registerWorkspaceSidebarSessionNavigationTests() {
       <WorkspaceSidebar
         {...buildProps({
           filteredProjects: [
-            { id: 'project-root', worktree: '/workspace/project', name: 'project', source: 'local' },
+            {
+              id: 'project-root',
+              worktree: '/workspace/project',
+              name: 'project',
+              source: 'local',
+            },
           ],
           activeProjectDir: '/workspace/project',
           sessions: [
@@ -482,9 +503,9 @@ function registerWorkspaceSidebarSessionActionsTests() {
 }
 
 describe('WorkspaceSidebar update button', () => {
-registerWorkspaceSidebarUpdateBasicsTests()
-registerWorkspaceSidebarClaudeBrowserTests()
-registerWorkspaceSidebarUpdateIndicatorTests()
+  registerWorkspaceSidebarUpdateBasicsTests()
+  registerWorkspaceSidebarClaudeBrowserTests()
+  registerWorkspaceSidebarUpdateIndicatorTests()
   registerWorkspaceSidebarSessionNavigationTests()
   registerWorkspaceSidebarPinnedSessionTests()
   registerWorkspaceSidebarSessionActionsTests()

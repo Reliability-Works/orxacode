@@ -38,6 +38,14 @@ After non-doc changes:
 2. Run `pnpm typecheck`.
 3. Run `pnpm lint` and report warnings/errors.
 
+## Performance Sync Guardrails
+
+- High-frequency sync paths (resume handlers, polling loops, background refresh) must use **single-flight dedupe** and **coalescing/debounce**.
+- Do not call full-bootstrap project endpoints from polling/resume loops when a lighter delta/read endpoint exists.
+- Prefer event-driven updates; if polling is required, use one-shot reconcile on mount/resume and conservative cadence.
+- For large IPC responses, capture telemetry for request volume, inflight concurrency, and payload size so queueing regressions are visible.
+- Performance exports should default to slow/high-signal filtering (time window + min duration + surface allowlist) rather than raw full dumps.
+
 ## Hierarchical Guidance
 
 - `electron/AGENTS.md` for IPC/main-process/service routing details.

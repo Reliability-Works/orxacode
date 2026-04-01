@@ -1,103 +1,228 @@
-# Remaining Product Work
+# Orxa Performance + Stability Spec
 
 **Updated:** 2026-04-01
 
-This file only tracks work that is still to do.
+This spec captures the complete performance/stability effort to date, organized into phases with explicit completion status.
 
-## 1. Claude + Codex native commands -> real Orxa actions
+## Phase 0 — Problem Definition + Success Criteria
 
-Goal:
-- turn the provider command browser from reference-only into a usable control surface
+- [x] Confirm top user pain points:
+  - startup crashes / repeated startup re-entry
+  - startup flicker / slow initial responsiveness
+  - missing sidebar footer actions
+  - debug/workspace UI usability friction
+  - performance exports too noisy to diagnose issues
+- [x] Define success criteria:
+  - stable startup (no callback-loop re-entry)
+  - restored utility surfaces
+  - actionable performance exports (focused, filterable)
+  - architectural guardrails to prevent regressions
 
-Still to do:
-- wire actionable mappings for the high-value commands:
-  - `Claude`: `/resume`, `/plan`, `/model`, `/permissions`, `/diff`
-  - `Codex`: `/resume`, `/plan`, `/model`, `/permissions`, `/diff`
-- each mapped command must either:
-  - execute the equivalent Orxa action directly, or
-  - open/focus the correct Orxa UI surface
-- do not forward raw slash command text into the provider prompt unless the runtime explicitly supports that path
+## Phase 1 — Startup Stability + Core UX Recovery
 
-Done enough already:
-- provider-native command discovery browser exists for Claude and Codex
+- [x] Fix startup loop root cause in `useAppShellStartupFlow` (callback identity re-trigger).
+- [x] Add startup regression test for callback identity changes.
+- [x] Harden renderer event publish/send path against disposed/crashed frame races.
+- [x] Add publisher tests for disposed-frame handling.
+- [x] Restore sidebar footer actions:
+  - Check for updates
+  - Settings
+  - Debug
 
-## 2. Provider-native hooks browser
+## Phase 2 — Debug Surface + Workspace Details Improvements
 
-Goal:
-- make hooks visible and configurable from the desktop app
+- [x] Split Debug into tabs (Dashboard vs Logs) to remove overlap/clutter.
+- [x] Increase glass-theme opacity for better readability and polish.
+- [x] Improve Workspace Details visual hierarchy.
+- [x] Replace glitchy “Loading worktrees…” behavior with inline skeleton loading.
 
-Still to do:
-- Claude:
-  - list configured hooks
-  - show trigger points
-  - provide edit/open affordances into the relevant config surface
-- Codex:
-  - confirm upstream hook/config support
-  - expose equivalent hook discovery if supported
-- keep provider naming explicit when Orxa terminology differs
+## Phase 3 — Performance Export Usability (High-Signal by Default)
 
-## 3. Claude memory and instruction layering browser
+- [x] Add export controls and filter contract across shared IPC, preload, handlers, and service.
+- [x] Support filtering knobs:
+  - `sinceMs`
+  - `summaryLimit`
+  - `includeEvents`
+  - `eventLimit`
+  - `includeInternalTelemetry`
+- [x] Make focused defaults the standard path:
+  - last 30 minutes
+  - bounded summaries/events
+  - internal telemetry excluded
+- [x] Include export metadata (`filter`, `eventStats`) for interpretability.
+- [x] Improve capped-event selection to prioritize high-value slow-path events.
+- [x] Add range presets in the debug UI.
 
-Goal:
-- show what Claude is actually using as instruction context
+## Phase 4 — Architecture-Level Perf Hardening
 
-Still to do:
-- browse and distinguish:
-  - project memory
-  - user/global memory
-  - `CLAUDE.md` and related project instruction files
-  - agent/subagent instruction layers where surfaced
-- distinguish:
-  - editable local files
-  - derived/runtime-only layers
-  - provider-owned layers
+- [x] Add preload-level in-flight dedupe and in-flight telemetry (`ipc.inflight_count`).
+- [x] Add runtime snapshot in-memory dedupe/cache reuse window.
+- [x] Coalesce/throttle background resume refresh in `App.core.tsx`.
+- [x] Reduce aggressive live-sync polling; move toward one-shot reconcile behavior.
+- [x] Add lightweight delta refresh endpoint:
+  - IPC channel: `opencodeRefreshProjectDelta`
+  - typed payload: `ProjectRefreshDelta`
+  - service method and metric: `opencode.refresh_project_delta_ms`
+  - handler + preload bridge wiring
+- [x] Route high-frequency refresh path to delta when cached project data exists.
+- [x] Merge delta responses into cached project state (`commitProjectDelta`).
+- [x] Add per-project single-flight + cooldown protections for background churn.
 
-## 4. Skills, apps, MCP, and agent discovery
+## Phase 5 — Regression Prevention + Policy + Automation
 
-Goal:
-- surface provider-native extensibility directly in Orxa
+- [x] Add performance sync guardrails to root `AGENTS.md`.
+- [x] Add `test:perf-guard` script.
+- [x] Wire `test:perf-guard` into `.husky/pre-commit`.
+- [x] Wire `test:perf-guard` into CI workflow.
+- [x] Add/extend focused regression tests:
+  - live-sync polling behavior
+  - preload delta dedupe
+  - opencode delta runtime handler/service path
 
-Still to do:
-- Claude:
-  - skills discovery
-  - agents discovery
-  - MCP discovery and status
-- Codex:
-  - apps discovery
-  - skills discovery
-  - MCP discovery and status
-  - agent/personality discovery where upstream supports it
+## Phase 6 — Cross-Repo Comparison (orxacode vs t3code)
 
-## 5. Diagnostics, health, and usage center
+- [x] Complete architect analysis of `../t3code`.
+- [x] Document key patterns to emulate and why they matter.
+- [x] Convert findings into phased adoption guidance for Orxa.
 
-Goal:
-- replace scattered provider debugging with one deliberate diagnostics area
+### Phase 6.1 — Bottom line (extracted)
 
-Still to do:
-- shared diagnostics entry point in Orxa
-- Claude details:
-  - auth/health state
-  - session status
-  - usage visibility where available
-  - troubleshooting entry points
-- Codex details:
-  - app-server status
-  - usage/session status
-  - model/account/collaboration metadata where useful
-  - troubleshooting entry points
+- [x] `t3code` feels faster because it is **stream-first**, **server-authoritative**, and **selector-driven**.
+- [x] `orxacode` already has dedupe/coalescing improvements, but still pays extra cost from:
+  - poll/reconcile behavior in active paths,
+  - heavier refresh payloads than necessary,
+  - broad store subscriptions causing render fanout.
 
-## Not in scope
+### Phase 6.2 — What `t3code` does better (useful context)
 
-Do not spend time on direct parity for terminal-only surfaces that Orxa already solves better:
-- `/ide`
-- `/config`
-- voice/mobile companion surfaces
-- remote handoff / teleport features
-- provider-branded quota upsell UI
+1. **Server-authoritative stream + replay recovery**
+   - Replays missed events, enforces sequence continuity, falls back to snapshot only on replay failure.
+   - Why it matters: low-latency first/ongoing output without steady-state polling.
+2. **Lean read-model boundary**
+   - Session/orchestration hot path carries focused state; ancillary metadata is fetched separately.
+   - Why it matters: less payload weight and less hot-path contention.
+3. **Persistent transport model**
+   - One long-lived transport/client rather than many ad-hoc request hops.
+   - Why it matters: lower per-interaction overhead and warmer first token path.
+4. **Batched reducer commits + narrow selectors**
+   - Event batches are applied in one store mutation; per-slice selectors reduce re-render spread.
+   - Why it matters: better typing/scroll smoothness under stream load.
+5. **Virtualized timeline render path**
+   - Large message histories avoid full-list render cost on each active update.
+   - Why it matters: long sessions stay responsive.
 
-## Next tranche
+### Phase 6.3 — 1:1 gap map in `orxacode` (useful context)
 
-Do this next:
-1. action mapping for the native command browser
-2. hooks browser
-3. Claude memory/instruction browser
+1. **Stream trust gap**
+   - Active session behavior still has poll/reconcile and post-send refreshes in key paths.
+   - Effect: extra first-response and ongoing stream latency.
+2. **Payload boundary gap**
+   - `refreshProject()` and `getSessionRuntime()` still bundle cold metadata with hot data in several flows.
+   - Effect: more IPC bytes, main-process work, and queue pressure.
+3. **Transport gap**
+   - Many hot paths still use invoke-style crossings preload → main → service.
+   - Effect: higher invoke RTT pressure vs long-lived stream channel.
+4. **Selector/subscription gap**
+   - Some app-shell/session surfaces still subscribe to broad maps.
+   - Effect: active updates fan out into unnecessary recomputation.
+5. **Virtualization/render-path gap**
+   - Message panes can still run non-virtualized paths and expensive derivation under load.
+   - Effect: long-session commit/scroll/typing degradation.
+
+### Phase 6.4 — Watch-outs from review
+
+- [x] Event ordering + replay correctness must remain the top invariant.
+- [x] Hot/cold payload split may expose hidden dependencies on oversized current responses.
+- [x] Virtualization must preserve scroll anchoring, tail behavior, and inline expansion semantics.
+
+## Phase 7 — Remaining High-Impact Work
+
+This phase is now directly based on the `t3code` review recommendations (A–H), plus Orxa-specific guard/telemetry extras.
+
+### Phase 7A — Quick wins (1–2 days)
+
+- [ ] **A. Remove redundant post-send/post-event refreshes**
+  - Remove immediate `refreshMessages()` / `refreshProject()` follow-ups where stream events are authoritative.
+  - Keep explicit fallback refresh only for event types not fully represented in stream state.
+  - Validate with:
+    - `prompt.first_event_ms`
+    - `prompt.first_assistant_output_ms`
+    - `background.poll_count`
+    - `workspace.refresh_ms`
+- [ ] **B. Expand invoke coalescing/dedupe coverage**
+  - Extend preload dedupe/coalescing for repeated resume/selection/send follow-up invokes.
+  - Validate with:
+    - `ipc.inflight_count` p95
+    - `ipc.invoke_rtt_ms` by channel
+    - payload-size buckets by channel
+- [ ] **C. Enable virtualization for long timelines first**
+  - Start with `MessageFeed` thresholded virtualization for long sessions.
+  - Validate with:
+    - `render.commit_ms`
+    - `render.slow_commit_count`
+    - `renderer.longtask_ms`
+
+### Phase 7B — Medium refactor (3–5 days)
+
+- [ ] **D. Split hot-path vs cold-path payloads**
+  - `refreshProject`: hot (sessions/status/questions/permissions/commands) vs cold (providers/agents/config/MCP/LSP/formatter/VCS/path).
+  - `getSessionRuntime`: core runtime vs lazy extras (diff/ledger/provenance).
+  - Validate with:
+    - `opencode.refresh_project_ms`
+    - `opencode.refresh_project_delta_ms`
+    - `opencode.get_session_runtime_ms`
+    - `ipc.invoke_rtt_ms`
+    - payload-size buckets per endpoint
+- [ ] **E. Batch-oriented renderer reducer commits for stream events**
+  - Accumulate short event bursts and commit one store mutation per flush.
+  - Validate with:
+    - `render.commit_count`
+    - `render.commit_burst_count`
+    - `event.batch.size`
+    - `event.batch.flush_ms`
+- [ ] **F. Replace whole-map subscriptions with narrow selectors**
+  - Refactor app shell/session collection hooks to per-project/per-session slices.
+  - Validate with:
+    - component-level render metrics (app shell/sidebar/composer)
+    - typing latency traces
+
+### Phase 7C — Deeper architecture (1–2 weeks)
+
+- [ ] **G. Sequence-based stream + replay model for opencode session UX**
+  - Per-session/per-workspace cursor.
+  - Replay missed deltas first; snapshot fallback only on replay failure.
+  - Validate with:
+    - `prompt.first_event_ms`
+    - `prompt.first_assistant_output_ms`
+    - `prompt.complete_ms`
+    - `background.workspace_refresh_ms`
+    - `background.poll_count` trend toward zero on active sessions
+- [ ] **H. Long-lived session transport across Electron boundary**
+  - Move away from invoke-heavy reconcile loops in hot session paths.
+  - Include lifecycle, cleanup, replay, and backpressure handling.
+  - Validate with:
+    - `ipc.inflight_count`
+    - `ipc.invoke_rtt_ms` p95
+    - dropped/recovered stream counters
+    - renderer long-task rate under active stream load
+
+### Phase 7D — Orxa-specific extras (added)
+
+- [ ] Add explicit AGENTS/lint/test guardrails for banned anti-patterns:
+  1. no polling for active output when stream exists,
+  2. no full bootstrap in resume/poll paths when delta/replay exists,
+  3. no whole-map subscriptions in render-critical surfaces.
+- [ ] Add CI-visible payload-size telemetry buckets for `refreshProject`, `refreshProjectDelta`, and `getSessionRuntime`.
+- [ ] Add canary perf review cadence (export snapshot before/after each Phase 7 subphase).
+
+## Validation Status (Current)
+
+- [x] `pnpm test:perf-guard`
+- [x] targeted tests for touched runtime/sync paths
+- [x] `pnpm typecheck`
+- [x] `pnpm lint` (warnings only; no new errors)
+
+## Out of Scope for This Performance Initiative
+
+- [x] Large redesigns not tied to responsiveness/perceived speed.
+- [x] Broad feature work unrelated to startup, sync loops, or diagnostics quality.

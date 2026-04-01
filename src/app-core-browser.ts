@@ -1,8 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
-import type { BrowserHistoryItem, BrowserState, McpDevToolsServerState, SessionMessageBundle } from '@shared/ipc'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
+import type {
+  BrowserHistoryItem,
+  BrowserState,
+  McpDevToolsServerState,
+  SessionMessageBundle,
+} from '@shared/ipc'
 import type { BrowserControlOwner } from './lib/app-session-utils'
 import { DEFAULT_BROWSER_LANDING_URL, EMPTY_BROWSER_RUNTIME_STATE } from './lib/app-session-utils'
 import { mergeModeToolPolicies } from './lib/browser-tool-guardrails'
+import { measurePerf, reportPerf } from './lib/performance'
 import { useBrowserAgentBridge } from './hooks/useBrowserAgentBridge'
 import { useBrowserPromptMetadata } from './app-core-browser-prompt'
 
@@ -38,7 +52,12 @@ type BrowserStateApi = {
   browserNavigate: (url: string) => Promise<void>
   browserOpenTab: () => Promise<void>
   browserReload: () => Promise<void>
-  browserReportViewportBounds: (bounds: { x: number; y: number; width: number; height: number }) => void
+  browserReportViewportBounds: (bounds: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }) => void
   browserRuntimeState: BrowserState
   browserSelectHistory: (url: string) => Promise<void>
   browserSelectTab: (tabID: string) => Promise<void>
@@ -71,7 +90,12 @@ type BrowserRuntime = {
   syncBrowserSnapshot: () => Promise<void>
   ensureBrowserTab: () => Promise<BrowserState>
   runBrowserStateCommand: (command: () => Promise<BrowserState>) => Promise<void>
-  browserReportViewportBounds: (bounds: { x: number; y: number; width: number; height: number }) => void
+  browserReportViewportBounds: (bounds: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }) => void
 }
 
 function useBrowserSessionFlags(context: BrowserContext) {
@@ -81,7 +105,9 @@ function useBrowserSessionFlags(context: BrowserContext) {
     : false
   const browserAutomationHalted = useMemo(
     () =>
-      activeSessionKey ? typeof browserAutomationHaltedBySession[activeSessionKey] === 'number' : false,
+      activeSessionKey
+        ? typeof browserAutomationHaltedBySession[activeSessionKey] === 'number'
+        : false,
     [activeSessionKey, browserAutomationHaltedBySession]
   )
   return { browserModeEnabled, browserAutomationHalted }
@@ -95,9 +121,12 @@ function useBrowserRuntime(setStatusLine: Dispatch<SetStateAction<string>>): Bro
   const [browserHistoryItems, setBrowserHistoryItemsState] = useState<BrowserHistoryItem[]>([])
   const [browserActionRunning, setBrowserActionRunningState] = useState(false)
   const [mcpDevToolsState, setMcpDevToolsStateState] = useState<McpDevToolsServerState>('stopped')
-  const lastBrowserBoundsRef = useRef<{ x: number; y: number; width: number; height: number } | null>(
-    null
-  )
+  const lastBrowserBoundsRef = useRef<{
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>(null)
 
   const syncBrowserSnapshot = useCallback(async () => {
     const [nextState, nextHistory] = await Promise.all([
@@ -109,12 +138,32 @@ function useBrowserRuntime(setStatusLine: Dispatch<SetStateAction<string>>): Bro
   }, [])
 
   const ensureBrowserTab = useCallback(async () => {
+    const startedAt = performance.now()
     const current = await window.orxa.browser.getState()
     if (current.tabs.length > 0) {
       setBrowserRuntimeStateState(current)
+      reportPerf({
+        surface: 'browser',
+        metric: 'browser.ensure_tab_ms',
+        kind: 'span',
+        value: performance.now() - startedAt,
+        unit: 'ms',
+        process: 'renderer',
+        component: 'app-core-browser',
+      })
       return current
     }
-    const nextState = await window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true)
+    const nextState = await measurePerf(
+      {
+        surface: 'browser',
+        metric: 'browser.ensure_tab_ms',
+        kind: 'span',
+        unit: 'ms',
+        process: 'renderer',
+        component: 'app-core-browser',
+      },
+      () => window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true)
+    )
     setBrowserRuntimeStateState(nextState)
     return nextState
   }, [])
@@ -174,16 +223,42 @@ function useBrowserRuntime(setStatusLine: Dispatch<SetStateAction<string>>): Bro
   }
 }
 
-function useBrowserNavigationCommands(runBrowserStateCommand: BrowserRuntime['runBrowserStateCommand']) {
+function useBrowserNavigationCommands(
+  runBrowserStateCommand: BrowserRuntime['runBrowserStateCommand']
+) {
   const browserNavigate = useCallback(
     async (url: string) => {
-      await runBrowserStateCommand(() => window.orxa.browser.navigate(url))
+      await runBrowserStateCommand(() =>
+        measurePerf(
+          {
+            surface: 'browser',
+            metric: 'browser.navigate_ms',
+            kind: 'span',
+            unit: 'ms',
+            process: 'renderer',
+            component: 'app-core-browser',
+          },
+          () => window.orxa.browser.navigate(url)
+        )
+      )
     },
     [runBrowserStateCommand]
   )
 
   const browserOpenTab = useCallback(async () => {
-    await runBrowserStateCommand(() => window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true))
+    await runBrowserStateCommand(() =>
+      measurePerf(
+        {
+          surface: 'browser',
+          metric: 'browser.open_tab_ms',
+          kind: 'span',
+          unit: 'ms',
+          process: 'renderer',
+          component: 'app-core-browser',
+        },
+        () => window.orxa.browser.openTab(DEFAULT_BROWSER_LANDING_URL, true)
+      )
+    )
   }, [runBrowserStateCommand])
 
   const browserCloseTab = useCallback(
@@ -202,7 +277,19 @@ function useBrowserNavigationCommands(runBrowserStateCommand: BrowserRuntime['ru
   }, [runBrowserStateCommand])
 
   const browserReload = useCallback(async () => {
-    await runBrowserStateCommand(() => window.orxa.browser.reload())
+    await runBrowserStateCommand(() =>
+      measurePerf(
+        {
+          surface: 'browser',
+          metric: 'browser.reload_ms',
+          kind: 'span',
+          unit: 'ms',
+          process: 'renderer',
+          component: 'app-core-browser',
+        },
+        () => window.orxa.browser.reload()
+      )
+    )
   }, [runBrowserStateCommand])
 
   const browserSelectTab = useCallback(
@@ -231,7 +318,11 @@ function useBrowserNavigationCommands(runBrowserStateCommand: BrowserRuntime['ru
   }
 }
 
-type BrowserModeControlsArgs = { context: BrowserContext; runtime: BrowserRuntime; browserModeEnabled: boolean }
+type BrowserModeControlsArgs = {
+  context: BrowserContext
+  runtime: BrowserRuntime
+  browserModeEnabled: boolean
+}
 
 function useSetBrowserMode({
   activeProjectDir,
@@ -385,7 +476,10 @@ function useBrowserModeControls({ context, runtime, browserModeEnabled }: Browse
 }
 
 type BrowserBridgeEffectsArgs = {
-  context: BrowserContext; runtime: BrowserRuntime; browserModeEnabled: boolean; browserAutomationHalted: boolean
+  context: BrowserContext
+  runtime: BrowserRuntime
+  browserModeEnabled: boolean
+  browserAutomationHalted: boolean
 }
 
 function useBrowserBridgeAndEffects({
@@ -415,7 +509,9 @@ function useBrowserBridgeAndEffects({
     (message: string) => {
       const now = Date.now()
       const normalized = message.toLowerCase()
-      const isForbiddenToolUsage = normalized.includes('blocked forbidden tool usage in browser mode')
+      const isForbiddenToolUsage = normalized.includes(
+        'blocked forbidden tool usage in browser mode'
+      )
       const shouldHaltAutomation = normalized.includes('automation was halted')
       setBrowserActionRunningState(false)
       if (!isForbiddenToolUsage) {
@@ -429,7 +525,13 @@ function useBrowserBridgeAndEffects({
         }))
       }
     },
-    [activeProjectDir, activeSessionID, setBrowserActionRunningState, setBrowserAutomationHaltedBySession, setStatusLine]
+    [
+      activeProjectDir,
+      activeSessionID,
+      setBrowserActionRunningState,
+      setBrowserAutomationHaltedBySession,
+      setStatusLine,
+    ]
   )
 
   useBrowserAgentBridge({

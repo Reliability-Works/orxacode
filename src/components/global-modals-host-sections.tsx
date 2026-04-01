@@ -14,9 +14,7 @@ function DependencyCard({
   copyDependencyCommand: (installCommand: string, key: string) => Promise<void>
 }) {
   return (
-    <article
-      className={`dependency-card ${dependency.installed ? 'ok' : 'missing'}`.trim()}
-    >
+    <article className={`dependency-card ${dependency.installed ? 'ok' : 'missing'}`.trim()}>
       <header>
         <strong>{dependency.label}</strong>
         <div className="dependency-badges">
@@ -91,8 +89,8 @@ export function DependencyModal({
         </header>
         <div className="dependency-modal-body">
           <p className="dependency-intro">
-            OpenCode is required to run sessions. The Orxa package is optional and only needed
-            for Orxa mode workflows.
+            OpenCode is required to run sessions. The Orxa package is optional and only needed for
+            Orxa mode workflows.
           </p>
           {dependencyRequiredMissing ? (
             <p className="dependency-warning">
@@ -260,7 +258,18 @@ function WorkspaceDetailWorktreesSection({
         </button>
       </div>
       <div className="workspace-detail-worktrees">
-        {workspaceWorktreesLoading ? <p className="workspace-detail-empty">Loading worktrees…</p> : null}
+        {workspaceWorktreesLoading && workspaceWorktrees.length === 0 ? (
+          <div className="worktree-skeleton-list" aria-label="Loading worktrees" role="status">
+            <div className="worktree-skeleton-row" aria-hidden="true">
+              <div className="worktree-skeleton-line worktree-skeleton-line--wide" />
+              <div className="worktree-skeleton-line worktree-skeleton-line--narrow" />
+            </div>
+            <div className="worktree-skeleton-row" aria-hidden="true">
+              <div className="worktree-skeleton-line worktree-skeleton-line--wide" />
+              <div className="worktree-skeleton-line worktree-skeleton-line--narrow" />
+            </div>
+          </div>
+        ) : null}
         {!workspaceWorktreesLoading && workspaceWorktrees.length === 0 ? (
           <p className="workspace-detail-empty">No worktrees found</p>
         ) : null}
@@ -321,7 +330,10 @@ function WorkspaceDetailWorktreeActions({
         ))}
       </div>
       <div className="workspace-detail-maintenance-actions">
-        <button type="button" onClick={() => void openWorkspaceWorktree(selectedWorktree.directory)}>
+        <button
+          type="button"
+          onClick={() => void openWorkspaceWorktree(selectedWorktree.directory)}
+        >
           Open in Zed
         </button>
         {!selectedWorktree.isMain ? (
@@ -388,22 +400,20 @@ export function WorkspaceDetailModal({
     null
 
   return (
-    <div
-      className="overlay overlay--session-list"
-      onClick={() => setAllSessionsModalOpen(false)}
-    >
+    <div className="overlay overlay--session-list" onClick={() => setAllSessionsModalOpen(false)}>
       <div className="modal workspace-detail-modal" onClick={event => event.stopPropagation()}>
         <div className="modal-header">
-          <div>
-            <h2>workspace details</h2>
-            <small>{workspaceDetailDirectory}</small>
+          <div className="workspace-detail-header-info">
+            <h2>Workspace Details</h2>
+            <small className="workspace-detail-path">{workspaceDetailDirectory}</small>
           </div>
           <button
             type="button"
             className="modal-close-btn"
+            aria-label="Close workspace details"
             onClick={() => setAllSessionsModalOpen(false)}
           >
-            X
+            &times;
           </button>
         </div>
         <div className="workspace-detail-modal-body">

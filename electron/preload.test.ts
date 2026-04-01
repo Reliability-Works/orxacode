@@ -37,11 +37,52 @@ async function loadBridge() {
 }
 
 type OrxaBridge = {
-  app: { openExternal: (url: string) => Promise<unknown>; listDiagnostics: (limit?: number) => Promise<unknown>; reportRendererDiagnostic: (input: unknown) => Promise<unknown> }
-  opencode: { getArtifactRetentionPolicy: () => Promise<unknown>; setArtifactRetentionPolicy: (input: unknown) => Promise<unknown>; pruneArtifactsNow: (workspace?: string) => Promise<unknown>; exportArtifactBundle: (input: unknown) => Promise<unknown> }
-  claudeChat: { listSessions: () => Promise<unknown>; resumeProviderSession: (providerThreadId: string, directory: string) => Promise<unknown> }
-  codex: { listBrowserThreads: () => Promise<unknown>; listWorkspaceThreads: (workspaceRoot: string) => Promise<unknown>; resumeThread: (threadId: string) => Promise<unknown>; resumeProviderThread: (threadId: string, directory: string) => Promise<unknown>; archiveThreadTree: (threadId: string) => Promise<unknown>; setThreadName: (threadId: string, name: string) => Promise<unknown>; generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>; steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>; interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown> }
-  browser: { getState: () => Promise<unknown>; setVisible: (visible: boolean) => Promise<unknown>; setBounds: (bounds: unknown) => Promise<unknown>; openTab: (url?: string, activate?: boolean) => Promise<unknown>; closeTab: (tabID?: string) => Promise<unknown>; switchTab: (tabID: string) => Promise<unknown>; navigate: (url: string, tabID?: string) => Promise<unknown>; back: (tabID?: string) => Promise<unknown>; forward: (tabID?: string) => Promise<unknown>; reload: (tabID?: string) => Promise<unknown>; listHistory: (limit?: number) => Promise<unknown>; clearHistory: () => Promise<unknown>; performAgentAction: (request: unknown) => Promise<unknown> }
+  app: {
+    openExternal: (url: string) => Promise<unknown>
+    listDiagnostics: (limit?: number) => Promise<unknown>
+    reportRendererDiagnostic: (input: unknown) => Promise<unknown>
+    reportPerf: (input: unknown) => Promise<unknown>
+    listPerfSummary: (filter?: unknown) => Promise<unknown>
+    exportPerfSnapshot: (input?: unknown) => Promise<unknown>
+  }
+  opencode: {
+    refreshProject: (directory: string) => Promise<unknown>
+    refreshProjectDelta: (directory: string) => Promise<unknown>
+    getArtifactRetentionPolicy: () => Promise<unknown>
+    setArtifactRetentionPolicy: (input: unknown) => Promise<unknown>
+    pruneArtifactsNow: (workspace?: string) => Promise<unknown>
+    exportArtifactBundle: (input: unknown) => Promise<unknown>
+  }
+  claudeChat: {
+    listSessions: () => Promise<unknown>
+    resumeProviderSession: (providerThreadId: string, directory: string) => Promise<unknown>
+  }
+  codex: {
+    listBrowserThreads: () => Promise<unknown>
+    listWorkspaceThreads: (workspaceRoot: string) => Promise<unknown>
+    resumeThread: (threadId: string) => Promise<unknown>
+    resumeProviderThread: (threadId: string, directory: string) => Promise<unknown>
+    archiveThreadTree: (threadId: string) => Promise<unknown>
+    setThreadName: (threadId: string, name: string) => Promise<unknown>
+    generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>
+    steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>
+    interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown>
+  }
+  browser: {
+    getState: () => Promise<unknown>
+    setVisible: (visible: boolean) => Promise<unknown>
+    setBounds: (bounds: unknown) => Promise<unknown>
+    openTab: (url?: string, activate?: boolean) => Promise<unknown>
+    closeTab: (tabID?: string) => Promise<unknown>
+    switchTab: (tabID: string) => Promise<unknown>
+    navigate: (url: string, tabID?: string) => Promise<unknown>
+    back: (tabID?: string) => Promise<unknown>
+    forward: (tabID?: string) => Promise<unknown>
+    reload: (tabID?: string) => Promise<unknown>
+    listHistory: (limit?: number) => Promise<unknown>
+    clearHistory: () => Promise<unknown>
+    performAgentAction: (request: unknown) => Promise<unknown>
+  }
 }
 
 describe('preload browser bridge', () => {
@@ -74,7 +115,7 @@ describe('preload browser bridge', () => {
       electronMocks.invoke.mockResolvedValue(undefined)
 
       await bridge.browser.openTab('https://example.com', false)
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+      expect(electronMocks.invoke).toHaveBeenCalledWith(
         IPC.browserOpenTab,
         'https://example.com',
         false
@@ -87,7 +128,7 @@ describe('preload browser bridge', () => {
       expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserSwitchTab, 'tab-2')
 
       await bridge.browser.navigate('https://example.org', 'tab-2')
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+      expect(electronMocks.invoke).toHaveBeenCalledWith(
         IPC.browserNavigate,
         'https://example.org',
         'tab-2'
@@ -99,19 +140,19 @@ describe('preload browser bridge', () => {
       electronMocks.invoke.mockResolvedValue(undefined)
 
       await bridge.browser.back('tab-2')
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserBack, 'tab-2')
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserBack, 'tab-2')
 
       await bridge.browser.forward('tab-2')
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserForward, 'tab-2')
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserForward, 'tab-2')
 
       await bridge.browser.reload('tab-2')
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserReload, 'tab-2')
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserReload, 'tab-2')
 
       await bridge.browser.listHistory(30)
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserListHistory, 30)
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserListHistory, 30)
 
       await bridge.browser.clearHistory()
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserClearHistory)
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserClearHistory)
     })
 
     it('wires agent actions to expected IPC channel', async () => {
@@ -120,7 +161,7 @@ describe('preload browser bridge', () => {
 
       const request = { action: 'extract_text', tabID: 'tab-2', selector: 'body' }
       await bridge.browser.performAgentAction(request)
-      expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.browserPerformAgentAction, request)
+      expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.browserPerformAgentAction, request)
     })
   })
 })
@@ -157,6 +198,32 @@ describe('preload app bridge', () => {
     await bridge.app.reportRendererDiagnostic(payload)
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.appReportRendererDiagnostic, payload)
   })
+
+  it('wires perf APIs to expected IPC channels', async () => {
+    const bridge = await loadBridge()
+    electronMocks.invoke.mockResolvedValue(undefined)
+
+    const perfPayload = {
+      surface: 'ipc',
+      metric: 'ipc.invoke_rtt_ms',
+      kind: 'span',
+      value: 12,
+      unit: 'ms',
+      process: 'renderer',
+    }
+    await bridge.app.reportPerf(perfPayload)
+    expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.appReportPerf, perfPayload)
+
+    await bridge.app.listPerfSummary({ surface: 'browser', limit: 10 })
+    expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.appListPerfSummary, {
+      surface: 'browser',
+      limit: 10,
+    })
+
+    const exportFilter = { sinceMs: 15 * 60_000, includeEvents: false }
+    await bridge.app.exportPerfSnapshot(exportFilter)
+    expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.appExportPerfSnapshot, exportFilter)
+  })
 })
 
 describe('preload opencode bridge', () => {
@@ -189,6 +256,35 @@ describe('preload opencode bridge', () => {
       exportInput
     )
   })
+
+  it('dedupes in-flight delta refresh for same workspace', async () => {
+    const bridge = await loadBridge()
+    let resolveRefresh: ((value: unknown) => void) | undefined
+    const refreshPromise = new Promise(resolve => {
+      resolveRefresh = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.opencodeRefreshProjectDelta) {
+        return refreshPromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.opencode.refreshProjectDelta('/repo')
+    const second = bridge.opencode.refreshProjectDelta('/repo')
+
+    const refreshInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.opencodeRefreshProjectDelta
+    )
+    expect(refreshInvocations).toHaveLength(1)
+
+    resolveRefresh?.({ directory: '/repo' })
+    await Promise.all([first, second])
+  })
 })
 
 describe('preload codex bridge', () => {
@@ -204,22 +300,51 @@ describe('preload codex bridge', () => {
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexListBrowserThreads)
 
     await bridge.codex.listWorkspaceThreads('/repo')
-    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
-      IPC.codexListWorkspaceThreads,
-      '/repo'
-    )
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexListWorkspaceThreads, '/repo')
 
     await bridge.codex.archiveThreadTree('thread-1')
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexArchiveThreadTree, 'thread-1')
 
     await bridge.codex.resumeThread('thread-1')
-    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexResumeThread, 'thread-1')
+    expect(electronMocks.invoke).toHaveBeenCalledWith(IPC.codexResumeThread, 'thread-1')
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexResumeThread,
+        metric: 'ipc.inflight_count',
+        surface: 'codex',
+      })
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexResumeThread,
+        metric: 'ipc.invoke_rtt_ms',
+        surface: 'codex',
+      })
+    )
 
     await bridge.codex.resumeProviderThread('thread-1', '/repo')
-    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
       IPC.codexResumeProviderThread,
       'thread-1',
       '/repo'
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexResumeProviderThread,
+        metric: 'ipc.inflight_count',
+        surface: 'codex',
+      })
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexResumeProviderThread,
+        metric: 'ipc.invoke_rtt_ms',
+        surface: 'codex',
+      })
     )
 
     await bridge.codex.setThreadName('thread-1', 'New Name')
@@ -242,11 +367,27 @@ describe('preload codex bridge', () => {
     )
 
     await bridge.codex.steerTurn('thread-1', 'turn-1', 'continue with this')
-    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
       IPC.codexSteerTurn,
       'thread-1',
       'turn-1',
       'continue with this'
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexSteerTurn,
+        metric: 'ipc.inflight_count',
+        surface: 'codex',
+      })
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.codexSteerTurn,
+        metric: 'ipc.invoke_rtt_ms',
+        surface: 'codex',
+      })
     )
 
     await bridge.codex.interruptThreadTree('thread-1', 'turn-1')
@@ -271,10 +412,26 @@ describe('preload claude chat bridge', () => {
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.claudeChatListSessions)
 
     await bridge.claudeChat.resumeProviderSession('provider-thread-1', '/repo')
-    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
       IPC.claudeChatResumeProviderSession,
       'provider-thread-1',
       '/repo'
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.claudeChatResumeProviderSession,
+        metric: 'ipc.inflight_count',
+        surface: 'claude_chat',
+      })
+    )
+    expect(electronMocks.invoke).toHaveBeenCalledWith(
+      IPC.appReportPerf,
+      expect.objectContaining({
+        channel: IPC.claudeChatResumeProviderSession,
+        metric: 'ipc.invoke_rtt_ms',
+        surface: 'claude_chat',
+      })
     )
   })
 })

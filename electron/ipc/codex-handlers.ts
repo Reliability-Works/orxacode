@@ -1,18 +1,24 @@
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/ipc'
 import type { CodexService } from '../services/codex-service'
+import type { PerformanceTelemetryService } from '../services/performance-telemetry-service'
 import { readClaudeUsageStats, readCodexUsageStats } from '../services/usage-stats-service'
+import { registerMeasuredHandler } from './ipc-performance'
 import { assertString } from './validators'
 
 type CodexHandlersDeps = {
   codexService: CodexService
+  performanceTelemetryService: PerformanceTelemetryService
 }
 
-export function registerCodexHandlers({ codexService }: CodexHandlersDeps) {
+export function registerCodexHandlers({
+  codexService,
+  performanceTelemetryService,
+}: CodexHandlersDeps) {
   registerCodexUsageHandlers()
   registerCodexMaintenanceHandlers(codexService)
-  registerCodexLifecycleHandlers(codexService)
-  registerCodexTurnHandlers(codexService)
+  registerCodexLifecycleHandlers(codexService, performanceTelemetryService)
+  registerCodexTurnHandlers(codexService, performanceTelemetryService)
   registerCodexApprovalHandlers(codexService)
   registerCodexInterruptHandlers(codexService)
 }
@@ -103,7 +109,10 @@ function registerCodexMaintenanceHandlers(codexService: CodexService) {
   })
 }
 
-function registerCodexLifecycleHandlers(codexService: CodexService) {
+function registerCodexLifecycleHandlers(
+  codexService: CodexService,
+  performanceTelemetryService: PerformanceTelemetryService
+) {
   ipcMain.handle(IPC.codexStart, async (_event, cwd?: unknown, options?: unknown) => {
     const opts =
       options && typeof options === 'object'
@@ -114,16 +123,21 @@ function registerCodexLifecycleHandlers(codexService: CodexService) {
 
   ipcMain.handle(IPC.codexStop, async () => codexService.stop())
   ipcMain.handle(IPC.codexGetState, async () => codexService.state)
-  ipcMain.handle(IPC.codexStartThread, async (_event, options?: unknown) => {
-    const opts = (options ?? {}) as {
-      model?: string
-      cwd?: string
-      title?: string
-      approvalPolicy?: string
-      sandbox?: string
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.codexStartThread,
+    'codex',
+    async (_event, options?: unknown) => {
+      const opts = (options ?? {}) as {
+        model?: string
+        cwd?: string
+        title?: string
+        approvalPolicy?: string
+        sandbox?: string
+      }
+      return codexService.startThread(opts)
     }
-    return codexService.startThread(opts)
-  })
+  )
   ipcMain.handle(IPC.codexListWorkspaceThreads, async (_event, workspaceRoot: unknown) =>
     codexService.listWorkspaceThreads(assertString(workspaceRoot, 'workspaceRoot'))
   )
@@ -135,11 +149,17 @@ function registerCodexLifecycleHandlers(codexService: CodexService) {
   ipcMain.handle(IPC.codexGetThreadRuntime, async (_event, threadId: unknown) =>
     codexService.getThreadRuntime(assertString(threadId, 'threadId'))
   )
-  ipcMain.handle(IPC.codexResumeThread, async (_event, threadId: unknown) =>
-    codexService.resumeThread(assertString(threadId, 'threadId'))
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.codexResumeThread,
+    'codex',
+    async (_event, threadId: unknown) =>
+      codexService.resumeThread(assertString(threadId, 'threadId'))
   )
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.codexResumeProviderThread,
+    'codex',
     async (_event, threadId: unknown, directory: unknown) =>
       codexService.resumeProviderThread(
         assertString(threadId, 'threadId'),
@@ -157,9 +177,14 @@ function registerCodexLifecycleHandlers(codexService: CodexService) {
   )
 }
 
-function registerCodexTurnHandlers(codexService: CodexService) {
-  ipcMain.handle(
+function registerCodexTurnHandlers(
+  codexService: CodexService,
+  performanceTelemetryService: PerformanceTelemetryService
+) {
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.codexStartTurn,
+    'codex',
     async (
       _event,
       threadId: unknown,
@@ -192,8 +217,10 @@ function registerCodexTurnHandlers(codexService: CodexService) {
       })
   )
 
-  ipcMain.handle(
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.codexSteerTurn,
+    'codex',
     async (_event, threadId: unknown, turnId: unknown, prompt: unknown) =>
       codexService.steerTurn(
         assertString(threadId, 'threadId'),

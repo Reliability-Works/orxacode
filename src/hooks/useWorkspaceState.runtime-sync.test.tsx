@@ -33,6 +33,22 @@ it('clears stale busy status when a fresh runtime snapshot no longer confirms it
           ...createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }]),
           sessionStatus: { [sessionID]: { type: 'busy' } },
         })),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: sessionID, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: { [sessionID]: { type: 'busy' } },
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
         createSession: vi.fn(async () => ({
           id: 'unused',
           slug: 'unused',
@@ -91,6 +107,22 @@ it('refreshes messages immediately after sending the initial prompt for a new se
         refreshProject: vi.fn(async () =>
           createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }])
         ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: bootstrap.sessionStatus,
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
         createSession: vi.fn(async () => createdSession),
         getSessionRuntime: getSessionRuntimeMock,
         sendPrompt: sendPromptMock,
@@ -143,6 +175,24 @@ it('applies raw opencode stream events to the active session without waiting for
           sessionStatus: {
             [createdSession.id]: { type: 'busy' },
           },
+        })),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: {
+                [createdSession.id]: { type: 'busy' },
+              },
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
         })),
         createSession: vi.fn(async () => createdSession),
         getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) =>
@@ -231,6 +281,18 @@ it('can select a session in another workspace immediately after selecting that w
         refreshProject: vi.fn(async (directory: string) => {
           if (directory === targetDirectory) return targetBootstrap
           return sourceBootstrap
+        }),
+        refreshProjectDelta: vi.fn(async (directory: string) => {
+          const bootstrap = directory === targetDirectory ? targetBootstrap : sourceBootstrap
+          return {
+            directory,
+            sessions: bootstrap.sessions,
+            sessionStatus: bootstrap.sessionStatus,
+            permissions: bootstrap.permissions,
+            questions: bootstrap.questions,
+            commands: bootstrap.commands,
+            ptys: bootstrap.ptys,
+          }
         }),
         createSession: vi.fn(async () => ({
           id: 'unused',

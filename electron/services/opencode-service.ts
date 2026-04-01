@@ -42,6 +42,7 @@ import type {
   OrxaEvent,
   ProjectListItem,
   ProjectBootstrap,
+  ProjectRefreshDelta,
   PromptRequest,
   RawConfigDocument,
   RuntimeConnectionStatus,
@@ -72,6 +73,7 @@ import { ArtifactStore } from './artifact-store'
 import { WorkspaceContextStore } from './workspace-context-store'
 import { buildOpenTargetAttempts } from './open-target-attempts'
 import { OpencodeCommandHelpers } from './opencode-command-helpers'
+import type { PerformanceTelemetryService } from './performance-telemetry-service'
 import {
   fallbackCommitMessage,
   gitBranchesWorkflow,
@@ -439,10 +441,20 @@ function classifyApplyPatch(
 ): ToolClassificationResult {
   const mutation = patchMutations[0]
   if (mutation?.operation === 'create') {
-    return { kind: 'create', operation: 'create', summary: `Created ${mutation.filePath}`, paths: allPaths }
+    return {
+      kind: 'create',
+      operation: 'create',
+      summary: `Created ${mutation.filePath}`,
+      paths: allPaths,
+    }
   }
   if (mutation?.operation === 'delete') {
-    return { kind: 'delete', operation: 'delete', summary: `Deleted ${mutation.filePath}`, paths: allPaths }
+    return {
+      kind: 'delete',
+      operation: 'delete',
+      summary: `Deleted ${mutation.filePath}`,
+      paths: allPaths,
+    }
   }
   return {
     kind: 'edit',
@@ -787,6 +799,7 @@ async function processSessionPart(
 
 export class OpencodeService {
   private providerSessionDirectory: ProviderSessionDirectory | null
+  private performanceTelemetryService: PerformanceTelemetryService | null = null
 
   private profileStore = new ProfileStore()
   private projectStore = new ProjectStore()
@@ -822,7 +835,44 @@ export class OpencodeService {
     this.providerSessionDirectory = providerSessionDirectory
   }
 
+  setPerformanceTelemetryService(performanceTelemetryService: PerformanceTelemetryService | null) {
+    this.performanceTelemetryService = performanceTelemetryService
+  }
+
   onEvent?: (event: OrxaEvent) => void
+
+  private recordPerf(
+    metric:
+      | 'opencode.bootstrap_ms'
+      | 'opencode.refresh_project_ms'
+      | 'opencode.refresh_project_delta_ms'
+      | 'opencode.create_session_ms'
+      | 'opencode.get_session_runtime_ms'
+      | 'opencode.load_messages_ms'
+      | 'opencode.send_prompt_ms'
+      | 'opencode.get_server_diagnostics_ms',
+    startedAt: number,
+    options?: {
+      outcome?: 'ok' | 'error' | 'timeout'
+      trigger?: 'bootstrap' | 'user' | 'background' | 'resume' | 'poll'
+      workspaceHash?: string
+      sessionHash?: string
+    }
+  ) {
+    this.performanceTelemetryService?.record({
+      surface: 'opencode',
+      metric,
+      kind: 'span',
+      value: performance.now() - startedAt,
+      unit: 'ms',
+      outcome: options?.outcome ?? 'ok',
+      trigger: options?.trigger,
+      process: 'main',
+      component: 'opencode-service',
+      workspaceHash: options?.workspaceHash,
+      sessionHash: options?.sessionHash,
+    })
+  }
 
   private upsertProviderBinding(
     directory: string,
@@ -1060,11 +1110,14 @@ export class OpencodeService {
   }
 
   async bootstrap(): Promise<GlobalBootstrap> {
+    const startedAt = performance.now()
     const projects = this.listStoredProjects()
-    return {
+    const result = {
       projects,
       runtime: this.runtimeState(),
     }
+    this.recordPerf('opencode.bootstrap_ms', startedAt, { trigger: 'bootstrap' })
+    return result
   }
 
   async checkRuntimeDependencies(): Promise<RuntimeDependencyReport> {
@@ -1110,6 +1163,7 @@ export class OpencodeService {
   }
 
   async getServerDiagnostics(): Promise<ServerDiagnostics> {
+    const startedAt = performance.now()
     const runtime = this.runtimeState()
     const profile = this.profileStore.list().find(item => item.id === runtime.activeProfileId)
 
@@ -1125,12 +1179,14 @@ export class OpencodeService {
       health = 'error'
     }
 
-    return {
+    const result = {
       runtime,
       activeProfile: profile,
       health,
       lastError: runtime.lastError,
     }
+    this.recordPerf('opencode.get_server_diagnostics_ms', startedAt)
+    return result
   }
 
   async repairRuntime(): Promise<ServerDiagnostics> {
@@ -1145,6 +1201,7 @@ export class OpencodeService {
   }
 
   async refreshProject(directory: string): Promise<ProjectBootstrap> {
+    const startedAt = performance.now()
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
     const client = this.client(normalizedDirectory)
 
@@ -1190,7 +1247,7 @@ export class OpencodeService {
       this.unwrap(client.vcs.get({ directory: normalizedDirectory })).catch(() => undefined),
     ])
 
-    return {
+    const result = {
       directory: normalizedDirectory,
       path: pathInfo,
       sessions,
@@ -1207,9 +1264,46 @@ export class OpencodeService {
       vcs,
       ptys: [],
     }
+    this.recordPerf('opencode.refresh_project_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+    })
+    return result
+  }
+
+  async refreshProjectDelta(directory: string): Promise<ProjectRefreshDelta> {
+    const startedAt = performance.now()
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const client = this.client(normalizedDirectory)
+
+    const [sessions, sessionStatus, permissions, questions, commands] = await Promise.all([
+      this.unwrap(
+        client.session.list({ directory: normalizedDirectory, roots: true, limit: 120 })
+      ).catch(() => []),
+      this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
+    ])
+
+    const result: ProjectRefreshDelta = {
+      directory: normalizedDirectory,
+      sessions,
+      sessionStatus,
+      permissions,
+      questions,
+      commands,
+      ptys: [],
+    }
+
+    this.recordPerf('opencode.refresh_project_delta_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+    })
+
+    return result
   }
 
   async createSession(directory: string, title?: string, permissionMode?: SessionPermissionMode) {
+    const startedAt = performance.now()
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
     const response = await this.client(normalizedDirectory).session.create({
       directory: normalizedDirectory,
@@ -1218,6 +1312,11 @@ export class OpencodeService {
     })
     const session = await this.unwrap(response)
     this.upsertProviderBinding(normalizedDirectory, session.id, 'running')
+    this.recordPerf('opencode.create_session_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+      sessionHash: session.id,
+      trigger: 'user',
+    })
     return session
   }
 
@@ -1332,11 +1431,18 @@ export class OpencodeService {
   }
 
   async loadMessages(directory: string, sessionID: string): Promise<SessionMessageBundle[]> {
+    const startedAt = performance.now()
     const response = await this.client(directory).session.messages({ directory, sessionID })
-    return this.unwrap(response)
+    const result = await this.unwrap(response)
+    this.recordPerf('opencode.load_messages_ms', startedAt, {
+      workspaceHash: directory,
+      sessionHash: sessionID,
+    })
+    return result
   }
 
   async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
+    const startedAt = performance.now()
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
     this.upsertProviderBinding(normalizedDirectory, sessionID, 'running')
     const client = this.client(normalizedDirectory)
@@ -1382,7 +1488,7 @@ export class OpencodeService {
       })
     const sessionStatusRecord = sessionStatusMap as Record<string, SessionStatus>
 
-    return {
+    const result = {
       directory: normalizedDirectory,
       sessionID,
       session,
@@ -1395,6 +1501,11 @@ export class OpencodeService {
       executionLedger,
       changeProvenance,
     }
+    this.recordPerf('opencode.get_session_runtime_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+      sessionHash: sessionID,
+    })
+    return result
   }
 
   async loadExecutionLedger(
@@ -1508,6 +1619,7 @@ export class OpencodeService {
   }
 
   async sendPrompt(input: PromptRequest) {
+    const startedAt = performance.now()
     const normalizedDirectory = this.ensureWorkspaceDirectory(input.directory)
     this.upsertProviderBinding(normalizedDirectory, input.sessionID, 'running')
     const promptSentAt = Date.now()
@@ -1558,6 +1670,11 @@ export class OpencodeService {
         this.promptFence.delete(dedupeKey)
       }, 15_000)
     }
+    this.recordPerf('opencode.send_prompt_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+      sessionHash: input.sessionID,
+      trigger: 'user',
+    })
     return true
   }
 

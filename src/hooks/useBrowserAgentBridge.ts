@@ -1,6 +1,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { SessionMessageBundle } from '@shared/ipc'
 import { BROWSER_MODE_TOOLS_POLICY } from '../lib/browser-tool-guardrails'
+import { measurePerf } from '../lib/performance'
 import { getBrowserGuardrailViolation } from './browser-agent-bridge-guardrails'
 
 const BROWSER_ACTION_TAG_PATTERN = /<orxa_browser_action>\s*([\s\S]*?)\s*<\/orxa_browser_action>/gi
@@ -289,7 +290,17 @@ async function runBrowserAgentAction({
   } else {
     onActionStartRef.current?.(envelope)
     try {
-      const output = await browser.performAgentAction(request)
+      const output = await measurePerf(
+        {
+          surface: 'browser',
+          metric: 'browser.agent_action_ms',
+          kind: 'span',
+          unit: 'ms',
+          process: 'renderer',
+          component: 'browser-agent-bridge',
+        },
+        () => browser.performAgentAction!(request)
+      )
       const screenshotAttachment =
         envelope.action === 'screenshot' ? screenshotAttachmentFromOutput(output) : undefined
       resultAttachments = screenshotAttachment ? [screenshotAttachment] : undefined
@@ -379,9 +390,7 @@ async function processBrowserAgentActions({
   }
 }
 
-function useBrowserAgentActionProcessing(
-  options: UseBrowserAgentBridgeOptions
-) {
+function useBrowserAgentActionProcessing(options: UseBrowserAgentBridgeOptions) {
   const {
     activeProjectDir,
     activeSessionID,
@@ -463,11 +472,15 @@ function useBrowserAgentActionProcessing(
   ])
 }
 
-function useBrowserAgentGuardrails(
-  options: UseBrowserAgentBridgeOptions
-) {
-  const { activeProjectDir, activeSessionID, messages, browserModeEnabled, controlOwner, automationHalted } =
-    options
+function useBrowserAgentGuardrails(options: UseBrowserAgentBridgeOptions) {
+  const {
+    activeProjectDir,
+    activeSessionID,
+    messages,
+    browserModeEnabled,
+    controlOwner,
+    automationHalted,
+  } = options
   const guardrailSeenBySessionRef = useRef<Record<string, Set<string>>>({})
   const onGuardrailViolationRef = useRef(options.onGuardrailViolation)
 

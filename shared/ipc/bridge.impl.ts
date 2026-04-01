@@ -33,6 +33,7 @@ import type {
   OpenDirectoryResult,
   OpenDirectoryTarget,
   ProjectBootstrap,
+  ProjectRefreshDelta,
   ProjectFileDocument,
   ProjectFileEntry,
   PromptRequest,
@@ -77,6 +78,13 @@ import type {
   AppDiagnosticInput,
 } from './app'
 import type {
+  PerfEventInput,
+  PerfSnapshotExportInput,
+  PerfSnapshotExport,
+  PerfSummaryFilter,
+  PerfSummaryRow,
+} from './perf'
+import type {
   CreateWorkspaceWorktreeInput,
   WorkspaceWorktree,
   WorkspaceWorktreeOpenResult,
@@ -106,8 +114,7 @@ import type {
   CodexWorkspaceThreadEntry,
   CodexUpdateResult,
 } from './codex'
-import type {
-} from './kanban'
+import type {} from './kanban'
 import type { OrxaEvent } from './events'
 import type { KanbanBridge } from './bridge-kanban'
 
@@ -138,6 +145,9 @@ export interface OrxaBridge {
     }) => Promise<{ ok: boolean; output: string; exitCode: number }>
     listDiagnostics: (limit?: number) => Promise<AppDiagnosticEntry[]>
     reportRendererDiagnostic: (input: AppDiagnosticInput) => Promise<AppDiagnosticEntry>
+    reportPerf: (input: PerfEventInput) => Promise<void>
+    listPerfSummary: (filter?: PerfSummaryFilter) => Promise<PerfSummaryRow[]>
+    exportPerfSnapshot: (input?: PerfSnapshotExportInput) => Promise<PerfSnapshotExport>
     setWindowVibrancy: (vibrancy: string | null) => Promise<void>
   }
   updates: {
@@ -168,6 +178,7 @@ export interface OrxaBridge {
     removeProjectDirectory: (directory: string) => Promise<boolean>
     selectProject: (directory: string) => Promise<ProjectBootstrap>
     refreshProject: (directory: string) => Promise<ProjectBootstrap>
+    refreshProjectDelta: (directory: string) => Promise<ProjectRefreshDelta>
     createSession: (
       directory: string,
       title?: string,

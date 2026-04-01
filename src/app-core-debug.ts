@@ -10,6 +10,7 @@ import type {
   RuntimeState,
 } from '@shared/ipc'
 import { handleProjectRuntimeEvent } from './app-core-project-events'
+import { reportPerf } from './lib/performance'
 
 export type DebugLogLevel = 'info' | 'warn' | 'error'
 
@@ -30,7 +31,9 @@ type DiagnosticsContext = {
   setBrowserHistoryItems: Dispatch<SetStateAction<BrowserHistoryItem[]>>
   setBrowserActionRunning: Dispatch<SetStateAction<boolean>>
   setMcpDevToolsState: Dispatch<SetStateAction<McpDevToolsServerState>>
-  handleUpdaterTelemetry: (payload: Extract<OrxaEvent, { type: 'updater.telemetry' }>['payload']) => void
+  handleUpdaterTelemetry: (
+    payload: Extract<OrxaEvent, { type: 'updater.telemetry' }>['payload']
+  ) => void
   bootstrap: () => Promise<void>
   applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent) => void
   activeProjectDir: string | undefined
@@ -148,6 +151,18 @@ export function toDebugLogFromEvent(event: OrxaEvent): DebugLogInput {
       details: stringifyDetails({
         source: event.payload.source,
         details: event.payload.details,
+      }),
+    }
+  }
+
+  if (event.type === 'perf.alert') {
+    return {
+      level: event.payload.severity,
+      eventType: `perf.${event.payload.metric}`,
+      summary: event.payload.summary,
+      details: stringifyDetails({
+        metric: event.payload.metric,
+        surface: event.payload.surface,
       }),
     }
   }
@@ -274,6 +289,15 @@ function useRendererPerformanceDiagnostics(
             startTime: Math.round(entry.startTime),
             duration: Math.round(entry.duration),
           }),
+        })
+        reportPerf({
+          surface: 'render',
+          metric: 'renderer.longtask_ms',
+          kind: 'span',
+          value: Math.round(entry.duration),
+          unit: 'ms',
+          process: 'renderer',
+          component: 'renderer',
         })
       }
     })

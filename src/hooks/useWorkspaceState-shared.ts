@@ -5,6 +5,30 @@ import { readPersistedValue } from '../lib/persistence'
 export const PINNED_SESSIONS_KEY = 'orxa:pinnedSessions:v1'
 export const EMPTY_WORKSPACE_SESSIONS_KEY = 'orxa:emptyWorkspaceSessions:v1'
 export const EMPTY_MESSAGE_BUNDLES: SessionMessageBundle[] = []
+const RUNTIME_SNAPSHOT_REUSE_WINDOW_MS = 900
+const RUNTIME_CACHE_MAX_ENTRIES = 160
+type RuntimeSnapshot = Awaited<ReturnType<typeof window.orxa.opencode.getSessionRuntime>>
+
+const runtimeSnapshotInflight = new Map<string, Promise<RuntimeSnapshot>>()
+const runtimeSnapshotCache = new Map<string, { timestamp: number; snapshot: RuntimeSnapshot }>()
+
+function buildRuntimeSnapshotKey(directory: string, sessionID: string) {
+  return `${directory}::${sessionID}`
+}
+
+function trimRuntimeSnapshotCache() {
+  if (runtimeSnapshotCache.size <= RUNTIME_CACHE_MAX_ENTRIES) {
+    return
+  }
+  const overflow = runtimeSnapshotCache.size - RUNTIME_CACHE_MAX_ENTRIES
+  const keys = [...runtimeSnapshotCache.keys()]
+  for (let index = 0; index < overflow; index += 1) {
+    const key = keys[index]
+    if (key) {
+      runtimeSnapshotCache.delete(key)
+    }
+  }
+}
 
 export type SidebarMode = 'projects' | 'kanban' | 'skills'
 
@@ -60,8 +84,42 @@ export function clampContextMenuPosition(x: number, y: number) {
   }
 }
 
-export async function loadOpencodeRuntimeSnapshot(directory: string, sessionID: string) {
-  return window.orxa.opencode.getSessionRuntime(directory, sessionID)
+export async function loadOpencodeRuntimeSnapshot(
+  directory: string,
+  sessionID: string,
+  options?: { reuseWindowMs?: number; bypassCache?: boolean }
+) {
+  const key = buildRuntimeSnapshotKey(directory, sessionID)
+  const inflight = runtimeSnapshotInflight.get(key)
+  if (inflight) {
+    return inflight
+  }
+
+  const reuseWindowMs =
+    typeof options?.reuseWindowMs === 'number'
+      ? Math.max(0, Math.floor(options.reuseWindowMs))
+      : RUNTIME_SNAPSHOT_REUSE_WINDOW_MS
+
+  if (!options?.bypassCache && reuseWindowMs > 0) {
+    const cached = runtimeSnapshotCache.get(key)
+    if (cached && Date.now() - cached.timestamp < reuseWindowMs) {
+      return cached.snapshot
+    }
+  }
+
+  const promise = window.orxa.opencode
+    .getSessionRuntime(directory, sessionID)
+    .then(snapshot => {
+      runtimeSnapshotCache.set(key, { timestamp: Date.now(), snapshot })
+      trimRuntimeSnapshotCache()
+      return snapshot
+    })
+    .finally(() => {
+      runtimeSnapshotInflight.delete(key)
+    })
+
+  runtimeSnapshotInflight.set(key, promise)
+  return promise
 }
 
 export function readPersistedEmptySessions() {
