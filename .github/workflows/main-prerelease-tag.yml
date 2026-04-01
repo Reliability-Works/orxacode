@@ -1,13 +1,15 @@
-name: Dev Prerelease Tag
+name: Main Prerelease Tag
 
 on:
   push:
     branches:
-      - dev
+      - main
+    paths:
+      - package.json
   workflow_dispatch:
 
 concurrency:
-  group: dev-prerelease-tag-${{ github.ref }}
+  group: main-prerelease-tag-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -22,10 +24,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Ensure ref is dev
-        if: github.ref_name != 'dev'
+      - name: Ensure ref is main
+        if: github.ref_name != 'main'
         run: |
-          echo "This workflow only runs for the dev branch. Current ref: ${GITHUB_REF_NAME}"
+          echo "This workflow only runs for the main branch. Current ref: ${GITHUB_REF_NAME}"
           exit 1
 
       - name: Read package version
@@ -63,18 +65,9 @@ jobs:
           TAG="v${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "${TAG}" -m "Prerelease ${TAG} from dev"
+          git tag -a "${TAG}" -m "Prerelease ${TAG} from main"
           git push origin "refs/tags/${TAG}"
           echo "Created and pushed ${TAG}"
-
-      - name: Trigger release workflow for new tag
-        if: steps.version.outputs.is_prerelease == 'true' && steps.tag_check.outputs.exists != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="v${{ steps.version.outputs.version }}"
-          gh workflow run release.yml --ref "${TAG}"
-          echo "Dispatched release workflow for ${TAG}"
 
       - name: Tag already present
         if: steps.version.outputs.is_prerelease == 'true' && steps.tag_check.outputs.exists == 'true'
