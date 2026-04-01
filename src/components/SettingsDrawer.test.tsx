@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, expect, it, vi } from 'vitest'
 import type { RawConfigDocument, ServerDiagnostics } from '@shared/ipc'
 import { SettingsDrawer } from './SettingsDrawer'
+import { TEST_APP_PREFERENCES } from './settings-drawer/test-fixtures'
 
 afterEach(() => {
   cleanup()
@@ -32,28 +33,7 @@ it('renders a back-to-app action instead of the old modal title', () => {
           content: '',
           exists: true,
         }))}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
@@ -112,28 +92,7 @@ it('renders provider models only from discoverable option input', () => {
           content: '',
           exists: true,
         }))}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
@@ -212,28 +171,7 @@ it('shows app version in app preferences', () => {
           content: '',
           exists: true,
         }))}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
@@ -293,28 +231,7 @@ it('places git settings on the dedicated Git page', () => {
           content: '',
           exists: true,
         }))}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
@@ -378,28 +295,7 @@ it('allows editing global AGENTS.md on the Personalization page', async () => {
         onWriteRaw={vi.fn(async () => rawDoc)}
         onReadGlobalAgentsMd={readGlobalAgentsMd}
         onWriteGlobalAgentsMd={writeGlobalAgentsMd}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}
@@ -469,28 +365,7 @@ it('does not render a memory settings section in the nav', async () => {
           content: '',
           exists: true,
         }))}
-        appPreferences={{
-          showOperationsPane: true,
-          autoOpenTerminalOnCreate: true,
-          confirmDangerousActions: true,
-          permissionMode: 'ask-write',
-          commitGuidancePrompt: '',
-          codeFont: 'IBM Plex Mono',
-          hiddenModels: [],
-          codexPath: '',
-          codexArgs: '',
-          codexDefaultModel: '',
-          codexReasoningEffort: 'medium',
-          codexAccessMode: 'on-request',
-          gitAgent: 'opencode' as const,
-          notifyOnAwaitingInput: false,
-          notifyOnTaskComplete: false,
-          collaborationModesEnabled: false,
-          subagentSystemNotificationsEnabled: false,
-          enableAssistantStreaming: true,
-          theme: 'glass' as const,
-          uiFont: 'Inter',
-        }}
+        appPreferences={TEST_APP_PREFERENCES}
         onAppPreferencesChange={() => undefined}
         onGetServerDiagnostics={vi.fn(async () => diagnostics)}
         onRepairRuntime={vi.fn(async () => diagnostics)}

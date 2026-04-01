@@ -7,6 +7,13 @@ import type { SessionType } from '~/types/canvas'
 import type { AppSessionContentProps } from './AppSessionContent'
 import type { SkillEntry, SessionMessageBundle } from '@shared/ipc'
 import type { Attachment } from './hooks/useComposerState'
+import type {
+  SessionCompactionState,
+  SessionGuardrailPreferences,
+  SessionGuardrailPrompt,
+  SessionGuardrailState,
+  SessionRevertTarget,
+} from './lib/session-controls'
 
 type BranchControlState = {
   branchMenuOpen: boolean
@@ -56,9 +63,11 @@ type BuildAppSessionContentPropsArgs = {
   setBrowserModeBySession: Dispatch<SetStateAction<Record<string, boolean>>>
   openWorkspaceDashboard: () => void
   openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
+  openCodexSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   manualSessionTitles: Record<string, boolean>
   openReferencedFile: (reference: string) => Promise<void>
   setBrowserMode: (enabled: boolean) => Promise<void> | void
+  openSettings: () => void
   feedMessages: SessionMessageBundle[]
   feedPresentation: AppSessionContentProps['messageFeedProps']['presentation']
   activeSessionNotices: AppSessionContentProps['messageFeedProps']['sessionNotices']
@@ -86,7 +95,15 @@ type BuildAppSessionContentPropsArgs = {
   effectiveComposerAgentOptions: AppSessionContentProps['composerPanelProps']['agentOptions']
   selectedAgent: string | undefined
   setSelectedAgent: AppSessionContentProps['composerPanelProps']['onAgentChange']
-  compactionMeter: { progress: number; hint: string; compacted: boolean }
+  sessionGuardrailPreferences: SessionGuardrailPreferences
+  compactionState: SessionCompactionState
+  guardrailState: SessionGuardrailState
+  guardrailPrompt: SessionGuardrailPrompt | null
+  dismissGuardrailWarning: () => void
+  continueGuardrailOnce: () => void
+  disableGuardrailsForSession: () => void
+  revertTargets: SessionRevertTarget[]
+  revertSessionChange: (targetId: string) => void | Promise<void>
   modelSelectOptions: ModelOption[]
   selectedModel: string | undefined
   setSelectedModel: (model: string | undefined) => void
@@ -107,8 +124,6 @@ type BuildAppSessionContentPropsArgs = {
   activeTodoItems: AppSessionContentProps['composerPanelProps']['todoItems']
   dockTodosOpen: boolean
   setDockTodosOpen: Dispatch<SetStateAction<boolean>>
-  showReviewChangesDrawer: boolean
-  activeReviewChangesFiles: NonNullable<AppSessionContentProps['composerPanelProps']['reviewChangesFiles']>
   dockPendingPermission: AppSessionContentProps['composerPanelProps']['pendingPermission']
   dockPendingQuestion: AppSessionContentProps['composerPanelProps']['pendingQuestion']
   followupQueue: AppSessionContentProps['composerPanelProps']['queuedMessages']
@@ -165,6 +180,7 @@ function buildWorkspaceLandingProps(args: BuildAppSessionContentPropsArgs) {
     workspaceName: args.activeProjectDir?.split('/').pop() ?? args.activeProjectDir ?? '',
     onPickSession: (type: SessionType) => void args.createSession(args.activeProjectDir, type),
     onBrowseClaudeSessions: () => args.openClaudeSessionBrowser(args.activeProjectDir),
+    onBrowseCodexSessions: () => args.openCodexSessionBrowser(args.activeProjectDir),
   }
 }
 
@@ -185,6 +201,8 @@ function buildClaudeChatPaneProps(args: BuildAppSessionContentPropsArgs) {
     permissionMode: args.appPreferences.permissionMode,
     onPermissionModeChange: (mode: AppPreferences['permissionMode']) =>
       args.setAppPreferences({ ...args.appPreferences, permissionMode: mode }),
+    sessionGuardrailPreferences: args.sessionGuardrailPreferences,
+    onOpenSettings: args.openSettings,
     ...args.branchControls,
     browserModeEnabled: args.browserModeEnabled,
     setBrowserModeEnabled: (enabled: boolean) => {
@@ -223,6 +241,8 @@ function buildCodexPaneProps(args: BuildAppSessionContentPropsArgs) {
     permissionMode: args.appPreferences.permissionMode,
     onPermissionModeChange: (mode: AppPreferences['permissionMode']) =>
       args.setAppPreferences({ ...args.appPreferences, permissionMode: mode }),
+    sessionGuardrailPreferences: args.sessionGuardrailPreferences,
+    onOpenSettings: args.openSettings,
     codexPath: args.appPreferences.codexPath,
     codexArgs: args.appPreferences.codexArgs,
     onOpenFileReference: (reference: string) => void args.openReferencedFile(reference),
@@ -278,9 +298,15 @@ function buildComposerPanelProps(args: BuildAppSessionContentPropsArgs) {
     permissionMode: args.appPreferences.permissionMode,
     onPermissionModeChange: (mode: AppPreferences['permissionMode']) =>
       args.setAppPreferences({ ...args.appPreferences, permissionMode: mode }),
-    compactionProgress: args.compactionMeter.progress,
-    compactionHint: args.compactionMeter.hint,
-    compactionCompacted: args.compactionMeter.compacted,
+    guardrailState: args.guardrailState,
+    guardrailPrompt: args.guardrailPrompt,
+    onDismissGuardrailWarning: args.dismissGuardrailWarning,
+    onContinueGuardrailOnce: args.continueGuardrailOnce,
+    onDisableGuardrailsForSession: args.disableGuardrailsForSession,
+    onOpenSettings: args.openSettings,
+    compactionProgress: args.compactionState.progress,
+    compactionHint: args.compactionState.hint,
+    compactionCompacted: args.compactionState.compacted,
     modelSelectOptions: args.modelSelectOptions,
     selectedModel: args.selectedModel,
     setSelectedModel: args.setSelectedModel,
@@ -303,8 +329,9 @@ function buildComposerPanelProps(args: BuildAppSessionContentPropsArgs) {
     todoItems: args.activeTodoItems,
     todoOpen: args.dockTodosOpen,
     onTodoToggle: () => args.setDockTodosOpen(v => !v),
-    reviewChangesFiles: args.showReviewChangesDrawer ? args.activeReviewChangesFiles : undefined,
+    sessionChangeTargets: args.revertTargets,
     onOpenReviewChange: (path: string) => void args.openReferencedFile(path),
+    onRevertSessionChange: args.revertSessionChange,
     pendingPermission: args.dockPendingPermission,
     pendingQuestion: args.dockPendingQuestion,
     queuedMessages: args.followupQueue,

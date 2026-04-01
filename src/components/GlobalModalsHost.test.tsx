@@ -38,11 +38,18 @@ function buildProps(overrides?: Partial<GlobalModalsHostProps>): GlobalModalsHos
     setAllSessionsModalOpen: vi.fn(),
     claudeSessionBrowserOpen: false,
     setClaudeSessionBrowserOpen: vi.fn(),
+    codexSessionBrowserOpen: false,
+    setCodexSessionBrowserOpen: vi.fn(),
     claudeBrowserSessions: [],
     claudeBrowserSessionsLoading: false,
+    codexBrowserThreads: [],
+    codexBrowserThreadsLoading: false,
     selectedClaudeBrowserWorkspace: '/tmp/project',
     setSelectedClaudeBrowserWorkspace: vi.fn(),
+    selectedCodexBrowserWorkspace: '/tmp/project',
+    setSelectedCodexBrowserWorkspace: vi.fn(),
     openClaudeBrowserSession: vi.fn(async () => undefined),
+    openCodexBrowserThread: vi.fn(async () => undefined),
     sessions: [],
     workspaceWorktrees: [],
     workspaceWorktreesLoading: false,
@@ -256,6 +263,35 @@ it('imports an available Claude provider session into the selected workspace', (
   expect(openClaudeBrowserSession).toHaveBeenCalledWith(
     expect.objectContaining({
       providerThreadId: 'claude-provider-1',
+    })
+  )
+})
+
+it('imports an available Codex provider thread into the selected workspace', () => {
+  const openCodexBrowserThread = vi.fn(async () => undefined)
+  render(
+    <GlobalModalsHost
+      {...buildProps({
+        codexSessionBrowserOpen: true,
+        codexBrowserThreads: [
+          {
+            threadId: 'codex-thread-1',
+            title: 'Recovered Codex Thread',
+            preview: 'Continue with the task',
+            cwd: '/repo/source',
+            lastUpdatedAt: Date.now(),
+            isArchived: false,
+          },
+        ],
+        openCodexBrowserThread,
+      })}
+    />
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: /Recovered Codex Thread/i }))
+  expect(openCodexBrowserThread).toHaveBeenCalledWith(
+    expect.objectContaining({
+      threadId: 'codex-thread-1',
     })
   )
 })

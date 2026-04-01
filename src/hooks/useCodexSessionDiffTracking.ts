@@ -42,6 +42,7 @@ type UseCodexSessionDiffTrackingOptions = {
   ) => void
   setPlanItemsState: (next: TodoItem[]) => void
   setStreamingState: (next: boolean) => void
+  setObservedTurnUsage?: (turnId: string, total: number, timestamp: number) => void
   setSubagentsState: (
     next: SubagentInfo[] | ((previous: SubagentInfo[]) => SubagentInfo[])
   ) => void
@@ -228,6 +229,7 @@ function useCodexNotificationHandler(
     setMessagesState,
     setPlanItemsState,
     setStreamingState,
+    setObservedTurnUsage,
     setSubagentsState,
     setThreadNameState,
     updateMessages,
@@ -258,6 +260,7 @@ function useCodexNotificationHandler(
         setMessagesState,
         setPlanItemsState,
         setStreamingState,
+        setObservedTurnUsage,
         setSubagentsState,
         setThreadNameState,
         startCommandDiffPolling: callbacks.startCommandDiffPolling,
@@ -284,6 +287,7 @@ function useCodexNotificationHandler(
       setMessagesState,
       setPlanItemsState,
       setStreamingState,
+      setObservedTurnUsage,
       setSubagentsState,
       setThreadNameState,
       updateMessages,

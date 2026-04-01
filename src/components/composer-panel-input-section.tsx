@@ -25,6 +25,7 @@ type ComposerInputSectionProps = Pick<
   | 'isSendingPrompt'
   | 'pickImageAttachment'
   | 'hasActiveSession'
+  | 'guardrailState'
   | 'compactionProgress'
   | 'compactionHint'
   | 'compactionCompacted'
@@ -209,6 +210,7 @@ function ComposerAttachmentsList({
 }
 
 function ComposerInputActions({
+  guardrailState,
   compactionProgress,
   compactionHint,
   compactionCompacted,
@@ -219,6 +221,7 @@ function ComposerInputActions({
   sendPrompt,
 }: Pick<
   ComposerInputSectionProps,
+  | 'guardrailState'
   | 'compactionProgress'
   | 'compactionHint'
   | 'compactionCompacted'
@@ -235,6 +238,17 @@ function ComposerInputActions({
 
   return (
     <div className="composer-input-actions">
+      {guardrailState ? (
+        <div className="composer-compaction-inline" title={guardrailState.detail}>
+          <span className="composer-compaction-label">
+            {guardrailState.status === 'disabled'
+              ? 'limits off'
+              : `limits ${Math.round(
+                  Math.max(guardrailState.tokenRatio, guardrailState.runtimeRatio) * 100
+                )}%`}
+          </span>
+        </div>
+      ) : null}
       <div
         className={`composer-compaction-inline ${compactionCompacted ? 'compacted' : ''}`.trim()}
         title={compactionHint}
@@ -275,7 +289,7 @@ export function ComposerInputSection(props: ComposerInputSectionProps) {
     placeholder, composer, setComposer, composerAttachments, removeAttachment, slashMenuOpen,
     filteredSlashCommands, slashSelectedIndex, insertSlashCommand, handleSlashKeyDown,
     addComposerAttachments, sendPrompt, abortActiveSession, isSessionBusy, isSendingPrompt,
-    pickImageAttachment, hasActiveSession, compactionProgress, compactionHint,
+    pickImageAttachment, hasActiveSession, guardrailState, compactionProgress, compactionHint,
     compactionCompacted, onQueueMessage,
   } = props
 
@@ -322,6 +336,7 @@ export function ComposerInputSection(props: ComposerInputSectionProps) {
           }
         />
         <ComposerInputActions
+          guardrailState={guardrailState}
           compactionProgress={compactionProgress}
           compactionHint={compactionHint}
           compactionCompacted={compactionCompacted}

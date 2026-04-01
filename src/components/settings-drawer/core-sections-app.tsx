@@ -141,6 +141,10 @@ function AppSettingsToggles({
           onChange={event => updatePreferencesValue({ confirmDangerousActions: event.target.checked })}
         />
       </label>
+      <AppSettingsGuardrailInputs
+        appPreferences={appPreferences}
+        onAppPreferencesChange={updatePreferencesValue}
+      />
       <label className="settings-inline-toggle">
         automatically check for updates
         <input
@@ -200,6 +204,57 @@ function AppSettingsToggles({
         Show output token-by-token while agent is responding. This feature is under development.
       </p>
     </div>
+  )
+}
+
+function AppSettingsGuardrailInputs({
+  appPreferences,
+  onAppPreferencesChange,
+}: {
+  appPreferences: AppPreferences
+  onAppPreferencesChange: (patch: Partial<AppPreferences>) => void
+}) {
+  return (
+    <>
+      <label className="settings-inline-toggle">
+        enable session guardrails
+        <input
+          type="checkbox"
+          checked={appPreferences.sessionGuardrailsEnabled}
+          onChange={event =>
+            onAppPreferencesChange({ sessionGuardrailsEnabled: event.target.checked })
+          }
+        />
+      </label>
+      <label className="settings-update-channel">
+        session token budget
+        <input
+          type="number"
+          min={1000}
+          step={1000}
+          value={appPreferences.sessionTokenBudget}
+          onChange={event =>
+            onAppPreferencesChange({
+              sessionTokenBudget: Math.max(1000, Number(event.target.value) || 1000),
+            })
+          }
+        />
+      </label>
+      <label className="settings-update-channel">
+        session runtime budget (minutes)
+        <input
+          type="number"
+          min={1}
+          step={1}
+          value={appPreferences.sessionRuntimeBudgetMinutes}
+          onChange={event =>
+            onAppPreferencesChange({
+              sessionRuntimeBudgetMinutes: Math.max(1, Number(event.target.value) || 1),
+            })
+          }
+        />
+      </label>
+    </>
   )
 }
 

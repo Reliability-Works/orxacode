@@ -9,12 +9,15 @@ function renderPicker(
     onPick?: (type: SessionType) => void
     onClose?: () => void
     onBrowseClaudeSessions?: () => void
+    onBrowseCodexSessions?: () => void
   } = {}
 ) {
   const onPick = overrides.onPick ?? (vi.fn() as unknown as (type: SessionType) => void)
   const onClose = overrides.onClose ?? (vi.fn() as unknown as () => void)
   const onBrowseClaudeSessions =
     overrides.onBrowseClaudeSessions ?? (vi.fn() as unknown as () => void)
+  const onBrowseCodexSessions =
+    overrides.onBrowseCodexSessions ?? (vi.fn() as unknown as () => void)
   const isOpen = overrides.isOpen ?? true
 
   render(
@@ -22,10 +25,11 @@ function renderPicker(
       isOpen={isOpen}
       onPick={onPick}
       onBrowseClaudeSessions={onBrowseClaudeSessions}
+      onBrowseCodexSessions={onBrowseCodexSessions}
       onClose={onClose}
     />
   )
-  return { onPick, onClose, onBrowseClaudeSessions }
+  return { onPick, onClose, onBrowseClaudeSessions, onBrowseCodexSessions }
 }
 
 describe('NewSessionPicker', () => {
@@ -37,6 +41,7 @@ describe('NewSessionPicker', () => {
     expect(screen.getByText('claude terminal session')).toBeInTheDocument()
     expect(screen.getByText('codex session')).toBeInTheDocument()
     expect(screen.getByText('browse claude sessions')).toBeInTheDocument()
+    expect(screen.getByText('browse codex threads')).toBeInTheDocument()
   })
 
   it('renders nothing when not open', () => {
@@ -47,6 +52,7 @@ describe('NewSessionPicker', () => {
     expect(screen.queryByText('claude terminal session')).not.toBeInTheDocument()
     expect(screen.queryByText('codex session')).not.toBeInTheDocument()
     expect(screen.queryByText('browse claude sessions')).not.toBeInTheDocument()
+    expect(screen.queryByText('browse codex threads')).not.toBeInTheDocument()
   })
 
   it("clicking opencode calls onPick with 'opencode'", () => {
@@ -83,6 +89,12 @@ describe('NewSessionPicker', () => {
     const { onBrowseClaudeSessions } = renderPicker()
     fireEvent.click(screen.getByText('browse claude sessions'))
     expect(onBrowseClaudeSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking browse codex threads calls the dedicated callback', () => {
+    const { onBrowseCodexSessions } = renderPicker()
+    fireEvent.click(screen.getByText('browse codex threads'))
+    expect(onBrowseCodexSessions).toHaveBeenCalledTimes(1)
   })
 
   it('escape key calls onClose', () => {

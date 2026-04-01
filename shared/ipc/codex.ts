@@ -56,6 +56,30 @@ export type CodexThreadRuntime = {
   childThreads: CodexThread[]
 }
 
+export type CodexBrowserImportedSession = {
+  sessionKey: string
+  sessionID: string
+  directory: string
+}
+
+export type CodexBrowserThreadSummary = {
+  threadId: string
+  title: string
+  lastUpdatedAt: number
+  cwd?: string
+  preview?: string
+  isArchived: boolean
+  importedSession?: CodexBrowserImportedSession
+}
+
+export type CodexResumeProviderThreadResult = {
+  threadId: string
+  sessionKey: string
+  sessionID: string
+  directory: string
+  title: string
+}
+
 export type CodexWorkspaceThreadEntry = CodexThread & {
   directory: string
   sessionKey: string

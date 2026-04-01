@@ -6,6 +6,7 @@ import type {
   UnifiedClaudeSessionRuntime,
   UnifiedRuntimeStoreState,
 } from './unified-runtime-store-types'
+import type { UnifiedTurnTokenSample } from './unified-runtime'
 
 export const SESSION_READ_TIMESTAMPS_KEY = 'orxa:sessionReadTimestamps:v2'
 export const COLLAPSED_PROJECTS_KEY = 'orxa:collapsedProjects:v1'
@@ -134,6 +135,8 @@ export function ensureCodexSession(
     pendingUserInput: null,
     isStreaming: false,
     planItems: [],
+    observedTokenTotal: 0,
+    turnTokenTotals: [],
     dismissedPlanIds: [],
     subagents: [],
     activeSubagentThreadId: null,
@@ -179,6 +182,44 @@ export function ensureClaudeChatSession(
     pendingUserInput: null,
     isStreaming: false,
     lastError: undefined,
+    observedTokenTotal: 0,
+    turnTokenTotals: [],
     subagents: [],
+  }
+}
+
+export function upsertTurnTokenSample(
+  samples: UnifiedTurnTokenSample[],
+  turnId: string,
+  total: number,
+  timestamp: number
+) {
+  const normalizedTurnId = turnId.trim()
+  if (!normalizedTurnId || !Number.isFinite(total) || total <= 0) {
+    return {
+      samples,
+      observedTokenTotal: samples.reduce((sum, sample) => sum + sample.total, 0),
+    }
+  }
+
+  const nextSamples = [...samples]
+  const existingIndex = nextSamples.findIndex(sample => sample.turnId === normalizedTurnId)
+  if (existingIndex >= 0) {
+    nextSamples[existingIndex] = {
+      turnId: normalizedTurnId,
+      total,
+      timestamp,
+    }
+  } else {
+    nextSamples.push({
+      turnId: normalizedTurnId,
+      total,
+      timestamp,
+    })
+  }
+  nextSamples.sort((left, right) => left.timestamp - right.timestamp)
+  return {
+    samples: nextSamples,
+    observedTokenTotal: nextSamples.reduce((sum, sample) => sum + sample.total, 0),
   }
 }

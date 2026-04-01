@@ -6,6 +6,7 @@ type NewSessionPickerProps = {
   isOpen: boolean
   onPick: (type: SessionType) => void
   onBrowseClaudeSessions?: () => void
+  onBrowseCodexSessions?: () => void
   onClose: () => void
 }
 
@@ -76,6 +77,7 @@ export function NewSessionPicker({
   isOpen,
   onPick,
   onBrowseClaudeSessions,
+  onBrowseCodexSessions,
   onClose,
 }: NewSessionPickerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -126,6 +128,22 @@ export function NewSessionPicker({
           <span className="new-session-picker-text">
             <span className="new-session-picker-title">browse claude sessions</span>
             <span className="new-session-picker-subtitle">// import or resume a past Claude chat</span>
+          </span>
+        </button>
+      ) : null}
+      {onBrowseCodexSessions ? (
+        <button
+          type="button"
+          className="new-session-picker-option new-session-picker-option--secondary"
+          role="menuitem"
+          onClick={onBrowseCodexSessions}
+        >
+          <span className="new-session-picker-icon new-session-picker-icon--codex" aria-hidden="true">
+            <OpenAILogo size={14} />
+          </span>
+          <span className="new-session-picker-text">
+            <span className="new-session-picker-title">browse codex threads</span>
+            <span className="new-session-picker-subtitle">// import or resume a past Codex thread</span>
           </span>
         </button>
       ) : null}

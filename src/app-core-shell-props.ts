@@ -89,6 +89,7 @@ type BuildWorkspaceSidebarPropsArgs = {
   selectProject: ComponentProps<typeof WorkspaceSidebar>['selectProject']
   createSession: ComponentProps<typeof WorkspaceSidebar>['createSession']
   openClaudeSessionBrowser: ComponentProps<typeof WorkspaceSidebar>['openClaudeSessionBrowser']
+  openCodexSessionBrowser: ComponentProps<typeof WorkspaceSidebar>['openCodexSessionBrowser']
   openSession: ComponentProps<typeof WorkspaceSidebar>['openSession']
   togglePinSession: (directory: string, sessionID: string) => void
   setStatusLine: (message: string) => void
@@ -186,6 +187,7 @@ export function buildWorkspaceSidebarProps(
     selectProject: args.selectProject,
     createSession: args.createSession,
     openClaudeSessionBrowser: args.openClaudeSessionBrowser,
+    openCodexSessionBrowser: args.openCodexSessionBrowser,
     openSession: args.openSession,
     togglePinSession: (directory, sessionID) => {
       args.togglePinSession(directory, sessionID)

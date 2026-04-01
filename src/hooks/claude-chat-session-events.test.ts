@@ -14,6 +14,7 @@ function createContext(): ClaudeChatSessionEventContext {
     setClaudeChatPendingApproval: vi.fn(),
     setClaudeChatPendingUserInput: vi.fn(),
     setClaudeChatStreaming: vi.fn(),
+    setClaudeChatTurnUsage: vi.fn(),
     setClaudeChatSubagents: vi.fn(),
     updateClaudeChatMessages: vi.fn((_sessionKey, updater) => {
       currentMessages = updater(currentMessages)

@@ -15,11 +15,9 @@ import { IconButton } from './IconButton'
 import { AnthropicLogo, CanvasLogo, OpenAILogo, OpenCodeLogo } from './ProviderLogos'
 import { WorkspaceProjectItem } from './workspace-sidebar-project-item'
 import { WorkspaceSidebarUpdateCard } from './workspace-sidebar-update-card'
-
 type SidebarMode = 'projects' | 'kanban' | 'skills'
 type ProjectSortMode = 'updated' | 'recent' | 'alpha-asc' | 'alpha-desc'
 type SessionSidebarIndicator = 'busy' | 'awaiting' | 'unread' | 'none'
-
 type SessionListItem = {
   id: string
   directory?: string
@@ -35,7 +33,6 @@ type PinnedSessionRow = {
   directory: string
   session: SessionListItem
 }
-
 export type WorkspaceSidebarViewProps = {
   now: number
   sidebarMode: SidebarMode
@@ -76,6 +73,7 @@ export type WorkspaceSidebarViewProps = {
   selectProject: (directory: string) => Promise<void> | void
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void
   openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
+  openCodexSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   openSession: (directory: string, sessionID: string) => Promise<void> | void
   togglePinSession: (directory: string, sessionID: string) => void
   archiveSession: (directory: string, sessionID: string) => Promise<void> | void
@@ -96,7 +94,6 @@ export type WorkspaceSidebarViewProps = {
   pickerAnchorRef: React.MutableRefObject<HTMLButtonElement | null>
   pinnedSessionRows: PinnedSessionRow[]
 }
-
 function formatSessionAge(now: number, createdAt: number) {
   const elapsedMs = Math.max(60_000, now - createdAt)
   const minutes = Math.floor(elapsedMs / 60_000)
@@ -139,7 +136,6 @@ function renderSessionTypeIcon(sessionType: SessionType | undefined) {
       )
   }
 }
-
 function WorkspaceSessionRow({
   now,
   projectDirectory,
@@ -172,7 +168,6 @@ function WorkspaceSessionRow({
   const sessionType = getSessionType(session.id, sessionDirectory)
   const isPinned = (pinnedSessionsByProject?.[projectDirectory] ?? []).includes(session.id)
   const sessionAge = formatSessionAge(now, session.time.created)
-
   return (
     <div
       className={`workspace-session-row ${session.id === activeSessionID ? 'active' : ''}`.trim()}
@@ -235,7 +230,6 @@ function WorkspaceSessionRow({
     </div>
   )
 }
-
 function SidebarModes({
   sidebarMode,
   unreadJobRunsCount,
@@ -390,6 +384,7 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
   selectProject,
   createSession,
   openClaudeSessionBrowser,
+  openCodexSessionBrowser,
   openSession,
     togglePinSession,
     archiveSession,
@@ -422,6 +417,7 @@ function WorkspaceProjectsSection(props: WorkspaceSidebarViewProps) {
           selectProject={selectProject}
           createSession={createSession}
           openClaudeSessionBrowser={openClaudeSessionBrowser}
+          openCodexSessionBrowser={openCodexSessionBrowser}
           openSession={openSession}
           togglePinSession={togglePinSession}
           archiveSession={archiveSession}
@@ -451,7 +447,7 @@ export function WorkspaceSidebarView(props: WorkspaceSidebarViewProps) {
         .filter((session): session is SessionListItem => session !== undefined)
         .filter(session => !hiddenSessionIDs.has(session.id))
         .map(session => ({
-          directory: project.worktree,
+          directory: session.directory ?? project.worktree,
           session,
         }))
     })
@@ -497,23 +493,10 @@ export function WorkspaceSidebarView(props: WorkspaceSidebarViewProps) {
             setProjectSortMode={props.setProjectSortMode}
             setProjectSortOpen={props.setProjectSortOpen}
           />
-
-          <PinnedSessionsSection
-            {...props}
-            pinnedSessionRows={pinnedSessionRows}
-          />
-
+          <PinnedSessionsSection {...props} pinnedSessionRows={pinnedSessionRows} />
           <WorkspaceProjectsSection {...props} />
         </div>
-
-        <WorkspaceSidebarUpdateCard
-          updateAvailableVersion={props.updateAvailableVersion}
-          isCheckingForUpdates={props.isCheckingForUpdates}
-          updateInstallPending={props.updateInstallPending}
-          updateStatusMessage={props.updateStatusMessage}
-          onCheckForUpdates={props.onCheckForUpdates}
-          onDownloadAndInstallUpdate={props.onDownloadAndInstallUpdate}
-        />
+        <WorkspaceSidebarUpdateCard updateAvailableVersion={props.updateAvailableVersion} isCheckingForUpdates={props.isCheckingForUpdates} updateInstallPending={props.updateInstallPending} updateStatusMessage={props.updateStatusMessage} onCheckForUpdates={props.onCheckForUpdates} onDownloadAndInstallUpdate={props.onDownloadAndInstallUpdate} />
       </div>
     </aside>
   )

@@ -93,6 +93,7 @@ export function useClaudeChatSessionLiveSync(
     state => state.setClaudeChatPendingUserInput
   )
   const setClaudeChatStreaming = useUnifiedRuntimeStore(state => state.setClaudeChatStreaming)
+  const setClaudeChatTurnUsage = useUnifiedRuntimeStore(state => state.setClaudeChatTurnUsage)
   const setClaudeChatHistoryMessages = useUnifiedRuntimeStore(
     state => state.setClaudeChatHistoryMessages
   )
@@ -147,6 +148,7 @@ export function useClaudeChatSessionLiveSync(
       setClaudeChatPendingApproval,
       setClaudeChatPendingUserInput,
       setClaudeChatStreaming,
+      setClaudeChatTurnUsage,
       setClaudeChatSubagents,
       updateClaudeChatMessages,
     }
@@ -159,6 +161,7 @@ export function useClaudeChatSessionLiveSync(
     setClaudeChatPendingUserInput,
     setClaudeChatProviderThreadId,
     setClaudeChatStreaming,
+    setClaudeChatTurnUsage,
     setClaudeChatSubagents,
     updateClaudeChatMessages,
   ])

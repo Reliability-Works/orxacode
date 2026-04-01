@@ -3,10 +3,13 @@ import type { Attachment } from '../hooks/useComposerState'
 import type { ModelOption } from '../lib/models'
 import type { PermissionMode } from '../types/app'
 import type { TodoItem } from './chat/TodoDock'
-import type { ReviewChangeItem } from './chat/ReviewChangesDock'
+import type {
+  SessionChangeTarget,
+} from './chat/ReviewChangesDock'
 import type { AgentQuestion } from './chat/QuestionDock'
 import type { QueuedMessage } from './chat/QueuedMessagesDock'
 import type { UnifiedBackgroundAgentSummary } from '../lib/session-presentation'
+import type { SessionGuardrailPrompt, SessionGuardrailState } from '../lib/session-controls'
 import { ComposerPanelSurface } from './composer-panel-surface'
 
 type AgentOption = {
@@ -50,6 +53,12 @@ type ComposerPanelProps = {
   onAgentChange: (name: string) => void
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => void
+  guardrailState?: SessionGuardrailState
+  guardrailPrompt?: SessionGuardrailPrompt | null
+  onDismissGuardrailWarning?: () => void
+  onContinueGuardrailOnce?: () => void
+  onDisableGuardrailsForSession?: () => void
+  onOpenSettings?: () => void
   compactionProgress: number
   compactionHint: string
   compactionCompacted: boolean
@@ -85,8 +94,9 @@ type ComposerPanelProps = {
   todoItems?: TodoItem[]
   todoOpen?: boolean
   onTodoToggle?: () => void
-  reviewChangesFiles?: ReviewChangeItem[]
+  sessionChangeTargets?: SessionChangeTarget[]
   onOpenReviewChange?: (path: string) => void
+  onRevertSessionChange?: (targetId: string) => void | Promise<void>
   backgroundAgents?: UnifiedBackgroundAgentSummary[]
   selectedBackgroundAgentId?: string | null
   onOpenBackgroundAgent?: (id: string) => void

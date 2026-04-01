@@ -339,11 +339,14 @@ const bridge: OrxaBridge = {
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
     startThread: options => ipcRenderer.invoke(IPC.codexStartThread, options),
+    listBrowserThreads: () => ipcRenderer.invoke(IPC.codexListBrowserThreads),
     listWorkspaceThreads: workspaceRoot =>
       ipcRenderer.invoke(IPC.codexListWorkspaceThreads, workspaceRoot),
     listThreads: options => ipcRenderer.invoke(IPC.codexListThreads, options),
     getThreadRuntime: threadId => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
     resumeThread: threadId => ipcRenderer.invoke(IPC.codexResumeThread, threadId),
+    resumeProviderThread: (threadId, directory) =>
+      ipcRenderer.invoke(IPC.codexResumeProviderThread, threadId, directory),
     archiveThreadTree: threadId => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
     setThreadName: (threadId, name) => ipcRenderer.invoke(IPC.codexSetThreadName, threadId, name),
     generateRunMetadata: (cwd, prompt) =>

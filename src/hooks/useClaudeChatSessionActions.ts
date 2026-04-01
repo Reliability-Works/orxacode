@@ -30,8 +30,66 @@ export type ClaudeChatSessionActions = {
   loadSubagentMessages: (providerThreadId: string) => Promise<ClaudeChatHistoryMessage[]>
 }
 
+async function startClaudeTurnWithOptimisticState({
+  directory,
+  sessionKey,
+  prompt,
+  options,
+  updateClaudeChatMessages,
+  setClaudeChatConnectionState,
+  setClaudeChatStreaming,
+}: {
+  directory: string
+  sessionKey: string
+  prompt: string
+  options?: Parameters<ClaudeChatSessionActions['startTurn']>[1]
+  updateClaudeChatMessages: ReturnType<typeof useUnifiedRuntimeStore.getState>['updateClaudeChatMessages']
+  setClaudeChatConnectionState: ReturnType<
+    typeof useUnifiedRuntimeStore.getState
+  >['setClaudeChatConnectionState']
+  setClaudeChatStreaming: ReturnType<typeof useUnifiedRuntimeStore.getState>['setClaudeChatStreaming']
+}) {
+  const timestamp = Date.now()
+  const userId = nextClaudeMessageId(sessionKey)
+  const displayPrompt = options?.displayPrompt ?? prompt
+  const turnOptions = { ...(options ?? {}) }
+  delete (turnOptions as { displayPrompt?: string }).displayPrompt
+  updateClaudeChatMessages(sessionKey, messages => [
+    ...messages,
+    {
+      id: userId,
+      kind: 'message',
+      role: 'user',
+      content: displayPrompt,
+      timestamp,
+    },
+  ])
+  setClaudeChatConnectionState(sessionKey, 'connecting')
+  setClaudeChatStreaming(sessionKey, true)
+  try {
+    await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, {
+      cwd: directory,
+      ...turnOptions,
+    })
+  } catch (error) {
+    setClaudeChatStreaming(sessionKey, false)
+    setClaudeChatConnectionState(
+      sessionKey,
+      'error',
+      undefined,
+      undefined,
+      error instanceof Error ? error.message : String(error)
+    )
+    throw error
+  }
+}
+
 export function useClaudeChatSessionActions(directory: string, sessionKey: string) {
   const updateClaudeChatMessages = useUnifiedRuntimeStore(state => state.updateClaudeChatMessages)
+  const setClaudeChatConnectionState = useUnifiedRuntimeStore(
+    state => state.setClaudeChatConnectionState
+  )
+  const setClaudeChatStreaming = useUnifiedRuntimeStore(state => state.setClaudeChatStreaming)
   const setClaudeChatPendingApproval = useUnifiedRuntimeStore(
     state => state.setClaudeChatPendingApproval
   )
@@ -42,27 +100,23 @@ export function useClaudeChatSessionActions(directory: string, sessionKey: strin
 
   const startTurn = useCallback<ClaudeChatSessionActions['startTurn']>(
     async (prompt, options) => {
-      const timestamp = Date.now()
-      const userId = nextClaudeMessageId(sessionKey)
-      const displayPrompt = options?.displayPrompt ?? prompt
-      const turnOptions = { ...(options ?? {}) }
-      delete (turnOptions as { displayPrompt?: string }).displayPrompt
-      updateClaudeChatMessages(sessionKey, messages => [
-        ...messages,
-        {
-          id: userId,
-          kind: 'message',
-          role: 'user',
-          content: displayPrompt,
-          timestamp,
-        },
-      ])
-      await window.orxa.claudeChat.startTurn(sessionKey, directory, prompt, {
-        cwd: directory,
-        ...turnOptions,
+      await startClaudeTurnWithOptimisticState({
+        directory,
+        sessionKey,
+        prompt,
+        options,
+        updateClaudeChatMessages,
+        setClaudeChatConnectionState,
+        setClaudeChatStreaming,
       })
     },
-    [directory, sessionKey, updateClaudeChatMessages]
+    [
+      directory,
+      sessionKey,
+      setClaudeChatConnectionState,
+      setClaudeChatStreaming,
+      updateClaudeChatMessages,
+    ]
   )
 
   const interruptTurn = useCallback(async () => {

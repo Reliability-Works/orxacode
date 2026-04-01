@@ -40,7 +40,7 @@ type OrxaBridge = {
   app: { openExternal: (url: string) => Promise<unknown>; listDiagnostics: (limit?: number) => Promise<unknown>; reportRendererDiagnostic: (input: unknown) => Promise<unknown> }
   opencode: { getArtifactRetentionPolicy: () => Promise<unknown>; setArtifactRetentionPolicy: (input: unknown) => Promise<unknown>; pruneArtifactsNow: (workspace?: string) => Promise<unknown>; exportArtifactBundle: (input: unknown) => Promise<unknown> }
   claudeChat: { listSessions: () => Promise<unknown>; resumeProviderSession: (providerThreadId: string, directory: string) => Promise<unknown> }
-  codex: { listWorkspaceThreads: (workspaceRoot: string) => Promise<unknown>; resumeThread: (threadId: string) => Promise<unknown>; archiveThreadTree: (threadId: string) => Promise<unknown>; setThreadName: (threadId: string, name: string) => Promise<unknown>; generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>; steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>; interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown> }
+  codex: { listBrowserThreads: () => Promise<unknown>; listWorkspaceThreads: (workspaceRoot: string) => Promise<unknown>; resumeThread: (threadId: string) => Promise<unknown>; resumeProviderThread: (threadId: string, directory: string) => Promise<unknown>; archiveThreadTree: (threadId: string) => Promise<unknown>; setThreadName: (threadId: string, name: string) => Promise<unknown>; generateRunMetadata: (cwd: string, prompt: string) => Promise<unknown>; steerTurn: (threadId: string, turnId: string, prompt: string) => Promise<unknown>; interruptThreadTree: (threadId: string, turnId?: string) => Promise<unknown> }
   browser: { getState: () => Promise<unknown>; setVisible: (visible: boolean) => Promise<unknown>; setBounds: (bounds: unknown) => Promise<unknown>; openTab: (url?: string, activate?: boolean) => Promise<unknown>; closeTab: (tabID?: string) => Promise<unknown>; switchTab: (tabID: string) => Promise<unknown>; navigate: (url: string, tabID?: string) => Promise<unknown>; back: (tabID?: string) => Promise<unknown>; forward: (tabID?: string) => Promise<unknown>; reload: (tabID?: string) => Promise<unknown>; listHistory: (limit?: number) => Promise<unknown>; clearHistory: () => Promise<unknown>; performAgentAction: (request: unknown) => Promise<unknown> }
 }
 
@@ -200,6 +200,9 @@ describe('preload codex bridge', () => {
     const bridge = await loadBridge()
     electronMocks.invoke.mockResolvedValue(undefined)
 
+    await bridge.codex.listBrowserThreads()
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexListBrowserThreads)
+
     await bridge.codex.listWorkspaceThreads('/repo')
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(
       IPC.codexListWorkspaceThreads,
@@ -211,6 +214,13 @@ describe('preload codex bridge', () => {
 
     await bridge.codex.resumeThread('thread-1')
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(IPC.codexResumeThread, 'thread-1')
+
+    await bridge.codex.resumeProviderThread('thread-1', '/repo')
+    expect(electronMocks.invoke).toHaveBeenLastCalledWith(
+      IPC.codexResumeProviderThread,
+      'thread-1',
+      '/repo'
+    )
 
     await bridge.codex.setThreadName('thread-1', 'New Name')
     expect(electronMocks.invoke).toHaveBeenLastCalledWith(

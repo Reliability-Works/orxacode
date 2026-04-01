@@ -28,6 +28,10 @@ type CreateSessionContext = {
     }
   ) => Promise<string | undefined>
   describeClaudeHealthFailure: (sessionLabel: string, health: ClaudeChatHealthStatus) => string
+  findReusableDraftSession: (
+    directory: string,
+    type: SyntheticSessionType
+  ) => LocalProviderSessionRecord | undefined
   markSessionUsed: (sessionID: string) => void
   registerLocalProviderSession: (record: LocalProviderSessionRecord) => LocalProviderSessionRecord
   selectProject: (directory: string) => Promise<void>
@@ -146,6 +150,7 @@ async function createLocalProviderSession(
     CreateSessionContext,
     | 'activeProjectDir'
     | 'clearPendingSession'
+    | 'findReusableDraftSession'
     | 'markSessionUsed'
     | 'registerLocalProviderSession'
     | 'selectProject'
@@ -161,6 +166,7 @@ async function createLocalProviderSession(
   const {
     activeProjectDir,
     clearPendingSession,
+    findReusableDraftSession,
     markSessionUsed,
     registerLocalProviderSession,
     selectProject,
@@ -175,6 +181,28 @@ async function createLocalProviderSession(
 
   if (activeProjectDir !== intent.targetDirectory) {
     await selectProject(intent.targetDirectory)
+  }
+
+  const reusableDraft =
+    options.draft
+      ? findReusableDraftSession(intent.targetDirectory, intent.sessionType)
+      : undefined
+  if (reusableDraft) {
+    const scopedSessionKey = buildWorkspaceSessionMetadataKey(
+      intent.targetDirectory,
+      reusableDraft.sessionID
+    )
+    applyStructuredSessionMetadata(scopedSessionKey, intent.sessionType, reusableDraft.title, {
+      setManualSessionTitles,
+      setSessionTitles,
+      setSessionTypes,
+    })
+    setSidebarMode('projects')
+    setActiveProjectDir(intent.targetDirectory)
+    setActiveSessionID(reusableDraft.sessionID)
+    clearPendingSession()
+    setStatusLine('Session created')
+    return
   }
 
   const record = registerLocalProviderSession(
@@ -265,6 +293,7 @@ export async function createSessionAction(
     clearPendingSession,
     createWorkspaceSession,
     describeClaudeHealthFailure,
+    findReusableDraftSession,
     markSessionUsed,
     registerLocalProviderSession,
     selectProject,
@@ -302,6 +331,7 @@ export async function createSessionAction(
     }, {
       activeProjectDir,
       clearPendingSession,
+      findReusableDraftSession,
       markSessionUsed,
       registerLocalProviderSession,
       selectProject,

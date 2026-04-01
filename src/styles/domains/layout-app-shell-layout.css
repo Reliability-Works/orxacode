@@ -1197,6 +1197,14 @@ body.is-resizing * {
 .composer-permission-control:hover {
 }
 
+.composer-guardrail-indicator--warning {
+  color: var(--accent-amber, #f59e0b);
+}
+
+.composer-guardrail-indicator--hard-stop {
+  color: var(--accent-red, #ef4444);
+}
+
 .composer-permission-label {
   font-size: 11px;
   color: var(--text-tertiary);

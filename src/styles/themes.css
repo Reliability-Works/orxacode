@@ -509,7 +509,10 @@
 
 /* Glass: dock panels frost */
 [data-theme='glass'] .dock-surface-panel {
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, #151826 88%, var(--bg-input) 12%);
+  border-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Glass: bottom toolbar pills */
@@ -544,4 +547,20 @@
   backdrop-filter: blur(40px) saturate(1.3);
   -webkit-backdrop-filter: blur(40px) saturate(1.3);
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='glass'] .claude-session-browser-modal,
+[data-theme='glass'] .provider-command-browser-modal,
+[data-theme='glass'] .workspace-detail-modal {
+  background: rgba(9, 10, 18, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(48px) saturate(1.35);
+  -webkit-backdrop-filter: blur(48px) saturate(1.35);
+}
+
+[data-theme='glass'] .claude-session-browser-row,
+[data-theme='glass'] .provider-command-browser-row,
+[data-theme='glass'] .workspace-worktree-row {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
 }

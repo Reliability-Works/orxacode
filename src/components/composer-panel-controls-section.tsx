@@ -13,6 +13,7 @@ import {
 import { ModelPicker } from './composer-panel-model-picker'
 import type { ComposerPanelProps } from './ComposerPanel.impl'
 import type { PermissionMode } from '../types/app'
+import type { SessionGuardrailState } from '../lib/session-controls'
 import { useDismissibleLayer } from './composer/useDismissibleLayer'
 
 type ComposerControlsSectionProps = Pick<
@@ -22,6 +23,7 @@ type ComposerControlsSectionProps = Pick<
   | 'onAgentChange'
   | 'permissionMode'
   | 'onPermissionModeChange'
+  | 'guardrailState'
   | 'isPlanMode'
   | 'hasPlanAgent'
   | 'togglePlanMode'
@@ -357,6 +359,35 @@ function ComposerCompactionIndicator({
   )
 }
 
+function ComposerGuardrailIndicator({
+  guardrailState,
+}: {
+  guardrailState?: SessionGuardrailState
+}) {
+  if (!guardrailState) {
+    return null
+  }
+  const ratio = Math.max(guardrailState.tokenRatio, guardrailState.runtimeRatio)
+  const label =
+    guardrailState.status === 'disabled'
+      ? 'limits off'
+      : `limits ${Math.round(clamp01(ratio) * 100)}%`
+  return (
+    <div
+      className={`composer-permission-control composer-guardrail-indicator composer-guardrail-indicator--${guardrailState.status}`.trim()}
+      title={guardrailState.detail}
+      aria-label={guardrailState.detail}
+    >
+      <Shield size={11} aria-hidden="true" />
+      <span className="composer-pill-label">{label}</span>
+    </div>
+  )
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value))
+}
+
 export const ComposerControlsSection = memo(function ComposerControlsSection(props: ComposerControlsSectionProps) {
   const {
     agentOptions, selectedAgent, onAgentChange, permissionMode, onPermissionModeChange,
@@ -367,6 +398,7 @@ export const ComposerControlsSection = memo(function ComposerControlsSection(pro
     filteredBranches, openBranchCreateModal, modelSelectOptions, selectedModel,
     setSelectedModel, selectedVariant, setSelectedVariant, variantOptions, variantLabel,
     variantEmptyLabel, customControls, compactionProgress, compactionHint, compactionCompacted,
+    guardrailState,
   } = props
 
   return (
@@ -436,6 +468,7 @@ export const ComposerControlsSection = memo(function ComposerControlsSection(pro
       />
       {customControls}
       <div style={{ flex: 1 }} aria-hidden="true" />
+      <ComposerGuardrailIndicator guardrailState={guardrailState} />
       <ComposerCompactionIndicator
         compactionProgress={compactionProgress}
         compactionHint={compactionHint}

@@ -6,6 +6,7 @@ type WorkspaceLandingProps = {
   workspaceName: string
   onPickSession: (type: SessionType) => void
   onBrowseClaudeSessions?: () => void
+  onBrowseCodexSessions?: () => void
 }
 
 const SESSION_OPTIONS: Array<{
@@ -56,6 +57,7 @@ export function WorkspaceLanding({
   workspaceName,
   onPickSession,
   onBrowseClaudeSessions,
+  onBrowseCodexSessions,
 }: WorkspaceLandingProps) {
   const [hoveredType, setHoveredType] = useState<SessionType | null>(null)
 
@@ -86,15 +88,26 @@ export function WorkspaceLanding({
           )
         })}
       </div>
-      {onBrowseClaudeSessions ? (
+      {onBrowseClaudeSessions || onBrowseCodexSessions ? (
         <div className="workspace-landing-secondary-actions">
-          <button
-            type="button"
-            className="workspace-landing-secondary-button"
-            onClick={onBrowseClaudeSessions}
-          >
-            Browse Claude sessions
-          </button>
+          {onBrowseClaudeSessions ? (
+            <button
+              type="button"
+              className="workspace-landing-secondary-button"
+              onClick={onBrowseClaudeSessions}
+            >
+              Browse Claude sessions
+            </button>
+          ) : null}
+          {onBrowseCodexSessions ? (
+            <button
+              type="button"
+              className="workspace-landing-secondary-button"
+              onClick={onBrowseCodexSessions}
+            >
+              Browse Codex threads
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -68,6 +68,12 @@ export function buildDefaultBranchProps(overrides: Record<string, unknown> = {})
     openBranchCreateModal: vi.fn(),
     permissionMode: 'ask-write' as const,
     onPermissionModeChange: vi.fn(),
+    sessionGuardrailPreferences: {
+      enabled: true,
+      tokenBudget: 120000,
+      runtimeBudgetMinutes: 45,
+    },
+    onOpenSettings: vi.fn(),
     ...overrides,
   }
 }

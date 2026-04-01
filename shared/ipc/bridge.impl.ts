@@ -94,9 +94,11 @@ import type {
 import type { UpdateCheckResult, UpdatePreferences } from './updates'
 import type {
   CodexAttachment,
+  CodexBrowserThreadSummary,
   CodexCollaborationMode,
   CodexDoctorResult,
   CodexModelEntry,
+  CodexResumeProviderThreadResult,
   CodexRunMetadata,
   CodexState,
   CodexThreadRuntime,
@@ -376,6 +378,7 @@ export interface OrxaBridge {
       approvalPolicy?: string
       sandbox?: string
     }) => Promise<CodexThread>
+    listBrowserThreads: () => Promise<CodexBrowserThreadSummary[]>
     listWorkspaceThreads: (workspaceRoot: string) => Promise<CodexWorkspaceThreadEntry[]>
     listThreads: (options?: {
       cursor?: string | null
@@ -384,6 +387,10 @@ export interface OrxaBridge {
     }) => Promise<{ threads: CodexThread[]; nextCursor?: string }>
     getThreadRuntime: (threadId: string) => Promise<CodexThreadRuntime>
     resumeThread: (threadId: string) => Promise<Record<string, unknown>>
+    resumeProviderThread: (
+      threadId: string,
+      directory: string
+    ) => Promise<CodexResumeProviderThreadResult>
     archiveThreadTree: (threadId: string) => Promise<void>
     setThreadName: (threadId: string, name: string) => Promise<void>
     generateRunMetadata: (cwd: string, prompt: string) => Promise<CodexRunMetadata>

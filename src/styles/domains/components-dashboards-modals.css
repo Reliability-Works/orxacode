@@ -132,7 +132,7 @@
   max-height: 720px;
   display: grid;
   grid-template-rows: auto 1fr;
-  background: rgba(12, 13, 22, 0.96);
+  background: rgba(10, 11, 18, 0.985);
 }
 
 .claude-session-browser-modal {
@@ -140,12 +140,19 @@
   max-height: 720px;
   display: grid;
   grid-template-rows: auto 1fr;
-  background: rgba(12, 13, 22, 0.97);
+  background: color-mix(in srgb, #0a0b12 92%, var(--bg-surface) 8%);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.provider-command-browser-modal {
+  width: min(860px, 94vw);
 }
 
 .overlay--session-list {
-  background: rgba(2, 3, 8, 0.84);
-  backdrop-filter: blur(10px);
+  background: rgba(2, 3, 8, 0.94);
+  backdrop-filter: blur(18px);
 }
 
 .workspace-detail-modal-body {
@@ -257,7 +264,7 @@
 
 .claude-session-browser-row {
   border: 1px solid rgba(255, 255, 255, 0.04);
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.032);
 }
 
 .claude-session-browser-preview {
@@ -268,6 +275,144 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.provider-command-browser-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.provider-command-browser-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.provider-command-browser-search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--text-muted);
+}
+
+.provider-command-browser-search-input input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.provider-command-browser-source-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.provider-command-browser-source-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.provider-command-browser-source {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.provider-command-browser-list {
+  gap: 10px;
+}
+
+.provider-command-browser-row {
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.provider-command-browser-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.provider-command-browser-command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.provider-command-browser-command-name {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.provider-command-browser-description {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 72ch;
+}
+
+.provider-command-browser-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.provider-command-browser-status--mapped {
+  color: var(--accent-green);
+  background: color-mix(in srgb, var(--accent-green) 18%, transparent);
+}
+
+.provider-command-browser-status--planned {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.provider-command-browser-status--reference {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.provider-command-browser-equivalent {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  max-width: 72ch;
 }
 
 .workspace-detail-launch-actions,
@@ -594,8 +739,8 @@
   inset: 0;
   display: grid;
   place-items: center;
-  background: #00000099;
-  backdrop-filter: blur(4px);
+  background: rgba(3, 4, 8, 0.88);
+  backdrop-filter: blur(10px);
   z-index: 45;
 }
 
@@ -604,8 +749,10 @@
   max-height: 86vh;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
-  background: var(--bg-surface);
-  box-shadow: var(--shadow);
+  background: color-mix(in srgb, var(--bg-surface) 95%, #05060a 5%);
+  box-shadow:
+    0 24px 80px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
   overflow: auto;
 }
 

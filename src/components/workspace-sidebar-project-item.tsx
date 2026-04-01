@@ -38,6 +38,7 @@ export type WorkspaceSidebarProjectItemProps = {
   selectProject: WorkspaceSidebarViewProps['selectProject']
   createSession: WorkspaceSidebarViewProps['createSession']
   openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
+  openCodexSessionBrowser: WorkspaceSidebarViewProps['openCodexSessionBrowser']
   openSession: WorkspaceSidebarViewProps['openSession']
   togglePinSession: WorkspaceSidebarViewProps['togglePinSession']
   archiveSession: WorkspaceSidebarViewProps['archiveSession']
@@ -118,6 +119,7 @@ function WorkspaceProjectHeader({
   setPickerOpenForProject,
   createSession,
   openClaudeSessionBrowser,
+  openCodexSessionBrowser,
 }: {
   isActiveProject: boolean
   isExpanded: boolean
@@ -130,6 +132,7 @@ function WorkspaceProjectHeader({
   setPickerOpenForProject: Dispatch<SetStateAction<string | null>>
   createSession: WorkspaceSidebarViewProps['createSession']
   openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
+  openCodexSessionBrowser: WorkspaceSidebarViewProps['openCodexSessionBrowser']
 }) {
   return (
     <div className="project-item-header">
@@ -188,6 +191,10 @@ function WorkspaceProjectHeader({
           onBrowseClaudeSessions={() => {
             setPickerOpenForProject(null)
             openClaudeSessionBrowser(project.worktree)
+          }}
+          onBrowseCodexSessions={() => {
+            setPickerOpenForProject(null)
+            openCodexSessionBrowser(project.worktree)
           }}
           onClose={() => setPickerOpenForProject(null)}
         />
@@ -379,6 +386,7 @@ export function WorkspaceProjectItem({
   selectProject,
   createSession,
   openClaudeSessionBrowser,
+  openCodexSessionBrowser,
   openSession,
   togglePinSession,
   archiveSession,
@@ -417,6 +425,7 @@ export function WorkspaceProjectItem({
         setPickerOpenForProject={setPickerOpenForProject}
         createSession={createSession}
         openClaudeSessionBrowser={openClaudeSessionBrowser}
+        openCodexSessionBrowser={openCodexSessionBrowser}
       />
       {isExpanded ? (
         <WorkspaceProjectSessionList

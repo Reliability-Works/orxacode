@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { createElement, useMemo, useRef } from 'react'
 import { useCodexSession } from '../hooks/useCodexSession'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
 import type { CodexPaneViewProps } from './CodexPane.view'
@@ -8,6 +8,8 @@ import { useCodexPaneBootstrap } from './useCodexPaneBootstrap'
 import { useCodexPaneComposer } from './useCodexPaneComposer'
 import { useCodexPaneNotifications } from './useCodexPaneNotifications'
 import { useCodexPaneSubagentState } from './useCodexPaneSubagentState'
+import { useCodexSessionControls } from '../hooks/useSessionControls'
+import { ProviderCommandBrowserControl } from './ProviderCommandBrowserControl'
 
 function buildComposerPlaceholder({
   connectionStatus,
@@ -47,15 +49,18 @@ function buildComposerProps(args: {
   session: ReturnType<typeof useCodexSession>
   composerPlaceholder: string
   subagents: ReturnType<typeof useCodexPaneSubagentState>
+  controls: ReturnType<typeof useCodexSessionControls>
 }): CodexPaneComposerPanelProps {
-  const { pane, bootstrap, composer, permissionDockProps, session, composerPlaceholder, subagents } = args
+  const { pane, bootstrap, composer, permissionDockProps, session, composerPlaceholder, subagents, controls } = args
   return {
     input: composer.input,
     setInput: composer.setInput,
     composerAttachments: composer.composerAttachments,
     removeAttachment: composer.removeAttachment,
     addComposerAttachments: composer.addComposerAttachments,
-    sendPrompt: composer.sendPrompt,
+    sendPrompt: async () => {
+      await controls.withGuardrails(composer.sendPrompt)
+    },
     abortActiveSession: composer.abortActiveSession,
     isSessionBusy: session.isStreaming,
     pickImageAttachment: composer.pickImageAttachment,
@@ -67,6 +72,13 @@ function buildComposerProps(args: {
     setSelectedCollabMode: bootstrap.setSelectedCollabMode,
     permissionMode: pane.permissionMode,
     onPermissionModeChange: pane.onPermissionModeChange,
+    guardrailState: controls.guardrailState,
+    guardrailPrompt: controls.guardrailPrompt,
+    onDismissGuardrailWarning: controls.dismissGuardrailWarning,
+    onContinueGuardrailOnce: controls.continueOnce,
+    onDisableGuardrailsForSession: controls.disableGuardrailsForSession,
+    onOpenSettings: pane.onOpenSettings,
+    compactionState: controls.compactionState,
     branchMenuOpen: pane.branchMenuOpen,
     setBranchMenuOpen: pane.setBranchMenuOpen,
     branchControlWidthCh: pane.branchControlWidthCh,
@@ -89,6 +101,7 @@ function buildComposerProps(args: {
     selectedReasoningEffort: bootstrap.selectedReasoningEffort,
     setSelectedReasoningEffort: bootstrap.setSelectedReasoningEffort,
     reasoningEffortOptions: bootstrap.reasoningEffortOptions,
+    customControls: createElement(ProviderCommandBrowserControl, { provider: 'codex' }),
     placeholder: composerPlaceholder,
     backgroundAgents: subagents.effectiveBackgroundAgents,
     selectedBackgroundAgentId: session.activeSubagentThreadId,
@@ -104,13 +117,18 @@ function buildComposerProps(args: {
     todoItems: subagents.effectiveTodoItems.length > 0 ? subagents.effectiveTodoItems : undefined,
     todoOpen: subagents.todoOpen,
     onTodoToggle: subagents.toggleTodoOpen,
-    reviewChangesFiles: subagents.showReviewChangesDrawer ? subagents.reviewChangesFiles : undefined,
+    sessionChangeTargets: controls.revertTargets,
     onOpenReviewChange: subagents.handleOpenReviewChange,
+    onRevertSessionChange: async targetId => {
+      await controls.revertTarget(targetId)
+    },
     queuedMessages: composer.codexQueue,
     sendingQueuedId: composer.codexSendingId,
     onQueueMessage: composer.queueCodexMessage,
     queuedActionKind: 'steer',
-    onPrimaryQueuedAction: composer.queuedAction,
+    onPrimaryQueuedAction: async id => {
+      await controls.withGuardrails(() => composer.queuedAction(id))
+    },
     onEditQueued: composer.editCodexQueued,
     onRemoveQueued: composer.removeCodexQueued,
     browserModeEnabled: pane.browserModeEnabled,
@@ -200,7 +218,15 @@ function useCodexPaneRuntime(pane: CodexPaneProps) {
     subagents: session.subagents,
     threadId: session.thread?.id ?? codexRuntime?.runtimeSnapshot?.thread?.id ?? undefined,
   })
-  return { bootstrap, composer, notifications, session, subagents }
+  const controls = useCodexSessionControls({
+    sessionKey: pane.sessionStorageKey,
+    directory: pane.directory,
+    preferences: pane.sessionGuardrailPreferences,
+    messages: session.messages,
+    observedTokenTotal: codexRuntime?.observedTokenTotal ?? 0,
+    turnTokenTotals: codexRuntime?.turnTokenTotals ?? [],
+  })
+  return { bootstrap, composer, controls, notifications, session, subagents }
 }
 
 export function useCodexPaneViewProps(pane: CodexPaneProps): CodexPaneViewProps {
@@ -245,6 +271,7 @@ export function useCodexPaneViewProps(pane: CodexPaneProps): CodexPaneViewProps 
       session: runtime.session,
       composerPlaceholder,
       subagents: runtime.subagents,
+      controls: runtime.controls,
     }),
   }
 }

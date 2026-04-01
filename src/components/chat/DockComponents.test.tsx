@@ -166,14 +166,24 @@ describe('ReviewChangesDock', () => {
     },
   ]
 
-  it('renders review changes label and file count', () => {
-    render(<ReviewChangesDock files={files} open={false} onToggle={() => {}} />)
+  const targets = [
+    {
+      id: 'turn-1',
+      label: 'Fix component state',
+      timestamp: 1,
+      files,
+      canRevert: true,
+    },
+  ]
+
+  it('renders review changes label and turn count', () => {
+    render(<ReviewChangesDock targets={targets} open={false} onToggle={() => {}} />)
     expect(screen.getByText('Review changes')).toBeInTheDocument()
-    expect(screen.getByText('2 files')).toBeInTheDocument()
+    expect(screen.getByText('1 turn')).toBeInTheDocument()
   })
 
   it('renders diff blocks when open', () => {
-    render(<ReviewChangesDock files={files} open={true} onToggle={() => {}} />)
+    render(<ReviewChangesDock targets={targets} open={true} onToggle={() => {}} />)
     expect(screen.getByText('src/a.ts')).toBeInTheDocument()
     expect(screen.getByText('src/b.ts')).toBeInTheDocument()
   })

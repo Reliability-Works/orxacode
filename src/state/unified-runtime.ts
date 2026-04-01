@@ -147,6 +147,12 @@ export type UnifiedThreadRecord = {
   planItems: TodoItem[]
 }
 
+export type UnifiedTurnTokenSample = {
+  turnId: string
+  total: number
+  timestamp: number
+}
+
 export type UnifiedOpencodeSessionRuntime = {
   key: string
   directory: string
@@ -170,6 +176,8 @@ export type UnifiedCodexSessionRuntime = {
   lastError?: string
   threadName?: string
   planItems: TodoItem[]
+  observedTokenTotal?: number
+  turnTokenTotals?: UnifiedTurnTokenSample[]
   dismissedPlanIds: string[]
   subagents: SubagentInfo[]
   activeSubagentThreadId: string | null
@@ -193,6 +201,8 @@ export type UnifiedClaudeChatSessionRuntime = {
   pendingUserInput: ClaudeChatUserInputRequest | null
   isStreaming: boolean
   lastError?: string
+  observedTokenTotal?: number
+  turnTokenTotals?: UnifiedTurnTokenSample[]
   subagents: ClaudeChatSubagentState[]
 }
 

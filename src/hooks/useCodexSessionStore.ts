@@ -367,10 +367,13 @@ function useCodexSessionComplexSetters(sessionKey: string) {
 function useCodexSessionStoreActions() {
   const initCodexSession = useUnifiedRuntimeStore(state => state.initCodexSession)
   const setCodexRuntimeSnapshot = useUnifiedRuntimeStore(state => state.setCodexRuntimeSnapshot)
+  const setCodexTurnUsage = useUnifiedRuntimeStore(state => state.setCodexTurnUsage)
 
   return {
     initCodexSession,
     setCodexRuntimeSnapshot,
+    setObservedTurnUsage: (sessionKey: string, turnId: string, total: number, timestamp: number) =>
+      setCodexTurnUsage(sessionKey, turnId, total, timestamp),
   }
 }
 

@@ -2045,6 +2045,54 @@
   display: none;
 }
 
+.review-changes-target {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.review-changes-target:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.review-changes-target-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-changes-target-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-changes-target-meta strong {
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.review-changes-target-time,
+.review-changes-target-reason,
+.guardrail-dock-detail {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.review-changes-target-files {
+  display: grid;
+  gap: 6px;
+}
+
+.guardrail-dock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .todo-progress {
   font-size: 12px;
   line-height: 1;

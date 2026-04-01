@@ -45,6 +45,47 @@ export function normalizeCommandText(value: unknown) {
   return asString(value).trim()
 }
 
+function readTokenUsageTotal(params: Record<string, unknown>) {
+  const usageRecord = readUsageRecord(params)
+  if (!usageRecord) {
+    return null
+  }
+  const total = readUsageNumber(usageRecord, ['total', 'total_tokens'])
+  if (typeof total === 'number' && total > 0) {
+    return total
+  }
+  const input = readUsageNumber(usageRecord, ['input', 'input_tokens'])
+  const output = readUsageNumber(usageRecord, ['output', 'output_tokens'])
+  if (typeof input === 'number' || typeof output === 'number') {
+    const nextTotal = (input ?? 0) + (output ?? 0)
+    return nextTotal > 0 ? nextTotal : null
+  }
+  return null
+}
+
+function readUsageRecord(params: Record<string, unknown>) {
+  const turnRecord =
+    params.turn && typeof params.turn === 'object' && !Array.isArray(params.turn)
+      ? (params.turn as Record<string, unknown>)
+      : null
+  const usageRecord =
+    params.usage ?? turnRecord?.tokenUsage ?? turnRecord?.token_usage ?? turnRecord?.usage
+  if (!usageRecord || typeof usageRecord !== 'object' || Array.isArray(usageRecord)) {
+    return null
+  }
+  return usageRecord as Record<string, unknown>
+}
+
+function readUsageNumber(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'number') {
+      return value
+    }
+  }
+  return null
+}
+
 export function normalizeWorkspaceRelativePath(rawPath: string, workspaceDirectory: string) {
   const normalizedPath = rawPath.trim().replace(/\\/g, '/')
   const normalizedWorkspace = workspaceDirectory.trim().replace(/\\/g, '/').replace(/\/+$/g, '')
@@ -84,6 +125,7 @@ export interface NotificationDispatchContext {
 
   // Callbacks
   setStreamingState: (next: boolean) => void
+  setObservedTurnUsage?: (turnId: string, total: number, timestamp: number) => void
   setMessagesState: (
     next: CodexMessageItem[] | ((prev: CodexMessageItem[]) => CodexMessageItem[])
   ) => void
@@ -212,9 +254,14 @@ function handleTurnStarted(
 // ---------------------------------------------------------------------------
 
 function handleTurnCompleted(
-  _params: Record<string, unknown>,
+  params: Record<string, unknown>,
   ctx: NotificationDispatchContext
 ): void {
+  const turnId = readTurnId(params)
+  const tokenTotal = readTokenUsageTotal(params)
+  if (turnId && typeof tokenTotal === 'number' && tokenTotal > 0) {
+    ctx.setObservedTurnUsage?.(turnId, tokenTotal, Date.now())
+  }
   ctx.pendingInterruptRef.current = false
   ctx.interruptRequestedRef.current = false
   ctx.setStreamingState(false)

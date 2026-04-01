@@ -4,9 +4,11 @@ import { EventEmitter } from 'node:events'
 import type {
   CodexApprovalRequest,
   CodexAttachment,
+  CodexBrowserThreadSummary,
   CodexCollaborationMode,
   CodexModelEntry,
   CodexNotification,
+  CodexResumeProviderThreadResult,
   CodexRunMetadata,
   CodexState,
   CodexThread,
@@ -14,6 +16,11 @@ import type {
 } from '@shared/ipc'
 import { ProviderSessionDirectory } from './provider-session-directory'
 import type { PendingRequest } from './codex-service-types'
+import {
+  listCodexBrowserThreadsWithCache,
+  resumeCodexProviderThread,
+  type CodexBrowserThreadCache,
+} from './codex-service-browser'
 import {
   asRecord,
   asString,
@@ -72,6 +79,7 @@ export class CodexService extends EventEmitter {
     { model?: string; reasoningEffort?: string | null }
   >()
   private readonly hydratedThreadIds = new Set<string>()
+  private cachedBrowserThreads: CodexBrowserThreadCache | null = null
 
   constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
     super()
@@ -84,7 +92,6 @@ export class CodexService extends EventEmitter {
   get state(): CodexState { return { ...this._state } }
   get models(): CodexModelEntry[] { return [...this._models] }
   get collaborationModes(): CodexCollaborationMode[] { return [...this._collaborationModes] }
-
   async start(
     cwd?: string,
     options?: { codexPath?: string; codexArgs?: string }
@@ -95,7 +102,6 @@ export class CodexService extends EventEmitter {
     if (this.startPromise) {
       return this.startPromise
     }
-
     const startPromise = this.startInternal(cwd, options)
     this.startPromise = startPromise
     try {
@@ -113,7 +119,6 @@ export class CodexService extends EventEmitter {
   ): Promise<CodexState> {
     this._state = { status: 'connecting' }
     this.emit('state', this._state)
-
     try {
       const codexBin = options?.codexPath?.trim() || resolveCodexBinary()
       if (!codexBin) {
@@ -124,7 +129,6 @@ export class CodexService extends EventEmitter {
         this.emit('state', this._state)
         return this.state
       }
-
       const extraArgs = options?.codexArgs?.trim().split(/\s+/).filter(Boolean) ?? []
       const args = ['app-server', ...extraArgs]
       console.info(`[CodexService] Spawning: ${codexBin} ${args.join(' ')}`)
@@ -133,23 +137,19 @@ export class CodexService extends EventEmitter {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env },
       })
-
       this.process = child
-
       child.on('error', err => {
         console.error('[CodexService] Process error:', err.message)
         this._state = { status: 'error', lastError: err.message }
         this.emit('state', this._state)
         this.cleanup()
       })
-
       child.on('exit', (code, signal) => {
         console.info('[CodexService] Process exited, code:', code, 'signal:', signal)
         this._state = { status: 'disconnected' }
         this.emit('state', this._state)
         this.cleanup()
       })
-
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString()
         if (isIgnorableCodexStderr(text)) {
@@ -159,7 +159,6 @@ export class CodexService extends EventEmitter {
         console.error('[CodexService] stderr:', text)
         this.emit('stderr', text)
       })
-
       const rl = createInterface({ input: child.stdout!, terminal: false })
       this.readline = rl
       rl.on('line', line => this.handleLine(line))
@@ -172,7 +171,6 @@ export class CodexService extends EventEmitter {
         serverInfo?: { name: string; version: string }
         userAgent?: { name: string; version: string }
       }
-
       this.sendNotification('initialized', {})
       try {
         const modelResult = await this.request('model/list', {})
@@ -229,12 +227,13 @@ export class CodexService extends EventEmitter {
       cleanupThreadMappings: this.cleanupThreadMappings.bind(this),
     }
   }
-
   async startThread(params: { model?: string; cwd?: string; approvalPolicy?: string; sandbox?: string; title?: string }): Promise<CodexThread> { return startCodexThread(this.getThreadOpsContext(), params) }
+  async listBrowserThreads(): Promise<CodexBrowserThreadSummary[]> { const cache = await listCodexBrowserThreadsWithCache({ cachedBrowserThreads: this.cachedBrowserThreads, providerSessionDirectory: this.providerSessionDirectory, context: this.getThreadOpsContext() }); this.cachedBrowserThreads = cache; return cache.value }
   async listWorkspaceThreads(workspaceRoot: string) { return listWorkspaceCodexThreads(this.getThreadOpsContext(), workspaceRoot) }
   async listThreads(params?: { cursor?: string | null; limit?: number; archived?: boolean }): Promise<{ threads: CodexThread[]; nextCursor?: string }> { return listCodexThreads(this.getThreadOpsContext(), params) }
   async getThreadRuntime(threadId: string): Promise<CodexThreadRuntime> { return getCodexThreadRuntime(this.getThreadOpsContext(), threadId) }
   async resumeThread(threadId: string): Promise<Record<string, unknown>> { return resumeCodexThread(this.getThreadOpsContext(), threadId) }
+  async resumeProviderThread(threadId: string, directory: string): Promise<CodexResumeProviderThreadResult> { const resumed = await resumeCodexProviderThread({ threadId, directory, threads: await this.listBrowserThreads(), providerSessionDirectory: this.providerSessionDirectory, context: this.getThreadOpsContext() }); this.cachedBrowserThreads = null; return resumed }
   async archiveThread(threadId: string): Promise<void> { return archiveCodexThread(this.getThreadOpsContext(), threadId) }
   async archiveThreadTree(rootThreadId: string): Promise<void> { return archiveCodexThreadTree(this.getThreadOpsContext(), rootThreadId) }
   async setThreadName(threadId: string, name: string): Promise<void> { return setCodexThreadName(this.getThreadOpsContext(), threadId, name) }
@@ -254,15 +253,12 @@ export class CodexService extends EventEmitter {
       if (!this.process?.stdin?.writable) {
         return reject(new Error('Codex process is not running'))
       }
-
       const id = this.nextId++
       const timer = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`Timeout waiting for response to ${method} (id=${id})`))
       }, REQUEST_TIMEOUT_MS)
-
       this.pending.set(id, { resolve, reject, timer })
-
       const msg = { method, id, params }
       this.process.stdin.write(JSON.stringify(msg) + '\n')
     })
@@ -293,7 +289,6 @@ export class CodexService extends EventEmitter {
   private handleLine(line: string): void {
     const trimmed = line.trim()
     if (!trimmed) return
-
     let msg: Record<string, unknown>
     try {
       msg = JSON.parse(trimmed) as Record<string, unknown>

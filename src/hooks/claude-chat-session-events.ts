@@ -51,6 +51,12 @@ export type ClaudeChatSessionEventContext = {
     value: ClaudeChatUserInputRequest | null
   ) => void
   setClaudeChatStreaming: (sessionKey: string, value: boolean) => void
+  setClaudeChatTurnUsage: (
+    sessionKey: string,
+    turnId: string,
+    total: number,
+    timestamp: number
+  ) => void
   setClaudeChatSubagents: (
     sessionKey: string,
     updater:
@@ -69,6 +75,28 @@ function readString(value: unknown) {
 
 function readNumber(value: unknown) {
   return typeof value === 'number' ? value : undefined
+}
+
+function readUsageTotal(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const snakeInput = readNumber(record.input_tokens)
+  const snakeOutput = readNumber(record.output_tokens)
+  const camelInput = readNumber(record.inputTokens)
+  const camelOutput = readNumber(record.outputTokens)
+  const candidates = [
+    readNumber(record.total),
+    readNumber(record.total_tokens),
+    typeof snakeInput === 'number' || typeof snakeOutput === 'number'
+      ? (snakeInput ?? 0) + (snakeOutput ?? 0)
+      : undefined,
+    typeof camelInput === 'number' || typeof camelOutput === 'number'
+      ? (camelInput ?? 0) + (camelOutput ?? 0)
+      : undefined,
+  ]
+  return candidates.find(candidate => typeof candidate === 'number' && candidate > 0)
 }
 
 function handleThreadStarted(
@@ -137,6 +165,10 @@ function handleAssistantMessage(
   context.updateClaudeChatMessages(context.sessionKey, messages =>
     upsertAssistantMessage(messages, id, content, timestamp)
   )
+  const total = readUsageTotal(params.usage)
+  if (turnId && typeof total === 'number' && total > 0) {
+    context.setClaudeChatTurnUsage(context.sessionKey, turnId, total, timestamp)
+  }
 }
 
 function handleToolProgress(

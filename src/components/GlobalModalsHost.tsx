@@ -6,6 +6,7 @@ import type {
 } from '@opencode-ai/sdk/v2/client'
 import type {
   ClaudeBrowserSessionSummary,
+  CodexBrowserThreadSummary,
   ProjectListItem,
   RuntimeDependencyReport,
   RuntimeProfile,
@@ -25,6 +26,7 @@ import {
 } from './global-modals-host-sections'
 import { BranchCreateModal } from './BranchCreateModal'
 import { ClaudeSessionBrowserModal } from './ClaudeSessionBrowserModal'
+import { CodexSessionBrowserModal } from './CodexSessionBrowserModal'
 import {
   CommitFlowModal,
   CommitModal,
@@ -67,11 +69,18 @@ export type GlobalModalsHostProps = {
   setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>
   claudeSessionBrowserOpen: boolean
   setClaudeSessionBrowserOpen: Dispatch<SetStateAction<boolean>>
+  codexSessionBrowserOpen: boolean
+  setCodexSessionBrowserOpen: Dispatch<SetStateAction<boolean>>
   claudeBrowserSessions: ClaudeBrowserSessionSummary[]
   claudeBrowserSessionsLoading: boolean
+  codexBrowserThreads: CodexBrowserThreadSummary[]
+  codexBrowserThreadsLoading: boolean
   selectedClaudeBrowserWorkspace: string
   setSelectedClaudeBrowserWorkspace: (directory: string) => void
+  selectedCodexBrowserWorkspace: string
+  setSelectedCodexBrowserWorkspace: (directory: string) => void
   openClaudeBrowserSession: (session: ClaudeBrowserSessionSummary) => Promise<void>
+  openCodexBrowserThread: (thread: CodexBrowserThreadSummary) => Promise<void>
   sessions: WorkspaceDetailSessionEntry[]
   workspaceWorktrees: WorkspaceWorktree[]
   workspaceWorktreesLoading: boolean
@@ -225,16 +234,7 @@ function WorkspaceAndCommitModals({
         activeSessionID={props.activeSessionID}
         openSession={props.openSession}
       />
-      <ClaudeSessionBrowserModal
-        isOpen={props.claudeSessionBrowserOpen}
-        setIsOpen={props.setClaudeSessionBrowserOpen}
-        sessions={props.claudeBrowserSessions}
-        loading={props.claudeBrowserSessionsLoading}
-        projects={props.projects}
-        selectedWorkspaceDirectory={props.selectedClaudeBrowserWorkspace}
-        setSelectedWorkspaceDirectory={props.setSelectedClaudeBrowserWorkspace}
-        onOpenSession={props.openClaudeBrowserSession}
-      />
+      <ProviderSessionBrowserModals props={props} />
       <BranchCreateModal
         branchCreateModalOpen={props.branchCreateModalOpen}
         setBranchCreateModalOpen={props.setBranchCreateModalOpen}
@@ -268,6 +268,54 @@ function WorkspaceAndCommitModals({
       <CommitFlowModal
         commitFlowState={props.commitFlowState}
         dismissCommitFlowState={props.dismissCommitFlowState}
+      />
+    </>
+  )
+}
+
+function ProviderSessionBrowserModals({
+  props,
+}: {
+  props: Pick<
+    GlobalModalsHostProps,
+    | 'claudeSessionBrowserOpen'
+    | 'setClaudeSessionBrowserOpen'
+    | 'claudeBrowserSessions'
+    | 'claudeBrowserSessionsLoading'
+    | 'selectedClaudeBrowserWorkspace'
+    | 'setSelectedClaudeBrowserWorkspace'
+    | 'openClaudeBrowserSession'
+    | 'codexSessionBrowserOpen'
+    | 'setCodexSessionBrowserOpen'
+    | 'codexBrowserThreads'
+    | 'codexBrowserThreadsLoading'
+    | 'selectedCodexBrowserWorkspace'
+    | 'setSelectedCodexBrowserWorkspace'
+    | 'openCodexBrowserThread'
+    | 'projects'
+  >
+}) {
+  return (
+    <>
+      <ClaudeSessionBrowserModal
+        isOpen={props.claudeSessionBrowserOpen}
+        setIsOpen={props.setClaudeSessionBrowserOpen}
+        sessions={props.claudeBrowserSessions}
+        loading={props.claudeBrowserSessionsLoading}
+        projects={props.projects}
+        selectedWorkspaceDirectory={props.selectedClaudeBrowserWorkspace}
+        setSelectedWorkspaceDirectory={props.setSelectedClaudeBrowserWorkspace}
+        onOpenSession={props.openClaudeBrowserSession}
+      />
+      <CodexSessionBrowserModal
+        isOpen={props.codexSessionBrowserOpen}
+        setIsOpen={props.setCodexSessionBrowserOpen}
+        threads={props.codexBrowserThreads}
+        loading={props.codexBrowserThreadsLoading}
+        projects={props.projects}
+        selectedWorkspaceDirectory={props.selectedCodexBrowserWorkspace}
+        setSelectedWorkspaceDirectory={props.setSelectedCodexBrowserWorkspace}
+        onOpenThread={props.openCodexBrowserThread}
       />
     </>
   )

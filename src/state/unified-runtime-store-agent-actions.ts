@@ -3,6 +3,7 @@ import {
   ensureClaudeChatSession,
   ensureClaudeSession,
   ensureCodexSession,
+  upsertTurnTokenSample,
 } from './unified-runtime-store-helpers'
 
 type UnifiedRuntimeAgentActions = Pick<
@@ -16,6 +17,7 @@ type UnifiedRuntimeAgentActions = Pick<
   | 'setClaudeChatPendingApproval'
   | 'setClaudeChatPendingUserInput'
   | 'setClaudeChatStreaming'
+  | 'setClaudeChatTurnUsage'
   | 'setClaudeChatSubagents'
   | 'removeClaudeChatSession'
   | 'initClaudeSession'
@@ -32,6 +34,7 @@ type UnifiedRuntimeAgentActions = Pick<
   | 'setCodexPendingApproval'
   | 'setCodexPendingUserInput'
   | 'setCodexStreaming'
+  | 'setCodexTurnUsage'
   | 'setCodexThreadName'
   | 'setCodexPlanItems'
   | 'setCodexDismissedPlanIds'
@@ -100,9 +103,19 @@ function createClaudeChatActions(
   | 'setClaudeChatPendingApproval'
   | 'setClaudeChatPendingUserInput'
   | 'setClaudeChatStreaming'
+  | 'setClaudeChatTurnUsage'
   | 'setClaudeChatSubagents'
   | 'removeClaudeChatSession'
 > {
+  return {
+    ...createClaudeChatLifecycleActions(set),
+    ...createClaudeChatRuntimeActions(set),
+  }
+}
+
+function createClaudeChatLifecycleActions(
+  set: UnifiedRuntimeStoreSet
+): Pick<UnifiedRuntimeAgentActions, 'initClaudeChatSession' | 'removeClaudeChatSession'> {
   return {
     initClaudeChatSession: (sessionKey, directory) =>
       set(state => ({
@@ -111,6 +124,34 @@ function createClaudeChatActions(
           [sessionKey]: ensureClaudeChatSession(state, sessionKey, directory),
         },
       })),
+    removeClaudeChatSession: sessionKey =>
+      set(state => {
+        if (!(sessionKey in state.claudeChatSessions)) {
+          return state
+        }
+        const next = { ...state.claudeChatSessions }
+        delete next[sessionKey]
+        return { claudeChatSessions: next }
+      }),
+  }
+}
+
+function createClaudeChatRuntimeActions(
+  set: UnifiedRuntimeStoreSet
+): Pick<
+  UnifiedRuntimeAgentActions,
+  | 'setClaudeChatConnectionState'
+  | 'setClaudeChatProviderThreadId'
+  | 'replaceClaudeChatMessages'
+  | 'updateClaudeChatMessages'
+  | 'setClaudeChatHistoryMessages'
+  | 'setClaudeChatPendingApproval'
+  | 'setClaudeChatPendingUserInput'
+  | 'setClaudeChatStreaming'
+  | 'setClaudeChatTurnUsage'
+  | 'setClaudeChatSubagents'
+> {
+  return {
     setClaudeChatConnectionState: (sessionKey, status, providerThreadId, activeTurnId, lastError) =>
       set(state => {
         const session = ensureClaudeChatSession(state, sessionKey)
@@ -163,6 +204,22 @@ function createClaudeChatActions(
       set(state => ({
         claudeChatSessions: updateClaudeChatSessionState(state, sessionKey, { isStreaming }),
       })),
+    setClaudeChatTurnUsage: (sessionKey, turnId, total, timestamp) =>
+      set(state => {
+        const session = ensureClaudeChatSession(state, sessionKey)
+        const nextUsage = upsertTurnTokenSample(
+          session.turnTokenTotals ?? [],
+          turnId,
+          total,
+          timestamp
+        )
+        return {
+          claudeChatSessions: updateClaudeChatSessionState(state, sessionKey, {
+            observedTokenTotal: nextUsage.observedTokenTotal,
+            turnTokenTotals: nextUsage.samples,
+          }),
+        }
+      }),
     setClaudeChatSubagents: (sessionKey, subagents) =>
       set(state => {
         const session = ensureClaudeChatSession(state, sessionKey)
@@ -173,15 +230,6 @@ function createClaudeChatActions(
             subagents: nextSubagents,
           }),
         }
-      }),
-    removeClaudeChatSession: sessionKey =>
-      set(state => {
-        if (!(sessionKey in state.claudeChatSessions)) {
-          return state
-        }
-        const next = { ...state.claudeChatSessions }
-        delete next[sessionKey]
-        return { claudeChatSessions: next }
       }),
   }
 }
@@ -237,6 +285,7 @@ function createCodexActions(
   | 'setCodexPendingApproval'
   | 'setCodexPendingUserInput'
   | 'setCodexStreaming'
+  | 'setCodexTurnUsage'
   | 'setCodexThreadName'
   | 'setCodexPlanItems'
   | 'setCodexDismissedPlanIds'
@@ -246,6 +295,7 @@ function createCodexActions(
   | 'removeCodexSession'
 > {
   return {
+    ...createCodexMetadataActions(set),
     ...createCodexRuntimeActions(set),
     ...createCodexLifecycleActions(set),
   }
@@ -263,7 +313,6 @@ function createCodexRuntimeActions(
   | 'setCodexPendingApproval'
   | 'setCodexPendingUserInput'
   | 'setCodexStreaming'
-  | 'setCodexThreadName'
   | 'setCodexPlanItems'
   | 'setCodexDismissedPlanIds'
   | 'setCodexSubagents'
@@ -311,10 +360,6 @@ function createCodexRuntimeActions(
       set(state => ({
         codexSessions: updateCodexSessionState(state, sessionKey, { isStreaming }),
       })),
-    setCodexThreadName: (sessionKey, name) =>
-      set(state => ({
-        codexSessions: updateCodexSessionState(state, sessionKey, { threadName: name }),
-      })),
     setCodexPlanItems: (sessionKey, items) =>
       set(state => ({
         codexSessions: updateCodexSessionState(state, sessionKey, { planItems: items }),
@@ -332,6 +377,33 @@ function createCodexRuntimeActions(
         codexSessions: updateCodexSessionState(state, sessionKey, {
           activeSubagentThreadId: threadId,
         }),
+      })),
+  }
+}
+
+function createCodexMetadataActions(
+  set: UnifiedRuntimeStoreSet
+): Pick<UnifiedRuntimeAgentActions, 'setCodexTurnUsage' | 'setCodexThreadName'> {
+  return {
+    setCodexTurnUsage: (sessionKey, turnId, total, timestamp) =>
+      set(state => {
+        const session = ensureCodexSession(state, sessionKey)
+        const nextUsage = upsertTurnTokenSample(
+          session.turnTokenTotals ?? [],
+          turnId,
+          total,
+          timestamp
+        )
+        return {
+          codexSessions: updateCodexSessionState(state, sessionKey, {
+            observedTokenTotal: nextUsage.observedTokenTotal,
+            turnTokenTotals: nextUsage.samples,
+          }),
+        }
+      }),
+    setCodexThreadName: (sessionKey, name) =>
+      set(state => ({
+        codexSessions: updateCodexSessionState(state, sessionKey, { threadName: name }),
       })),
   }
 }

@@ -7,6 +7,9 @@ export type AppPreferences = {
   autoOpenTerminalOnCreate: boolean
   confirmDangerousActions: boolean
   permissionMode: PermissionMode
+  sessionGuardrailsEnabled: boolean
+  sessionTokenBudget: number
+  sessionRuntimeBudgetMinutes: number
   commitGuidancePrompt: string
   codeFont: string
   theme: ThemeId

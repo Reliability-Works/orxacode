@@ -114,6 +114,12 @@ export type UnifiedRuntimeStoreState = {
     request: ClaudeChatUserInputRequest | null
   ) => void
   setClaudeChatStreaming: (sessionKey: string, isStreaming: boolean) => void
+  setClaudeChatTurnUsage: (
+    sessionKey: string,
+    turnId: string,
+    total: number,
+    timestamp: number
+  ) => void
   setClaudeChatSubagents: (
     sessionKey: string,
     subagents:
@@ -143,6 +149,12 @@ export type UnifiedRuntimeStoreState = {
   setCodexPendingApproval: (sessionKey: string, request: CodexApprovalRequest | null) => void
   setCodexPendingUserInput: (sessionKey: string, request: CodexUserInputRequest | null) => void
   setCodexStreaming: (sessionKey: string, isStreaming: boolean) => void
+  setCodexTurnUsage: (
+    sessionKey: string,
+    turnId: string,
+    total: number,
+    timestamp: number
+  ) => void
   setCodexThreadName: (sessionKey: string, name?: string) => void
   setCodexPlanItems: (sessionKey: string, items: TodoItem[]) => void
   setCodexDismissedPlanIds: (sessionKey: string, ids: string[]) => void

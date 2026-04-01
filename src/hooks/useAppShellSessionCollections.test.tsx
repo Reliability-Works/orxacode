@@ -22,6 +22,7 @@ describe('useAppShellSessionCollections', () => {
 
   registerBackgroundSessionHidingTest()
   registerWorkspaceDetailAggregationTest()
+  registerWorkspaceSessionDeduplicationTest()
 })
 
 function registerBackgroundSessionHidingTest() {
@@ -207,5 +208,81 @@ function registerWorkspaceDetailAggregationTest() {
         directory: '/repo/project',
       }),
     ])
+  })
+}
+
+function registerWorkspaceSessionDeduplicationTest() {
+  it('deduplicates the same session when a root workspace snapshot and worktree snapshot both include it', () => {
+    const now = Date.now()
+    const duplicatedSession = {
+      id: 'session-claude',
+      projectID: 'proj-shared',
+      directory: '/repo/project/.worktrees/feature-a',
+      slug: 'claude-chat',
+      title: 'Claude Code (Chat)',
+      version: '1',
+      time: { created: now - 20, updated: now - 1 },
+    }
+    const rootProjectData = {
+      directory: '/repo/project',
+      path: {} as never,
+      sessions: [duplicatedSession],
+      sessionStatus: {},
+      providers: { all: [], connected: [], default: {} },
+      agents: [],
+      config: {} as never,
+      permissions: [],
+      questions: [],
+      commands: [],
+      mcp: {},
+      lsp: [],
+      formatter: [],
+      ptys: [],
+    }
+    const worktreeProjectData = {
+      ...rootProjectData,
+      directory: '/repo/project/.worktrees/feature-a',
+      sessions: [duplicatedSession],
+    }
+
+    useUnifiedRuntimeStore.setState(state => ({
+      ...state,
+      workspaceRootByDirectory: {
+        '/repo/project': '/repo/project',
+        '/repo/project/.worktrees/feature-a': '/repo/project',
+      },
+    }))
+
+    const { result } = renderHook(() =>
+      useAppShellSessionCollections({
+        projectData: rootProjectData,
+        projectDataByDirectory: {
+          '/repo/project': rootProjectData,
+          '/repo/project/.worktrees/feature-a': worktreeProjectData,
+        },
+        activeProjectDir: '/repo/project',
+        activeSessionID: 'session-claude',
+        projectCacheVersion: 0,
+        pinnedSessions: {},
+        archivedBackgroundAgentIds: {},
+        hiddenBackgroundSessionIdsByProject: {},
+        backgroundSessionDescriptors: [],
+        getSessionType: () => 'claude-chat',
+        normalizePresentationProvider: sessionType =>
+          sessionType === 'codex' || sessionType === 'claude' || sessionType === 'claude-chat'
+            ? sessionType
+            : sessionType
+              ? 'opencode'
+              : undefined,
+      })
+    )
+
+    expect(result.current.sessions).toHaveLength(1)
+    expect(result.current.sessions[0]).toEqual(
+      expect.objectContaining({
+        id: 'session-claude',
+        directory: '/repo/project/.worktrees/feature-a',
+      })
+    )
   })
 }

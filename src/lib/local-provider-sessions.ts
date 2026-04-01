@@ -186,6 +186,16 @@ export function mergeLocalProviderSessions(
   }
 }
 
+export function findLocalProviderDraftSession(
+  map: LocalProviderSessionMap,
+  directory: string,
+  type: SyntheticSessionType
+): LocalProviderSessionRecord | undefined {
+  return Object.values(map)
+    .filter(record => record.directory === directory && record.type === type && record.draft)
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0]
+}
+
 export function upsertLocalProviderSessionRecord(
   map: LocalProviderSessionMap,
   record: LocalProviderSessionRecord
@@ -255,6 +265,27 @@ export function touchLocalProviderSessionRecord(
   }
 }
 
+export function pruneLocalProviderDraftSessions(
+  map: LocalProviderSessionMap,
+  directory: string,
+  type: SyntheticSessionType,
+  keepSessionID: string
+): LocalProviderSessionMap {
+  let changed = false
+  const nextEntries = Object.entries(map).filter(([, record]) => {
+    const shouldKeep =
+      record.directory !== directory ||
+      record.type !== type ||
+      !record.draft ||
+      record.sessionID === keepSessionID
+    if (!shouldKeep) {
+      changed = true
+    }
+    return shouldKeep
+  })
+  return changed ? Object.fromEntries(nextEntries) : map
+}
+
 export function markLocalProviderSessionRecordStarted(
   map: LocalProviderSessionMap,
   directory: string,
@@ -266,14 +297,20 @@ export function markLocalProviderSessionRecordStarted(
   if (!current) {
     return map
   }
-  const nextUpdatedAt = updatedAt > current.updatedAt ? updatedAt : current.updatedAt
-  if (!current.draft && nextUpdatedAt === current.updatedAt) {
-    return map
+  const prunedMap = pruneLocalProviderDraftSessions(map, directory, current.type, sessionID)
+  const prunedCurrent = prunedMap[sessionKey]
+  if (!prunedCurrent) {
+    return prunedMap
+  }
+  const nextUpdatedAt =
+    updatedAt > prunedCurrent.updatedAt ? updatedAt : prunedCurrent.updatedAt
+  if (!prunedCurrent.draft && nextUpdatedAt === prunedCurrent.updatedAt) {
+    return prunedMap
   }
   return {
-    ...map,
+    ...prunedMap,
     [sessionKey]: {
-      ...current,
+      ...prunedCurrent,
       draft: false,
       updatedAt: nextUpdatedAt,
     },

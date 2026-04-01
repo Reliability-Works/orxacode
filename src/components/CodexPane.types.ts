@@ -1,6 +1,7 @@
 import type { RefObject } from 'react'
 import type { CodexCollaborationMode, CodexModelEntry } from '@shared/ipc'
 import type { PermissionMode } from '../types/app'
+import type { SessionGuardrailPreferences } from '../lib/session-controls'
 
 export interface CodexPaneProps {
   directory: string
@@ -39,4 +40,6 @@ export interface CodexPaneProps {
   onOpenFileReference?: (reference: string) => void
   browserModeEnabled?: boolean
   setBrowserModeEnabled?: (enabled: boolean) => void
+  sessionGuardrailPreferences: SessionGuardrailPreferences
+  onOpenSettings: () => void
 }

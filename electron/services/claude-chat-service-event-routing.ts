@@ -86,11 +86,18 @@ function handleAssistantContent(
   message: SDKAssistantMessage
 ) {
   const content = extractAssistantText(message)
+  const usage = (message as SDKAssistantMessage & { usage?: unknown }).usage
   if (content) {
     context.emitNotification({
       sessionKey,
       method: 'assistant/message',
-      params: { id: message.uuid, turnId, content, timestamp: Date.now() },
+      params: {
+        id: message.uuid,
+        turnId,
+        content,
+        usage,
+        timestamp: Date.now(),
+      },
     })
   }
 }

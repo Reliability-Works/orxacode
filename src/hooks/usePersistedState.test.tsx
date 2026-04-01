@@ -86,7 +86,7 @@ describe('usePersistedState', () => {
     const key = 'orxa:appPreferences:v1'
     const initial = {
       showOperationsPane: true, autoOpenTerminalOnCreate: true, confirmDangerousActions: true,
-      permissionMode: 'ask-write' as const, commitGuidancePrompt: '', codeFont: 'IBM Plex Mono',
+      permissionMode: 'ask-write' as const, sessionGuardrailsEnabled: true, sessionTokenBudget: 120000, sessionRuntimeBudgetMinutes: 45, commitGuidancePrompt: '', codeFont: 'IBM Plex Mono',
       hiddenModels: [] as string[],
     }
 

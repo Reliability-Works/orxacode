@@ -4,9 +4,10 @@ import type { PermissionMode } from '../types/app'
 import type { ModelOption } from '../lib/models'
 import type { CodexCollaborationMode } from '@shared/ipc'
 import type { TodoItem } from './chat/TodoDock'
-import type { ReviewChangeItem } from './chat/ReviewChangesDock'
+import type { SessionChangeTarget } from './chat/ReviewChangesDock'
 import type { UnifiedBackgroundAgentSummary } from '../lib/session-presentation'
 import type { RefObject, ReactNode } from 'react'
+import type { SessionCompactionState, SessionGuardrailPrompt, SessionGuardrailState } from '../lib/session-controls'
 
 export type CodexPaneComposerPanelProps = {
   input: string
@@ -26,6 +27,13 @@ export type CodexPaneComposerPanelProps = {
   setSelectedCollabMode: (value: string | undefined) => void
   permissionMode: PermissionMode
   onPermissionModeChange: (mode: PermissionMode) => void
+  guardrailState: SessionGuardrailState
+  guardrailPrompt: SessionGuardrailPrompt | null
+  onDismissGuardrailWarning: () => void
+  onContinueGuardrailOnce: () => void
+  onDisableGuardrailsForSession: () => void
+  onOpenSettings: () => void
+  compactionState: SessionCompactionState
   branchMenuOpen: boolean
   setBranchMenuOpen: (updater: (value: boolean) => boolean) => void
   branchControlWidthCh: number
@@ -48,6 +56,7 @@ export type CodexPaneComposerPanelProps = {
   selectedReasoningEffort: string | undefined
   setSelectedReasoningEffort: (value: string | undefined) => void
   reasoningEffortOptions: string[]
+  customControls?: ReactNode
   placeholder: string
   backgroundAgents: UnifiedBackgroundAgentSummary[]
   selectedBackgroundAgentId: string | null
@@ -70,8 +79,9 @@ export type CodexPaneComposerPanelProps = {
   todoItems?: TodoItem[]
   todoOpen: boolean
   onTodoToggle: () => void
-  reviewChangesFiles?: ReviewChangeItem[]
+  sessionChangeTargets?: SessionChangeTarget[]
   onOpenReviewChange: (path: string) => void
+  onRevertSessionChange: (targetId: string) => void | Promise<void>
   queuedMessages: Array<{ id: string; text: string; timestamp: number }>
   sendingQueuedId: string | undefined
   onQueueMessage: (text: string) => void
@@ -120,9 +130,15 @@ export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
       onAgentChange={() => undefined}
       permissionMode={props.permissionMode}
       onPermissionModeChange={props.onPermissionModeChange}
-      compactionProgress={0}
-      compactionHint=""
-      compactionCompacted={false}
+      guardrailState={props.guardrailState}
+      guardrailPrompt={props.guardrailPrompt}
+      onDismissGuardrailWarning={props.onDismissGuardrailWarning}
+      onContinueGuardrailOnce={props.onContinueGuardrailOnce}
+      onDisableGuardrailsForSession={props.onDisableGuardrailsForSession}
+      onOpenSettings={props.onOpenSettings}
+      compactionProgress={props.compactionState.progress}
+      compactionHint={props.compactionState.hint}
+      compactionCompacted={props.compactionState.compacted}
       branchMenuOpen={props.branchMenuOpen}
       setBranchMenuOpen={props.setBranchMenuOpen}
       branchControlWidthCh={props.branchControlWidthCh}
@@ -147,6 +163,7 @@ export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
       variantOptions={props.reasoningEffortOptions}
       variantLabel="Reasoning effort"
       variantEmptyLabel="(default effort)"
+      customControls={props.customControls}
       placeholder={props.placeholder}
       simpleModelPicker
       backgroundAgents={props.backgroundAgents}
@@ -163,8 +180,9 @@ export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
       todoItems={props.todoItems}
       todoOpen={props.todoOpen}
       onTodoToggle={props.onTodoToggle}
-      reviewChangesFiles={props.reviewChangesFiles}
+      sessionChangeTargets={props.sessionChangeTargets}
       onOpenReviewChange={props.onOpenReviewChange}
+      onRevertSessionChange={props.onRevertSessionChange}
       queuedMessages={props.queuedMessages}
       sendingQueuedId={props.sendingQueuedId}
       onQueueMessage={props.onQueueMessage}

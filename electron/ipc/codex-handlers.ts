@@ -131,11 +131,20 @@ function registerCodexLifecycleHandlers(codexService: CodexService) {
     const opts = (options ?? {}) as { cursor?: string | null; limit?: number; archived?: boolean }
     return codexService.listThreads(opts)
   })
+  ipcMain.handle(IPC.codexListBrowserThreads, async () => codexService.listBrowserThreads())
   ipcMain.handle(IPC.codexGetThreadRuntime, async (_event, threadId: unknown) =>
     codexService.getThreadRuntime(assertString(threadId, 'threadId'))
   )
   ipcMain.handle(IPC.codexResumeThread, async (_event, threadId: unknown) =>
     codexService.resumeThread(assertString(threadId, 'threadId'))
+  )
+  ipcMain.handle(
+    IPC.codexResumeProviderThread,
+    async (_event, threadId: unknown, directory: unknown) =>
+      codexService.resumeProviderThread(
+        assertString(threadId, 'threadId'),
+        assertString(directory, 'directory')
+      )
   )
   ipcMain.handle(IPC.codexArchiveThreadTree, async (_event, threadId: unknown) =>
     codexService.archiveThreadTree(assertString(threadId, 'threadId'))

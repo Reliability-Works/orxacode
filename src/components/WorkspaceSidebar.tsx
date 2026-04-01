@@ -58,6 +58,7 @@ export type WorkspaceSidebarProps = {
   selectProject: (directory: string) => Promise<void> | void
   createSession: (directory?: string, sessionType?: SessionType) => Promise<void> | void
   openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
+  openCodexSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   openSession: (directory: string, sessionID: string) => Promise<void> | void
   togglePinSession: (directory: string, sessionID: string) => void
   archiveSession: (directory: string, sessionID: string) => Promise<void> | void
@@ -106,7 +107,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         .filter((session): session is SessionListItem => session !== undefined)
         .filter(session => !hiddenSessionIDs.has(session.id))
         .map(session => ({
-          directory: project.worktree,
+          directory: session.directory ?? project.worktree,
           session,
         }))
     })
@@ -152,6 +153,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       selectProject={props.selectProject}
       createSession={props.createSession}
       openClaudeSessionBrowser={props.openClaudeSessionBrowser}
+      openCodexSessionBrowser={props.openCodexSessionBrowser}
       openSession={props.openSession}
       togglePinSession={props.togglePinSession}
       archiveSession={props.archiveSession}

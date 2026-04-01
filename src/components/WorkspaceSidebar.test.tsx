@@ -43,6 +43,7 @@ function buildProps(overrides: Partial<WorkspaceSidebarProps> = {}): WorkspaceSi
     selectProject: vi.fn(),
     createSession: vi.fn(),
     openClaudeSessionBrowser: vi.fn(),
+    openCodexSessionBrowser: vi.fn(),
     openSession: vi.fn(),
     togglePinSession: vi.fn(),
     archiveSession: vi.fn(),
@@ -187,6 +188,24 @@ function registerWorkspaceSidebarClaudeBrowserTests() {
     fireEvent.click(screen.getByRole('button', { name: /create session for project/i }))
     fireEvent.click(screen.getByText('browse claude sessions'))
     expect(openClaudeSessionBrowser).toHaveBeenCalledWith('/workspace/project')
+  })
+
+  it('opens the Codex thread browser from the new-session picker', () => {
+    const openCodexSessionBrowser = vi.fn()
+    render(
+      <WorkspaceSidebar
+        {...buildProps({
+          filteredProjects: [
+            { id: 'project-1', worktree: '/workspace/project', name: 'project', source: 'local' },
+          ],
+          openCodexSessionBrowser,
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /create session for project/i }))
+    fireEvent.click(screen.getByText('browse codex threads'))
+    expect(openCodexSessionBrowser).toHaveBeenCalledWith('/workspace/project')
   })
 }
 

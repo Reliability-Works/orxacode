@@ -331,6 +331,7 @@ function createDefaultCodexApi() {
       createdAt: Date.now(),
       status: { type: 'idle' as const },
     }),
+    listBrowserThreads: mockAsync([]),
     listWorkspaceThreads: mockAsync([]),
     listThreads: mockAsync({ threads: [], nextCursor: undefined }),
     getThreadRuntime: mockAsync({
@@ -344,6 +345,13 @@ function createDefaultCodexApi() {
       childThreads: [],
     }),
     resumeThread: mockAsync({}),
+    resumeProviderThread: mockAsync({
+      threadId: 'thr-1',
+      sessionKey: 'codex::/tmp/project::thr-1',
+      sessionID: 'thr-1',
+      directory: '/tmp/project',
+      title: 'Recovered Codex Thread',
+    }),
     archiveThreadTree: mockAsync(undefined),
     setThreadName: mockAsync(undefined),
     generateRunMetadata: mockAsync({

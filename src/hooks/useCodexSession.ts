@@ -69,6 +69,8 @@ export function useCodexSession(
     setMessagesState: store.setMessagesState,
     setPlanItemsState: store.setPlanItemsState,
     setStreamingState: store.setStreamingState,
+    setObservedTurnUsage: (turnId, total, timestamp) =>
+      store.setObservedTurnUsage(sessionKey, turnId, total, timestamp),
     setSubagentsState: store.setSubagentsState,
     setThreadNameState: store.setThreadNameState,
     updateMessages: store.updateMessages,

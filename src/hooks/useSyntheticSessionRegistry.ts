@@ -7,13 +7,16 @@ import { usePersistedState } from './usePersistedState'
 import {
   LOCAL_PROVIDER_SESSIONS_KEY,
   createLocalProviderSessionRecord,
+  findLocalProviderDraftSession,
   markLocalProviderSessionRecordStarted,
   mergeLocalProviderSessions,
   normalizeSyntheticSessionMap,
+  pruneLocalProviderDraftSessions,
   removeLocalProviderSessionRecord,
   renameLocalProviderSessionRecord,
   touchLocalProviderSessionRecord,
   upsertLocalProviderSessionRecord,
+  type SyntheticSessionType,
 } from '../lib/local-provider-sessions'
 import { buildWorkspaceSessionMetadataKey } from '../lib/workspace-session-metadata'
 
@@ -58,7 +61,13 @@ function useSyntheticSessionLookup(
     [getSyntheticSessionRecord]
   )
 
-  return { getSyntheticSessionRecord, getSessionType, isSyntheticSession }
+  const findReusableDraftSession = useCallback(
+    (directory: string, type: SessionType) =>
+      findLocalProviderDraftSession(syntheticSessionsRef.current, directory, type as SyntheticSessionType),
+    [syntheticSessionsRef]
+  )
+
+  return { getSyntheticSessionRecord, getSessionType, isSyntheticSession, findReusableDraftSession }
 }
 
 function useSyntheticSessionMetadataSync(
@@ -146,7 +155,15 @@ function useSyntheticSessionMutations({
 }) {
   const registerSyntheticSession = useCallback(
     (record: SyntheticSessionRecord) => {
-      const next = upsertLocalProviderSessionRecord(syntheticSessionsRef.current, record)
+      const next = upsertLocalProviderSessionRecord(
+        pruneLocalProviderDraftSessions(
+          syntheticSessionsRef.current,
+          record.directory,
+          record.type,
+          record.sessionID
+        ),
+        record
+      )
       syntheticSessionsRef.current = next
       setSyntheticSessions(next)
       syncSyntheticSessionsIntoProject(record.directory, next)
@@ -242,7 +259,7 @@ export function useSyntheticSessionRegistry({
   useEffect(() => {
     syntheticSessionsRef.current = syntheticSessions
   }, [syntheticSessions])
-  const { getSyntheticSessionRecord, getSessionType, isSyntheticSession } =
+  const { getSyntheticSessionRecord, getSessionType, isSyntheticSession, findReusableDraftSession } =
     useSyntheticSessionLookup(syntheticSessionsRef, getStoredSessionType)
   useSyntheticSessionMetadataSync(syntheticSessions, setSessionTitles, setSessionTypes)
   const { syncSyntheticSessionsIntoProject } = useSyntheticSessionProjectSync({
@@ -266,6 +283,7 @@ export function useSyntheticSessionRegistry({
     getSyntheticSessionRecord,
     getSessionType,
     isSyntheticSession,
+    findReusableDraftSession,
     registerSyntheticSession,
     removeSyntheticSession,
     renameSyntheticSession,

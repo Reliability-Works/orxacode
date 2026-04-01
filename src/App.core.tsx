@@ -61,13 +61,15 @@ import { useAppShellSessionCollections } from './hooks/useAppShellSessionCollect
 import { useWorkspaceDetailSurface } from './hooks/useWorkspaceDetailSurface'
 import { useWorkspaceCodexThreads } from './hooks/useWorkspaceCodexThreads'
 import { useClaudeSessionBrowser } from './hooks/useClaudeSessionBrowser'
+import { useCodexSessionBrowser } from './hooks/useCodexSessionBrowser'
+import { useBoundProviderSessionOpeners } from './hooks/useBoundProviderSessionOpeners'
+import { useOpencodeSessionControls } from './hooks/useSessionControls'
 import { useWorkspaceShellSurface } from './hooks/useWorkspaceShellSurface'
 import { useAppCoreAwaitingInput } from './app-core-awaiting-input'
 import { useAppCoreBootstrap } from './app-core-bootstrap'
 import { useAppCoreDiagnostics } from './app-core-debug'
 import { useAppCoreBrowser } from './app-core-browser'
 import { createSessionAction } from './app-core-session'
-import { openBoundLocalProviderSessionAction } from './app-core-session'
 import { useAppCoreSidebarResize } from './app-core-sidebar-resize'
 import { useAppCoreTerminal } from './app-core-terminal'
 // TODO: streaming buffer removed — needs reimplementation at the message-part delta
@@ -116,7 +118,6 @@ import {
   buildAppShellHomeDashboardProps,
   deriveAppShellWorkspaceLayout,
 } from './lib/app-shell-view-models'
-import { extractReviewChangesFiles } from './lib/timeline-row-grouping'
 import { buildWorkspaceSessionMetadataKey } from './lib/workspace-session-metadata'
 import { opencodeClient } from './lib/services/opencodeClient'
 import type { AppPreferences } from '~/types/app'
@@ -184,6 +185,9 @@ const DEFAULT_APP_PREFERENCES: AppPreferences = {
   autoOpenTerminalOnCreate: true,
   confirmDangerousActions: true,
   permissionMode: 'ask-write',
+  sessionGuardrailsEnabled: true,
+  sessionTokenBudget: 120_000,
+  sessionRuntimeBudgetMinutes: 45,
   commitGuidancePrompt: DEFAULT_COMMIT_GUIDANCE_PROMPT,
   codeFont: 'IBM Plex Mono',
   theme: 'glass',
@@ -296,8 +300,6 @@ function commitFlowSuccessMessage(nextStep: CommitNextStep) {
   }
   return 'Changes committed'
 }
-const DEFAULT_COMPACTION_THRESHOLD = 120_000
-const MIN_COMPACTION_THRESHOLD = 24_000
 const BROWSER_MODE_BY_SESSION_KEY = 'orxa:browserModeBySession:v1'
 const BROWSER_AUTOMATION_HALTED_BY_SESSION_KEY = 'orxa:browserAutomationHaltedBySession:v1'
 
@@ -339,80 +341,6 @@ function parseCustomRunCommands(raw: string): CustomRunCommandPreset[] {
     })
   }
   return result.sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-function tokenCountFromMessageInfo(info: SessionMessageBundle['info']) {
-  if (info.role !== 'assistant') {
-    return 0
-  }
-  const assistantInfo = info as SessionMessageBundle['info'] & {
-    tokens?: {
-      total?: number
-      input?: number
-      output?: number
-      cache?: { read?: number; write?: number }
-    }
-  }
-  const total = typeof assistantInfo.tokens?.total === 'number' ? assistantInfo.tokens.total : 0
-  if (total > 0) {
-    return total
-  }
-  const input = typeof assistantInfo.tokens?.input === 'number' ? assistantInfo.tokens.input : 0
-  const output = typeof assistantInfo.tokens?.output === 'number' ? assistantInfo.tokens.output : 0
-  const cacheRead =
-    typeof assistantInfo.tokens?.cache?.read === 'number' ? assistantInfo.tokens.cache.read : 0
-  const cacheWrite =
-    typeof assistantInfo.tokens?.cache?.write === 'number' ? assistantInfo.tokens.cache.write : 0
-  return input + output + cacheRead + cacheWrite
-}
-
-function buildCompactionMeterState(messages: SessionMessageBundle[]) {
-  const compactionIndexes: number[] = []
-  const compactionThresholdHints: number[] = []
-
-  for (let index = 0; index < messages.length; index += 1) {
-    const bundle = messages[index]
-    if (!bundle.parts.some(part => part.type === 'compaction')) {
-      continue
-    }
-    compactionIndexes.push(index)
-    for (let previous = index - 1; previous >= 0; previous -= 1) {
-      const previousTokens = tokenCountFromMessageInfo(messages[previous]!.info)
-      if (previousTokens > 0) {
-        compactionThresholdHints.push(previousTokens)
-        break
-      }
-    }
-  }
-
-  const lastCompactionIndex =
-    compactionIndexes.length > 0 ? compactionIndexes[compactionIndexes.length - 1]! : -1
-  let currentTokens = 0
-  for (let index = messages.length - 1; index > lastCompactionIndex; index -= 1) {
-    const tokens = tokenCountFromMessageInfo(messages[index]!.info)
-    if (tokens > 0) {
-      currentTokens = tokens
-      break
-    }
-  }
-
-  let threshold =
-    compactionThresholdHints.length > 0
-      ? compactionThresholdHints[compactionThresholdHints.length - 1]!
-      : DEFAULT_COMPACTION_THRESHOLD
-  threshold = Math.max(MIN_COMPACTION_THRESHOLD, threshold)
-  if (currentTokens > threshold) {
-    threshold = currentTokens
-  }
-
-  const progress = threshold > 0 ? Math.min(1, currentTokens / threshold) : 0
-  const compacted =
-    lastCompactionIndex >= 0 && currentTokens < Math.max(4_000, Math.round(threshold * 0.22))
-  const hint = compacted
-    ? 'Recent context compaction completed. The context window has been reset.'
-    : `Estimated context usage before auto-compaction (${currentTokens.toLocaleString()} / ${threshold.toLocaleString()} tokens).`
-
-  return { progress, hint, compacted }
 }
 
 export default function App() {
@@ -562,6 +490,7 @@ export default function App() {
     getSyntheticSessionRecord,
     getSessionType,
     isSyntheticSession,
+    findReusableDraftSession,
     registerSyntheticSession,
     removeSyntheticSession,
     renameSyntheticSession,
@@ -1195,7 +1124,27 @@ export default function App() {
     () => Math.max(16, Math.min(54, branchDisplayValue.length + 7)),
     [branchDisplayValue]
   )
-  const compactionMeter = useMemo(() => buildCompactionMeterState(messages), [messages])
+  const activeOpencodeRuntime =
+    activeProjectDir && activeSessionID
+      ? opencodeSessionStateMap[
+          buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+        ] ?? null
+      : null
+  const opencodeSessionControls = useOpencodeSessionControls({
+    sessionKey:
+      activeSessionKey ??
+      (activeProjectDir && activeSessionID
+        ? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+        : 'inactive'),
+    directory: activeProjectDir ?? '',
+    preferences: {
+      enabled: appPreferences.sessionGuardrailsEnabled,
+      tokenBudget: appPreferences.sessionTokenBudget,
+      runtimeBudgetMinutes: appPreferences.sessionRuntimeBudgetMinutes,
+    },
+    messages,
+    runtimeSnapshot: activeOpencodeRuntime?.runtimeSnapshot,
+  })
   const filteredBranches = useMemo(() => {
     const query = branchQuery.trim().toLowerCase()
     const branches = branchState?.branches ?? []
@@ -1997,6 +1946,7 @@ export default function App() {
           clearPendingSession,
           createWorkspaceSession,
           describeClaudeHealthFailure,
+          findReusableDraftSession,
           markSessionUsed,
           registerLocalProviderSession: registerSyntheticSession,
           selectProject,
@@ -2020,6 +1970,7 @@ export default function App() {
       availableAgentNames,
       clearPendingSession,
       createWorkspaceSession,
+      findReusableDraftSession,
       markSessionUsed,
       registerSyntheticSession,
       selectProject,
@@ -2036,45 +1987,25 @@ export default function App() {
     ]
   )
 
-  const openWorkspaceCodexThread = useCallback(
-    async (directory: string, threadId: string, title?: string) =>
-      openBoundLocalProviderSessionAction(
-        {
-          activeProjectDir,
-          clearPendingSession,
-          markSessionUsed,
-          registerLocalProviderSession: registerSyntheticSession,
-          selectProject,
-          setActiveProjectDir,
-          setActiveSessionID,
-          setManualSessionTitles,
-          setSessionTitles,
-          setSessionTypes,
-          setSidebarMode,
-          setStatusLine,
-        },
-        {
-          directory,
-          sessionID: threadId,
-          sessionType: 'codex',
-          title: title?.trim() || 'Recovered Codex Thread',
-        }
-      ),
-    [
-      activeProjectDir,
-      clearPendingSession,
-      markSessionUsed,
-      registerSyntheticSession,
-      selectProject,
-      setActiveProjectDir,
-      setActiveSessionID,
-      setManualSessionTitles,
-      setSessionTitles,
-      setSessionTypes,
-      setSidebarMode,
-      setStatusLine,
-    ]
-  )
+  const {
+    openBoundClaudeSession,
+    openBoundCodexSession,
+  } = useBoundProviderSessionOpeners({
+    activeProjectDir,
+    clearPendingSession,
+    markSessionUsed,
+    registerSyntheticSession,
+    selectProject,
+    setActiveProjectDir,
+    setActiveSessionID,
+    setManualSessionTitles,
+    setSessionTitles,
+    setSessionTypes,
+    setSidebarMode,
+    setStatusLine,
+  })
+
+  const openWorkspaceCodexThread = openBoundCodexSession
 
   const {
     addProjectDirectory,
@@ -2150,46 +2081,6 @@ export default function App() {
     setStatusLine,
   })
 
-  const openBoundClaudeSession = useCallback(
-    async (directory: string, sessionID: string, title: string) =>
-      openBoundLocalProviderSessionAction(
-        {
-          activeProjectDir,
-          clearPendingSession,
-          markSessionUsed,
-          registerLocalProviderSession: registerSyntheticSession,
-          selectProject,
-          setActiveProjectDir,
-          setActiveSessionID,
-          setManualSessionTitles,
-          setSessionTitles,
-          setSessionTypes,
-          setSidebarMode,
-          setStatusLine,
-        },
-        {
-          directory,
-          sessionID,
-          sessionType: 'claude-chat',
-          title: title.trim() || 'Claude Code (Chat)',
-        }
-      ),
-    [
-      activeProjectDir,
-      clearPendingSession,
-      markSessionUsed,
-      registerSyntheticSession,
-      selectProject,
-      setActiveProjectDir,
-      setActiveSessionID,
-      setManualSessionTitles,
-      setSessionTitles,
-      setSessionTypes,
-      setSidebarMode,
-      setStatusLine,
-    ]
-  )
-
   const {
     claudeSessionBrowserOpen,
     setClaudeSessionBrowserOpen,
@@ -2204,6 +2095,21 @@ export default function App() {
     projects,
     setStatusLine,
     openBoundClaudeSession,
+  })
+  const {
+    codexSessionBrowserOpen,
+    setCodexSessionBrowserOpen,
+    codexBrowserThreads,
+    codexBrowserThreadsLoading,
+    selectedCodexBrowserWorkspace,
+    setSelectedCodexBrowserWorkspace,
+    openCodexSessionBrowser,
+    openCodexBrowserThread,
+  } = useCodexSessionBrowser({
+    activeProjectDir,
+    projects,
+    setStatusLine,
+    openBoundCodexSession,
   })
 
   const renameSession = useCallback(
@@ -2589,15 +2495,6 @@ export default function App() {
   }, [activeOptimisticOpencodePrompt, activeSessionID, messages])
   const feedPresentation =
     activeOptimisticOpencodePrompt && messages.length === 0 ? null : activeSessionPresentation
-  const activeReviewChangesFiles = useMemo(
-    () => extractReviewChangesFiles(activeSessionPresentation?.rows ?? []),
-    [activeSessionPresentation]
-  )
-  const showReviewChangesDrawer = Boolean(
-    activeTodoPresentation?.items.length &&
-    activeTodoPresentation.items.every(item => item.status === 'completed') &&
-    activeReviewChangesFiles.length > 0
-  )
   useEffect(() => {
     const kanban = window.orxa?.kanban
     const events = window.orxa?.events
@@ -3214,23 +3111,41 @@ export default function App() {
     renameSyntheticSession,
     setSessionTitles,
   ])
-  const runQueuedMessage = (id: string) => {
-    const item = followupQueue.find(message => message.id === id)
-    if (!item || sendingQueuedId) {
-      return
-    }
-    setSendingQueuedId(id)
-    void sendPrompt({
-      textOverride: item.text,
-      attachmentOverride: item.attachments ?? [],
-      systemAddendum: effectiveSystemAddendum,
-      promptSource: 'user',
-      tools: activePromptToolsPolicy,
-    }).finally(() => {
-      setSendingQueuedId(undefined)
-    })
-    removeQueuedMessage(id)
-  }
+  const runQueuedMessage = useCallback(
+    (id: string) => {
+      const item = followupQueue.find(message => message.id === id)
+      if (!item || sendingQueuedId) {
+        return
+      }
+      setSendingQueuedId(id)
+      void sendPrompt({
+        textOverride: item.text,
+        attachmentOverride: item.attachments ?? [],
+        systemAddendum: effectiveSystemAddendum,
+        promptSource: 'user',
+        tools: activePromptToolsPolicy,
+      }).finally(() => {
+        setSendingQueuedId(undefined)
+      })
+      removeQueuedMessage(id)
+    },
+    [
+      activePromptToolsPolicy,
+      effectiveSystemAddendum,
+      followupQueue,
+      removeQueuedMessage,
+      sendPrompt,
+      sendingQueuedId,
+    ]
+  )
+  const guardedSendComposerPrompt = useCallback(
+    () => opencodeSessionControls.withGuardrails(sendComposerPrompt),
+    [opencodeSessionControls, sendComposerPrompt]
+  )
+  const guardedRunQueuedMessage = useCallback(
+    (id: string) => void opencodeSessionControls.withGuardrails(() => runQueuedMessage(id)),
+    [opencodeSessionControls, runQueuedMessage]
+  )
   const branchControls = {
     branchMenuOpen,
     setBranchMenuOpen,
@@ -3263,6 +3178,7 @@ export default function App() {
     openSkillUseModal,
     createSession,
     openClaudeSessionBrowser,
+    openCodexSessionBrowser,
     canvasState,
     mcpDevToolsState,
     activeLocalProviderSessionKey,
@@ -3282,6 +3198,7 @@ export default function App() {
     manualSessionTitles,
     openReferencedFile,
     setBrowserMode,
+    openSettings: () => setSettingsOpen(true),
     feedMessages,
     feedPresentation,
     activeSessionNotices,
@@ -3299,7 +3216,7 @@ export default function App() {
     insertSlashCommand,
     handleSlashKeyDown,
     addComposerAttachments,
-    sendComposerPrompt,
+    sendComposerPrompt: guardedSendComposerPrompt,
     abortActiveSession,
     isSendingPrompt,
     pickImageAttachment,
@@ -3309,7 +3226,21 @@ export default function App() {
     effectiveComposerAgentOptions,
     selectedAgent,
     setSelectedAgent,
-    compactionMeter,
+    sessionGuardrailPreferences: {
+      enabled: appPreferences.sessionGuardrailsEnabled,
+      tokenBudget: appPreferences.sessionTokenBudget,
+      runtimeBudgetMinutes: appPreferences.sessionRuntimeBudgetMinutes,
+    },
+    compactionState: opencodeSessionControls.compactionState,
+    guardrailState: opencodeSessionControls.guardrailState,
+    guardrailPrompt: opencodeSessionControls.guardrailPrompt,
+    dismissGuardrailWarning: opencodeSessionControls.dismissGuardrailWarning,
+    continueGuardrailOnce: opencodeSessionControls.continueOnce,
+    disableGuardrailsForSession: opencodeSessionControls.disableGuardrailsForSession,
+    revertTargets: opencodeSessionControls.revertTargets,
+    revertSessionChange: async targetId => {
+      await opencodeSessionControls.revertTarget(targetId)
+    },
     modelSelectOptions,
     selectedModel,
     setSelectedModel,
@@ -3330,14 +3261,12 @@ export default function App() {
     activeTodoItems: activeTodoPresentation?.items,
     dockTodosOpen,
     setDockTodosOpen,
-    showReviewChangesDrawer,
-    activeReviewChangesFiles,
     dockPendingPermission,
     dockPendingQuestion,
     followupQueue,
     sendingQueuedId,
     queueFollowupMessage,
-    runQueuedMessage,
+    runQueuedMessage: guardedRunQueuedMessage,
     editQueuedMessage,
     removeQueuedMessage,
     canShowIntegratedTerminal,
@@ -3428,6 +3357,7 @@ export default function App() {
     selectProject,
     createSession,
     openClaudeSessionBrowser,
+    openCodexSessionBrowser,
     openSession,
     togglePinSession,
     setStatusLine,
@@ -3634,11 +3564,18 @@ export default function App() {
             setAllSessionsModalOpen,
             claudeSessionBrowserOpen,
             setClaudeSessionBrowserOpen,
+            codexSessionBrowserOpen,
+            setCodexSessionBrowserOpen,
             claudeBrowserSessions,
             claudeBrowserSessionsLoading,
+            codexBrowserThreads,
+            codexBrowserThreadsLoading,
             selectedClaudeBrowserWorkspace,
             setSelectedClaudeBrowserWorkspace,
+            selectedCodexBrowserWorkspace,
+            setSelectedCodexBrowserWorkspace,
             openClaudeBrowserSession,
+            openCodexBrowserThread,
             sessions: workspaceDetailSessions,
             workspaceWorktrees,
             workspaceWorktreesLoading,

@@ -18,6 +18,7 @@ it('creates Codex sessions as local drafts until the first prompt is sent', asyn
       clearPendingSession: vi.fn(),
       createWorkspaceSession: vi.fn(),
       describeClaudeHealthFailure: vi.fn(),
+      findReusableDraftSession: vi.fn(),
       markSessionUsed,
       registerLocalProviderSession,
       selectProject: vi.fn(),
@@ -59,6 +60,7 @@ it('creates opencode sessions as local drafts until the first prompt is sent', a
       clearPendingSession: vi.fn(),
       createWorkspaceSession,
       describeClaudeHealthFailure: vi.fn(),
+      findReusableDraftSession: vi.fn(),
       markSessionUsed,
       registerLocalProviderSession,
       selectProject: vi.fn(),
@@ -166,4 +168,54 @@ it('opens an imported Claude provider session as a bound local provider session'
   )
   expect(setActiveSessionID).toHaveBeenCalledWith('provider-thread-claude')
   expect(markSessionUsed).toHaveBeenCalledWith('provider-thread-claude')
+})
+
+it('reuses an existing draft local provider session instead of creating a duplicate', async () => {
+  window.orxa = {
+    claudeChat: {
+      health: vi.fn(async () => ({ available: true, authenticated: true })),
+    },
+  } as unknown as typeof window.orxa
+  const reusableDraft = {
+    sessionID: 'claude-chat-existing',
+    directory: '/repo/orxacode',
+    type: 'claude-chat' as const,
+    title: 'Claude Code (Chat)',
+    slug: 'claude-chat',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    draft: true,
+  }
+  const registerLocalProviderSession = vi.fn(record => record)
+  const setActiveSessionID = vi.fn()
+
+  await createSessionAction(
+    {
+      activeProjectDir: '/repo/orxacode',
+      appPermissionMode: 'ask-write',
+      availableAgentNames: new Set<string>(),
+      clearPendingSession: vi.fn(),
+      createWorkspaceSession: vi.fn(),
+      describeClaudeHealthFailure: vi.fn(),
+      findReusableDraftSession: vi.fn(() => reusableDraft),
+      markSessionUsed: vi.fn(),
+      registerLocalProviderSession,
+      selectProject: vi.fn(),
+      selectedAgent: undefined,
+      selectedModelPayload: undefined,
+      selectedVariant: undefined,
+      setActiveProjectDir: vi.fn(),
+      setActiveSessionID,
+      setManualSessionTitles: vi.fn(),
+      setSessionTitles: vi.fn(),
+      setSessionTypes: vi.fn(),
+      setSidebarMode: vi.fn(),
+      setStatusLine: vi.fn(),
+    },
+    '/repo/orxacode',
+    'claude-chat' satisfies SessionType
+  )
+
+  expect(registerLocalProviderSession).not.toHaveBeenCalled()
+  expect(setActiveSessionID).toHaveBeenCalledWith('claude-chat-existing')
 })

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectBootstrap } from '@shared/ipc'
-import { mergeLocalProviderSessions } from './local-provider-sessions'
+import {
+  markLocalProviderSessionRecordStarted,
+  mergeLocalProviderSessions,
+  pruneLocalProviderDraftSessions,
+} from './local-provider-sessions'
 
 function buildProject(sessions: ProjectBootstrap['sessions']): ProjectBootstrap {
   return {
@@ -41,5 +45,96 @@ describe('mergeLocalProviderSessions', () => {
     expect(merged.sessions).toHaveLength(1)
     expect(merged.sessions[0]?.id).toBe('session-1')
     expect(merged.sessions[0]?.title).toBe('OpenCode Session')
+  })
+})
+
+describe('pruneLocalProviderDraftSessions', () => {
+  it('keeps only the newest draft session of a provider type in the same workspace', () => {
+    const result = pruneLocalProviderDraftSessions(
+      {
+        '/repo/project::claude-chat-1': {
+          sessionID: 'claude-chat-1',
+          directory: '/repo/project',
+          type: 'claude-chat',
+          title: 'Claude Code (Chat)',
+          slug: 'claude-chat',
+          createdAt: 1,
+          updatedAt: 1,
+          draft: true,
+        },
+        '/repo/project::claude-chat-2': {
+          sessionID: 'claude-chat-2',
+          directory: '/repo/project',
+          type: 'claude-chat',
+          title: 'Claude Code (Chat)',
+          slug: 'claude-chat',
+          createdAt: 2,
+          updatedAt: 2,
+          draft: true,
+        },
+        '/repo/project::codex-1': {
+          sessionID: 'codex-1',
+          directory: '/repo/project',
+          type: 'codex',
+          title: 'Codex Session',
+          slug: 'codex',
+          createdAt: 3,
+          updatedAt: 3,
+          draft: true,
+        },
+      },
+      '/repo/project',
+      'claude-chat',
+      'claude-chat-2'
+    )
+
+    expect(result).toEqual({
+      '/repo/project::claude-chat-2': expect.objectContaining({
+        sessionID: 'claude-chat-2',
+      }),
+      '/repo/project::codex-1': expect.objectContaining({
+        sessionID: 'codex-1',
+      }),
+    })
+  })
+})
+
+describe('markLocalProviderSessionRecordStarted', () => {
+  it('marks the active draft as started and removes older drafts of the same provider type', () => {
+    const result = markLocalProviderSessionRecordStarted(
+      {
+        '/repo/project::claude-chat-1': {
+          sessionID: 'claude-chat-1',
+          directory: '/repo/project',
+          type: 'claude-chat',
+          title: 'Claude Code (Chat)',
+          slug: 'claude-chat',
+          createdAt: 1,
+          updatedAt: 1,
+          draft: true,
+        },
+        '/repo/project::claude-chat-2': {
+          sessionID: 'claude-chat-2',
+          directory: '/repo/project',
+          type: 'claude-chat',
+          title: 'Claude Code (Chat)',
+          slug: 'claude-chat',
+          createdAt: 2,
+          updatedAt: 2,
+          draft: true,
+        },
+      },
+      '/repo/project',
+      'claude-chat-2',
+      10
+    )
+
+    expect(result).toEqual({
+      '/repo/project::claude-chat-2': expect.objectContaining({
+        sessionID: 'claude-chat-2',
+        draft: false,
+        updatedAt: 10,
+      }),
+    })
   })
 })

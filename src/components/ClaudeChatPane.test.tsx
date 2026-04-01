@@ -11,6 +11,8 @@ const onTitleChangeMock = vi.fn()
 const approveActionMock = vi.fn(async () => undefined)
 const pickImageMock = vi.fn<() => Promise<ImageSelection | undefined>>(async () => undefined)
 let mockSubagents: ClaudeChatSubagentState[] = []
+let isStreamingMock = false
+let connectionStatusMock: 'disconnected' | 'connecting' | 'connected' | 'error' = 'connected'
 let pendingApprovalMock: {
   id: string
   reason: string
@@ -22,7 +24,8 @@ vi.mock('../hooks/useClaudeChatSession', () => ({
     messages: [],
     pendingApproval: pendingApprovalMock,
     pendingUserInput: null,
-    isStreaming: false,
+    isStreaming: isStreamingMock,
+    connectionStatus: connectionStatusMock,
     subagents: mockSubagents,
     modelOptions: [
       {
@@ -75,6 +78,12 @@ function renderClaudeChatPane(permissionMode: 'ask-write' | 'yolo-write' = 'ask-
       checkoutBranch={vi.fn()}
       filteredBranches={['main']}
       openBranchCreateModal={vi.fn()}
+      sessionGuardrailPreferences={{
+        enabled: true,
+        tokenBudget: 120000,
+        runtimeBudgetMinutes: 45,
+      }}
+      onOpenSettings={vi.fn()}
     />
   )
 }
@@ -219,6 +228,21 @@ function registerClaudePermissionTests() {
   })
 }
 
+function registerClaudeCommandBrowserTests() {
+  it('shows a Claude native commands browser with Orxa mapping hints', async () => {
+    renderClaudeChatPane()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Claude native commands' }))
+
+    expect(screen.getByRole('heading', { name: 'claude native commands' })).toBeInTheDocument()
+    expect(screen.getByText('/model')).toBeInTheDocument()
+    expect(screen.getByText('In Orxa: Model picker')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Orxa does not execute Claude slash commands directly yet/i)
+    ).toBeInTheDocument()
+  })
+}
+
 describe('ClaudeChatPane', () => {
   beforeEach(() => {
     startTurnMock.mockReset()
@@ -230,6 +254,8 @@ describe('ClaudeChatPane', () => {
     pickImageMock.mockReset()
     pickImageMock.mockResolvedValue(undefined)
     mockSubagents = []
+    isStreamingMock = false
+    connectionStatusMock = 'connected'
     pendingApprovalMock = null
     window.orxa = {
       opencode: {
@@ -243,4 +269,5 @@ describe('ClaudeChatPane', () => {
   registerClaudeBackgroundPollingTests()
   registerClaudeAttachmentTests()
   registerClaudePermissionTests()
+  registerClaudeCommandBrowserTests()
 })

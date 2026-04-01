@@ -146,6 +146,12 @@ it('does not loop when a thread name syncs back into parent title state', async 
             openBranchCreateModal: vi.fn(),
             permissionMode: 'ask-write' as const,
             onPermissionModeChange: vi.fn(),
+            sessionGuardrailPreferences: {
+              enabled: true,
+              tokenBudget: 120000,
+              runtimeBudgetMinutes: 45,
+            },
+            onOpenSettings: vi.fn(),
           }}
         />
       </>
@@ -223,6 +229,24 @@ it('renders the send button', () => {
   renderCodexPane()
 
   expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument()
+})
+
+it('shows a Codex native commands browser with Orxa mapping hints', async () => {
+  window.orxa = {
+    codex: buildOrxaCodex(),
+    events: buildOrxaEvents(),
+  } as unknown as typeof window.orxa
+
+  renderCodexPane()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open Codex native commands' }))
+
+  expect(screen.getByRole('heading', { name: 'codex native commands' })).toBeInTheDocument()
+  expect(screen.getByText('/resume')).toBeInTheDocument()
+  expect(screen.getByText('In Orxa: Codex thread browser')).toBeInTheDocument()
+  expect(
+    screen.getByText(/Orxa does not execute Codex slash commands directly yet/i)
+  ).toBeInTheDocument()
 })
 
 it('renders the conversation log area', () => {

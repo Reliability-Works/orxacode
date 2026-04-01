@@ -7,8 +7,14 @@ import { UnifiedTimelineRowView } from './chat/UnifiedTimelineRow'
 import { estimateUnifiedTimelineRowHeight, type UnifiedTimelineRenderRow } from './chat/unified-timeline-model'
 import type { PermissionMode } from '../types/app'
 import type { ModelOption } from '../lib/models'
+import type {
+  SessionCompactionState,
+  SessionGuardrailPrompt,
+  SessionGuardrailState,
+} from '../lib/session-controls'
 import type { ClaudeChatPaneComposerViewModel } from './useClaudeChatPaneComposer'
 import type { ClaudeChatPaneSubagentsViewModel } from './useClaudeChatPaneSubagents'
+import type { SessionChangeTarget } from './chat/ReviewChangesDock'
 
 type ClaudeChatPaneViewProps = ClaudeChatPaneComposerViewModel &
   ClaudeChatPaneSubagentsViewModel & {
@@ -38,6 +44,18 @@ type ClaudeChatPaneViewProps = ClaudeChatPaneComposerViewModel &
     customControls: ReactNode
     pendingQuestion: ComposerPanelProps['pendingQuestion']
     pendingPermission: ComposerPanelProps['pendingPermission']
+    isSessionBusy: boolean
+    guardrailState: SessionGuardrailState
+    guardrailPrompt: SessionGuardrailPrompt | null
+    onDismissGuardrailWarning: () => void
+    onContinueGuardrailOnce: () => void
+    onDisableGuardrailsForSession: () => void
+    onOpenSettings: () => void
+    sessionChangeTargets: SessionChangeTarget[]
+    onRevertSessionChange: (targetId: string) => void | Promise<void>
+    todoOpen: boolean
+    onTodoToggle: () => void
+    compactionState: SessionCompactionState
   }
 
 export function ClaudeChatPaneView(props: ClaudeChatPaneViewProps) {
@@ -52,6 +70,7 @@ export function ClaudeChatPaneView(props: ClaudeChatPaneViewProps) {
         addComposerAttachments={props.addComposerAttachments}
         sendPrompt={props.sendPrompt}
         abortActiveSession={props.abortActiveSession}
+        isSessionBusy={props.isSessionBusy}
         isPlanMode={props.isPlanMode}
         setIsPlanMode={props.setIsPlanMode}
         browserModeEnabled={props.browserModeEnabled}
@@ -89,6 +108,17 @@ export function ClaudeChatPaneView(props: ClaudeChatPaneViewProps) {
         backgroundAgentDetailError={props.backgroundAgentDetailError}
         pendingQuestion={props.pendingQuestion}
         pendingPermission={props.pendingPermission}
+        guardrailState={props.guardrailState}
+        guardrailPrompt={props.guardrailPrompt}
+        onDismissGuardrailWarning={props.onDismissGuardrailWarning}
+        onContinueGuardrailOnce={props.onContinueGuardrailOnce}
+        onDisableGuardrailsForSession={props.onDisableGuardrailsForSession}
+        onOpenSettings={props.onOpenSettings}
+        sessionChangeTargets={props.sessionChangeTargets}
+        onRevertSessionChange={props.onRevertSessionChange}
+        todoOpen={props.todoOpen}
+        onTodoToggle={props.onTodoToggle}
+        compactionState={props.compactionState}
         pickImageAttachment={props.pickImageAttachment}
       />
     </>
@@ -179,6 +209,18 @@ type ClaudeChatComposerProps = Pick<
   | 'backgroundAgentDetailError'
   | 'pendingQuestion'
   | 'pendingPermission'
+  | 'isSessionBusy'
+  | 'guardrailState'
+  | 'guardrailPrompt'
+  | 'onDismissGuardrailWarning'
+  | 'onContinueGuardrailOnce'
+  | 'onDisableGuardrailsForSession'
+  | 'onOpenSettings'
+  | 'sessionChangeTargets'
+  | 'onRevertSessionChange'
+  | 'todoOpen'
+  | 'onTodoToggle'
+  | 'compactionState'
   | 'pickImageAttachment'
 >
 
@@ -200,7 +242,7 @@ function ClaudeChatComposer(props: ClaudeChatComposerProps) {
           addComposerAttachments={props.addComposerAttachments}
           sendPrompt={props.sendPrompt}
           abortActiveSession={props.abortActiveSession}
-          isSessionBusy={false}
+          isSessionBusy={props.isSessionBusy}
           isSendingPrompt={false}
           pickImageAttachment={props.pickImageAttachment}
           hasActiveSession
@@ -213,9 +255,15 @@ function ClaudeChatComposer(props: ClaudeChatComposerProps) {
           onAgentChange={() => {}}
           permissionMode={props.permissionMode}
           onPermissionModeChange={props.onPermissionModeChange}
-          compactionProgress={0}
-          compactionHint="Context usage"
-          compactionCompacted={false}
+          guardrailState={props.guardrailState}
+          guardrailPrompt={props.guardrailPrompt}
+          onDismissGuardrailWarning={props.onDismissGuardrailWarning}
+          onContinueGuardrailOnce={props.onContinueGuardrailOnce}
+          onDisableGuardrailsForSession={props.onDisableGuardrailsForSession}
+          onOpenSettings={props.onOpenSettings}
+          compactionProgress={props.compactionState.progress}
+          compactionHint={props.compactionState.hint}
+          compactionCompacted={props.compactionState.compacted}
           branchMenuOpen={props.branchMenuOpen}
           setBranchMenuOpen={props.setBranchMenuOpen}
           branchControlWidthCh={props.branchControlWidthCh}
@@ -254,7 +302,11 @@ function ClaudeChatComposer(props: ClaudeChatComposerProps) {
           backgroundAgentDetailError={props.backgroundAgentDetailError}
           pendingQuestion={props.pendingQuestion}
           pendingPermission={props.pendingPermission}
-        />
+          sessionChangeTargets={props.sessionChangeTargets}
+          onRevertSessionChange={props.onRevertSessionChange}
+          todoOpen={props.todoOpen}
+          onTodoToggle={props.onTodoToggle}
+          />
       </div>
     </div>
   )

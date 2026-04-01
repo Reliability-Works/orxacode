@@ -1,11 +1,13 @@
 import { memo, useLayoutEffect, useRef, type ReactNode } from 'react'
 import { BackgroundAgentsPanel } from './chat/BackgroundAgentsPanel'
 import { FollowupDock } from './chat/FollowupDock'
+import { GuardrailDock } from './chat/GuardrailDock'
 import { PermissionDock } from './chat/PermissionDock'
 import { QueuedMessagesDock } from './chat/QueuedMessagesDock'
-import { ReviewChangesDock } from './chat/ReviewChangesDock'
+import { ReviewChangesDock, type SessionChangeTarget } from './chat/ReviewChangesDock'
 import { TodoDock } from './chat/TodoDock'
 import type { UnifiedBackgroundAgentSummary } from '../lib/session-presentation'
+import type { SessionGuardrailPrompt } from '../lib/session-controls'
 
 export type ComposerDockStackProps = {
   queuedMessages?: { id: string }[]
@@ -27,8 +29,14 @@ export type ComposerDockStackProps = {
   todoItems?: { id: string }[]
   todoOpen?: boolean
   onTodoToggle?: () => void
-  reviewChangesFiles?: { id: string }[]
+  sessionChangeTargets?: SessionChangeTarget[]
   onOpenReviewChange?: (path: string) => void
+  onRevertSessionChange?: (targetId: string) => void | Promise<void>
+  guardrailPrompt?: SessionGuardrailPrompt | null
+  onDismissGuardrailWarning?: () => void
+  onContinueGuardrailOnce?: () => void
+  onDisableGuardrailsForSession?: () => void
+  onOpenSettings?: () => void
   pendingPermission?: {
     description: string
     filePattern?: string
@@ -104,12 +112,27 @@ function renderBackgroundAgentsSection(props: ComposerDockStackProps) {
 }
 
 function renderTaskSection(props: ComposerDockStackProps) {
-  const { onTodoToggle, reviewChangesFiles, todoOpen, todoItems, onOpenReviewChange } = props
+  const {
+    onTodoToggle,
+    sessionChangeTargets,
+    todoOpen,
+    todoItems,
+    onOpenReviewChange,
+    onRevertSessionChange,
+  } = props
   if (!onTodoToggle) {
     return null
   }
-  if (reviewChangesFiles && reviewChangesFiles.length > 0) {
-    return <ReviewChangesDock files={reviewChangesFiles as never} open={todoOpen ?? false} onToggle={onTodoToggle} onOpenPath={onOpenReviewChange} />
+  if (sessionChangeTargets && sessionChangeTargets.length > 0) {
+    return (
+      <ReviewChangesDock
+        targets={sessionChangeTargets as never}
+        open={todoOpen ?? false}
+        onToggle={onTodoToggle}
+        onOpenPath={onOpenReviewChange}
+        onRevertTarget={onRevertSessionChange}
+      />
+    )
   }
   if (todoItems && todoItems.length > 0) {
     return <TodoDock items={todoItems as never} open={todoOpen ?? false} onToggle={onTodoToggle} />
@@ -138,6 +161,15 @@ export const ComposerDockStack = memo(function ComposerDockStack(props: Composer
       {renderQueuedMessagesSection(props)}
       {renderBackgroundAgentsSection(props)}
       {renderTaskSection(props)}
+      {props.guardrailPrompt ? (
+        <GuardrailDock
+          prompt={props.guardrailPrompt}
+          onDismissWarning={props.onDismissGuardrailWarning}
+          onContinueOnce={props.onContinueGuardrailOnce}
+          onDisableForSession={props.onDisableGuardrailsForSession}
+          onOpenSettings={props.onOpenSettings}
+        />
+      ) : null}
       {props.pendingPermission ? (
         <PermissionDock
           description={props.pendingPermission.description}
