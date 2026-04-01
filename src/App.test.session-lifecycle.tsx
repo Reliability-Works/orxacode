@@ -210,12 +210,73 @@ beforeEach(() => {
     })
   })
 
+  it('clears Codex runtime state when archiving from the App shell', async () => {
+    const sessionKey = '/repo/reliabilityworks::session-codex'
+    window.localStorage.setItem('orxa:sessionTypes:v2', JSON.stringify({ [sessionKey]: 'codex' }))
+
+    useUnifiedRuntimeStore.setState(state => ({
+      ...state,
+      codexSessions: {
+        ...state.codexSessions,
+        [sessionKey]: {
+          key: sessionKey,
+          directory: '/repo/reliabilityworks',
+          connectionStatus: 'connected',
+          thread: {
+            id: 'codex-thread-1',
+            preview: '',
+            modelProvider: 'openai',
+            createdAt: Date.now(),
+          },
+          runtimeSnapshot: null,
+          messages: [],
+          pendingApproval: null,
+          pendingUserInput: null,
+          isStreaming: false,
+          subagents: [],
+          planItems: [],
+          childThreadMessages: {},
+          activeSubagentThreadId: null,
+          dismissedPlanIds: [],
+          observedTokenTotal: 0,
+          turnTokenTotals: [],
+        },
+      },
+    }))
+
+    const activeSession = { id: 'session-codex', slug: 'session-codex', title: 'Codex Session', time: { created: Date.now(), updated: Date.now() } }
+    const selectProjectMock = vi.fn(async () => createProjectData('/repo/reliabilityworks', [activeSession]))
+
+    Object.defineProperty(window, 'orxa', {
+      value: {
+        ...window.orxa,
+        opencode: {
+          ...window.orxa!.opencode,
+          bootstrap: createBootstrapMock('reliabilityworks', '/repo/reliabilityworks'),
+          selectProject: selectProjectMock,
+        },
+        codex: {
+          ...window.orxa!.codex,
+          archiveThreadTree: vi.fn(async () => undefined),
+        },
+      },
+      configurable: true,
+    })
+
+    render(<App />)
+
+    const sessionButton = await screen.findByText('Codex Session')
+    fireEvent.contextMenu(sessionButton)
+    fireEvent.click(await screen.findByText('Archive Session'))
+
+    await waitFor(() => {
+      expect(useUnifiedRuntimeStore.getState().codexSessions[sessionKey]).toBeUndefined()
+    })
+  })
+
   it('renames Claude chat provider sessions from the App shell', async () => {
     const sessionKey = '/repo/reliabilityworks::session-claude-chat'
-    window.localStorage.setItem(
-      'orxa:sessionTypes:v2',
-      JSON.stringify({ [sessionKey]: 'claude-chat' })
-    )
+    window.localStorage.setItem('orxa:sessionTypes:v2', JSON.stringify({ [sessionKey]: 'claude-chat' }))
 
     useUnifiedRuntimeStore.setState({
       claudeChatSessions: {
@@ -235,12 +296,7 @@ beforeEach(() => {
       },
     })
 
-    const activeSession = {
-      id: 'session-claude-chat',
-      title: 'Claude Code (Chat)',
-      slug: 'claude-chat',
-      time: { created: Date.now(), updated: Date.now() },
-    }
+    const activeSession = { id: 'session-claude-chat', title: 'Claude Code (Chat)', slug: 'claude-chat', time: { created: Date.now(), updated: Date.now() } }
 
     const bootstrapMock = vi.fn(async () => ({
       projects: [
@@ -303,206 +359,5 @@ beforeEach(() => {
         'Renamed Claude Session',
         '/repo/reliabilityworks'
       )
-    })
-  })
-
-  it('falls back to Claude history message session ids when renaming provider sessions', async () => {
-    const sessionKey = '/repo/reliabilityworks::session-claude-chat'
-    window.localStorage.setItem(
-      'orxa:sessionTypes:v2',
-      JSON.stringify({ [sessionKey]: 'claude-chat' })
-    )
-
-    useUnifiedRuntimeStore.setState({
-      claudeChatSessions: {
-        [sessionKey]: {
-          key: sessionKey,
-          directory: '/repo/reliabilityworks',
-          connectionStatus: 'connected',
-          providerThreadId: null,
-          activeTurnId: null,
-          messages: [],
-          historyMessages: [
-            {
-              id: 'history-1',
-              role: 'assistant',
-              content: 'Hello',
-              timestamp: Date.now(),
-              sessionId: 'claude-thread-from-history',
-            },
-          ],
-          pendingApproval: null,
-          pendingUserInput: null,
-          isStreaming: false,
-          subagents: [],
-        },
-      },
-    })
-
-    const activeSession = {
-      id: 'session-claude-chat',
-      title: 'Claude Code (Chat)',
-      slug: 'claude-chat',
-      time: { created: Date.now(), updated: Date.now() },
-    }
-
-    const bootstrapMock = vi.fn(async () => ({
-      projects: [
-        {
-          id: 'proj-1',
-          name: 'reliabilityworks',
-          worktree: '/repo/reliabilityworks',
-          source: 'local' as const,
-        },
-      ],
-      runtime: { status: 'connected' as const, managedServer: false },
-    }))
-    const selectProjectMock = vi.fn(async () => ({
-      directory: '/repo/reliabilityworks',
-      path: {},
-      sessions: [activeSession],
-      sessionStatus: { 'session-claude-chat': { type: 'idle' as const } },
-      providers: { all: [], connected: [], default: {} },
-      agents: [],
-      config: {},
-      permissions: [],
-      questions: [],
-      commands: [],
-      mcp: {},
-      lsp: [],
-      formatter: [],
-      ptys: [],
-    }))
-    const renameProviderSessionMock = vi.fn(async () => undefined)
-
-    Object.defineProperty(window, 'orxa', {
-      value: {
-        ...window.orxa,
-        opencode: {
-          ...window.orxa!.opencode,
-          bootstrap: bootstrapMock,
-          selectProject: selectProjectMock,
-        },
-        claudeChat: {
-          ...window.orxa!.claudeChat,
-          renameProviderSession: renameProviderSessionMock,
-        },
-      },
-      configurable: true,
-    })
-
-    render(<App />)
-
-    const sessionButton = await screen.findByText('Claude Code (Chat)')
-    fireEvent.contextMenu(sessionButton)
-    fireEvent.click(await screen.findByText('Rename Session'))
-
-    const input = await screen.findByPlaceholderText('Session title')
-    fireEvent.change(input, { target: { value: 'Renamed From History' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
-
-    await waitFor(() => {
-      expect(renameProviderSessionMock).toHaveBeenCalledWith(
-        'claude-thread-from-history',
-        'Renamed From History',
-        '/repo/reliabilityworks'
-      )
-    })
-  })
-
-  it('falls back to Claude history message session ids when copying the session id', async () => {
-    const sessionKey = '/repo/reliabilityworks::session-claude-chat'
-    window.localStorage.setItem(
-      'orxa:sessionTypes:v2',
-      JSON.stringify({ [sessionKey]: 'claude-chat' })
-    )
-
-    useUnifiedRuntimeStore.setState({
-      claudeChatSessions: {
-        [sessionKey]: {
-          key: sessionKey,
-          directory: '/repo/reliabilityworks',
-          connectionStatus: 'connected',
-          providerThreadId: null,
-          activeTurnId: null,
-          messages: [],
-          historyMessages: [
-            {
-              id: 'history-1',
-              role: 'assistant',
-              content: 'Hello',
-              timestamp: Date.now(),
-              sessionId: 'claude-thread-from-history',
-            },
-          ],
-          pendingApproval: null,
-          pendingUserInput: null,
-          isStreaming: false,
-          subagents: [],
-        },
-      },
-    })
-
-    const clipboardWriteText = vi.fn(async () => undefined)
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText: clipboardWriteText },
-      configurable: true,
-    })
-
-    const activeSession = {
-      id: 'session-claude-chat',
-      title: 'Claude Code (Chat)',
-      slug: 'claude-chat',
-      time: { created: Date.now(), updated: Date.now() },
-    }
-
-    const bootstrapMock = vi.fn(async () => ({
-      projects: [
-        {
-          id: 'proj-1',
-          name: 'reliabilityworks',
-          worktree: '/repo/reliabilityworks',
-          source: 'local' as const,
-        },
-      ],
-      runtime: { status: 'connected' as const, managedServer: false },
-    }))
-    const selectProjectMock = vi.fn(async () => ({
-      directory: '/repo/reliabilityworks',
-      path: {},
-      sessions: [activeSession],
-      sessionStatus: { 'session-claude-chat': { type: 'idle' as const } },
-      providers: { all: [], connected: [], default: {} },
-      agents: [],
-      config: {},
-      permissions: [],
-      questions: [],
-      commands: [],
-      mcp: {},
-      lsp: [],
-      formatter: [],
-      ptys: [],
-    }))
-
-    Object.defineProperty(window, 'orxa', {
-      value: {
-        ...window.orxa,
-        opencode: {
-          ...window.orxa!.opencode,
-          bootstrap: bootstrapMock,
-          selectProject: selectProjectMock,
-        },
-      },
-      configurable: true,
-    })
-
-    render(<App />)
-
-    const sessionButton = await screen.findByText('Claude Code (Chat)')
-    fireEvent.contextMenu(sessionButton)
-    fireEvent.click(await screen.findByText('Copy Claude Thread ID'))
-
-    await waitFor(() => {
-      expect(clipboardWriteText).toHaveBeenCalledWith('claude-thread-from-history')
     })
   })

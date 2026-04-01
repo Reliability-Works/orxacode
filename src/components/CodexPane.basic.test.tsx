@@ -231,7 +231,7 @@ it('renders the send button', () => {
   expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument()
 })
 
-it('shows a Codex native commands browser with Orxa mapping hints', async () => {
+it('does not render a separate Codex commands browser control under the composer', () => {
   window.orxa = {
     codex: buildOrxaCodex(),
     events: buildOrxaEvents(),
@@ -239,14 +239,70 @@ it('shows a Codex native commands browser with Orxa mapping hints', async () => 
 
   renderCodexPane()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Open Codex native commands' }))
-
-  expect(screen.getByRole('heading', { name: 'codex native commands' })).toBeInTheDocument()
-  expect(screen.getByText('/resume')).toBeInTheDocument()
-  expect(screen.getByText('In Orxa: Codex thread browser')).toBeInTheDocument()
   expect(
-    screen.getByText(/Orxa does not execute Codex slash commands directly yet/i)
-  ).toBeInTheDocument()
+    screen.queryByRole('button', { name: 'Open Codex native commands' })
+  ).not.toBeInTheDocument()
+})
+
+it('shows native Codex commands in slash autocomplete alongside skills', async () => {
+  const codex = buildOrxaCodex()
+  window.orxa = {
+    app: {
+      listSkillsFromDir: vi.fn(async () => [
+        {
+          id: 'frontend-design',
+          name: 'Frontend Design',
+          description: 'Create polished interfaces.',
+          path: '/Users/callumspencer/.codex/skills/frontend-design',
+        },
+      ]),
+    },
+    codex,
+    events: buildOrxaEvents(),
+  } as unknown as typeof window.orxa
+
+  renderCodexPane()
+
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '/res' } })
+  expect(screen.getByText('/resume')).toBeInTheDocument()
+
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '/front' } })
+
+  await waitFor(() => {
+    expect(screen.getByText('/frontend-design')).toBeInTheDocument()
+  })
+})
+
+it('uses /plan to send the next Codex turn in plan mode without showing the composer toggle', async () => {
+  const codex = buildOrxaCodex()
+  window.orxa = {
+    app: {
+      listSkillsFromDir: vi.fn(async () => []),
+    },
+    codex,
+    events: buildOrxaEvents(),
+  } as unknown as typeof window.orxa
+
+  renderCodexPane({}, { isDraft: true })
+
+  expect(screen.queryByRole('button', { name: 'Enable plan mode' })).not.toBeInTheDocument()
+
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '/plan' } })
+  fireEvent.click(screen.getAllByText('/plan')[1]!.closest('button')!)
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Ship it' } })
+  fireEvent.click(screen.getByRole('button', { name: /send/i }))
+
+  await waitFor(() => {
+    expect(codex.startTurn).toHaveBeenCalledWith(
+      'thr-1',
+      'Ship it',
+      '/workspace/project',
+      undefined,
+      undefined,
+      'plan',
+      undefined
+    )
+  })
 })
 
 it('renders the conversation log area', () => {

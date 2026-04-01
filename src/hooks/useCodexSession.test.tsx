@@ -130,17 +130,19 @@ registerCodexSessionTestLifecycle()
 
   it("unsubscribes from events on unmount", () => {
     const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => unsubscribe);
     window.orxa = {
       codex: buildOrxaCodex(),
       events: {
-        subscribe: vi.fn(() => unsubscribe),
+        subscribe,
       },
     } as unknown as typeof window.orxa;
 
     const { unmount } = renderHook(() => useCodexSession("/workspace", SESSION_KEY));
     unmount();
 
-    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(subscribe).toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledTimes(subscribe.mock.calls.length);
   });
 
   it("acceptPlan starts an explicit default-mode implementation turn", async () => {

@@ -184,7 +184,7 @@ async function createLocalProviderSession(
   }
 
   const reusableDraft =
-    options.draft
+    options.draft && intent.sessionType === 'opencode'
       ? findReusableDraftSession(intent.targetDirectory, intent.sessionType)
       : undefined
   if (reusableDraft) {

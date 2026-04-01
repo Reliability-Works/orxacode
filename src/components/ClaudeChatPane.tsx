@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useClaudeChatSession } from '../hooks/useClaudeChatSession'
 import { ClaudeTraitsPicker } from './ClaudeTraitsPicker'
-import { ProviderCommandBrowserControl } from './ProviderCommandBrowserControl'
 import { projectClaudeChatProjectedSessionPresentation } from '../lib/claude-chat-session-presentation'
 import type { ComposerPanelProps } from './ComposerPanel'
 import type { PermissionMode } from '../types/app'
@@ -171,6 +170,7 @@ function useClaudeChatPaneSessionState(input: {
     turnTokenTotals: claudeRuntime?.turnTokenTotals ?? [],
   })
   const composerState = useClaudeChatPaneComposer({
+    directory: input.directory,
     messages: input.messages,
     modelOptions: input.modelOptions,
     permissionMode: input.permissionMode,
@@ -289,18 +289,15 @@ function buildClaudeChatCustomControls(
   composerState: ReturnType<typeof useClaudeChatPaneComposer>
 ) {
   return (
-    <>
-      <ClaudeChatTraitControls
-        selectedModelId={composerState.selectedModelId}
-        effort={composerState.effort}
-        thinking={composerState.thinking}
-        fastMode={composerState.fastMode}
-        onEffortChange={composerState.setEffort}
-        onThinkingChange={composerState.setThinking}
-        onFastModeChange={composerState.setFastMode}
-      />
-      <ProviderCommandBrowserControl provider="claude" />
-    </>
+    <ClaudeChatTraitControls
+      selectedModelId={composerState.selectedModelId}
+      effort={composerState.effort}
+      thinking={composerState.thinking}
+      fastMode={composerState.fastMode}
+      onEffortChange={composerState.setEffort}
+      onThinkingChange={composerState.setThinking}
+      onFastModeChange={composerState.setFastMode}
+    />
   )
 }
 

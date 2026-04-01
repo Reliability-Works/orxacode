@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BrainCircuit, RefreshCw, Sparkles } from 'lucide-react'
 import type { SkillEntry } from '@shared/ipc'
+import { PROVIDER_SKILL_ROOTS } from '../lib/provider-skill-roots'
 
 type SkillsTab = 'opencode' | 'codex' | 'claude'
-
-const SKILL_DIRS: Record<SkillsTab, string> = {
-  opencode: '~/.config/opencode/skill',
-  codex: '~/.codex/skills',
-  claude: '~/.claude/skills',
-}
+const SKILL_DIRS: Record<SkillsTab, string> = PROVIDER_SKILL_ROOTS
 
 type Props = {
   /** Initial opencode skills (loaded by parent on sidebar switch) */

@@ -104,6 +104,10 @@ import {
 } from './lib/models'
 import { preferredAgentForMode } from './lib/app-mode'
 import { removePersistedValue } from './lib/persistence'
+import {
+  buildProviderArchiveRequest,
+  clearLocalProviderArchiveState,
+} from './lib/provider-session-archive'
 import { resolveSessionCopyIdentifier } from './lib/session-context-menu'
 import { isOpencodeRuntimeSession } from './lib/session-types'
 import {
@@ -615,6 +619,7 @@ export default function App() {
   const setSessionReadAt = useUnifiedRuntimeStore(state => state.setSessionReadAt)
   const removeClaudeSession = useUnifiedRuntimeStore(state => state.removeClaudeSession)
   const removeClaudeChatSession = useUnifiedRuntimeStore(state => state.removeClaudeChatSession)
+  const removeCodexSession = useUnifiedRuntimeStore(state => state.removeCodexSession)
   const initCodexSession = useUnifiedRuntimeStore(state => state.initCodexSession)
   const setCodexThread = useUnifiedRuntimeStore(state => state.setCodexThread)
   const setCodexStreaming = useUnifiedRuntimeStore(state => state.setCodexStreaming)
@@ -2216,6 +2221,21 @@ export default function App() {
         const isArchivedSessionActive =
           activeProjectDir === directory && activeSessionID === sessionID
         const syntheticSession = getSyntheticSessionRecord(directory, sessionID)
+        const codexThreadId =
+          archivedSessionType === 'codex'
+            ? selectCodexSessionRuntime(sessionKey)?.thread?.id
+            : undefined
+        const providerThreadId =
+          archivedSessionType === 'claude-chat'
+            ? resolveClaudeChatProviderThreadId(sessionKey)
+            : undefined
+        const providerArchiveRequest = buildProviderArchiveRequest({
+          archivedSessionType,
+          sessionKey,
+          directory,
+          codexThreadId,
+          providerThreadId,
+        })
         if (shouldUseOpencodeRuntimeSession(directory, sessionID)) {
           await window.orxa.opencode.archiveSession(directory, sessionID)
         }
@@ -2228,19 +2248,15 @@ export default function App() {
         } catch {
           /* non-fatal */
         }
-        if (archivedSessionType === 'codex') {
-          const codexThreadId = selectCodexSessionRuntime(sessionKey)?.thread?.id
-          if (codexThreadId) {
-            await window.orxa.codex.archiveThreadTree(codexThreadId)
-          }
-          clearPersistedCodexState(sessionKey)
-        } else if (archivedSessionType === 'claude-chat') {
-          await window.orxa.claudeChat.archiveSession(sessionKey)
-          clearPersistedClaudeChatState(sessionKey)
-          removeClaudeChatSession(sessionKey)
-        } else if (archivedSessionType === 'claude') {
-          removeClaudeSession(sessionKey)
-        }
+        clearLocalProviderArchiveState({
+          archivedSessionType,
+          sessionKey,
+          clearPersistedCodexState,
+          removeCodexSession,
+          clearPersistedClaudeChatState,
+          removeClaudeChatSession,
+          removeClaudeSession,
+        })
         if (syntheticSession) {
           removeSyntheticSession(directory, sessionID)
         }
@@ -2255,6 +2271,9 @@ export default function App() {
           removeSessionFromLocalProjectCache(directory, sessionID)
         } else if (!syntheticSession) {
           void refreshProject(directory).catch(() => undefined)
+        }
+        if (providerArchiveRequest) {
+          void providerArchiveRequest().catch(() => undefined)
         }
         setStatusLine('Session archived')
       } catch (error) {
@@ -2272,6 +2291,7 @@ export default function App() {
       refreshProject,
       removeSyntheticSession,
       selectProject,
+      removeCodexSession,
       removeClaudeChatSession,
       removeClaudeSession,
       removeSessionFromLocalProjectCache,

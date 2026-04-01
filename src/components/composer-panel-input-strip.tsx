@@ -220,7 +220,7 @@ function handleComposerKeyDown(
   if (slashMenuOpen) {
     const command = filteredSlashCommands[slashSelectedIndex]
     if (command) {
-      insertSlashCommand(command.name)
+      insertSlashCommand(command)
     }
     return
   }

@@ -1,17 +1,23 @@
 import { ComposerPanel } from './ComposerPanel'
 import type { Attachment } from '../hooks/useComposerState'
+import type { ComposerAutocompleteItem } from '../hooks/useComposerAutocomplete'
 import type { PermissionMode } from '../types/app'
 import type { ModelOption } from '../lib/models'
 import type { CodexCollaborationMode } from '@shared/ipc'
 import type { TodoItem } from './chat/TodoDock'
 import type { SessionChangeTarget } from './chat/ReviewChangesDock'
 import type { UnifiedBackgroundAgentSummary } from '../lib/session-presentation'
-import type { RefObject, ReactNode } from 'react'
+import type { Dispatch, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, SetStateAction } from 'react'
 import type { SessionCompactionState, SessionGuardrailPrompt, SessionGuardrailState } from '../lib/session-controls'
 
 export type CodexPaneComposerPanelProps = {
   input: string
-  setInput: (value: string) => void
+  setInput: Dispatch<SetStateAction<string>>
+  slashMenuOpen: boolean
+  filteredSlashCommands: ComposerAutocompleteItem[]
+  slashSelectedIndex: number
+  insertSlashCommand: (item: ComposerAutocompleteItem) => void
+  handleSlashKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void
   composerAttachments: Attachment[]
   removeAttachment: (url: string) => void
   addComposerAttachments: (attachments: Attachment[]) => void
@@ -93,6 +99,19 @@ export type CodexPaneComposerPanelProps = {
   setBrowserModeEnabled?: (enabled: boolean) => void
 }
 
+function toggleCodexPlanMode(
+  enabled: boolean,
+  props: Pick<CodexPaneComposerPanelProps, 'collaborationModes' | 'setIsPlanMode' | 'setSelectedCollabMode'>
+) {
+  props.setIsPlanMode(enabled)
+  if (enabled) {
+    const planMode = props.collaborationModes.find(m => m.mode === 'plan' || m.id === 'plan')
+    props.setSelectedCollabMode(planMode?.id ?? 'plan')
+    return
+  }
+  props.setSelectedCollabMode(undefined)
+}
+
 export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
   return (
     <ComposerPanel
@@ -100,11 +119,11 @@ export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
       setComposer={props.setInput}
       composerAttachments={props.composerAttachments}
       removeAttachment={props.removeAttachment}
-      slashMenuOpen={false}
-      filteredSlashCommands={[]}
-      slashSelectedIndex={0}
-      insertSlashCommand={() => undefined}
-      handleSlashKeyDown={() => undefined}
+      slashMenuOpen={props.slashMenuOpen}
+      filteredSlashCommands={props.filteredSlashCommands}
+      slashSelectedIndex={props.slashSelectedIndex}
+      insertSlashCommand={props.insertSlashCommand}
+      handleSlashKeyDown={props.handleSlashKeyDown}
       addComposerAttachments={props.addComposerAttachments}
       sendPrompt={props.sendPrompt}
       abortActiveSession={props.abortActiveSession}
@@ -114,15 +133,8 @@ export function CodexPaneComposerPanel(props: CodexPaneComposerPanelProps) {
       hasActiveSession={props.hasActiveSession}
       isPlanMode={props.isPlanMode}
       hasPlanAgent={true}
-      togglePlanMode={enabled => {
-        props.setIsPlanMode(enabled)
-        if (enabled) {
-          const planMode = props.collaborationModes.find(m => m.mode === 'plan' || m.id === 'plan')
-          props.setSelectedCollabMode(planMode?.id ?? 'plan')
-        } else {
-          props.setSelectedCollabMode(undefined)
-        }
-      }}
+      hidePlanToggle
+      togglePlanMode={enabled => toggleCodexPlanMode(enabled, props)}
       browserModeEnabled={props.browserModeEnabled ?? false}
       setBrowserModeEnabled={props.setBrowserModeEnabled ?? (() => undefined)}
       hideBrowserToggle={!props.setBrowserModeEnabled}

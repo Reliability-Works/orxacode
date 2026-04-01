@@ -89,12 +89,13 @@ function renderClaudeChatPane(permissionMode: 'ask-write' | 'yolo-write' = 'ask-
 }
 
 function registerClaudePlanModeTests() {
-  it('shows the shared plan toggle and sends Claude plan mode when enabled', () => {
+  it('uses /plan to toggle Claude plan mode without showing the composer toggle', () => {
     renderClaudeChatPane()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enable plan mode' }))
+    expect(screen.queryByRole('button', { name: 'Enable plan mode' })).not.toBeInTheDocument()
+
     fireEvent.change(screen.getByPlaceholderText('Send to Claude...'), {
-      target: { value: 'Plan the refactor' },
+      target: { value: '/plan Plan the refactor' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send prompt' }))
 
@@ -228,18 +229,41 @@ function registerClaudePermissionTests() {
   })
 }
 
-function registerClaudeCommandBrowserTests() {
-  it('shows a Claude native commands browser with Orxa mapping hints', async () => {
+function registerClaudeComposerChromeTests() {
+  it('does not render a separate commands browser control under the composer', () => {
     renderClaudeChatPane()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Claude native commands' }))
-
-    expect(screen.getByRole('heading', { name: 'claude native commands' })).toBeInTheDocument()
-    expect(screen.getByText('/model')).toBeInTheDocument()
-    expect(screen.getByText('In Orxa: Model picker')).toBeInTheDocument()
     expect(
-      screen.getByText(/Orxa does not execute Claude slash commands directly yet/i)
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: 'Open Claude native commands' })
+    ).not.toBeInTheDocument()
+  })
+}
+
+function registerClaudeSlashAutocompleteTests() {
+  it('shows native Claude commands in slash autocomplete alongside skills', async () => {
+    vi.mocked(window.orxa.app.listSkillsFromDir).mockResolvedValue([
+      {
+        id: 'frontend-design',
+        name: 'Frontend Design',
+        description: 'Create polished interfaces.',
+        path: '/Users/callumspencer/.claude/skills/frontend-design',
+      },
+    ])
+
+    renderClaudeChatPane()
+
+    fireEvent.change(screen.getByPlaceholderText('Send to Claude...'), {
+      target: { value: '/mo' },
+    })
+    expect(screen.getByText('/model')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Send to Claude...'), {
+      target: { value: '/front' },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('/frontend-design')).toBeInTheDocument()
+    })
   })
 }
 
@@ -258,8 +282,12 @@ describe('ClaudeChatPane', () => {
     connectionStatusMock = 'connected'
     pendingApprovalMock = null
     window.orxa = {
+      app: {
+        listSkillsFromDir: vi.fn(async () => []),
+      },
       opencode: {
         pickImage: pickImageMock,
+        listFiles: vi.fn(async () => []),
       },
     } as unknown as typeof window.orxa
   })
@@ -269,5 +297,6 @@ describe('ClaudeChatPane', () => {
   registerClaudeBackgroundPollingTests()
   registerClaudeAttachmentTests()
   registerClaudePermissionTests()
-  registerClaudeCommandBrowserTests()
+  registerClaudeComposerChromeTests()
+  registerClaudeSlashAutocompleteTests()
 })

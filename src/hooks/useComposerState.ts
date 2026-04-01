@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useComposerAutocomplete } from './useComposerAutocomplete'
 
 export type Attachment = {
   url: string
@@ -96,105 +97,6 @@ function useComposerWorkspaceText(activeProjectDir: string | null) {
   )
 
   return { composer, setComposer }
-}
-
-function useComposerSlashMenu(
-  availableSlashCommands: SlashCommand[],
-  setComposer: (value: string | ((prev: string) => string)) => void
-) {
-  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
-  const [slashQuery, setSlashQuery] = useState('')
-  const [slashSelectedIndex, setSlashSelectedIndex] = useState(0)
-
-  const filteredSlashCommands = useMemo(() => {
-    const query = slashQuery.toLowerCase()
-    if (!query) {
-      return availableSlashCommands
-    }
-    return availableSlashCommands.filter(
-      cmd =>
-        cmd.name.toLowerCase().includes(query) ||
-        (cmd.description?.toLowerCase().includes(query) ?? false)
-    )
-  }, [availableSlashCommands, slashQuery])
-
-  const filteredSlashCommandsRef = useRef(filteredSlashCommands)
-  useEffect(() => {
-    filteredSlashCommandsRef.current = filteredSlashCommands
-  }, [filteredSlashCommands])
-
-  const slashSelectedIndexRef = useRef(slashSelectedIndex)
-  useEffect(() => {
-    slashSelectedIndexRef.current = slashSelectedIndex
-  }, [slashSelectedIndex])
-
-  const handleComposerChange = useCallback(
-    (value: string) => {
-      setComposer(value)
-
-      const lines = value.split('\n')
-      const currentLine = lines[lines.length - 1]
-
-      if (currentLine.startsWith('/') && !currentLine.includes(' ')) {
-        const query = currentLine.slice(1)
-        setSlashQuery(query)
-        setSlashMenuOpen(true)
-        setSlashSelectedIndex(0)
-      } else {
-        setSlashMenuOpen(open => (open ? false : open))
-      }
-    },
-    [setComposer]
-  )
-
-  const insertSlashCommand = useCallback(
-    (commandName: string) => {
-      setComposer(prev => {
-        const lines = prev.split('\n')
-        lines[lines.length - 1] = `/${commandName} `
-        return lines.join('\n')
-      })
-      setSlashMenuOpen(false)
-      setSlashQuery('')
-    },
-    [setComposer]
-  )
-
-  const handleSlashKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault()
-        const commands = filteredSlashCommandsRef.current
-        setSlashSelectedIndex(current => (current < commands.length - 1 ? current + 1 : current))
-      } else if (event.key === 'ArrowUp') {
-        event.preventDefault()
-        setSlashSelectedIndex(current => (current > 0 ? current - 1 : 0))
-      } else if (event.key === 'Enter' || event.key === 'Tab') {
-        event.preventDefault()
-        const commands = filteredSlashCommandsRef.current
-        const selectedIdx = slashSelectedIndexRef.current
-        const command = commands[selectedIdx]
-        if (command) {
-          insertSlashCommand(command.name)
-        }
-      } else if (event.key === 'Escape') {
-        setSlashMenuOpen(false)
-      }
-    },
-    [insertSlashCommand]
-  )
-
-  return {
-    slashMenuOpen,
-    setSlashMenuOpen,
-    slashQuery,
-    filteredSlashCommands,
-    slashSelectedIndex,
-    setSlashSelectedIndex,
-    handleComposerChange,
-    insertSlashCommand,
-    handleSlashKeyDown,
-  }
 }
 
 function buildSelectedModelPayload(selectedModel?: string) {
@@ -456,7 +358,13 @@ export function useComposerState(
   options: UseComposerStateOptions
 ) {
   const { composer, setComposer } = useComposerWorkspaceText(activeProjectDir)
-  const slashMenu = useComposerSlashMenu(options.availableSlashCommands, setComposer)
+  const slashMenu = useComposerAutocomplete({
+    composer,
+    directory: activeProjectDir,
+    provider: 'opencode',
+    availableSlashCommands: options.availableSlashCommands,
+    setComposer,
+  })
   const {
     composerAttachments,
     setComposerAttachments,

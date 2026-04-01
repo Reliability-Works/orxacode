@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import type { ClaudeChatEffort, ClaudeChatTurnOptions } from '@shared/ipc'
 import type { ModelOption } from '../lib/models'
 import type { ClaudeChatMessageItem } from '../hooks/useClaudeChatSession'
 import type { Attachment } from '../hooks/useComposerState'
+import { useComposerAutocomplete } from '../hooks/useComposerAutocomplete'
+import { listProviderCommandAutocompleteEntries } from '../lib/provider-command-catalog'
 import { deriveSessionTitleFromPrompt } from '../lib/app-session-utils'
 import { applyClaudePromptEffortPrefix, isClaudeUltrathinkPrompt } from '../lib/claude-models'
+import { parseComposerSlashCommand } from '../lib/composer-slash-command'
 import type { PermissionMode } from '../types/app'
 
 type StartClaudeTurn = (
@@ -13,6 +16,7 @@ type StartClaudeTurn = (
 ) => Promise<unknown>
 
 type UseClaudeChatPaneComposerArgs = {
+  directory: string
   messages: ClaudeChatMessageItem[]
   modelOptions: ModelOption[]
   permissionMode: PermissionMode
@@ -24,14 +28,17 @@ type UseClaudeChatPaneComposerArgs = {
 
 export type ClaudeChatPaneComposerViewModel = {
   composer: string
-  setComposer: (value: string) => void
+  setComposer: Dispatch<SetStateAction<string>>
+  slashMenuOpen: boolean
+  filteredSlashCommands: ReturnType<typeof useComposerAutocomplete>['filteredSlashCommands']
+  slashSelectedIndex: number
+  insertSlashCommand: ReturnType<typeof useComposerAutocomplete>['insertSlashCommand']
+  handleSlashKeyDown: ReturnType<typeof useComposerAutocomplete>['handleSlashKeyDown']
   composerAttachments: Attachment[]
   selectedModel: string | undefined
   setSelectedModel: (value: string | undefined) => void
   effort: ClaudeChatEffort | undefined
   setEffort: (value: ClaudeChatEffort | undefined) => void
-  isPlanMode: boolean
-  setIsPlanMode: (value: boolean) => void
   thinking: boolean
   setThinking: (value: boolean) => void
   fastMode: boolean
@@ -68,7 +75,112 @@ function buildClaudeDisplayPrompt(prompt: string, attachmentCount: number) {
   return prompt.trim().length > 0 ? `${attachmentLabel} ${prompt}` : attachmentLabel
 }
 
+function useClaudeComposerAttachments(setComposerAttachments: Dispatch<SetStateAction<Attachment[]>>) {
+  const addComposerAttachments = useCallback((attachments: Attachment[]) => {
+    setComposerAttachments(current => addClaudeComposerAttachments(current, attachments))
+  }, [setComposerAttachments])
+
+  const removeAttachment = useCallback((url: string) => {
+    setComposerAttachments(current => current.filter(item => item.url !== url))
+  }, [setComposerAttachments])
+
+  const pickImageAttachment = useCallback(async () => {
+    try {
+      const selection = await window.orxa.opencode.pickImage()
+      if (selection) {
+        addComposerAttachments([selection])
+      }
+    } catch {
+      // Keep Claude composer behavior silent for now; picker failures are non-fatal.
+    }
+  }, [addComposerAttachments])
+
+  return { addComposerAttachments, removeAttachment, pickImageAttachment }
+}
+
+function useClaudePromptSubmission(args: {
+  composer: string
+  composerAttachments: Attachment[]
+  selectedModelId: string | undefined
+  permissionMode: PermissionMode
+  effort: ClaudeChatEffort | undefined
+  fastMode: boolean
+  thinking: boolean
+  hasUserMessages: boolean
+  onFirstMessage?: () => void
+  onTitleChange?: (title: string) => void
+  setComposer: Dispatch<SetStateAction<string>>
+  setComposerAttachments: Dispatch<SetStateAction<Attachment[]>>
+  startTurn: StartClaudeTurn
+}) {
+  const {
+    composer,
+    composerAttachments,
+    selectedModelId,
+    permissionMode,
+    effort,
+    fastMode,
+    thinking,
+    hasUserMessages,
+    onFirstMessage,
+    onTitleChange,
+    setComposer,
+    setComposerAttachments,
+    startTurn,
+  } = args
+
+  return useCallback(async () => {
+    const trimmed = composer.trim()
+    const slashCommand = parseComposerSlashCommand(trimmed)
+    const planRequested = slashCommand?.command === 'plan'
+    const prompt = planRequested ? slashCommand.remainder : trimmed
+    if (!prompt && composerAttachments.length === 0) {
+      return
+    }
+    onFirstMessage?.()
+    if (!hasUserMessages && prompt) {
+      onTitleChange?.(deriveSessionTitleFromPrompt(prompt))
+    }
+    const attachmentsToSend = [...composerAttachments]
+    setComposer('')
+    setComposerAttachments([])
+    try {
+      const promptEffort =
+        effort === 'ultrathink' && !isClaudeUltrathinkPrompt(prompt)
+          ? applyClaudePromptEffortPrefix(prompt, effort)
+          : prompt
+      await startTurn(promptEffort, {
+        model: selectedModelId,
+        permissionMode: planRequested ? 'plan' : permissionMode,
+        effort,
+        fastMode,
+        thinking,
+        attachments: attachmentsToSend,
+        displayPrompt: buildClaudeDisplayPrompt(trimmed, attachmentsToSend.length),
+      })
+    } catch {
+      setComposer(trimmed)
+      setComposerAttachments(attachmentsToSend)
+    }
+  }, [
+    composer,
+    composerAttachments,
+    effort,
+    fastMode,
+    hasUserMessages,
+    onFirstMessage,
+    onTitleChange,
+    permissionMode,
+    selectedModelId,
+    setComposer,
+    setComposerAttachments,
+    startTurn,
+    thinking,
+  ])
+}
+
 export function useClaudeChatPaneComposer({
+  directory,
   messages,
   modelOptions,
   permissionMode,
@@ -81,9 +193,21 @@ export function useClaudeChatPaneComposer({
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([])
   const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined)
   const [effort, setEffort] = useState<ClaudeChatEffort | undefined>(undefined)
-  const [isPlanMode, setIsPlanMode] = useState(false)
   const [thinking, setThinking] = useState(true)
   const [fastMode, setFastMode] = useState(false)
+  const handleComposerChange = useCallback<Dispatch<SetStateAction<string>>>(
+    value => {
+      setComposer(current => (typeof value === 'function' ? value(current) : value))
+    },
+    []
+  )
+  const autocomplete = useComposerAutocomplete({
+    composer,
+    directory,
+    provider: 'claude',
+    availableSlashCommands: listProviderCommandAutocompleteEntries('claude'),
+    setComposer: handleComposerChange,
+  })
 
   useEffect(() => {
     if (!selectedModel && modelOptions.length > 0) {
@@ -92,76 +216,41 @@ export function useClaudeChatPaneComposer({
   }, [modelOptions, selectedModel])
 
   const selectedModelId = useMemo(() => selectedModel?.split('/')[1] ?? undefined, [selectedModel])
-  const promptEffort = useMemo(
-    () =>
-      effort === 'ultrathink' && !isClaudeUltrathinkPrompt(composer)
-        ? applyClaudePromptEffortPrefix(composer, effort)
-        : composer,
-    [composer, effort]
-  )
   const hasUserMessages = useMemo(
     () => messages.some(item => item.kind === 'message' && item.role === 'user'),
     [messages]
   )
-
-  const addComposerAttachments = (attachments: Attachment[]) => {
-    setComposerAttachments(current => addClaudeComposerAttachments(current, attachments))
-  }
-
-  const removeAttachment = (url: string) => {
-    setComposerAttachments(current => current.filter(item => item.url !== url))
-  }
-
-  const pickImageAttachment = async () => {
-    try {
-      const selection = await window.orxa.opencode.pickImage()
-      if (!selection) {
-        return
-      }
-      addComposerAttachments([selection])
-    } catch {
-      // Keep Claude composer behavior silent for now; picker failures are non-fatal.
-    }
-  }
-
-  const sendPrompt = async () => {
-    const trimmed = composer.trim()
-    if (!trimmed && composerAttachments.length === 0) {
-      return
-    }
-    onFirstMessage?.()
-    if (!hasUserMessages && trimmed) {
-      onTitleChange?.(deriveSessionTitleFromPrompt(trimmed))
-    }
-    const attachmentsToSend = [...composerAttachments]
-    setComposer('')
-    setComposerAttachments([])
-    try {
-      await startTurn(promptEffort, {
-        model: selectedModelId,
-        permissionMode: isPlanMode ? 'plan' : permissionMode,
-        effort,
-        fastMode,
-        thinking,
-        attachments: attachmentsToSend,
-        displayPrompt: buildClaudeDisplayPrompt(trimmed, attachmentsToSend.length),
-      })
-    } catch {
-      setComposer(trimmed)
-      setComposerAttachments(attachmentsToSend)
-    }
-  }
+  const { addComposerAttachments, removeAttachment, pickImageAttachment } =
+    useClaudeComposerAttachments(setComposerAttachments)
+  const sendPrompt = useClaudePromptSubmission({
+    composer,
+    composerAttachments,
+    selectedModelId,
+    permissionMode,
+    effort,
+    fastMode,
+    thinking,
+    hasUserMessages,
+    onFirstMessage,
+    onTitleChange,
+    setComposer,
+    setComposerAttachments,
+    startTurn,
+  })
 
   return {
     composer,
-    setComposer,
+    setComposer: handleComposerChange,
+    slashMenuOpen: autocomplete.slashMenuOpen,
+    filteredSlashCommands: autocomplete.filteredSlashCommands,
+    slashSelectedIndex: autocomplete.slashSelectedIndex,
+    insertSlashCommand: autocomplete.insertSlashCommand,
+    handleSlashKeyDown: autocomplete.handleSlashKeyDown,
     composerAttachments,
     selectedModel,
     setSelectedModel,
     effort,
     setEffort,
-    isPlanMode,
-    setIsPlanMode,
     thinking,
     setThinking,
     fastMode,

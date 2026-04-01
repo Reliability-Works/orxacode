@@ -1,4 +1,4 @@
-import { createElement, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useCodexSession } from '../hooks/useCodexSession'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
 import type { CodexPaneViewProps } from './CodexPane.view'
@@ -9,7 +9,6 @@ import { useCodexPaneComposer } from './useCodexPaneComposer'
 import { useCodexPaneNotifications } from './useCodexPaneNotifications'
 import { useCodexPaneSubagentState } from './useCodexPaneSubagentState'
 import { useCodexSessionControls } from '../hooks/useSessionControls'
-import { ProviderCommandBrowserControl } from './ProviderCommandBrowserControl'
 
 function buildComposerPlaceholder({
   connectionStatus,
@@ -55,6 +54,11 @@ function buildComposerProps(args: {
   return {
     input: composer.input,
     setInput: composer.setInput,
+    slashMenuOpen: composer.slashMenuOpen,
+    filteredSlashCommands: composer.filteredSlashCommands,
+    slashSelectedIndex: composer.slashSelectedIndex,
+    insertSlashCommand: composer.insertSlashCommand,
+    handleSlashKeyDown: composer.handleSlashKeyDown,
     composerAttachments: composer.composerAttachments,
     removeAttachment: composer.removeAttachment,
     addComposerAttachments: composer.addComposerAttachments,
@@ -101,7 +105,7 @@ function buildComposerProps(args: {
     selectedReasoningEffort: bootstrap.selectedReasoningEffort,
     setSelectedReasoningEffort: bootstrap.setSelectedReasoningEffort,
     reasoningEffortOptions: bootstrap.reasoningEffortOptions,
-    customControls: createElement(ProviderCommandBrowserControl, { provider: 'codex' }),
+    customControls: undefined,
     placeholder: composerPlaceholder,
     backgroundAgents: subagents.effectiveBackgroundAgents,
     selectedBackgroundAgentId: session.activeSubagentThreadId,

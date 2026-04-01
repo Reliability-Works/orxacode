@@ -79,7 +79,7 @@ function handleComposerTextareaKeyDown(
   if (slashMenuOpen) {
     const command = filteredSlashCommands[slashSelectedIndex]
     if (command) {
-      insertSlashCommand(command.name)
+      insertSlashCommand(command)
     }
     return
   }
@@ -142,17 +142,18 @@ function ComposerSlashCommandMenu({
   }
   return (
     <div className="slash-command-menu">
-      <small>Commands</small>
+      <small>Suggestions</small>
       <div className="slash-command-list">
         {filteredSlashCommands.map((command, index) => (
           <button
-            key={command.name}
+            key={command.id}
             type="button"
             className={index === slashSelectedIndex ? 'active' : ''}
-            onClick={() => insertSlashCommand(command.name)}
+            onClick={() => insertSlashCommand(command)}
           >
-            <span className="slash-command-name">/{command.name}</span>
+            <span className="slash-command-name">{`${command.trigger ?? '/'}${command.name}`}</span>
             <span className="slash-command-desc">{command.description}</span>
+            {command.meta ? <span className="slash-command-desc">{command.meta}</span> : null}
           </button>
         ))}
       </div>

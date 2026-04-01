@@ -82,7 +82,7 @@ type BuildAppSessionContentPropsArgs = {
   slashMenuOpen: boolean
   filteredSlashCommands: AppSessionContentProps['composerPanelProps']['filteredSlashCommands']
   slashSelectedIndex: number
-  insertSlashCommand: (command: string) => void
+  insertSlashCommand: AppSessionContentProps['composerPanelProps']['insertSlashCommand']
   handleSlashKeyDown: AppSessionContentProps['composerPanelProps']['handleSlashKeyDown']
   addComposerAttachments: (next: Attachment[]) => void
   sendComposerPrompt: () => void

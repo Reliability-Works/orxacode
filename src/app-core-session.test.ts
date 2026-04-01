@@ -170,7 +170,7 @@ it('opens an imported Claude provider session as a bound local provider session'
   expect(markSessionUsed).toHaveBeenCalledWith('provider-thread-claude')
 })
 
-it('reuses an existing draft local provider session instead of creating a duplicate', async () => {
+it('creates a fresh Claude chat draft instead of reopening an older provider draft', async () => {
   window.orxa = {
     claudeChat: {
       health: vi.fn(async () => ({ available: true, authenticated: true })),
@@ -216,6 +216,12 @@ it('reuses an existing draft local provider session instead of creating a duplic
     'claude-chat' satisfies SessionType
   )
 
-  expect(registerLocalProviderSession).not.toHaveBeenCalled()
-  expect(setActiveSessionID).toHaveBeenCalledWith('claude-chat-existing')
+  expect(registerLocalProviderSession).toHaveBeenCalledTimes(1)
+  const [record] = registerLocalProviderSession.mock.calls[0] as [
+    { sessionID: string; type: string; draft: boolean }
+  ]
+  expect(record.type).toBe('claude-chat')
+  expect(record.draft).toBe(true)
+  expect(record.sessionID).not.toBe('claude-chat-existing')
+  expect(setActiveSessionID).toHaveBeenCalledWith(record.sessionID)
 })

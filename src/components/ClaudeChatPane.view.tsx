@@ -65,14 +65,17 @@ export function ClaudeChatPaneView(props: ClaudeChatPaneViewProps) {
       <ClaudeChatComposer
         composer={props.composer}
         setComposer={props.setComposer}
+        slashMenuOpen={props.slashMenuOpen}
+        filteredSlashCommands={props.filteredSlashCommands}
+        slashSelectedIndex={props.slashSelectedIndex}
+        insertSlashCommand={props.insertSlashCommand}
+        handleSlashKeyDown={props.handleSlashKeyDown}
         composerAttachments={props.composerAttachments}
         removeAttachment={props.removeAttachment}
         addComposerAttachments={props.addComposerAttachments}
         sendPrompt={props.sendPrompt}
         abortActiveSession={props.abortActiveSession}
         isSessionBusy={props.isSessionBusy}
-        isPlanMode={props.isPlanMode}
-        setIsPlanMode={props.setIsPlanMode}
         browserModeEnabled={props.browserModeEnabled}
         setBrowserModeEnabled={props.setBrowserModeEnabled}
         permissionMode={props.permissionMode}
@@ -167,13 +170,16 @@ type ClaudeChatComposerProps = Pick<
   ClaudeChatPaneViewProps,
   | 'composer'
   | 'setComposer'
+  | 'slashMenuOpen'
+  | 'filteredSlashCommands'
+  | 'slashSelectedIndex'
+  | 'insertSlashCommand'
+  | 'handleSlashKeyDown'
   | 'composerAttachments'
   | 'removeAttachment'
   | 'addComposerAttachments'
   | 'sendPrompt'
   | 'abortActiveSession'
-  | 'isPlanMode'
-  | 'setIsPlanMode'
   | 'browserModeEnabled'
   | 'setBrowserModeEnabled'
   | 'permissionMode'
@@ -234,11 +240,11 @@ function ClaudeChatComposer(props: ClaudeChatComposerProps) {
           setComposer={props.setComposer}
           composerAttachments={props.composerAttachments}
           removeAttachment={props.removeAttachment}
-          slashMenuOpen={false}
-          filteredSlashCommands={[]}
-          slashSelectedIndex={0}
-          insertSlashCommand={() => {}}
-          handleSlashKeyDown={() => {}}
+          slashMenuOpen={props.slashMenuOpen}
+          filteredSlashCommands={props.filteredSlashCommands}
+          slashSelectedIndex={props.slashSelectedIndex}
+          insertSlashCommand={props.insertSlashCommand}
+          handleSlashKeyDown={props.handleSlashKeyDown}
           addComposerAttachments={props.addComposerAttachments}
           sendPrompt={props.sendPrompt}
           abortActiveSession={props.abortActiveSession}
@@ -246,9 +252,10 @@ function ClaudeChatComposer(props: ClaudeChatComposerProps) {
           isSendingPrompt={false}
           pickImageAttachment={props.pickImageAttachment}
           hasActiveSession
-          isPlanMode={props.isPlanMode}
-          hasPlanAgent
-          togglePlanMode={props.setIsPlanMode}
+          isPlanMode={false}
+          hasPlanAgent={false}
+          hidePlanToggle
+          togglePlanMode={() => undefined}
           browserModeEnabled={props.browserModeEnabled}
           setBrowserModeEnabled={props.setBrowserModeEnabled}
           agentOptions={[]}

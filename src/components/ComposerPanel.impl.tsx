@@ -1,5 +1,13 @@
-import { memo, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
+import {
+  memo,
+  type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  type SetStateAction,
+} from 'react'
 import type { Attachment } from '../hooks/useComposerState'
+import type { ComposerAutocompleteItem } from '../hooks/useComposerAutocomplete'
 import type { ModelOption } from '../lib/models'
 import type { PermissionMode } from '../types/app'
 import type { TodoItem } from './chat/TodoDock'
@@ -18,21 +26,18 @@ type AgentOption = {
   description?: string
 }
 
-type Command = {
-  name: string
-  description?: string
-}
+type Command = ComposerAutocompleteItem
 
 type ComposerPanelProps = {
   placeholder: string
   composer: string
-  setComposer: (value: string) => void
+  setComposer: Dispatch<SetStateAction<string>>
   composerAttachments: Attachment[]
   removeAttachment: (url: string) => void
   slashMenuOpen: boolean
   filteredSlashCommands: Command[]
   slashSelectedIndex: number
-  insertSlashCommand: (name: string) => void
+  insertSlashCommand: (command: Command) => void
   handleSlashKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void
   addComposerAttachments: (attachments: Attachment[]) => void
   sendPrompt: () => void | Promise<void>

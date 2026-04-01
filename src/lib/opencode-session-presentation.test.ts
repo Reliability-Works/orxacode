@@ -170,8 +170,19 @@ it('uses specific failure wording for failed write rows', () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'tool',
-          title: 'Write failed the-gentlemans-cut/package.json',
+          title: 'write',
           status: 'error',
+        }),
+        expect.objectContaining({
+          kind: 'timeline',
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              entry: expect.objectContaining({
+                label: 'Write failed the-gentlemans-cut/package.json',
+                failure: 'must read first',
+              }),
+            }),
+          ]),
         }),
       ])
     )

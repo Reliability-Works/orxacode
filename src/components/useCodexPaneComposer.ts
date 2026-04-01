@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { Attachment } from '../hooks/useComposerState'
+import { useComposerAutocomplete } from '../hooks/useComposerAutocomplete'
+import { listProviderCommandAutocompleteEntries } from '../lib/provider-command-catalog'
 import { addCodexComposerAttachments, buildCodexDisplayPrompt } from './CodexPane.helpers'
 import type { PermissionMode } from '../types/app'
 
@@ -17,6 +19,17 @@ function buildTurnOptions({
   if (selectedReasoningEffort) options.effort = selectedReasoningEffort
   if (selectedCollabMode) options.collaborationMode = selectedCollabMode
   return options
+}
+
+function buildCodexSlashCommands(setIsPlanMode: Dispatch<SetStateAction<boolean>>) {
+  return listProviderCommandAutocompleteEntries('codex').map(command =>
+    command.name === 'plan'
+      ? {
+          ...command,
+          onSelect: () => setIsPlanMode(current => !current),
+        }
+      : command
+  )
 }
 
 function useCodexQueueState({
@@ -245,6 +258,20 @@ export function useCodexPaneComposer({
   const [input, setInput] = useState('')
   const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([])
   const [isPlanMode, setIsPlanMode] = useState(false)
+  const [availableSlashCommands] = useState(() => buildCodexSlashCommands(setIsPlanMode))
+  const handleComposerChange = useCallback<Dispatch<SetStateAction<string>>>(
+    value => {
+      setInput(current => (typeof value === 'function' ? value(current) : value))
+    },
+    []
+  )
+  const autocomplete = useComposerAutocomplete({
+    composer: input,
+    directory,
+    provider: 'codex',
+    availableSlashCommands,
+    setComposer: handleComposerChange,
+  })
   const { codexQueue, codexSendingId, queueCodexMessage: enqueueCodexMessage, removeCodexQueued, setCodexQueue, setCodexSendingId } =
     useCodexQueueState({ isStreaming, sendMessage: text => sendMessage(text) })
   const ensureThreadReady = useCodexThreadReadiness({
@@ -264,7 +291,11 @@ export function useCodexPaneComposer({
       if (trimmed) {
         queueAutoTitleGeneration(directory, trimmed, messageCount, activeThread.id)
       }
-      const turnOptions = buildTurnOptions({ selectedCollabMode, selectedModelID, selectedReasoningEffort })
+      const turnOptions = buildTurnOptions({
+        selectedCollabMode: isPlanMode ? 'plan' : selectedCollabMode,
+        selectedModelID,
+        selectedReasoningEffort,
+      })
       const sent = await sendMessage(trimmed, {
         ...(Object.keys(turnOptions).length > 0 ? turnOptions : {}),
         threadID: activeThread.id,
@@ -279,7 +310,7 @@ export function useCodexPaneComposer({
     },
     [
       directory, ensureThreadReady, interruptTurn, isStreaming, messageCount, onFirstMessage,
-      queueAutoTitleGeneration, selectedCollabMode, selectedModelID, selectedReasoningEffort,
+      isPlanMode, queueAutoTitleGeneration, selectedCollabMode, selectedModelID, selectedReasoningEffort,
       sendMessage, thread,
     ]
   )
@@ -297,16 +328,21 @@ export function useCodexPaneComposer({
     codexQueue,
     codexSendingId,
     composerAttachments,
+    filteredSlashCommands: autocomplete.filteredSlashCommands,
+    handleSlashKeyDown: autocomplete.handleSlashKeyDown,
     editCodexQueued,
     input,
     isPlanMode,
+    insertSlashCommand: autocomplete.insertSlashCommand,
     pickImageAttachment,
     queueCodexMessage: (text: string) => promptSubmission.queueCodexMessage(text, enqueueCodexMessage),
     queuedAction,
     removeAttachment,
     removeCodexQueued,
     sendPrompt: promptSubmission.sendPrompt,
-    setInput,
+    setInput: handleComposerChange,
     setIsPlanMode,
+    slashMenuOpen: autocomplete.slashMenuOpen,
+    slashSelectedIndex: autocomplete.slashSelectedIndex,
   }
 }

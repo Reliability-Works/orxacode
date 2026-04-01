@@ -18,6 +18,12 @@ export type ProviderCommandEntry = {
   orxaEquivalent?: string
 }
 
+export type ProviderCommandAutocompleteEntry = {
+  name: string
+  description: string
+  meta?: string
+}
+
 export type ProviderCommandCatalog = {
   provider: ProviderCommandProvider
   title: string
@@ -32,7 +38,7 @@ const CLAUDE_COMMAND_CATALOG: ProviderCommandCatalog = {
   title: 'Claude native commands',
   subtitle: 'Curated Claude Code commands that matter in Orxa as a desktop ADE.',
   note:
-    'These are native Claude Code command references. Orxa does not execute Claude slash commands directly yet; use the mapped Orxa controls where shown.',
+    'These are native Claude Code command references. Some mapped commands, such as /plan, are handled directly in Orxa; others remain references to nearby UI controls.',
   source: 'Anthropic Claude Code shipped command surface',
   commands: [
     {
@@ -60,7 +66,7 @@ const CLAUDE_COMMAND_CATALOG: ProviderCommandCatalog = {
       description: 'Enable plan mode or view the current session plan.',
       category: 'session',
       status: 'mapped',
-      orxaEquivalent: 'Plan mode toggle',
+      orxaEquivalent: 'Use /plan in the composer',
     },
     {
       name: 'model',
@@ -152,7 +158,7 @@ const CODEX_COMMAND_CATALOG: ProviderCommandCatalog = {
   title: 'Codex native commands',
   subtitle: 'Curated Codex commands from the official CLI docs, filtered for Orxa.',
   note:
-    'These are native Codex command references. Orxa does not execute Codex slash commands directly yet; use the mapped Orxa controls where shown.',
+    'These are native Codex command references. Some mapped commands, such as /plan, are handled directly in Orxa; others remain references to nearby UI controls.',
   source: 'OpenAI Codex CLI slash command docs',
   commands: [
     {
@@ -186,7 +192,7 @@ const CODEX_COMMAND_CATALOG: ProviderCommandCatalog = {
       description: 'Switch the current conversation into plan mode.',
       category: 'session',
       status: 'mapped',
-      orxaEquivalent: 'Plan mode toggle',
+      orxaEquivalent: 'Use /plan in the composer',
     },
     {
       name: 'permissions',
@@ -275,4 +281,18 @@ const CODEX_COMMAND_CATALOG: ProviderCommandCatalog = {
 
 export function getProviderCommandCatalog(provider: ProviderCommandProvider): ProviderCommandCatalog {
   return provider === 'claude' ? CLAUDE_COMMAND_CATALOG : CODEX_COMMAND_CATALOG
+}
+
+export function listProviderCommandAutocompleteEntries(
+  provider: ProviderCommandProvider
+): ProviderCommandAutocompleteEntry[] {
+  return getProviderCommandCatalog(provider).commands.map(command => ({
+    name: command.name,
+    description: command.description,
+    meta: command.orxaEquivalent
+      ? `In Orxa: ${command.orxaEquivalent}`
+      : command.status === 'reference'
+        ? 'Reference command'
+        : 'Planned command',
+  }))
 }
