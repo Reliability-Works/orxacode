@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.50",
+  "version": "0.1.0-beta.51",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
