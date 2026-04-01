@@ -95,10 +95,7 @@ function removeById<T extends { id: string }>(items: T[], id: string) {
   return [...items.slice(0, index), ...items.slice(index + 1)]
 }
 
-function applyProjectSessionCreatedOrUpdatedEvent(
-  project: ProjectBootstrap,
-  event: OpencodeEvent
-) {
+function applyProjectSessionCreatedOrUpdatedEvent(project: ProjectBootstrap, event: OpencodeEvent) {
   const info = (event.properties as { info?: Session }).info
   if (!info) {
     return project
@@ -227,7 +224,7 @@ export function applyOpencodeProjectEvent(
   event: OpencodeEvent
 ) {
   if (!project) {
-    return project ?? null
+    return null
   }
   switch (String(event.type)) {
     case 'session.created':

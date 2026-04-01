@@ -137,7 +137,7 @@ function createWindow() {
   if (devServerUrl) {
     void window.loadURL(devServerUrl)
   } else {
-    const htmlPath = resolveRendererHtmlPath(__dirname)
+    const htmlPath = resolveRendererHtmlPath(dirname)
     void window.loadFile(htmlPath)
   }
 

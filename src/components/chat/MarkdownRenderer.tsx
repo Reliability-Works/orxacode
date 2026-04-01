@@ -138,7 +138,9 @@ function buildAnchorRenderer(onOpenFileReference?: (reference: string) => void) 
             {...props}
           >
             <span className="md-file-link-name">{parsed.basename}</span>
-            {parsed.lineLabel ? <span className="md-file-link-line">{parsed.lineLabel}</span> : null}
+            {parsed.lineLabel ? (
+              <span className="md-file-link-line">{parsed.lineLabel}</span>
+            ) : null}
           </a>
         )
       }
@@ -183,11 +185,7 @@ function buildCodeRenderer(
   isStreaming: boolean,
   onOpenFileReference?: (reference: string) => void
 ) {
-  const Code = ({
-    children,
-    className,
-    ...props
-  }: Parameters<CodeRenderer>[0]) => {
+  const Code = ({ children, className, ...props }: Parameters<CodeRenderer>[0]) => {
     const match = className?.match(/language-(\w+)/)
     const language = match ? match[1]! : ''
     const codeString = String(children).replace(/\n$/, '')
@@ -202,12 +200,7 @@ function buildCodeRenderer(
       }
 
       return (
-        <SyntaxHighlighter
-          language={language}
-          useInlineStyles={false}
-          PreTag="div"
-          CodeTag="code"
-        >
+        <SyntaxHighlighter language={language} useInlineStyles={false} PreTag="div" CodeTag="code">
           {codeString}
         </SyntaxHighlighter>
       )
@@ -257,7 +250,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   )
 
   return (
-    <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
+    <ReactMarkdown remarkPlugins={remarkPlugins} components={components} skipHtml>
       {content}
     </ReactMarkdown>
   )

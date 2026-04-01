@@ -56,7 +56,13 @@ export function QuestionDockView({
     <div ref={containerRef} className="question-dock">
       <div className="question-dock-asking-label">Asking questions</div>
       <div className="question-card">
-        <QuestionDockHeader total={total} tab={tab} resolvedQuestionText={resolvedQuestionText} onBack={onBack} onNext={onNext} />
+        <QuestionDockHeader
+          total={total}
+          tab={tab}
+          resolvedQuestionText={resolvedQuestionText}
+          onBack={onBack}
+          onNext={onNext}
+        />
         <QuestionDockInput
           isShowingCustomInput={isShowingCustomInput}
           hasOptions={hasOptions}
@@ -69,7 +75,12 @@ export function QuestionDockView({
           onShowCustomInput={onShowCustomInput}
           isSelected={isSelected}
         />
-        <QuestionDockFooter canContinue={canContinue} onReject={onReject} onSubmit={onSubmit} isLast={tab >= total - 1} />
+        <QuestionDockFooter
+          canContinue={canContinue}
+          onReject={onReject}
+          onSubmit={onSubmit}
+          isLast={tab >= total - 1}
+        />
       </div>
       <QuestionDockLegacyDots questions={questions} tab={tab} onSetTab={onSetTab} />
     </div>
@@ -94,13 +105,25 @@ function QuestionDockHeader({
       <p className="question-card-text">{resolvedQuestionText}</p>
       {total > 1 ? (
         <div className="question-card-pagination">
-          <button type="button" className="question-card-nav" onClick={onBack} disabled={tab === 0} aria-label="Previous question">
+          <button
+            type="button"
+            className="question-card-nav"
+            onClick={onBack}
+            disabled={tab === 0}
+            aria-label="Previous question"
+          >
             <ChevronLeft size={12} aria-hidden="true" />
           </button>
           <span className="question-card-counter">
             {tab + 1} of {total}
           </span>
-          <button type="button" className="question-card-nav" onClick={onNext} disabled={tab >= total - 1} aria-label="Next question">
+          <button
+            type="button"
+            className="question-card-nav"
+            onClick={onNext}
+            disabled={tab >= total - 1}
+            aria-label="Next question"
+          >
             <ChevronRight size={12} aria-hidden="true" />
           </button>
         </div>
@@ -173,7 +196,7 @@ function QuestionDockInput({
         })}
         <button
           type="button"
-          className={`question-option question-option--custom${isShowingCustomInput ? ' question-option--selected' : ''}`}
+          className="question-option question-option--custom"
           onClick={onShowCustomInput}
         >
           <span className="question-option-number">{(resolvedOptions?.length ?? 0) + 1}.</span>

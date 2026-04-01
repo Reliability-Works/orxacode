@@ -54,7 +54,7 @@ export function createLocalProviderSessionRecord(
   const token =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(36).slice(2, 10)
+      : `${now.toString(36)}${performance.now().toString(36).replace('.', '')}`.slice(-8)
   const sessionID = `${type}-${now.toString(36)}-${token}`
   return {
     sessionID,
@@ -117,9 +117,7 @@ export function normalizeSyntheticSessionRecord(
   }
 }
 
-export function normalizeSyntheticSessionMap(
-  raw: unknown
-): LocalProviderSessionMap {
+export function normalizeSyntheticSessionMap(raw: unknown): LocalProviderSessionMap {
   if (!raw || typeof raw !== 'object') {
     return {}
   }
@@ -302,8 +300,7 @@ export function markLocalProviderSessionRecordStarted(
   if (!prunedCurrent) {
     return prunedMap
   }
-  const nextUpdatedAt =
-    updatedAt > prunedCurrent.updatedAt ? updatedAt : prunedCurrent.updatedAt
+  const nextUpdatedAt = updatedAt > prunedCurrent.updatedAt ? updatedAt : prunedCurrent.updatedAt
   if (!prunedCurrent.draft && nextUpdatedAt === prunedCurrent.updatedAt) {
     return prunedMap
   }

@@ -52,12 +52,7 @@ function fitAndResizeTerminal(
   managed.refit()
   const dims = managed.fit.proposeDimensions()
   if (dims) {
-    void window.orxa.terminal.resize(
-      connection.directory,
-      connection.ptyID,
-      dims.cols,
-      dims.rows
-    )
+    void window.orxa.terminal.resize(connection.directory, connection.ptyID, dims.cols, dims.rows)
   }
 }
 
@@ -135,9 +130,9 @@ export function KanbanTaskTerminal({ workspaceDir, taskId, open, onClose }: Prop
         setStatus('connecting')
 
         // Get or create terminal
-        let terminal = await window.orxa.kanban.getTaskTerminal(workspaceDir, taskId)
-        if (!terminal) {
-          terminal = await window.orxa.kanban.createTaskTerminal(workspaceDir, taskId)
+        const existingTerminal = await window.orxa.kanban.getTaskTerminal(workspaceDir, taskId)
+        if (!existingTerminal) {
+          await window.orxa.kanban.createTaskTerminal(workspaceDir, taskId)
         }
 
         // Connect
@@ -163,7 +158,9 @@ export function KanbanTaskTerminal({ workspaceDir, taskId, open, onClose }: Prop
         )
 
         // Resize observer
-        const observer = new ResizeObserver(() => fitAndResizeTerminal(managed, connectionRef.current))
+        const observer = new ResizeObserver(() =>
+          fitAndResizeTerminal(managed, connectionRef.current)
+        )
         observer.observe(containerRef.current)
         cleanups.push(() => observer.disconnect())
 

@@ -46,7 +46,7 @@ export function buildSidebarSessionPresentation(input: {
       unread: status.unread,
     }
   }
-  if (!isActive && status.unread && activityAt > 0) {
+  if (status.unread && activityAt > 0) {
     return {
       sessionKey,
       indicator: 'unread',
