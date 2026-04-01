@@ -1,4 +1,5 @@
 name: Release
+run-name: Release ${{ github.ref_name }}
 
 on:
   push:
@@ -12,6 +13,7 @@ concurrency:
 
 jobs:
   smoke-test:
+    name: Smoke test release artifacts
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +57,7 @@ jobs:
         run: pnpm smoke:artifact
 
   publish:
+    name: Publish signed release
     needs:
       - smoke-test
     runs-on: macos-latest

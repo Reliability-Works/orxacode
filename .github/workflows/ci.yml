@@ -1,4 +1,5 @@
 name: CI
+run-name: Verify ${{ github.event_name }} on ${{ github.ref_name }}
 
 on:
   pull_request:
@@ -8,6 +9,7 @@ on:
 
 jobs:
   verify:
+    name: Verify app quality gates
     runs-on: ubuntu-latest
     permissions:
       contents: read

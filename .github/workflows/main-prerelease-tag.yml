@@ -1,4 +1,5 @@
 name: Main Prerelease Tag
+run-name: Main prerelease tag for ${{ github.ref_name }}
 
 on:
   push:
@@ -14,6 +15,7 @@ concurrency:
 
 jobs:
   tag-prerelease:
+    name: Create prerelease tag
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -68,6 +70,15 @@ jobs:
           git tag -a "${TAG}" -m "Prerelease ${TAG} from main"
           git push origin "refs/tags/${TAG}"
           echo "Created and pushed ${TAG}"
+
+      - name: Dispatch release workflow for new tag
+        if: steps.version.outputs.is_prerelease == 'true' && steps.tag_check.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          gh workflow run release.yml --ref "${TAG}"
+          echo "Dispatched release workflow for ${TAG}"
 
       - name: Tag already present
         if: steps.version.outputs.is_prerelease == 'true' && steps.tag_check.outputs.exists == 'true'
