@@ -423,8 +423,6 @@ function useClaudeChatPaneState({
     approveAction,
     permissionMode,
   })
-  const customControls = buildClaudeChatCustomControls(composerState)
-
   return buildClaudeChatPaneViewModel({
     composerState,
     subagentState,
@@ -455,7 +453,7 @@ function useClaudeChatPaneState({
       onOpenSettings,
     }),
     modelOptions,
-    customControls,
+    customControls: buildClaudeChatCustomControls(composerState),
     pendingQuestion,
     pendingPermission,
     controls,

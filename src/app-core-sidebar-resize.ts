@@ -129,7 +129,7 @@ function updateRightPaneWidth(
     MIN_RIGHT_PANE_WIDTH,
     Math.min(
       Math.max(MIN_RIGHT_PANE_WIDTH, Math.min(MAX_RIGHT_PANE_WIDTH, maxRight)),
-      state.startWidth + (state.latestX - state.startX)
+      state.startWidth - (state.latestX - state.startX)
     )
   )
   workspaceRef.current?.style.setProperty('--right-pane-width', `${next}px`)

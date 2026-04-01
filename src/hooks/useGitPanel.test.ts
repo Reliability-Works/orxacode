@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { formatCheckoutBranchError, parseGitDiffStats } from './useGitPanel'
+import { renderHook } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { formatCheckoutBranchError, parseGitDiffStats, useGitPanel } from './useGitPanel'
 
 describe('parseGitDiffStats', () => {
   it('counts additions/deletions from standard diff output', () => {
@@ -83,5 +84,37 @@ describe('formatCheckoutBranchError', () => {
       'foo'
     )
     expect(message).toBe('fatal: something unexpected happened')
+  })
+})
+
+describe('useGitPanel', () => {
+  it('keeps non-diff loader callbacks stable across rerenders', () => {
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          gitDiff: vi.fn(async () => 'No local changes.'),
+          gitLog: vi.fn(async () => ''),
+          gitIssues: vi.fn(async () => ''),
+          gitPrs: vi.fn(async () => ''),
+          gitBranches: vi.fn(async () => ({ current: 'main', branches: ['main'] })),
+        },
+      },
+    })
+
+    const { result, rerender } = renderHook(
+      ({ directory }) => useGitPanel(directory),
+      { initialProps: { directory: '/repo' as string | null } }
+    )
+
+    const firstLoadGitLog = result.current.loadGitLog
+    const firstLoadGitIssues = result.current.loadGitIssues
+    const firstLoadGitPrs = result.current.loadGitPrs
+
+    rerender({ directory: '/repo' })
+
+    expect(result.current.loadGitLog).toBe(firstLoadGitLog)
+    expect(result.current.loadGitIssues).toBe(firstLoadGitIssues)
+    expect(result.current.loadGitPrs).toBe(firstLoadGitPrs)
   })
 })

@@ -107,6 +107,90 @@ function selectDisplayedSessions(
   return [active, ...first.slice(0, 3)]
 }
 
+function openWorkspaceDetailsFromPicker(
+  projectWorktree: string,
+  selectProject: WorkspaceSidebarViewProps['selectProject'],
+  setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>,
+  setPickerOpenForProject: Dispatch<SetStateAction<string | null>>
+) {
+  setPickerOpenForProject(null)
+  void Promise.resolve(selectProject(projectWorktree)).then(() => {
+    setAllSessionsModalOpen(true)
+  })
+}
+
+function WorkspaceProjectNewSessionPicker({
+  pickerAnchorRef,
+  pickerOpenForProject,
+  project,
+  projectLabel,
+  selectProject,
+  setAllSessionsModalOpen,
+  setPickerOpenForProject,
+  createSession,
+  openClaudeSessionBrowser,
+  openCodexSessionBrowser,
+}: {
+  pickerAnchorRef: WorkspaceSidebarViewProps['pickerAnchorRef']
+  pickerOpenForProject: string | null
+  project: WorkspaceProjectIdentity
+  projectLabel: string
+  selectProject: WorkspaceSidebarViewProps['selectProject']
+  setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>
+  setPickerOpenForProject: Dispatch<SetStateAction<string | null>>
+  createSession: WorkspaceSidebarViewProps['createSession']
+  openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
+  openCodexSessionBrowser: WorkspaceSidebarViewProps['openCodexSessionBrowser']
+}) {
+  return (
+    <div className="project-add-session-wrapper">
+      <button
+        ref={el => {
+          if (pickerOpenForProject === project.worktree) {
+            pickerAnchorRef.current = el
+          }
+        }}
+        type="button"
+        className="project-add-session"
+        onClick={event => {
+          event.stopPropagation()
+          setPickerOpenForProject(current => (current === project.worktree ? null : project.worktree))
+        }}
+        aria-label={`Create session for ${projectLabel}`}
+        aria-haspopup="menu"
+        aria-expanded={pickerOpenForProject === project.worktree}
+        title="New session"
+      >
+        +
+      </button>
+      <NewSessionPicker
+        isOpen={pickerOpenForProject === project.worktree}
+        onPick={sessionType => {
+          setPickerOpenForProject(null)
+          void createSession(project.worktree, sessionType)
+        }}
+        onOpenWorkspaceDetail={() =>
+          openWorkspaceDetailsFromPicker(
+            project.worktree,
+            selectProject,
+            setAllSessionsModalOpen,
+            setPickerOpenForProject
+          )
+        }
+        onBrowseClaudeSessions={() => {
+          setPickerOpenForProject(null)
+          openClaudeSessionBrowser(project.worktree)
+        }}
+        onBrowseCodexSessions={() => {
+          setPickerOpenForProject(null)
+          openCodexSessionBrowser(project.worktree)
+        }}
+        onClose={() => setPickerOpenForProject(null)}
+      />
+    </div>
+  )
+}
+
 function WorkspaceProjectHeader({
   isActiveProject,
   isExpanded,
@@ -117,6 +201,7 @@ function WorkspaceProjectHeader({
   selectProject,
   setCollapsedProjects,
   setPickerOpenForProject,
+  setAllSessionsModalOpen,
   createSession,
   openClaudeSessionBrowser,
   openCodexSessionBrowser,
@@ -130,6 +215,7 @@ function WorkspaceProjectHeader({
   selectProject: WorkspaceSidebarViewProps['selectProject']
   setCollapsedProjects: Dispatch<SetStateAction<Record<string, boolean>>>
   setPickerOpenForProject: Dispatch<SetStateAction<string | null>>
+  setAllSessionsModalOpen: Dispatch<SetStateAction<boolean>>
   createSession: WorkspaceSidebarViewProps['createSession']
   openClaudeSessionBrowser: WorkspaceSidebarViewProps['openClaudeSessionBrowser']
   openCodexSessionBrowser: WorkspaceSidebarViewProps['openCodexSessionBrowser']
@@ -162,43 +248,18 @@ function WorkspaceProjectHeader({
         <span className="project-status-dot" aria-hidden="true" />
         <span className="project-label-text">{projectLabel}</span>
       </button>
-      <div className="project-add-session-wrapper">
-        <button
-          ref={el => {
-            if (pickerOpenForProject === project.worktree) {
-              pickerAnchorRef.current = el
-            }
-          }}
-          type="button"
-          className="project-add-session"
-          onClick={event => {
-            event.stopPropagation()
-            setPickerOpenForProject(current => (current === project.worktree ? null : project.worktree))
-          }}
-          aria-label={`Create session for ${projectLabel}`}
-          aria-haspopup="menu"
-          aria-expanded={pickerOpenForProject === project.worktree}
-          title="New session"
-        >
-          +
-        </button>
-        <NewSessionPicker
-          isOpen={pickerOpenForProject === project.worktree}
-          onPick={sessionType => {
-            setPickerOpenForProject(null)
-            void createSession(project.worktree, sessionType)
-          }}
-          onBrowseClaudeSessions={() => {
-            setPickerOpenForProject(null)
-            openClaudeSessionBrowser(project.worktree)
-          }}
-          onBrowseCodexSessions={() => {
-            setPickerOpenForProject(null)
-            openCodexSessionBrowser(project.worktree)
-          }}
-          onClose={() => setPickerOpenForProject(null)}
-        />
-      </div>
+      <WorkspaceProjectNewSessionPicker
+        pickerAnchorRef={pickerAnchorRef}
+        pickerOpenForProject={pickerOpenForProject}
+        project={project}
+        projectLabel={projectLabel}
+        selectProject={selectProject}
+        setAllSessionsModalOpen={setAllSessionsModalOpen}
+        setPickerOpenForProject={setPickerOpenForProject}
+        createSession={createSession}
+        openClaudeSessionBrowser={openClaudeSessionBrowser}
+        openCodexSessionBrowser={openCodexSessionBrowser}
+      />
     </div>
   )
 }
@@ -423,6 +484,7 @@ export function WorkspaceProjectItem({
         selectProject={selectProject}
         setCollapsedProjects={setCollapsedProjects}
         setPickerOpenForProject={setPickerOpenForProject}
+        setAllSessionsModalOpen={setAllSessionsModalOpen}
         createSession={createSession}
         openClaudeSessionBrowser={openClaudeSessionBrowser}
         openCodexSessionBrowser={openCodexSessionBrowser}

@@ -4214,9 +4214,14 @@ button.primary {
 .workspace-landing-secondary-actions {
   display: flex;
   justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .workspace-landing-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   border: 1px solid var(--border-secondary);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);

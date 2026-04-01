@@ -3199,6 +3199,8 @@ export default function App() {
     createSession,
     openClaudeSessionBrowser,
     openCodexSessionBrowser,
+    activeWorkspaceWorktree,
+    openWorkspaceDetail: () => setAllSessionsModalOpen(true),
     canvasState,
     mcpDevToolsState,
     activeLocalProviderSessionKey,
@@ -3343,8 +3345,6 @@ export default function App() {
     upsertCustomRunCommand,
     runCustomRunCommand,
     deleteCustomRunCommand,
-    activeWorkspaceWorktree,
-    openWorkspaceDetail: () => setAllSessionsModalOpen(true),
   })
   const workspaceSidebarProps = buildWorkspaceSidebarProps({
     sidebarMode,

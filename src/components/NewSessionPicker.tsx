@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react'
+import { GitBranch } from 'lucide-react'
 import type { SessionType } from '../types/canvas'
 import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from './ProviderLogos'
 
 type NewSessionPickerProps = {
   isOpen: boolean
   onPick: (type: SessionType) => void
+  onOpenWorkspaceDetail?: () => void
   onBrowseClaudeSessions?: () => void
   onBrowseCodexSessions?: () => void
   onClose: () => void
@@ -76,6 +78,7 @@ function SessionOptionButton({
 export function NewSessionPicker({
   isOpen,
   onPick,
+  onOpenWorkspaceDetail,
   onBrowseClaudeSessions,
   onBrowseCodexSessions,
   onClose,
@@ -115,6 +118,22 @@ export function NewSessionPicker({
       {SESSION_OPTIONS.map(option => (
         <SessionOptionButton key={option.type} onPick={onPick} option={option} />
       ))}
+      {onOpenWorkspaceDetail ? (
+        <button
+          type="button"
+          className="new-session-picker-option new-session-picker-option--secondary"
+          role="menuitem"
+          onClick={onOpenWorkspaceDetail}
+        >
+          <span className="new-session-picker-icon" aria-hidden="true">
+            <GitBranch size={14} />
+          </span>
+          <span className="new-session-picker-text">
+            <span className="new-session-picker-title">workspace details</span>
+            <span className="new-session-picker-subtitle">// manage worktrees and launch sessions</span>
+          </span>
+        </button>
+      ) : null}
       {onBrowseClaudeSessions ? (
         <button
           type="button"

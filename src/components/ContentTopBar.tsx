@@ -20,13 +20,6 @@ export type CustomRunCommandInput = {
   commands: string
 }
 
-export type ActiveWorkspaceWorktree = {
-  directory: string
-  label: string
-  branch?: string
-  isMain: boolean
-}
-
 type ContentTopBarProps = {
   projectsPaneVisible: boolean
   toggleProjectsPane: () => void
@@ -70,8 +63,6 @@ type ContentTopBarProps = {
   onUpsertCustomRunCommand: (input: CustomRunCommandInput) => CustomRunCommandPreset
   onRunCustomRunCommand: (command: CustomRunCommandPreset) => Promise<void>
   onDeleteCustomRunCommand: (id: string) => void
-  activeWorkspaceWorktree: ActiveWorkspaceWorktree | null
-  onOpenWorkspaceDetail: () => void
 }
 
 export function ContentTopBar({
@@ -105,8 +96,6 @@ export function ContentTopBar({
   onUpsertCustomRunCommand,
   onRunCustomRunCommand,
   onDeleteCustomRunCommand,
-  activeWorkspaceWorktree,
-  onOpenWorkspaceDetail,
 }: ContentTopBarProps) {
   const hasProjectContext = Boolean(activeProjectDir ?? projectData?.directory)
 
@@ -152,8 +141,6 @@ export function ContentTopBar({
         onUpsertCustomRunCommand={onUpsertCustomRunCommand}
         onRunCustomRunCommand={onRunCustomRunCommand}
         onDeleteCustomRunCommand={onDeleteCustomRunCommand}
-        activeWorkspaceWorktree={activeWorkspaceWorktree}
-        onOpenWorkspaceDetail={onOpenWorkspaceDetail}
       />
     </div>
   )

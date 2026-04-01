@@ -54,8 +54,6 @@ type BuildContentTopBarPropsArgs = {
   upsertCustomRunCommand: ComponentProps<typeof ContentTopBar>['onUpsertCustomRunCommand']
   runCustomRunCommand: ComponentProps<typeof ContentTopBar>['onRunCustomRunCommand']
   deleteCustomRunCommand: ComponentProps<typeof ContentTopBar>['onDeleteCustomRunCommand']
-  activeWorkspaceWorktree: ComponentProps<typeof ContentTopBar>['activeWorkspaceWorktree']
-  openWorkspaceDetail: () => void
 }
 
 type BuildWorkspaceSidebarPropsArgs = {
@@ -148,8 +146,6 @@ export function buildContentTopBarProps(args: BuildContentTopBarPropsArgs): Comp
     onUpsertCustomRunCommand: args.upsertCustomRunCommand,
     onRunCustomRunCommand: args.runCustomRunCommand,
     onDeleteCustomRunCommand: args.deleteCustomRunCommand,
-    activeWorkspaceWorktree: args.activeWorkspaceWorktree,
-    onOpenWorkspaceDetail: args.openWorkspaceDetail,
   }
 }
 

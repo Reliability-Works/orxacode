@@ -1,12 +1,50 @@
+import { PatchDiff } from '@pierre/diffs/react'
 import { AlignJustify, ChevronDown, ChevronRight, Columns2, Eye, List, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from 'lucide-react'
 import type { ChangeProvenanceRecord } from '@shared/ipc'
 import type { GitDiffViewMode } from '../hooks/useGitPanel'
 import type { GitDiffFile } from '../lib/git-diff'
 import { inferStatusTag } from '../lib/git-diff'
-import { GitSidebarHunkRows } from './GitSidebarDiffHunks'
 import { GitSidebarTreeView } from './GitSidebarFileTree'
 import { GitSidebarTabDropdown } from './GitSidebarTabDropdown'
 import type { GitSidebarPanelModel } from './useGitSidebarPanelModel'
+
+function resolveDiffsThemeType() {
+  if (typeof document === 'undefined') {
+    return 'dark'
+  }
+  const themeId = document.documentElement.getAttribute('data-theme')
+  return themeId === 'arctic' ? 'light' : 'dark'
+}
+
+function toDiffStyle(mode: Exclude<GitDiffViewMode, 'list'>) {
+  return mode === 'split' ? 'split' : 'unified'
+}
+
+function GitSidebarPatchSection({
+  patch,
+  gitDiffViewMode,
+}: {
+  patch: string
+  gitDiffViewMode: Exclude<GitDiffViewMode, 'list'>
+}) {
+  return (
+    <div className="git-diff-renderer">
+      <PatchDiff
+        patch={patch}
+        className="git-diff-renderer-surface"
+        disableWorkerPool={true}
+        options={{
+          disableFileHeader: true,
+          diffStyle: toDiffStyle(gitDiffViewMode),
+          overflow: 'scroll',
+          expandUnchanged: false,
+          hunkSeparators: 'line-info-basic',
+          themeType: resolveDiffsThemeType(),
+        }}
+      />
+    </div>
+  )
+}
 
 function GitSidebarFileActionButtons({
   file,
@@ -353,7 +391,7 @@ function GitSidebarSplitLayout({
   gitDiffViewMode,
 }: {
   model: GitSidebarPanelModel
-  gitDiffViewMode: GitDiffViewMode
+  gitDiffViewMode: Exclude<GitDiffViewMode, 'list'>
 }) {
   return (
     <>
@@ -394,18 +432,10 @@ function GitSidebarSplitLayout({
             </div>
             {!model.collapsedFileSections[file.key] ? (
               <div className="git-diff-file-body">
-                {sections.map(({ section, hunks }) => (
+                {sections.map(section => (
                   <div key={section.key} className="git-diff-section">
                     {sections.length > 1 ? <div className="git-diff-section-label">{section.label}</div> : null}
-                    <div className={`git-diff-hunk-body${gitDiffViewMode === 'split' ? ' split' : ''}`.trim()}>
-                      <GitSidebarHunkRows
-                        hunks={hunks}
-                        sectionKey={section.key}
-                        gitDiffViewMode={gitDiffViewMode}
-                        expandedUnchangedRows={model.expandedUnchangedRows}
-                        setExpandedUnchangedRows={model.setExpandedUnchangedRows}
-                      />
-                    </div>
+                    <GitSidebarPatchSection patch={section.patch} gitDiffViewMode={gitDiffViewMode} />
                   </div>
                 ))}
               </div>

@@ -1,10 +1,14 @@
 import { useState, type ReactNode } from 'react'
+import { GitBranch } from 'lucide-react'
 import type { SessionType } from '../types/canvas'
 import { OpenCodeLogo, OpenAILogo, AnthropicLogo, CanvasLogo } from './ProviderLogos'
+import type { ActiveWorkspaceWorktree } from './WorkspaceDetail.types'
 
 type WorkspaceLandingProps = {
   workspaceName: string
   onPickSession: (type: SessionType) => void
+  activeWorkspaceWorktree?: ActiveWorkspaceWorktree | null
+  onOpenWorkspaceDetail?: () => void
   onBrowseClaudeSessions?: () => void
   onBrowseCodexSessions?: () => void
 }
@@ -56,6 +60,8 @@ const SESSION_OPTIONS: Array<{
 export function WorkspaceLanding({
   workspaceName,
   onPickSession,
+  activeWorkspaceWorktree,
+  onOpenWorkspaceDetail,
   onBrowseClaudeSessions,
   onBrowseCodexSessions,
 }: WorkspaceLandingProps) {
@@ -88,8 +94,22 @@ export function WorkspaceLanding({
           )
         })}
       </div>
-      {onBrowseClaudeSessions || onBrowseCodexSessions ? (
+      {onOpenWorkspaceDetail || onBrowseClaudeSessions || onBrowseCodexSessions ? (
         <div className="workspace-landing-secondary-actions">
+          {onOpenWorkspaceDetail ? (
+            <button
+              type="button"
+              className="workspace-landing-secondary-button"
+              onClick={onOpenWorkspaceDetail}
+              title={activeWorkspaceWorktree?.directory}
+            >
+              <GitBranch size={13} aria-hidden="true" />
+              <span>
+                Workspace details
+                {activeWorkspaceWorktree?.label ? ` - ${activeWorkspaceWorktree.label}` : ''}
+              </span>
+            </button>
+          ) : null}
           {onBrowseClaudeSessions ? (
             <button
               type="button"

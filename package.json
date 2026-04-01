@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.53",
+  "version": "0.1.0-beta.54",
   "description": "Orxa Code Electron desktop app",
   "author": "Reliability Works",
   "type": "module",
@@ -101,8 +101,8 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@git-diff-view/react": "^0.0.39",
     "@opencode-ai/sdk": "^1.2.10",
+    "@pierre/diffs": "^1.1.8",
     "@tanstack/react-virtual": "^3.13.23",
     "better-sqlite3": "12.8.0",
     "clsx": "^2.1.1",

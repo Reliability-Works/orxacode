@@ -8,12 +8,15 @@ function renderPicker(
     isOpen?: boolean
     onPick?: (type: SessionType) => void
     onClose?: () => void
+    onOpenWorkspaceDetail?: () => void
     onBrowseClaudeSessions?: () => void
     onBrowseCodexSessions?: () => void
   } = {}
 ) {
   const onPick = overrides.onPick ?? (vi.fn() as unknown as (type: SessionType) => void)
   const onClose = overrides.onClose ?? (vi.fn() as unknown as () => void)
+  const onOpenWorkspaceDetail =
+    overrides.onOpenWorkspaceDetail ?? (vi.fn() as unknown as () => void)
   const onBrowseClaudeSessions =
     overrides.onBrowseClaudeSessions ?? (vi.fn() as unknown as () => void)
   const onBrowseCodexSessions =
@@ -24,12 +27,13 @@ function renderPicker(
     <NewSessionPicker
       isOpen={isOpen}
       onPick={onPick}
+      onOpenWorkspaceDetail={onOpenWorkspaceDetail}
       onBrowseClaudeSessions={onBrowseClaudeSessions}
       onBrowseCodexSessions={onBrowseCodexSessions}
       onClose={onClose}
     />
   )
-  return { onPick, onClose, onBrowseClaudeSessions, onBrowseCodexSessions }
+  return { onPick, onClose, onOpenWorkspaceDetail, onBrowseClaudeSessions, onBrowseCodexSessions }
 }
 
 describe('NewSessionPicker', () => {
@@ -40,6 +44,7 @@ describe('NewSessionPicker', () => {
     expect(screen.getByText('claude chat session')).toBeInTheDocument()
     expect(screen.getByText('claude terminal session')).toBeInTheDocument()
     expect(screen.getByText('codex session')).toBeInTheDocument()
+    expect(screen.getByText('workspace details')).toBeInTheDocument()
     expect(screen.getByText('browse claude sessions')).toBeInTheDocument()
     expect(screen.getByText('browse codex threads')).toBeInTheDocument()
   })
@@ -51,6 +56,7 @@ describe('NewSessionPicker', () => {
     expect(screen.queryByText('claude chat session')).not.toBeInTheDocument()
     expect(screen.queryByText('claude terminal session')).not.toBeInTheDocument()
     expect(screen.queryByText('codex session')).not.toBeInTheDocument()
+    expect(screen.queryByText('workspace details')).not.toBeInTheDocument()
     expect(screen.queryByText('browse claude sessions')).not.toBeInTheDocument()
     expect(screen.queryByText('browse codex threads')).not.toBeInTheDocument()
   })
@@ -89,6 +95,12 @@ describe('NewSessionPicker', () => {
     const { onBrowseClaudeSessions } = renderPicker()
     fireEvent.click(screen.getByText('browse claude sessions'))
     expect(onBrowseClaudeSessions).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking workspace details calls the dedicated callback', () => {
+    const { onOpenWorkspaceDetail } = renderPicker()
+    fireEvent.click(screen.getByText('workspace details'))
+    expect(onOpenWorkspaceDetail).toHaveBeenCalledTimes(1)
   })
 
   it('clicking browse codex threads calls the dedicated callback', () => {

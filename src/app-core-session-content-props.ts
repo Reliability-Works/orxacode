@@ -14,6 +14,7 @@ import type {
   SessionGuardrailState,
   SessionRevertTarget,
 } from './lib/session-controls'
+import type { ActiveWorkspaceWorktree } from './components/WorkspaceDetail.types'
 
 type BranchControlState = {
   branchMenuOpen: boolean
@@ -64,6 +65,8 @@ type BuildAppSessionContentPropsArgs = {
   openWorkspaceDashboard: () => void
   openClaudeSessionBrowser: (preferredWorkspaceDirectory?: string) => void
   openCodexSessionBrowser: (preferredWorkspaceDirectory?: string) => void
+  activeWorkspaceWorktree: ActiveWorkspaceWorktree | null
+  openWorkspaceDetail: () => void
   manualSessionTitles: Record<string, boolean>
   openReferencedFile: (reference: string) => Promise<void>
   setBrowserMode: (enabled: boolean) => Promise<void> | void
@@ -179,6 +182,8 @@ function buildWorkspaceLandingProps(args: BuildAppSessionContentPropsArgs) {
   return {
     workspaceName: args.activeProjectDir?.split('/').pop() ?? args.activeProjectDir ?? '',
     onPickSession: (type: SessionType) => void args.createSession(args.activeProjectDir, type),
+    activeWorkspaceWorktree: args.activeWorkspaceWorktree,
+    onOpenWorkspaceDetail: args.openWorkspaceDetail,
     onBrowseClaudeSessions: () => args.openClaudeSessionBrowser(args.activeProjectDir),
     onBrowseCodexSessions: () => args.openCodexSessionBrowser(args.activeProjectDir),
   }

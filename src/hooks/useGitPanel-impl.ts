@@ -3,6 +3,8 @@ import {
   useEffect,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from 'react'
 import { useGitPanelBranch } from './useGitPanel-branch'
 import { useGitPanelCommit } from './useGitPanel-commit'
@@ -33,7 +35,7 @@ function useGitPanelContentLoader(
   loadingMessage: string,
   run: (directory: string) => Promise<string>,
   setGitPanelTab: (tab: GitPanelTab) => void,
-  setGitPanelOutput: (output: string) => void,
+  setGitPanelOutput: Dispatch<SetStateAction<string>>,
   setLoading: (loading: boolean) => void
 ) {
   return useCallback(async () => {
@@ -56,13 +58,26 @@ function useGitPanelContentLoader(
 function useGitPanelDiffLoaders(
   activeProjectDir: string | null,
   setGitPanelTab: (tab: GitPanelTab) => void,
-  setGitPanelOutput: (output: string) => void,
+  setGitPanelOutput: Dispatch<SetStateAction<string>>,
   setGitDiffStats: (stats: GitDiffStats) => void,
   setGitDiffLoading: (loading: boolean) => void,
   setGitLogLoading: (loading: boolean) => void,
   setGitIssuesLoading: (loading: boolean) => void,
   setGitPrsLoading: (loading: boolean) => void
 ) {
+  const runGitLog = useCallback(
+    (directory: string) => window.orxa.opencode.gitLog(directory),
+    []
+  )
+  const runGitIssues = useCallback(
+    (directory: string) => window.orxa.opencode.gitIssues(directory),
+    []
+  )
+  const runGitPrs = useCallback(
+    (directory: string) => window.orxa.opencode.gitPrs(directory),
+    []
+  )
+
   const silentRefreshDiff = useCallback(async () => {
     if (!activeProjectDir) return
     try {
@@ -110,7 +125,7 @@ function useGitPanelDiffLoaders(
     activeProjectDir,
     'log',
     'Loading log...',
-    directory => window.orxa.opencode.gitLog(directory),
+    runGitLog,
     setGitPanelTab,
     setGitPanelOutput,
     setGitLogLoading
@@ -120,7 +135,7 @@ function useGitPanelDiffLoaders(
     activeProjectDir,
     'issues',
     'Loading issues...',
-    directory => window.orxa.opencode.gitIssues(directory),
+    runGitIssues,
     setGitPanelTab,
     setGitPanelOutput,
     setGitIssuesLoading
@@ -130,7 +145,7 @@ function useGitPanelDiffLoaders(
     activeProjectDir,
     'prs',
     'Loading pull requests...',
-    directory => window.orxa.opencode.gitPrs(directory),
+    runGitPrs,
     setGitPanelTab,
     setGitPanelOutput,
     setGitPrsLoading

@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
   inferStatusTag,
-  lineNumber,
-  parseDiffHunks,
   parseGitDiffOutput,
   toDiffSections,
   type GitDiffFile,
 } from './git-diff'
 
-describe('git-diff', () => {
+describe('git-diff parsing', () => {
   it('maps status tags', () => {
     expect(inferStatusTag('added')).toBe('A')
     expect(inferStatusTag('deleted')).toBe('D')
@@ -55,7 +53,10 @@ describe('git-diff', () => {
     })
   })
 
-  it('builds sections and parses hunk line numbers', () => {
+})
+
+describe('git-diff sidebar sections', () => {
+  it('builds section patch payloads for the sidebar renderer', () => {
     const file: GitDiffFile = {
       key: 'src/a.ts',
       path: 'src/a.ts',
@@ -86,31 +87,46 @@ describe('git-diff', () => {
 
     const sections = toDiffSections(file)
     expect(sections).toHaveLength(1)
-    expect(sections[0]?.label).toBe('Unstaged')
-
-    const hunks = parseDiffHunks(sections[0]!)
-    expect(hunks).toHaveLength(1)
-    expect(hunks[0]?.lines).toEqual([
-      {
-        id: expect.any(String),
-        type: 'context',
-        text: 'const keep = true;',
-        oldLine: 10,
-        newLine: 10,
-      },
-      {
-        id: expect.any(String),
-        type: 'remove',
-        text: 'const before = 1;',
-        oldLine: 11,
-        newLine: null,
-      },
-      { id: expect.any(String), type: 'add', text: 'const after = 2;', oldLine: null, newLine: 11 },
-    ])
+    expect(sections[0]).toEqual({
+      key: 'src/a.ts:unstaged',
+      label: 'Unstaged',
+      patch: [
+        'diff --git a/src/a.ts b/src/a.ts',
+        '--- a/src/a.ts',
+        '+++ b/src/a.ts',
+        '@@ -10,2 +10,2 @@',
+        ' const keep = true;',
+        '-const before = 1;',
+        '+const after = 2;',
+      ].join('\n'),
+    })
   })
 
-  it('formats line numbers for rendering', () => {
-    expect(lineNumber(42)).toBe('42')
-    expect(lineNumber(null)).toBe('')
+  it('preserves separate staged and unstaged patch sections', () => {
+    const file: GitDiffFile = {
+      key: 'src/a.ts',
+      path: 'src/a.ts',
+      status: 'modified',
+      added: 2,
+      removed: 2,
+      hasUnstaged: true,
+      hasStaged: true,
+      diffLines: [],
+      unstagedDiffLines: ['diff --git a/src/a.ts b/src/a.ts', '@@ -1 +1 @@', '-a', '+b'],
+      stagedDiffLines: ['diff --git a/src/a.ts b/src/a.ts', '@@ -2 +2 @@', '-c', '+d'],
+    }
+
+    expect(toDiffSections(file)).toEqual([
+      {
+        key: 'src/a.ts:unstaged',
+        label: 'Unstaged',
+        patch: 'diff --git a/src/a.ts b/src/a.ts\n@@ -1 +1 @@\n-a\n+b',
+      },
+      {
+        key: 'src/a.ts:staged',
+        label: 'Staged',
+        patch: 'diff --git a/src/a.ts b/src/a.ts\n@@ -2 +2 @@\n-c\n+d',
+      },
+    ])
   })
 })

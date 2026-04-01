@@ -1,7 +1,7 @@
 import type { ChangeProvenanceRecord } from '@shared/ipc'
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import type { GitSidebarProps, GitPanelTab } from './GitSidebarPanel'
-import { parseDiffHunks, parseGitDiffOutput, toDiffSections, type GitDiffFile } from '../lib/git-diff'
+import { parseGitDiffOutput, toDiffSections, type GitDiffFile } from '../lib/git-diff'
 import { buildFileTree, filterTreeNodes, type FileTreeNode } from '../lib/git-file-tree'
 
 type DiffSection = ReturnType<typeof toDiffSections>[number]
@@ -24,16 +24,11 @@ export type GitSidebarPanelModel = {
   fileTree: Array<FileTreeNode<GitDiffFile>>
   filteredTree: Array<FileTreeNode<GitDiffFile>>
   fileIndexByKey: Record<string, number>
-  listViewFocusFile: GitDiffFile | null
-  listViewFocusSections: DiffSection[]
-  listViewFocusParsed: Array<{ section: DiffSection; hunks: ReturnType<typeof parseDiffHunks> }>
-  allFileSections: Array<{ file: GitDiffFile; sections: Array<{ section: DiffSection; hunks: ReturnType<typeof parseDiffHunks> }> }>
+  allFileSections: Array<{ file: GitDiffFile; sections: DiffSection[] }>
   selectedDiffKey: string | null
   setSelectedDiffKey: Dispatch<SetStateAction<string | null>>
   pendingAction: string | null
   actionError: string | null
-  expandedUnchangedRows: Record<string, boolean>
-  setExpandedUnchangedRows: Dispatch<SetStateAction<Record<string, boolean>>>
   treeFilter: string
   setTreeFilter: Dispatch<SetStateAction<string>>
   showFileTree: boolean
@@ -115,7 +110,7 @@ function useGitTabMenu(
   return { gitTabMenuOpen, setGitTabMenuOpen, gitTabMenuRef, selectGitTab }
 }
 
-function useGitSidebarDerivedState(gitPanelOutput: string, treeFilter: string, listViewFocusKey: string | null) {
+function useGitSidebarDerivedState(gitPanelOutput: string, treeFilter: string) {
   const parsedDiff = useMemo(() => parseGitDiffOutput(gitPanelOutput), [gitPanelOutput])
   const hasUnstagedFiles = useMemo(
     () => parsedDiff.files.some(file => file.hasUnstaged),
@@ -128,27 +123,14 @@ function useGitSidebarDerivedState(gitPanelOutput: string, treeFilter: string, l
     [parsedDiff.files]
   )
 
-  const listViewFocusFile = useMemo(
-    () => parsedDiff.files.find(file => file.key === listViewFocusKey) ?? null,
-    [listViewFocusKey, parsedDiff.files]
-  )
-  const listViewFocusSections = useMemo(
-    () => toDiffSections(listViewFocusFile),
-    [listViewFocusFile]
-  )
-  const listViewFocusParsed = useMemo(
-    () => listViewFocusSections.map(section => ({ section, hunks: parseDiffHunks(section) })),
-    [listViewFocusSections]
-  )
   const allFileSections = useMemo(
     () =>
       parsedDiff.files
         .map(file => {
           const sections = toDiffSections(file)
-          const parsed = sections.map(section => ({ section, hunks: parseDiffHunks(section) }))
-          return { file, sections: parsed }
+          return { file, sections }
         })
-        .filter(({ sections }) => sections.some(({ hunks }) => hunks.length > 0)),
+        .filter(({ sections }) => sections.some(section => section.patch.trim().length > 0)),
     [parsedDiff.files]
   )
 
@@ -158,9 +140,6 @@ function useGitSidebarDerivedState(gitPanelOutput: string, treeFilter: string, l
     fileTree,
     filteredTree,
     fileIndexByKey,
-    listViewFocusFile,
-    listViewFocusSections,
-    listViewFocusParsed,
     allFileSections,
   }
 }
@@ -224,7 +203,6 @@ export function useGitSidebarPanelModel(props: GitSidebarProps): GitSidebarPanel
   } = props
 
   const [selectedDiffKey, setSelectedDiffKey] = useState<string | null>(null)
-  const [expandedUnchangedRows, setExpandedUnchangedRows] = useState<Record<string, boolean>>({})
   const [treeFilter, setTreeFilter] = useState('')
   const [showFileTree, setShowFileTree] = useState(true)
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({})
@@ -244,11 +222,8 @@ export function useGitSidebarPanelModel(props: GitSidebarProps): GitSidebarPanel
     fileTree,
     filteredTree,
     fileIndexByKey,
-    listViewFocusFile,
-    listViewFocusSections,
-    listViewFocusParsed,
     allFileSections,
-  } = useGitSidebarDerivedState(gitPanelOutput, treeFilter, listViewFocusKey)
+  } = useGitSidebarDerivedState(gitPanelOutput, treeFilter)
   const { pendingAction, actionError, runFileAction } = useRunFileAction(onStatusChange)
   useSelectedDiffSync(gitPanelTab, parsedDiff.files, selectedDiffKey, setSelectedDiffKey)
 
@@ -264,16 +239,11 @@ export function useGitSidebarPanelModel(props: GitSidebarProps): GitSidebarPanel
     fileTree,
     filteredTree,
     fileIndexByKey,
-    listViewFocusFile,
-    listViewFocusSections,
-    listViewFocusParsed,
     allFileSections,
     selectedDiffKey,
     setSelectedDiffKey,
     pendingAction,
     actionError,
-    expandedUnchangedRows,
-    setExpandedUnchangedRows,
     treeFilter,
     setTreeFilter,
     showFileTree,

@@ -34,25 +34,7 @@ export type GitDiffFile = {
 export type GitDiffViewSection = {
   key: string
   label: string
-  data: {
-    oldFile: { fileName: string; content?: string }
-    newFile: { fileName: string; content?: string }
-    hunks: string[]
-  }
-}
-
-export type ParsedHunkLine = {
-  id: string
-  type: 'context' | 'add' | 'remove'
-  text: string
-  oldLine: number | null
-  newLine: number | null
-}
-
-export type ParsedHunk = {
-  key: string
-  header: string
-  lines: ParsedHunkLine[]
+  patch: string
 }
 
 function mergeDiffLines(existing: string[] | undefined, next: string[]) {
@@ -68,28 +50,11 @@ function mergeDiffLines(existing: string[] | undefined, next: string[]) {
   return [...existing, '', ...next]
 }
 
-function normalizeDiffPath(rawPath: string | undefined, fallback: string) {
-  if (!rawPath) {
-    return fallback
+function toPatch(lines: string[]) {
+  if (lines.length === 0) {
+    return ''
   }
-  const value = rawPath.trim().split(/\s+/)[0] ?? fallback
-  if (value === '/dev/null') {
-    return fallback
-  }
-  return value.replace(/^[ab]\//, '')
-}
-
-function buildDiffViewData(file: GitDiffFile, hunks: string[]) {
-  const oldHeader = hunks.find(line => line.startsWith('--- '))
-  const newHeader = hunks.find(line => line.startsWith('+++ '))
-  const oldFileName = normalizeDiffPath(oldHeader?.slice(4), file.oldPath ?? file.path)
-  const newFileName = normalizeDiffPath(newHeader?.slice(4), file.path)
-
-  return {
-    oldFile: { fileName: oldFileName },
-    newFile: { fileName: newFileName },
-    hunks,
-  }
+  return lines.join('\n')
 }
 
 function statusPriority(status: GitFileStatus) {
@@ -344,114 +309,22 @@ export function toDiffSections(file: GitDiffFile | null): GitDiffViewSection[] {
     sections.push({
       key: `${file.key}:unstaged`,
       label: 'Unstaged',
-      data: buildDiffViewData(file, file.unstagedDiffLines),
+      patch: toPatch(file.unstagedDiffLines),
     })
   }
   if (file.stagedDiffLines && file.stagedDiffLines.length > 0) {
     sections.push({
       key: `${file.key}:staged`,
       label: 'Staged',
-      data: buildDiffViewData(file, file.stagedDiffLines),
+      patch: toPatch(file.stagedDiffLines),
     })
   }
   if (sections.length === 0 && file.diffLines.length > 0) {
     sections.push({
       key: `${file.key}:diff`,
       label: 'Changes',
-      data: buildDiffViewData(file, file.diffLines),
+      patch: toPatch(file.diffLines),
     })
   }
   return sections
-}
-
-export function parseHunkHeader(line: string) {
-  const match = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/)
-  if (!match) {
-    return { oldStart: 0, newStart: 0 }
-  }
-  return {
-    oldStart: Number(match[1] ?? '0'),
-    newStart: Number(match[3] ?? '0'),
-  }
-}
-
-export function parseDiffHunks(section: GitDiffViewSection): ParsedHunk[] {
-  const lines = section.data.hunks
-  const hunks: ParsedHunk[] = []
-  let current: ParsedHunk | null = null
-  let oldLine = 0
-  let newLine = 0
-
-  const flush = () => {
-    if (current) {
-      hunks.push(current)
-      current = null
-    }
-  }
-
-  for (const line of lines) {
-    if (line.startsWith('@@ ')) {
-      flush()
-      const start = parseHunkHeader(line)
-      oldLine = start.oldStart
-      newLine = start.newStart
-      current = {
-        key: `${section.key}:${hunks.length}`,
-        header: line,
-        lines: [],
-      }
-      continue
-    }
-
-    if (!current) {
-      continue
-    }
-
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      current.lines.push({
-        id: `${current.key}:n${newLine}`,
-        type: 'add',
-        text: line.slice(1),
-        oldLine: null,
-        newLine,
-      })
-      newLine += 1
-      continue
-    }
-
-    if (line.startsWith('-') && !line.startsWith('---')) {
-      current.lines.push({
-        id: `${current.key}:o${oldLine}`,
-        type: 'remove',
-        text: line.slice(1),
-        oldLine,
-        newLine: null,
-      })
-      oldLine += 1
-      continue
-    }
-
-    if (line.startsWith(' ')) {
-      current.lines.push({
-        id: `${current.key}:c${oldLine}:${newLine}`,
-        type: 'context',
-        text: line.slice(1),
-        oldLine,
-        newLine,
-      })
-      oldLine += 1
-      newLine += 1
-      continue
-    }
-  }
-
-  flush()
-  return hunks
-}
-
-export function lineNumber(value: number | null) {
-  if (value === null) {
-    return ''
-  }
-  return String(value)
 }
