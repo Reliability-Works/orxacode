@@ -32,10 +32,10 @@ That does not mean we are against bigger contributions. It just means we want to
 Please:
 
 1. Fork the repo
-2. Create your branch from `dev`
+2. Create your branch from `main`
 3. Keep the change focused
 4. Run the relevant checks locally
-5. Open the PR against `dev`
+5. Open the PR against `main`
 
 If your change is non-trivial, link the issue or discussion that explains the context.
 

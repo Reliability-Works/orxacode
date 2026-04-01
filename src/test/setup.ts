@@ -1,9 +1,9 @@
-import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import '@testing-library/jest-dom/vitest'
+import { cleanup } from '@testing-library/react'
+import { afterEach, vi } from 'vitest'
 
-if (typeof HTMLCanvasElement !== "undefined") {
-  const gradientStub = { addColorStop: vi.fn() };
+if (typeof HTMLCanvasElement !== 'undefined') {
+  const gradientStub = { addColorStop: vi.fn() }
   const contextBase = {
     canvas: null as HTMLCanvasElement | null,
     clearRect: vi.fn(),
@@ -36,29 +36,32 @@ if (typeof HTMLCanvasElement !== "undefined") {
     createLinearGradient: vi.fn(() => gradientStub),
     createRadialGradient: vi.fn(() => gradientStub),
     createPattern: vi.fn(() => null),
-  };
+  }
 
-  Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
     configurable: true,
     value: vi.fn(function getContext(this: HTMLCanvasElement) {
-      const cache = new Map<PropertyKey, unknown>();
-      return new Proxy({ ...contextBase, canvas: this }, {
-        get(target, prop) {
-          if (prop in target) {
-            return target[prop as keyof typeof target];
-          }
-          if (!cache.has(prop)) {
-            cache.set(prop, vi.fn());
-          }
-          return cache.get(prop);
-        },
-      });
+      const cache = new Map<PropertyKey, unknown>()
+      return new Proxy(
+        { ...contextBase, canvas: this },
+        {
+          get(target, prop) {
+            if (prop in target) {
+              return target[prop as keyof typeof target]
+            }
+            if (!cache.has(prop)) {
+              cache.set(prop, vi.fn())
+            }
+            return cache.get(prop)
+          },
+        }
+      )
     }),
-  });
+  })
 }
 
 afterEach(() => {
-  cleanup();
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
+  cleanup()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})

@@ -4,10 +4,10 @@
    ============================================================ */
 
 /* ── Glass ─────────────────────────────────────────────────── */
-[data-theme="glass"] {
+[data-theme='glass'] {
   /* Deep dark base with gradient glows visible through
      frosted white-alpha surfaces + backdrop-filter blur. */
-  --bg-page: #0A0A14;
+  --bg-page: #0a0a14;
   --bg-sidebar: rgba(255, 255, 255, 0.04);
   --bg-surface: rgba(255, 255, 255, 0.025);
   --bg-input: rgba(255, 255, 255, 0.035);
@@ -18,20 +18,20 @@
   --text-primary: rgba(255, 255, 255, 0.93);
   --text-main: var(--text-primary);
   --text-secondary: rgba(255, 255, 255, 0.67);
-  --text-tertiary: rgba(255, 255, 255, 0.40);
+  --text-tertiary: rgba(255, 255, 255, 0.4);
   --text-muted: rgba(255, 255, 255, 0.27);
   --text-dim: var(--text-muted);
 
-  --accent-green: #6C7BFF;
-  --accent-interactive: #6C7BFF;
-  --accent-error: #F87171;
-  --accent-warning: #FBBF24;
-  --accent-info: #6C7BFF;
+  --accent-green: #6c7bff;
+  --accent-interactive: #6c7bff;
+  --accent-error: #f87171;
+  --accent-warning: #fbbf24;
+  --accent-info: #6c7bff;
   --accent-neutral: rgba(255, 255, 255, 0.15);
 
   --accent: var(--text-secondary);
   --accent-strong: var(--text-primary);
-  --success: #4ADE80;
+  --success: #4ade80;
   --warning: var(--accent-warning);
   --danger: var(--accent-error);
 
@@ -48,7 +48,7 @@
 
   --scrollbar-track: rgba(255, 255, 255, 0.03);
   --scrollbar-thumb: rgba(255, 255, 255, 0.12);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.20);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
 
   --glass-blur: 0px;
   --glass-saturation: 1;
@@ -63,27 +63,27 @@
 }
 
 /* ── Terminal (original dark) ─────────────────────────────── */
-[data-theme="terminal"] {
+[data-theme='terminal'] {
   --bg-page: #111111;
   --bg-sidebar: #161616;
-  --bg-surface: #1C1C1C;
+  --bg-surface: #1c1c1c;
   --bg-input: #222222;
   --bg-app: var(--bg-page);
   --bg-raised: var(--bg-input);
-  --bg-terminal: #0A0A0A;
+  --bg-terminal: #0a0a0a;
 
-  --text-primary: #E5E5E5;
+  --text-primary: #e5e5e5;
   --text-main: var(--text-primary);
-  --text-secondary: #A3A3A3;
+  --text-secondary: #a3a3a3;
   --text-tertiary: #737373;
-  --text-muted: #5C5C5C;
+  --text-muted: #5c5c5c;
   --text-dim: var(--text-muted);
 
-  --accent-green: #22C55E;
-  --accent-interactive: #3B82F6;
-  --accent-error: #EF4444;
-  --accent-warning: #F59E0B;
-  --accent-info: #3B82F6;
+  --accent-green: #22c55e;
+  --accent-interactive: #3b82f6;
+  --accent-error: #ef4444;
+  --accent-warning: #f59e0b;
+  --accent-info: #3b82f6;
   --accent-neutral: #525252;
 
   --accent: var(--text-secondary);
@@ -98,8 +98,8 @@
   --border-active: var(--accent-interactive);
   --border-primary: var(--border);
 
-  --bg-hover: #1A1A1A;
-  --bg-active: #1F1F1F;
+  --bg-hover: #1a1a1a;
+  --bg-active: #1f1f1f;
 
   --shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
 
@@ -120,43 +120,43 @@
 }
 
 /* ── Midnight ─────────────────────────────────────────────── */
-[data-theme="midnight"] {
-  --bg-page: #0B0E1A;
-  --bg-sidebar: #0F1225;
+[data-theme='midnight'] {
+  --bg-page: #0b0e1a;
+  --bg-sidebar: #0f1225;
   --bg-surface: #141830;
-  --bg-input: #1A1E38;
+  --bg-input: #1a1e38;
   --bg-app: var(--bg-page);
   --bg-raised: var(--bg-input);
   --bg-terminal: #070914;
 
-  --text-primary: #E0E4F0;
+  --text-primary: #e0e4f0;
   --text-main: var(--text-primary);
-  --text-secondary: #9BA4C0;
-  --text-tertiary: #6B739A;
-  --text-muted: #4E5575;
+  --text-secondary: #9ba4c0;
+  --text-tertiary: #6b739a;
+  --text-muted: #4e5575;
   --text-dim: var(--text-muted);
 
-  --accent-green: #818CF8;
-  --accent-interactive: #818CF8;
-  --accent-error: #F87171;
-  --accent-warning: #FBBF24;
-  --accent-info: #818CF8;
-  --accent-neutral: #4B5280;
+  --accent-green: #818cf8;
+  --accent-interactive: #818cf8;
+  --accent-error: #f87171;
+  --accent-warning: #fbbf24;
+  --accent-info: #818cf8;
+  --accent-neutral: #4b5280;
 
   --accent: var(--text-secondary);
   --accent-strong: var(--text-primary);
-  --success: #34D399;
+  --success: #34d399;
   --warning: var(--accent-warning);
   --danger: var(--accent-error);
 
-  --border: rgba(130, 140, 220, 0.10);
+  --border: rgba(130, 140, 220, 0.1);
   --border-secondary: rgba(130, 140, 220, 0.16);
   --border-hover: rgba(130, 140, 220, 0.22);
   --border-active: var(--accent-interactive);
   --border-primary: var(--border);
 
   --bg-hover: #151935;
-  --bg-active: #1A1F3F;
+  --bg-active: #1a1f3f;
 
   --shadow: 0 16px 45px rgba(0, 0, 20, 0.6);
 
@@ -177,32 +177,32 @@
 }
 
 /* ── Ember ────────────────────────────────────────────────── */
-[data-theme="ember"] {
+[data-theme='ember'] {
   --bg-page: #141110;
-  --bg-sidebar: #1A1614;
-  --bg-surface: #201B18;
-  --bg-input: #26201C;
+  --bg-sidebar: #1a1614;
+  --bg-surface: #201b18;
+  --bg-input: #26201c;
   --bg-app: var(--bg-page);
   --bg-raised: var(--bg-input);
-  --bg-terminal: #0C0A09;
+  --bg-terminal: #0c0a09;
 
-  --text-primary: #ECE4DD;
+  --text-primary: #ece4dd;
   --text-main: var(--text-primary);
-  --text-secondary: #B8A899;
-  --text-tertiary: #8A7A6A;
-  --text-muted: #665A4E;
+  --text-secondary: #b8a899;
+  --text-tertiary: #8a7a6a;
+  --text-muted: #665a4e;
   --text-dim: var(--text-muted);
 
-  --accent-green: #F59E0B;
-  --accent-interactive: #F97316;
-  --accent-error: #EF4444;
-  --accent-warning: #FBBF24;
-  --accent-info: #F59E0B;
-  --accent-neutral: #5C5048;
+  --accent-green: #f59e0b;
+  --accent-interactive: #f97316;
+  --accent-error: #ef4444;
+  --accent-warning: #fbbf24;
+  --accent-info: #f59e0b;
+  --accent-neutral: #5c5048;
 
   --accent: var(--text-secondary);
   --accent-strong: var(--text-primary);
-  --success: #34D399;
+  --success: #34d399;
   --warning: var(--accent-warning);
   --danger: var(--accent-error);
 
@@ -212,8 +212,8 @@
   --border-active: var(--accent-interactive);
   --border-primary: var(--border);
 
-  --bg-hover: #1D1815;
-  --bg-active: #231D19;
+  --bg-hover: #1d1815;
+  --bg-active: #231d19;
 
   --shadow: 0 16px 45px rgba(10, 5, 0, 0.55);
 
@@ -234,32 +234,32 @@
 }
 
 /* ── Arctic (light) ───────────────────────────────────────── */
-[data-theme="arctic"] {
-  --bg-page: #F4F6FA;
-  --bg-sidebar: #EAECF2;
-  --bg-surface: #FFFFFF;
-  --bg-input: #F0F1F5;
+[data-theme='arctic'] {
+  --bg-page: #f4f6fa;
+  --bg-sidebar: #eaecf2;
+  --bg-surface: #ffffff;
+  --bg-input: #f0f1f5;
   --bg-app: var(--bg-page);
   --bg-raised: var(--bg-input);
-  --bg-terminal: #1E2330;
+  --bg-terminal: #1e2330;
 
-  --text-primary: #1A1D26;
+  --text-primary: #1a1d26;
   --text-main: var(--text-primary);
-  --text-secondary: #4B5068;
-  --text-tertiary: #7A7F96;
-  --text-muted: #A0A5BA;
+  --text-secondary: #4b5068;
+  --text-tertiary: #7a7f96;
+  --text-muted: #a0a5ba;
   --text-dim: var(--text-muted);
 
-  --accent-green: #2563EB;
-  --accent-interactive: #2563EB;
-  --accent-error: #DC2626;
-  --accent-warning: #D97706;
-  --accent-info: #2563EB;
-  --accent-neutral: #94A3B8;
+  --accent-green: #2563eb;
+  --accent-interactive: #2563eb;
+  --accent-error: #dc2626;
+  --accent-warning: #d97706;
+  --accent-info: #2563eb;
+  --accent-neutral: #94a3b8;
 
   --accent: var(--text-secondary);
   --accent-strong: var(--text-primary);
-  --success: #16A34A;
+  --success: #16a34a;
   --warning: var(--accent-warning);
   --danger: var(--accent-error);
 
@@ -269,8 +269,8 @@
   --border-active: var(--accent-interactive);
   --border-primary: var(--border);
 
-  --bg-hover: #E8EAF0;
-  --bg-active: #DFE2EA;
+  --bg-hover: #e8eaf0;
+  --bg-active: #dfe2ea;
 
   --shadow: 0 16px 45px rgba(0, 0, 0, 0.08);
 
@@ -290,56 +290,75 @@
   --accent-border-strong: rgba(37, 99, 235, 0.55);
 }
 
-
 /* Arctic light mode adjustments */
-[data-theme="arctic"] body::after {
+[data-theme='arctic'] body::after {
   opacity: 0.015;
 }
 
 /* Glass: atmospheric gradient glows on the base layer */
-[data-theme="glass"] .app-shell {
+[data-theme='glass'] .app-shell {
   background:
-    radial-gradient(700px 700px at 15% 20%, rgba(108, 123, 255, 0.13) 0%, rgba(108, 123, 255, 0.03) 50%, transparent 100%),
-    radial-gradient(450px 450px at 5% 80%, rgba(168, 85, 247, 0.08) 0%, rgba(168, 85, 247, 0.02) 50%, transparent 100%),
-    radial-gradient(600px 600px at 75% 70%, rgba(124, 58, 237, 0.10) 0%, rgba(124, 58, 237, 0.02) 50%, transparent 100%),
-    radial-gradient(500px 500px at 85% 15%, rgba(14, 165, 233, 0.09) 0%, rgba(14, 165, 233, 0.02) 50%, transparent 100%),
-    #0A0A14;
+    radial-gradient(
+      700px 700px at 15% 20%,
+      rgba(108, 123, 255, 0.13) 0%,
+      rgba(108, 123, 255, 0.03) 50%,
+      transparent 100%
+    ),
+    radial-gradient(
+      450px 450px at 5% 80%,
+      rgba(168, 85, 247, 0.08) 0%,
+      rgba(168, 85, 247, 0.02) 50%,
+      transparent 100%
+    ),
+    radial-gradient(
+      600px 600px at 75% 70%,
+      rgba(124, 58, 237, 0.1) 0%,
+      rgba(124, 58, 237, 0.02) 50%,
+      transparent 100%
+    ),
+    radial-gradient(
+      500px 500px at 85% 15%,
+      rgba(14, 165, 233, 0.09) 0%,
+      rgba(14, 165, 233, 0.02) 50%,
+      transparent 100%
+    ),
+    #0a0a14;
 }
 
 /* Glass: single frost layer on the workspace so all panes share the same surface */
-[data-theme="glass"] .workspace {
+[data-theme='glass'] .workspace {
   backdrop-filter: blur(40px) saturate(1.2);
   -webkit-backdrop-filter: blur(40px) saturate(1.2);
 }
 
 /* Glass: frost the composer and docks separately since they float */
-[data-theme="glass"] .composer-input-wrap,
-[data-theme="glass"] .dock-surface-panel,
-[data-theme="glass"] .modal {
+[data-theme='glass'] .composer-input-wrap,
+[data-theme='glass'] .dock-surface-panel,
+[data-theme='glass'] .modal {
   backdrop-filter: blur(40px) saturate(1.2);
   -webkit-backdrop-filter: blur(40px) saturate(1.2);
 }
 
 /* Glass: make content-pane and workspace transparent so gradient shows */
-[data-theme="glass"] .content-pane,
-[data-theme="glass"] .workspace {
+[data-theme='glass'] .content-pane,
+[data-theme='glass'] .workspace {
   background: transparent;
 }
 
 /* Glass: sidebar border — subtle glass edge */
-[data-theme="glass"] .projects-pane {
+[data-theme='glass'] .projects-pane {
   border-right-color: rgba(255, 255, 255, 0.06);
 }
 
 /* Glass: composer area — frosted raised card */
-[data-theme="glass"] .composer-input-wrap {
+[data-theme='glass'] .composer-input-wrap {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Glass: commit button — frosted accent */
-[data-theme="glass"] .commit-wrap .commit-trigger,
-[data-theme="glass"] .titlebar-commit-btn {
+[data-theme='glass'] .commit-wrap .commit-trigger,
+[data-theme='glass'] .titlebar-commit-btn {
   background: rgba(108, 123, 255, 0.12) !important;
   border-color: rgba(108, 123, 255, 0.25) !important;
   color: rgba(108, 123, 255, 0.9) !important;
@@ -348,110 +367,110 @@
 }
 
 /* Glass: send button uses accent */
-[data-theme="glass"] .composer-send-button {
+[data-theme='glass'] .composer-send-button {
   background: var(--accent-green);
 }
 
 /* Glass: composer control pills */
-[data-theme="glass"] .plan-toggle-inline,
-[data-theme="glass"] .composer-mode-toggle-icon,
-[data-theme="glass"] .composer-permission-control,
-[data-theme="glass"] .composer-branch-control,
-[data-theme="glass"] .composer-select {
+[data-theme='glass'] .plan-toggle-inline,
+[data-theme='glass'] .composer-mode-toggle-icon,
+[data-theme='glass'] .composer-permission-control,
+[data-theme='glass'] .composer-branch-control,
+[data-theme='glass'] .composer-select {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Glass: active session in sidebar */
-[data-theme="glass"] .session-row.active {
+[data-theme='glass'] .session-row.active {
   background: rgba(255, 255, 255, 0.08);
 }
 
 /* Glass: search input */
-[data-theme="glass"] .sidebar-search input {
+[data-theme='glass'] .sidebar-search input {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* Glass: make ALL panes/containers transparent so gradient shows through */
-[data-theme="glass"] .content-edge-controls,
-[data-theme="glass"] .workspace-right-pane,
-[data-theme="glass"] .workspace-browser-pane,
-[data-theme="glass"] .workspace-left-pane,
-[data-theme="glass"] .browser-sidebar,
-[data-theme="glass"] .codex-pane,
-[data-theme="glass"] .messages-scroll,
-[data-theme="glass"] .codex-messages,
-[data-theme="glass"] .codex-composer-area,
-[data-theme="glass"] .composer-zone,
-[data-theme="glass"] .canvas-pane,
-[data-theme="glass"] .canvas-toolbar,
-[data-theme="glass"] .canvas-area-viewport,
-[data-theme="glass"] .pane-header,
-[data-theme="glass"] .ops-panel-tabs,
-[data-theme="glass"] .ops-git-sub-tabs,
-[data-theme="glass"] .sidebar-inner,
-[data-theme="glass"] .browser-sidebar-header,
-[data-theme="glass"] .browser-pane,
-[data-theme="glass"] .workspace-landing {
+[data-theme='glass'] .content-edge-controls,
+[data-theme='glass'] .workspace-right-pane,
+[data-theme='glass'] .workspace-browser-pane,
+[data-theme='glass'] .workspace-left-pane,
+[data-theme='glass'] .browser-sidebar,
+[data-theme='glass'] .codex-pane,
+[data-theme='glass'] .messages-scroll,
+[data-theme='glass'] .codex-messages,
+[data-theme='glass'] .codex-composer-area,
+[data-theme='glass'] .composer-zone,
+[data-theme='glass'] .canvas-pane,
+[data-theme='glass'] .canvas-toolbar,
+[data-theme='glass'] .canvas-area-viewport,
+[data-theme='glass'] .pane-header,
+[data-theme='glass'] .ops-panel-tabs,
+[data-theme='glass'] .ops-git-sub-tabs,
+[data-theme='glass'] .sidebar-inner,
+[data-theme='glass'] .browser-sidebar-header,
+[data-theme='glass'] .browser-pane,
+[data-theme='glass'] .workspace-landing {
   background: transparent;
 }
 
 /* Glass: remove opaque backgrounds from chat tool/timeline rows */
-[data-theme="glass"] .message-system .message-timeline-row,
-[data-theme="glass"] .message-timeline-row,
-[data-theme="glass"] .diff-block,
-[data-theme="glass"] .diff-block-header,
-[data-theme="glass"] .changed-files-cluster,
-[data-theme="glass"] .changed-files-cluster-header,
-[data-theme="glass"] .changed-files-cluster-list,
-[data-theme="glass"] .explore-row-header,
-[data-theme="glass"] .explore-row,
-[data-theme="glass"] .tool-group,
-[data-theme="glass"] .tool-group-header,
-[data-theme="glass"] .tool-group-body,
-[data-theme="glass"] .bash-tool,
-[data-theme="glass"] .bash-tool-header,
-[data-theme="glass"] .command-output,
-[data-theme="glass"] .tool-call-card,
-[data-theme="glass"] .tool-call-card-header,
-[data-theme="glass"] .tool-call-card-body,
-[data-theme="glass"] .tool-call-card.is-expanded,
-[data-theme="glass"] .message-card,
-[data-theme="glass"] .message-part,
-[data-theme="glass"] .message-parts,
-[data-theme="glass"] .message-system .message-part,
-[data-theme="glass"] .message-assistant .message-part,
-[data-theme="glass"] .message-timeline-disclosure,
-[data-theme="glass"] .message-timeline-disclosure-summary {
+[data-theme='glass'] .message-system .message-timeline-row,
+[data-theme='glass'] .message-timeline-row,
+[data-theme='glass'] .diff-block,
+[data-theme='glass'] .diff-block-header,
+[data-theme='glass'] .changed-files-cluster,
+[data-theme='glass'] .changed-files-cluster-header,
+[data-theme='glass'] .changed-files-cluster-list,
+[data-theme='glass'] .explore-row-header,
+[data-theme='glass'] .explore-row,
+[data-theme='glass'] .tool-group,
+[data-theme='glass'] .tool-group-header,
+[data-theme='glass'] .tool-group-body,
+[data-theme='glass'] .bash-tool,
+[data-theme='glass'] .bash-tool-header,
+[data-theme='glass'] .command-output,
+[data-theme='glass'] .tool-call-card,
+[data-theme='glass'] .tool-call-card-header,
+[data-theme='glass'] .tool-call-card-body,
+[data-theme='glass'] .tool-call-card.is-expanded,
+[data-theme='glass'] .message-card,
+[data-theme='glass'] .message-part,
+[data-theme='glass'] .message-parts,
+[data-theme='glass'] .message-system .message-part,
+[data-theme='glass'] .message-assistant .message-part,
+[data-theme='glass'] .message-timeline-disclosure,
+[data-theme='glass'] .message-timeline-disclosure-summary {
   background: transparent !important;
   border-color: transparent !important;
 }
 
 /* Glass: restore user message bubble (must come AFTER the blanket transparent reset above) */
-[data-theme="glass"] .message-user .message-part {
+[data-theme='glass'] .message-user .message-part {
   background: rgba(255, 255, 255, 0.07) !important;
-  border-color: rgba(255, 255, 255, 0.10) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Glass: keep expanded diff content with a subtle background so it's distinct */
-[data-theme="glass"] .diff-block--expanded .diff-block-body {
+[data-theme='glass'] .diff-block--expanded .diff-block-body {
   background: rgba(255, 255, 255, 0.03);
   border-radius: 6px;
 }
 
 /* Glass: bash command output keeps a subtle background */
-[data-theme="glass"] .command-output-body {
+[data-theme='glass'] .command-output-body {
   background: rgba(0, 0, 0, 0.15);
 }
 
 /* Glass: topbar fully transparent, no gradient band */
-[data-theme="glass"] .content-edge-controls {
+[data-theme='glass'] .content-edge-controls {
   background: transparent;
 }
 
 /* Glass: brand text in a subtle frosted pill so it's readable over content */
-[data-theme="glass"] .topbar-brand {
+[data-theme='glass'] .topbar-brand {
   background: rgba(255, 255, 255, 0.06);
   padding: 4px 10px;
   border-radius: 6px;
@@ -460,69 +479,86 @@
 }
 
 /* Glass: right sidebar transparent */
-[data-theme="glass"] .ops-pane {
+[data-theme='glass'] .ops-pane {
   background: transparent;
   border-left: none;
 }
 
 /* Glass: tab strips */
-[data-theme="glass"] .browser-tab-strip {
+[data-theme='glass'] .browser-tab-strip {
   background: transparent;
 }
 
 /* Glass: tool cards */
-[data-theme="glass"] .tool-call-card,
-[data-theme="glass"] .message-timeline-row {
+[data-theme='glass'] .tool-call-card,
+[data-theme='glass'] .message-timeline-row {
   background: rgba(255, 255, 255, 0.04);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
 /* Glass: code blocks */
-[data-theme="glass"] .md-code-block-wrap {
+[data-theme='glass'] .md-code-block-wrap {
   background: rgba(0, 0, 0, 0.25);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
 /* Glass: diff blocks */
-[data-theme="glass"] .diff-block {
+[data-theme='glass'] .diff-block {
   background: rgba(255, 255, 255, 0.03);
 }
 
 /* Glass: dock panels frost */
-[data-theme="glass"] .dock-surface-panel {
-  background: rgba(255, 255, 255, 0.05);
+[data-theme='glass'] .dock-surface-panel {
+  background: color-mix(in srgb, #151826 88%, var(--bg-input) 12%);
+  border-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Glass: bottom toolbar pills */
-[data-theme="glass"] .composer-controls {
+[data-theme='glass'] .composer-controls {
   background: transparent;
 }
 
 /* Glass: settings overlay */
-[data-theme="glass"] .settings-overlay {
+[data-theme='glass'] .settings-overlay {
   background: rgba(10, 10, 20, 0.85);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
 }
 
 /* Glass: dropdown menus and popovers — heavily frosted so text is readable */
-[data-theme="glass"] .composer-permission-menu,
-[data-theme="glass"] .composer-branch-menu,
-[data-theme="glass"] .composer-model-dropdown-menu,
-[data-theme="glass"] .browser-menu-dropdown,
-[data-theme="glass"] .ops-git-panel-dropdown-menu,
-[data-theme="glass"] .new-session-picker,
-[data-theme="glass"] .titlebar-menu,
-[data-theme="glass"] .titlebar-run-menu,
-[data-theme="glass"] .slash-command-menu,
-[data-theme="glass"] .composer-agent-menu,
-[data-theme="glass"] .model-picker-overlay .modal,
-[data-theme="glass"] .context-menu,
-[data-theme="glass"] .canvas-hub-menu,
-[data-theme="glass"] .add-tile-dropdown,
-[data-theme="glass"] .canvas-theme-picker {
+[data-theme='glass'] .composer-permission-menu,
+[data-theme='glass'] .composer-branch-menu,
+[data-theme='glass'] .composer-model-dropdown-menu,
+[data-theme='glass'] .browser-menu-dropdown,
+[data-theme='glass'] .ops-git-panel-dropdown-menu,
+[data-theme='glass'] .new-session-picker,
+[data-theme='glass'] .titlebar-menu,
+[data-theme='glass'] .titlebar-run-menu,
+[data-theme='glass'] .slash-command-menu,
+[data-theme='glass'] .composer-agent-menu,
+[data-theme='glass'] .model-picker-overlay .modal,
+[data-theme='glass'] .context-menu,
+[data-theme='glass'] .canvas-hub-menu,
+[data-theme='glass'] .add-tile-dropdown,
+[data-theme='glass'] .canvas-theme-picker {
   background: rgba(12, 12, 20, 0.94);
   backdrop-filter: blur(40px) saturate(1.3);
   -webkit-backdrop-filter: blur(40px) saturate(1.3);
-  border-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='glass'] .claude-session-browser-modal,
+[data-theme='glass'] .workspace-detail-modal {
+  background: rgba(9, 10, 18, 0.98);
+  border-color: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(48px) saturate(1.35);
+  -webkit-backdrop-filter: blur(48px) saturate(1.35);
+}
+
+[data-theme='glass'] .claude-session-browser-row,
+[data-theme='glass'] .workspace-worktree-row {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
 }

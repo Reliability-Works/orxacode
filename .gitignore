@@ -34,3 +34,5 @@ output/imagegen/final/
 
 # Workpack execution state
 .workpack/
+TODO.md
+SPEC.md

@@ -4,29 +4,29 @@ Orxa Code ships with five built-in themes. You can switch between them in **Sett
 
 ## Built-in themes
 
-| Theme               | Base colour                    | Accent               | Style                                      |
-| ------------------- | ------------------------------ | -------------------- | ------------------------------------------ |
-| **Glass** (default) | `#0A0A14` with gradient glows  | `#6C7BFF` periwinkle | Frosted surfaces over atmospheric gradient |
-| **Terminal**        | `#111111` opaque dark          | `#22C55E` green      | Classic terminal look                      |
-| **Midnight**        | `#0B0E1A` deep navy            | `#818CF8` indigo     | Blue-black with purple accents             |
-| **Ember**           | `#141110` warm dark            | `#F59E0B` amber      | Warm tones with orange accents             |
-| **Arctic**          | `#F4F6FA` light                | `#2563EB` blue       | Clean light mode                           |
+| Theme               | Base colour                   | Accent               | Style                                      |
+| ------------------- | ----------------------------- | -------------------- | ------------------------------------------ |
+| **Glass** (default) | `#0A0A14` with gradient glows | `#6C7BFF` periwinkle | Frosted surfaces over atmospheric gradient |
+| **Terminal**        | `#111111` opaque dark         | `#22C55E` green      | Classic terminal look                      |
+| **Midnight**        | `#0B0E1A` deep navy           | `#818CF8` indigo     | Blue-black with purple accents             |
+| **Ember**           | `#141110` warm dark           | `#F59E0B` amber      | Warm tones with orange accents             |
+| **Arctic**          | `#F4F6FA` light               | `#2563EB` blue       | Clean light mode                           |
 
 ## How themes work
 
 Themes are CSS custom property overrides applied via a `[data-theme]` attribute on the `<html>` element. The active theme is stored in `AppPreferences` and applied in `App.tsx`:
 
 ```typescript
-document.documentElement.setAttribute("data-theme", appPreferences.theme);
+document.documentElement.setAttribute('data-theme', appPreferences.theme)
 ```
 
 Each theme block in `src/styles/themes.css` overrides the design tokens defined in `src/styles/base.css`:
 
 ```css
-[data-theme="your-theme"] {
+[data-theme='your-theme'] {
   --bg-page: #111111;
   --bg-sidebar: #161616;
-  --bg-surface: #1C1C1C;
+  --bg-surface: #1c1c1c;
   --bg-input: #222222;
   /* ... all other tokens */
 }
@@ -39,7 +39,7 @@ Each theme block in `src/styles/themes.css` overrides the design tokens defined 
 In `src/types/app.ts`, add your theme ID to the `ThemeId` union:
 
 ```typescript
-export type ThemeId = "glass" | "terminal" | "midnight" | "ember" | "arctic" | "your-theme";
+export type ThemeId = 'glass' | 'terminal' | 'midnight' | 'ember' | 'arctic' | 'your-theme'
 ```
 
 ### 2. Define the CSS tokens
@@ -49,35 +49,35 @@ Add a new `[data-theme="your-theme"]` block in `src/styles/themes.css`. You need
 #### Backgrounds
 
 ```css
---bg-page: #...;        /* Main page/app background */
---bg-sidebar: #...;     /* Left sidebar background */
---bg-surface: #...;     /* Cards, panels, elevated surfaces */
---bg-input: #...;       /* Input fields, buttons */
+--bg-page: #...; /* Main page/app background */
+--bg-sidebar: #...; /* Left sidebar background */
+--bg-surface: #...; /* Cards, panels, elevated surfaces */
+--bg-input: #...; /* Input fields, buttons */
 --bg-app: var(--bg-page);
 --bg-raised: var(--bg-input);
---bg-terminal: #...;    /* Terminal/code output background */
+--bg-terminal: #...; /* Terminal/code output background */
 ```
 
 #### Text colours
 
 ```css
---text-primary: #...;    /* Main text — headings, body */
+--text-primary: #...; /* Main text — headings, body */
 --text-main: var(--text-primary);
---text-secondary: #...;  /* Secondary labels, descriptions */
---text-tertiary: #...;   /* Muted labels */
---text-muted: #...;      /* Placeholders, hints */
+--text-secondary: #...; /* Secondary labels, descriptions */
+--text-tertiary: #...; /* Muted labels */
+--text-muted: #...; /* Placeholders, hints */
 --text-dim: var(--text-muted);
 ```
 
 #### Accent colours
 
 ```css
---accent-green: #...;        /* Primary accent — buttons, active states, send */
---accent-interactive: #...;  /* Focus rings, interactive highlights */
---accent-error: #...;        /* Error states */
---accent-warning: #...;      /* Warning states */
---accent-info: #...;         /* Info states */
---accent-neutral: #...;      /* Neutral badges */
+--accent-green: #...; /* Primary accent — buttons, active states, send */
+--accent-interactive: #...; /* Focus rings, interactive highlights */
+--accent-error: #...; /* Error states */
+--accent-warning: #...; /* Warning states */
+--accent-info: #...; /* Info states */
+--accent-neutral: #...; /* Neutral badges */
 ```
 
 #### Accent backgrounds (for hover/active states)
@@ -117,7 +117,7 @@ For light themes, use `rgba(0, 0, 0, ...)` instead.
 --scrollbar-track: ...;
 --scrollbar-thumb: ...;
 --scrollbar-thumb-hover: ...;
---glass-blur: 0px;      /* Set > 0 only for frosted glass themes */
+--glass-blur: 0px; /* Set > 0 only for frosted glass themes */
 --glass-saturation: 1;
 ```
 
@@ -170,17 +170,17 @@ And update the accent background tokens with your colour's RGB values:
 The atmospheric background is defined in the `[data-theme="glass"] .app-shell` rule:
 
 ```css
-[data-theme="glass"] .app-shell {
+[data-theme='glass'] .app-shell {
   background:
     radial-gradient(700px at 15% 20%, rgba(108, 123, 255, 0.13), transparent),
     radial-gradient(450px at 5% 80%, rgba(168, 85, 247, 0.08), transparent),
-    radial-gradient(600px at 75% 70%, rgba(124, 58, 237, 0.10), transparent),
-    radial-gradient(500px at 85% 15%, rgba(14, 165, 233, 0.09), transparent),
-    #0A0A14;
+    radial-gradient(600px at 75% 70%, rgba(124, 58, 237, 0.1), transparent),
+    radial-gradient(500px at 85% 15%, rgba(14, 165, 233, 0.09), transparent), #0a0a14;
 }
 ```
 
 Each `radial-gradient` is a coloured glow blob. Adjust:
+
 - **Colour** — the `rgba()` values control the hue
 - **Opacity** — the alpha channel (0.08–0.13) controls intensity
 - **Size** — the first value (e.g. `700px`) controls the blob radius
@@ -191,6 +191,7 @@ Each `radial-gradient` is a coloured glow blob. Adjust:
 Glass surfaces use white-alpha backgrounds (`rgba(255, 255, 255, 0.03–0.07)`) layered on the gradient base. The entire `.workspace` gets `backdrop-filter: blur(40px)` which frosts the gradient underneath.
 
 Key surface tokens:
+
 - `--bg-sidebar: rgba(255, 255, 255, 0.04)` — very subtle
 - `--bg-surface: rgba(255, 255, 255, 0.025)` — nearly invisible
 - `--bg-input: rgba(255, 255, 255, 0.035)` — inputs and buttons

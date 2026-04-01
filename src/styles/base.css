@@ -1,35 +1,35 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500;600&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap");
-@import url("https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@4.2.1/index.css");
-@import url("https://cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack-subset.css");
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&family=JetBrains+Mono:wght@400;500;600&family=Source+Code+Pro:wght@400;500&family=Anonymous+Pro:wght@400&family=Inconsolata:wght@400;500&family=Space+Mono:wght@400&family=Roboto+Mono:wght@400;500&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@fontsource/cascadia-code@4.2.1/index.css');
+@import url('https://cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack-subset.css');
 
 :root {
   /* Pencil design tokens */
   --bg-page: #111111;
   --bg-sidebar: #161616;
-  --bg-surface: #1C1C1C;
+  --bg-surface: #1c1c1c;
   --bg-input: #222222;
 
   /* Legacy aliases (mapped to new tokens) */
   --bg-app: var(--bg-page);
   --bg-raised: var(--bg-input);
-  --bg-terminal: #0A0A0A;
+  --bg-terminal: #0a0a0a;
 
   /* Text hierarchy */
-  --text-primary: #E5E5E5;
+  --text-primary: #e5e5e5;
   --text-main: var(--text-primary);
-  --text-secondary: #A3A3A3;
+  --text-secondary: #a3a3a3;
   --text-tertiary: #737373;
-  --text-muted: #5C5C5C;
+  --text-muted: #5c5c5c;
   --text-dim: var(--text-muted);
 
   /* Accent colors */
-  --accent-green: #22C55E;
-  --accent-interactive: #3B82F6;
-  --accent-error: #EF4444;
-  --accent-warning: #F59E0B;
-  --accent-info: #3B82F6;
+  --accent-green: #22c55e;
+  --accent-interactive: #3b82f6;
+  --accent-error: #ef4444;
+  --accent-warning: #f59e0b;
+  --accent-info: #3b82f6;
   --accent-neutral: #525252;
 
   /* Legacy accent aliases */
@@ -49,8 +49,8 @@
   --border-primary: var(--border);
 
   /* Interactive backgrounds */
-  --bg-hover: #1A1A1A;
-  --bg-active: #1F1F1F;
+  --bg-hover: #1a1a1a;
+  --bg-active: #1f1f1f;
 
   /* Accent-tinted backgrounds for hover/active states on accent-colored elements */
   --accent-bg-subtle: rgba(34, 197, 94, 0.06);
@@ -65,8 +65,8 @@
   --shadow: 0 16px 45px rgba(0, 0, 0, 0.55);
 
   /* Typography */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
   --code-font: var(--font-mono);
 
   /* Radii - tighter for the developer tool feel */
@@ -132,7 +132,7 @@ body {
 }
 
 body::after {
-  content: "";
+  content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -158,7 +158,10 @@ button {
   color: var(--text-secondary);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease;
 }
 
 button:hover {
@@ -197,23 +200,24 @@ button:disabled {
 }
 
 button.danger,
-button[class*="danger"] {
+button[class*='danger'] {
   border-color: var(--accent-error);
   background: var(--accent-error);
   color: #fff;
 }
 
 button.primary,
-button[class*="primary"] {
+button[class*='primary'] {
   border-color: var(--accent-green);
   background: var(--accent-green);
-  color: #0C0C0C;
+  color: #0c0c0c;
   font-weight: 500;
 }
 
 button.primary:hover,
-button[class*="primary"]:hover {
-  background: var(--accent-green); filter: brightness(0.9);
+button[class*='primary']:hover {
+  background: var(--accent-green);
+  filter: brightness(0.9);
   border-color: var(--accent-green);
 }
 

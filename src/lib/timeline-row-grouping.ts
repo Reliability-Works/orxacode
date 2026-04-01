@@ -1,27 +1,29 @@
-import type { UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
+import type { UnifiedTimelineRenderRow } from '../components/chat/unified-timeline-model'
 
-export function groupAdjacentExploreRows(rows: UnifiedTimelineRenderRow[]): UnifiedTimelineRenderRow[] {
-  const nextRows: UnifiedTimelineRenderRow[] = [];
-  let pending: Extract<UnifiedTimelineRenderRow, { kind: "explore" }> | null = null;
+export function groupAdjacentExploreRows(
+  rows: UnifiedTimelineRenderRow[]
+): UnifiedTimelineRenderRow[] {
+  const nextRows: UnifiedTimelineRenderRow[] = []
+  let pending: Extract<UnifiedTimelineRenderRow, { kind: 'explore' }> | null = null
 
   const flush = () => {
     if (!pending) {
-      return;
+      return
     }
-    nextRows.push(pending);
-    pending = null;
-  };
+    nextRows.push(pending)
+    pending = null
+  }
 
   for (const row of rows) {
-    if (row.kind !== "explore") {
-      flush();
-      nextRows.push(row);
-      continue;
+    if (row.kind !== 'explore') {
+      flush()
+      nextRows.push(row)
+      continue
     }
 
     if (!pending) {
-      pending = row;
-      continue;
+      pending = row
+      continue
     }
 
     pending = {
@@ -29,77 +31,88 @@ export function groupAdjacentExploreRows(rows: UnifiedTimelineRenderRow[]): Unif
       id: `${pending.id}:${row.id}`,
       item: {
         ...pending.item,
-        status: pending.item.status === "exploring" || row.item.status === "exploring" ? "exploring" : "explored",
+        status:
+          pending.item.status === 'exploring' || row.item.status === 'exploring'
+            ? 'exploring'
+            : 'explored',
         entries: [...pending.item.entries, ...row.item.entries],
       },
-    };
+    }
   }
 
-  flush();
-  return nextRows;
+  flush()
+  return nextRows
 }
 
-function isExplorationOnlyTimelineRow(row: UnifiedTimelineRenderRow): row is Extract<UnifiedTimelineRenderRow, { kind: "timeline" }> {
-  return row.kind === "timeline" && row.blocks.length > 0 && row.blocks.every((block) => block.type === "exploration");
+function isExplorationOnlyTimelineRow(
+  row: UnifiedTimelineRenderRow
+): row is Extract<UnifiedTimelineRenderRow, { kind: 'timeline' }> {
+  return (
+    row.kind === 'timeline' &&
+    row.blocks.length > 0 &&
+    row.blocks.every(block => block.type === 'exploration')
+  )
 }
 
-export function groupAdjacentTimelineExplorationRows(rows: UnifiedTimelineRenderRow[]): UnifiedTimelineRenderRow[] {
-  const nextRows: UnifiedTimelineRenderRow[] = [];
-  let pending: Extract<UnifiedTimelineRenderRow, { kind: "timeline" }> | null = null;
+export function groupAdjacentTimelineExplorationRows(
+  rows: UnifiedTimelineRenderRow[]
+): UnifiedTimelineRenderRow[] {
+  const nextRows: UnifiedTimelineRenderRow[] = []
+  let pending: Extract<UnifiedTimelineRenderRow, { kind: 'timeline' }> | null = null
 
   const flush = () => {
     if (!pending) {
-      return;
+      return
     }
-    nextRows.push(pending);
-    pending = null;
-  };
+    nextRows.push(pending)
+    pending = null
+  }
 
   for (const row of rows) {
     if (!isExplorationOnlyTimelineRow(row)) {
-      flush();
-      nextRows.push(row);
-      continue;
+      flush()
+      nextRows.push(row)
+      continue
     }
 
     if (!pending) {
-      pending = row;
-      continue;
+      pending = row
+      continue
     }
 
     pending = {
       ...pending,
       id: `${pending.id}:${row.id}`,
       blocks: [...pending.blocks, ...row.blocks],
-    };
+    }
   }
 
-  flush();
-  return nextRows;
+  flush()
+  return nextRows
 }
 
 export function groupAdjacentToolCallRows(
   rows: UnifiedTimelineRenderRow[],
-  options?: { enabled?: boolean },
+  options?: { enabled?: boolean }
 ): UnifiedTimelineRenderRow[] {
   if (options?.enabled === false) {
-    return rows;
+    return rows
   }
 
-  const nextRows: UnifiedTimelineRenderRow[] = [];
-  let pendingDiffs: Extract<UnifiedTimelineRenderRow, { kind: "diff" }>[] = [];
-  let pendingTools: Extract<UnifiedTimelineRenderRow, { kind: "tool" }>[] = [];
+  const nextRows: UnifiedTimelineRenderRow[] = []
+  let pendingDiffs: Extract<UnifiedTimelineRenderRow, { kind: 'diff' }>[] = []
+  let pendingTools: Extract<UnifiedTimelineRenderRow, { kind: 'tool' }>[] = []
 
   const flush = () => {
     if (pendingDiffs.length === 0 && pendingTools.length === 0) {
-      return;
+      return
     }
-    const firstId = pendingDiffs[0]?.id ?? pendingTools[0]?.id ?? "tool-group";
+    const firstId = pendingDiffs[0]?.id ?? pendingTools[0]?.id ?? 'tool-group'
     nextRows.push({
       id: `${firstId}:tool-calls`,
-      kind: "tool-group",
-      title: "Tool calls",
-      files: pendingDiffs.map((diff) => ({
+      kind: 'tool-group',
+      title: 'Tool calls',
+      files: pendingDiffs.map(diff => ({
         id: diff.id,
         path: diff.path,
         type: diff.type,
@@ -108,41 +121,44 @@ export function groupAdjacentToolCallRows(
         deletions: diff.deletions,
       })),
       tools: pendingTools.length > 0 ? pendingTools : undefined,
-    });
-    pendingDiffs = [];
-    pendingTools = [];
-  };
-
-  for (const row of rows) {
-    if (row.kind === "diff") {
-      pendingDiffs.push(row);
-      continue;
-    }
-    if (row.kind === "tool") {
-      pendingTools.push(row);
-      continue;
-    }
-    // Any non-tool row flushes the current group and starts a new section
-    flush();
-    nextRows.push(row);
+    })
+    pendingDiffs = []
+    pendingTools = []
   }
 
-  flush();
-  return nextRows;
+  for (const row of rows) {
+    if (row.kind === 'diff') {
+      pendingDiffs.push(row)
+      continue
+    }
+    if (row.kind === 'tool') {
+      pendingTools.push(row)
+      continue
+    }
+    // Any non-tool row flushes the current group and starts a new section
+    flush()
+    nextRows.push(row)
+  }
+
+  flush()
+  return nextRows
 }
 
 export function extractReviewChangesFiles(rows: UnifiedTimelineRenderRow[]) {
-  const latestByPath = new Map<string, {
-    id: string;
-    path: string;
-    type: string;
-    diff?: string;
-    insertions?: number;
-    deletions?: number;
-  }>();
+  const latestByPath = new Map<
+    string,
+    {
+      id: string
+      path: string
+      type: string
+      diff?: string
+      insertions?: number
+      deletions?: number
+    }
+  >()
 
   for (const row of rows) {
-    if (row.kind === "diff") {
+    if (row.kind === 'diff') {
       latestByPath.set(row.path, {
         id: row.id,
         path: row.path,
@@ -150,15 +166,15 @@ export function extractReviewChangesFiles(rows: UnifiedTimelineRenderRow[]) {
         diff: row.diff,
         insertions: row.insertions,
         deletions: row.deletions,
-      });
-      continue;
+      })
+      continue
     }
-    if (row.kind === "diff-group" || row.kind === "tool-group") {
+    if (row.kind === 'diff-group' || row.kind === 'tool-group') {
       for (const file of row.files) {
-        latestByPath.set(file.path, file);
+        latestByPath.set(file.path, file)
       }
     }
   }
 
-  return [...latestByPath.values()];
+  return [...latestByPath.values()]
 }

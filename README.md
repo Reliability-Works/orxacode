@@ -14,11 +14,11 @@ Currently shipping **macOS-only** (`dmg`, `zip`). Windows and Linux builds exist
 
 You need **at least one** of these AI backends installed:
 
-| Backend                                              | Install                                           | What you get                                                                   |
-| ---------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [OpenCode](https://github.com/anomalyco/opencode)    | `npm install -g opencode-ai`                      | Full agent sessions — tool use, file editing, terminal access                  |
-| [Codex](https://github.com/openai/codex)             | `npm install -g @openai/codex`                    | Agent sessions with plan mode, collaboration modes, subagents                  |
-| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash` | Claude Code (Chat) with shared UI and subagents, plus Claude Code (Terminal)   |
+| Backend                                              | Install                                           | What you get                                                                 |
+| ---------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [OpenCode](https://github.com/anomalyco/opencode)    | `npm install -g opencode-ai`                      | Full agent sessions — tool use, file editing, terminal access                |
+| [Codex](https://github.com/openai/codex)             | `npm install -g @openai/codex`                    | Agent sessions with plan mode, collaboration modes, subagents                |
+| [Claude Code](https://code.claude.com/docs/en/setup) | `curl -fsSL https://claude.ai/install.sh \| bash` | Claude Code (Chat) with shared UI and subagents, plus Claude Code (Terminal) |
 
 All session types stay available in the picker. If a backend isn't installed, the session shows an error with setup instructions instead of disappearing.
 

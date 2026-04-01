@@ -9,6 +9,7 @@ Use these references when implementing or debugging provider-specific behavior i
 - Local import path in this codebase: `@opencode-ai/sdk/v2/client`
 
 Notes:
+
 - Treat the upstream OpenCode repo and the generated SDK types as canonical for OpenCode session/runtime semantics.
 - When UI labels differ from OpenCode naming, keep the mapping explicit near the IPC/service boundary.
 
@@ -22,6 +23,7 @@ Notes:
   - [Execute](https://github.com/openai/codex/blob/main/codex-rs/core/templates/collaboration_mode/execute.md)
 
 Notes:
+
 - Treat the app-server README as canonical for JSON-RPC transport, turn lifecycle, collaboration modes, approvals, and `request_user_input`.
 - Treat the collaboration mode templates as canonical for what “Plan”, “Default”, and “Execute” actually mean.
 
@@ -32,5 +34,6 @@ Notes:
 - Claude Code docs landing page: [Claude Code docs](https://code.claude.com/docs)
 
 Notes:
+
 - Use the Anthropic SDK/docs as canonical for Claude agent/session semantics.
 - Keep Claude Code terminal/chat behavior aligned with the upstream SDK + CLI concepts instead of inventing Orxa-specific protocol meanings.

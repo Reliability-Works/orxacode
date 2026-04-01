@@ -1,3 +1,12 @@
+# Check for large files (>100KB)
+echo "Checking for large files..."
+LARGE_FILES=$(git diff --cached --name-only --diff-filter=ACM | xargs -I {} sh -c 'test -f {} && stat -f%z {} 2>/dev/null || stat -c%s {} 2>/dev/null' | awk '$1 > 102400 {exit 1}')
+if [ $? -ne 0 ]; then
+  echo "Error: Files larger than 100KB detected. Consider using Git LFS for large files."
+  exit 1
+fi
+
 pnpm lint
 pnpm typecheck
+pnpm format:check
 pnpm test:coverage

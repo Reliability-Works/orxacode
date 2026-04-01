@@ -211,7 +211,9 @@
   place-items: center;
   border-radius: 4px;
   flex: 0 0 auto;
-  transition: color 0.15s ease, transform 0.15s ease;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
 }
 
 .file-preview-icon-action:active {
@@ -369,7 +371,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    transform 0.1s ease;
 }
 
 .file-preview-selection-add:active {

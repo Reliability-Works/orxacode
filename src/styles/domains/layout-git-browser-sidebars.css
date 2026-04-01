@@ -49,7 +49,9 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  transition: transform 340ms ease, opacity 340ms ease;
+  transition:
+    transform 340ms ease,
+    opacity 340ms ease;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -76,7 +78,9 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  transition: opacity 280ms ease, transform 280ms ease;
+  transition:
+    opacity 280ms ease,
+    transform 280ms ease;
   box-sizing: border-box;
 }
 
@@ -466,7 +470,7 @@
 }
 
 .project-sort-popover button.active::after {
-  content: "✓";
+  content: '✓';
   font-size: 12px;
   color: var(--accent-green);
   flex-shrink: 0;
@@ -796,7 +800,7 @@
 }
 
 .workspace-session-row-action.is-active {
-  color: var(--accent-warning, #F59E0B);
+  color: var(--accent-warning, #f59e0b);
 }
 
 .workspace-session-row-action--archive:hover {
@@ -816,7 +820,9 @@
   cursor: pointer;
   text-align: left;
   flex-shrink: 0;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .sidebar-update-card:hover {
@@ -845,8 +851,13 @@
 }
 
 @keyframes sidebar-update-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .sidebar-footer-actions {
@@ -1225,9 +1236,22 @@
   font-size: 10px;
 }
 
+.titlebar-worktree-btn {
+  min-width: 0;
+  justify-content: flex-start;
+  padding-inline: 10px;
+}
+
+.titlebar-worktree-label {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .titlebar-commit-btn {
   background: var(--accent-green) !important;
-  color: #0C0C0C !important;
+  color: #0c0c0c !important;
   font-weight: 500;
   gap: 6px;
   border-radius: 4px !important;
@@ -1235,7 +1259,8 @@
 }
 
 .titlebar-commit-btn:hover {
-  background: var(--accent-green) !important; filter: brightness(0.9);
+  background: var(--accent-green) !important;
+  filter: brightness(0.9);
 }
 
 .titlebar-commit-btn svg {
@@ -1443,7 +1468,9 @@
   border-left: none;
   display: flex;
   flex-direction: column;
-  transition: opacity 340ms ease, transform 340ms ease;
+  transition:
+    opacity 340ms ease,
+    transform 340ms ease;
   position: relative;
 }
 
@@ -1852,12 +1879,12 @@
 }
 
 .browser-owner-chip.owner-human {
-  color: #FBBF24;
+  color: #fbbf24;
   border-color: rgba(245, 158, 11, 0.4);
 }
 
 .browser-owner-chip.owner-agent {
-  color: #6EE7A0;
+  color: #6ee7a0;
   border-color: var(--accent-border-medium);
 }
 
@@ -1888,7 +1915,7 @@
 }
 
 .browser-control-btn.danger {
-  color: #F87171;
+  color: #f87171;
   border-color: rgba(239, 68, 68, 0.4);
 }
 
@@ -1925,16 +1952,16 @@
 }
 
 .mcp-dot-starting {
-  background: #FBBF24;
+  background: #fbbf24;
   animation: mcp-pulse 1.2s ease-in-out infinite;
 }
 
 .mcp-dot-running {
-  background: #6EE7A0;
+  background: #6ee7a0;
 }
 
 .mcp-dot-error {
-  background: #F87171;
+  background: #f87171;
 }
 
 .git-files-panel {
@@ -2136,12 +2163,12 @@
 
 .git-diff-row-add {
   background: var(--accent-bg-medium);
-  color: #86EFAC;
+  color: #86efac;
 }
 
 .git-diff-row-remove {
   background: rgba(248, 81, 73, 0.12);
-  color: #FCA5A5;
+  color: #fca5a5;
 }
 
 .git-diff-row-empty {
@@ -2205,7 +2232,7 @@
 }
 
 .git-files-actions .git-action-icon-btn + .git-action-icon-btn::before {
-  content: "";
+  content: '';
   position: absolute;
   left: -6px;
   top: 6px;
@@ -2282,17 +2309,17 @@
 
 .git-file-status-added {
   border-color: var(--accent-border-medium);
-  color: #22C55E;
+  color: #22c55e;
 }
 
 .git-file-status-deleted {
   border-color: rgba(239, 68, 68, 0.5);
-  color: #EF4444;
+  color: #ef4444;
 }
 
 .git-file-status-renamed {
   border-color: rgba(245, 158, 11, 0.5);
-  color: #F59E0B;
+  color: #f59e0b;
 }
 
 .git-file-main {
@@ -2345,7 +2372,10 @@
   border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .git-action-icon-btn:hover:not(:disabled) {
@@ -2388,7 +2418,9 @@
   top: 50%;
   transform: translateY(-50%) translateX(20px);
   opacity: 0;
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  transition:
+    transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s ease;
   background: var(--bg-hover);
   padding: 2px 6px;
   border-radius: 4px;
@@ -2419,7 +2451,10 @@
   border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
-  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .git-file-action-btn:hover:not(:disabled) {
@@ -2778,7 +2813,9 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 3px 8px;
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
 .git-list-stats .added {
@@ -2801,7 +2838,9 @@
   right: 0;
   opacity: 0;
   transform: translateX(6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
   pointer-events: none;
 }
 
@@ -3004,7 +3043,7 @@
 }
 
 .browser-annotation-delete:hover {
-  color: #F87171;
+  color: #f87171;
   background: rgba(239, 68, 68, 0.1);
 }
 

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "electron/main.ts",
+    "src/main.tsx",
+    "scripts/*.mjs"
+  ],
+  "project": [
+    "electron/**/*.{ts,tsx}",
+    "src/**/*.{ts,tsx}",
+    "shared/**/*.ts"
+  ],
+  "ignore": [
+    "dist/**",
+    "dist-electron/**",
+    "coverage/**",
+    "node_modules/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "src/test/**"
+  ],
+  "ignoreBinaries": [
+    "electron-builder",
+    "tsc"
+  ],
+  "ignoreDependencies": [
+    "@types/*",
+    "eslint-plugin-*"
+  ]
+}

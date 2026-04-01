@@ -1,48 +1,49 @@
-import type { ProviderUsageStats } from "@shared/ipc";
-import type { HomeDashboardState } from "../hooks/useDashboards";
-import type { BrowserControlOwner } from "./app-session-utils";
-import { toBrowserSidebarState } from "./app-session-utils";
+import type { ProviderUsageStats } from '@shared/ipc'
+import type { HomeDashboardState } from '../hooks/useDashboards'
+import type { BrowserControlOwner } from './app-session-utils'
+import { toBrowserSidebarState } from './app-session-utils'
 
 type AppShellWorkspaceLayoutInput = {
-  activeProjectDir?: string;
-  sidebarMode: "projects" | "kanban" | "skills";
-  projectsSidebarVisible: boolean;
-  showOperationsPane: boolean;
-};
+  activeProjectDir?: string
+  sidebarMode: 'projects' | 'kanban' | 'skills'
+  projectsSidebarVisible: boolean
+  showOperationsPane: boolean
+}
 
 type AppShellBrowserSidebarInput = {
-  runtimeState: Parameters<typeof toBrowserSidebarState>[0]["runtimeState"];
-  history: Parameters<typeof toBrowserSidebarState>[0]["history"];
-  modeEnabled: boolean;
-  controlOwner: BrowserControlOwner;
-  actionRunning: boolean;
-  isSessionInProgress: boolean;
-};
+  runtimeState: Parameters<typeof toBrowserSidebarState>[0]['runtimeState']
+  history: Parameters<typeof toBrowserSidebarState>[0]['history']
+  modeEnabled: boolean
+  controlOwner: BrowserControlOwner
+  actionRunning: boolean
+  isSessionInProgress: boolean
+}
 
 type AppShellHomeDashboardInput = {
-  dashboard: HomeDashboardState;
-  codexSessionCount: number;
-  claudeSessionCount: number;
-  codexUsage: ProviderUsageStats | null;
-  claudeUsage: ProviderUsageStats | null;
-  codexUsageLoading: boolean;
-  claudeUsageLoading: boolean;
-  onRefreshCodexUsage: () => void;
-  onRefreshClaudeUsage: () => void;
-  onRefresh: () => void;
-  onAddWorkspace: () => void;
-  onOpenSettings: () => void;
-};
+  dashboard: HomeDashboardState
+  codexSessionCount: number
+  claudeSessionCount: number
+  codexUsage: ProviderUsageStats | null
+  claudeUsage: ProviderUsageStats | null
+  codexUsageLoading: boolean
+  claudeUsageLoading: boolean
+  onRefreshCodexUsage: () => void
+  onRefreshClaudeUsage: () => void
+  onRefresh: () => void
+  onAddWorkspace: () => void
+  onOpenSettings: () => void
+}
 
 export function deriveAppShellWorkspaceLayout(input: AppShellWorkspaceLayoutInput) {
-  const hasProjectContext = Boolean(input.activeProjectDir) && input.sidebarMode === "projects";
-  const showProjectsPane = !hasProjectContext || input.projectsSidebarVisible;
-  const showGitPane = hasProjectContext && input.sidebarMode === "projects" && input.showOperationsPane;
+  const hasProjectContext = Boolean(input.activeProjectDir) && input.sidebarMode === 'projects'
+  const showProjectsPane = !hasProjectContext || input.projectsSidebarVisible
+  const showGitPane =
+    hasProjectContext && input.sidebarMode === 'projects' && input.showOperationsPane
   return {
     hasProjectContext,
     showProjectsPane,
     showGitPane,
-  };
+  }
 }
 
 export function buildAppShellBrowserSidebarState(input: AppShellBrowserSidebarInput) {
@@ -53,7 +54,7 @@ export function buildAppShellBrowserSidebarState(input: AppShellBrowserSidebarIn
     controlOwner: input.controlOwner,
     actionRunning: input.actionRunning,
     canStop: input.actionRunning || input.isSessionInProgress,
-  });
+  })
 }
 
 export function buildAppShellHomeDashboardProps(input: AppShellHomeDashboardInput) {
@@ -70,5 +71,5 @@ export function buildAppShellHomeDashboardProps(input: AppShellHomeDashboardInpu
     onRefresh: input.onRefresh,
     onAddWorkspace: input.onAddWorkspace,
     onOpenSettings: input.onOpenSettings,
-  };
+  }
 }

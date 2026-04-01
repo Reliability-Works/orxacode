@@ -1,85 +1,373 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Bot } from "lucide-react";
-import { useClaudeChatSession, type ClaudeChatMessageItem } from "../hooks/useClaudeChatSession";
-import type { Attachment } from "../hooks/useComposerState";
-import { deriveSessionTitleFromPrompt } from "../lib/app-session-utils";
-import { ComposerPanel } from "./ComposerPanel";
-import { VirtualizedTimeline } from "./chat/VirtualizedTimeline";
-import { UnifiedTimelineRowView } from "./chat/UnifiedTimelineRow";
-import { estimateUnifiedTimelineRowHeight } from "./chat/unified-timeline-model";
-import { ClaudeTraitsPicker } from "./ClaudeTraitsPicker";
-import { applyClaudePromptEffortPrefix, isClaudeUltrathinkPrompt } from "../lib/claude-models";
-import { projectClaudeChatProjectedSessionPresentation } from "../lib/claude-chat-session-presentation";
-import type { PermissionMode } from "../types/app";
-import type { AgentQuestion } from "./chat/QuestionDock";
-import type { ClaudeChatEffort } from "@shared/ipc";
-import { buildClaudeChatBackgroundAgents } from "../lib/session-presentation";
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useClaudeChatSession } from '../hooks/useClaudeChatSession'
+import { ClaudeTraitsPicker } from './ClaudeTraitsPicker'
+import { projectClaudeChatProjectedSessionPresentation } from '../lib/claude-chat-session-presentation'
+import type { ComposerPanelProps } from './ComposerPanel'
+import type { PermissionMode } from '../types/app'
+import type { SessionGuardrailPreferences } from '../lib/session-controls'
+import type { AgentQuestion } from './chat/QuestionDock'
+import { ClaudeChatPaneView } from './ClaudeChatPane.view'
+import { useClaudeChatPaneComposer } from './useClaudeChatPaneComposer'
+import { useClaudeChatPaneSubagents } from './useClaudeChatPaneSubagents'
+import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
+import { useClaudeSessionControls } from '../hooks/useSessionControls'
 
 interface Props {
-  directory: string;
-  sessionStorageKey: string;
-  onFirstMessage?: () => void;
-  onTitleChange?: (title: string) => void;
-  permissionMode: PermissionMode;
-  onPermissionModeChange: (mode: PermissionMode) => void;
-  branchMenuOpen: boolean;
-  setBranchMenuOpen: (updater: (value: boolean) => boolean) => void;
-  branchControlWidthCh: number;
-  branchLoading: boolean;
-  branchSwitching: boolean;
-  hasActiveProject: boolean;
-  branchCurrent?: string;
-  branchDisplayValue: string;
-  branchSearchInputRef: React.RefObject<HTMLInputElement | null>;
-  branchQuery: string;
-  setBranchQuery: (value: string) => void;
-  branchActionError: string | null;
-  clearBranchActionError: () => void;
-  checkoutBranch: (name: string) => void | Promise<void>;
-  filteredBranches: string[];
-  openBranchCreateModal: () => void | Promise<void>;
-  browserModeEnabled?: boolean;
-  setBrowserModeEnabled?: (enabled: boolean) => void;
+  directory: string
+  sessionStorageKey: string
+  onFirstMessage?: () => void
+  onTitleChange?: (title: string) => void
+  permissionMode: PermissionMode
+  onPermissionModeChange: (mode: PermissionMode) => void
+  branchMenuOpen: boolean
+  setBranchMenuOpen: (updater: (value: boolean) => boolean) => void
+  branchControlWidthCh: number
+  branchLoading: boolean
+  branchSwitching: boolean
+  hasActiveProject: boolean
+  branchCurrent?: string
+  branchDisplayValue: string
+  branchSearchInputRef: React.RefObject<HTMLInputElement | null>
+  branchQuery: string
+  setBranchQuery: (value: string) => void
+  branchActionError: string | null
+  clearBranchActionError: () => void
+  checkoutBranch: (name: string) => void | Promise<void>
+  filteredBranches: string[]
+  openBranchCreateModal: () => void | Promise<void>
+  browserModeEnabled?: boolean
+  setBrowserModeEnabled?: (enabled: boolean) => void
+  sessionGuardrailPreferences: SessionGuardrailPreferences
+  onOpenSettings: () => void
 }
 
-function historyToMessageItems(messages: Awaited<ReturnType<ReturnType<typeof useClaudeChatSession>["loadSubagentMessages"]>>): ClaudeChatMessageItem[] {
-  return messages.map((message) => ({
-    id: message.id,
-    kind: "message" as const,
-    role: message.role,
-    content: message.content,
-    timestamp: message.timestamp,
-  }));
+function buildPendingQuestion(
+  pendingUserInput: ReturnType<typeof useClaudeChatSession>['pendingUserInput'],
+  respondToUserInput: ReturnType<typeof useClaudeChatSession>['respondToUserInput']
+): ComposerPanelProps['pendingQuestion'] {
+  if (!pendingUserInput) {
+    return null
+  }
+  const questions: AgentQuestion[] = [
+    {
+      id: pendingUserInput.elicitationId ?? pendingUserInput.id,
+      header: pendingUserInput.server,
+      text: pendingUserInput.message,
+      options: pendingUserInput.options?.map(option => ({
+        label: option.label,
+        value: option.value,
+      })),
+    },
+  ]
+  return {
+    questions,
+    onSubmit: (answers: Record<string, string | string[]>) => {
+      const firstValue = Object.values(answers)[0]
+      const response = Array.isArray(firstValue)
+        ? firstValue.join(', ')
+        : (firstValue ?? '').toString()
+      void respondToUserInput(pendingUserInput.id, response)
+    },
+    onReject: () => {
+      void respondToUserInput(pendingUserInput.id, '')
+    },
+  }
 }
 
-function addClaudeComposerAttachments(
-  current: Attachment[],
-  attachments: Attachment[],
-) {
-  if (attachments.length === 0) {
-    return current;
+function buildPendingPermission(
+  pendingApproval: ReturnType<typeof useClaudeChatSession>['pendingApproval'],
+  approveAction: ReturnType<typeof useClaudeChatSession>['approveAction'],
+  permissionMode: PermissionMode
+): ComposerPanelProps['pendingPermission'] {
+  if (!pendingApproval || permissionMode === 'yolo-write') {
+    return null
   }
-  const seen = new Set(current.map((item) => item.url));
-  const next: Attachment[] = [];
-  for (const attachment of attachments) {
-    if (!attachment.url || seen.has(attachment.url)) {
-      continue;
-    }
-    seen.add(attachment.url);
-    next.push(attachment);
+  return {
+    description: pendingApproval.reason,
+    command: pendingApproval.command ? [pendingApproval.command] : undefined,
+    onDecide: (decision: 'allow_once' | 'allow_always' | 'reject') => {
+      const mapped =
+        decision === 'allow_once'
+          ? 'accept'
+          : decision === 'allow_always'
+            ? 'acceptForSession'
+            : 'decline'
+      void approveAction(pendingApproval.id, mapped)
+    },
   }
-  return next.length > 0 ? [...current, ...next] : current;
 }
 
-function buildClaudeDisplayPrompt(prompt: string, attachmentCount: number) {
-  if (attachmentCount <= 0) {
-    return prompt;
-  }
-  const attachmentLabel = attachmentCount === 1 ? "[image]" : `[image x${attachmentCount}]`;
-  return prompt.trim().length > 0 ? `${attachmentLabel} ${prompt}` : attachmentLabel;
+function ClaudeChatTraitControls({
+  selectedModelId,
+  effort,
+  thinking,
+  fastMode,
+  onEffortChange,
+  onThinkingChange,
+  onFastModeChange,
+}: {
+  selectedModelId: string | undefined
+  effort: ReturnType<typeof useClaudeChatPaneComposer>['effort']
+  thinking: boolean
+  fastMode: boolean
+  onEffortChange: ReturnType<typeof useClaudeChatPaneComposer>['setEffort']
+  onThinkingChange: ReturnType<typeof useClaudeChatPaneComposer>['setThinking']
+  onFastModeChange: ReturnType<typeof useClaudeChatPaneComposer>['setFastMode']
+}) {
+  return (
+    <ClaudeTraitsPicker
+      model={selectedModelId}
+      effort={effort}
+      thinking={thinking}
+      fastMode={fastMode}
+      onEffortChange={onEffortChange}
+      onThinkingChange={onThinkingChange}
+      onFastModeChange={onFastModeChange}
+    />
+  )
 }
 
 export function ClaudeChatPane({
+  ...props
+}: Props) {
+  return <ClaudeChatPaneView {...useClaudeChatPaneState(props)} />
+}
+
+function useClaudeChatPaneSessionState(input: {
+  directory: string
+  sessionStorageKey: string
+  messages: ReturnType<typeof useClaudeChatSession>['messages']
+  isStreaming: boolean
+  subagents: ReturnType<typeof useClaudeChatSession>['subagents']
+  modelOptions: ReturnType<typeof useClaudeChatSession>['modelOptions']
+  permissionMode: PermissionMode
+  onFirstMessage?: () => void
+  onTitleChange?: (title: string) => void
+  startTurn: ReturnType<typeof useClaudeChatSession>['startTurn']
+  interruptTurn: ReturnType<typeof useClaudeChatSession>['interruptTurn']
+  loadSubagentMessages: ReturnType<typeof useClaudeChatSession>['loadSubagentMessages']
+  archiveProviderSession: ReturnType<typeof useClaudeChatSession>['archiveProviderSession']
+  sessionGuardrailPreferences: SessionGuardrailPreferences
+}) {
+  const activeSessionPresentation = useMemo(
+    () =>
+      projectClaudeChatProjectedSessionPresentation(
+        input.messages,
+        input.isStreaming,
+        input.subagents
+      ),
+    [input.isStreaming, input.messages, input.subagents]
+  )
+  const claudeRuntime = useUnifiedRuntimeStore(
+    state => state.claudeChatSessions[input.sessionStorageKey] ?? null
+  )
+  const controls = useClaudeSessionControls({
+    sessionKey: input.sessionStorageKey,
+    directory: input.directory,
+    preferences: input.sessionGuardrailPreferences,
+    messages: input.messages,
+    observedTokenTotal: claudeRuntime?.observedTokenTotal ?? 0,
+    turnTokenTotals: claudeRuntime?.turnTokenTotals ?? [],
+  })
+  const composerState = useClaudeChatPaneComposer({
+    directory: input.directory,
+    messages: input.messages,
+    modelOptions: input.modelOptions,
+    permissionMode: input.permissionMode,
+    onFirstMessage: input.onFirstMessage,
+    onTitleChange: input.onTitleChange,
+    startTurn: input.startTurn,
+    interruptTurn: input.interruptTurn,
+  })
+  const subagentState = useClaudeChatPaneSubagents({
+    subagents: input.subagents,
+    loadSubagentMessages: input.loadSubagentMessages,
+    archiveProviderSession: input.archiveProviderSession,
+  })
+
+  return {
+    activeSessionPresentation,
+    controls,
+    composerState,
+    subagentState,
+  }
+}
+
+function buildClaudeChatPaneViewModel(input: {
+  composerState: ReturnType<typeof useClaudeChatPaneComposer>
+  subagentState: ReturnType<typeof useClaudeChatPaneSubagents>
+  activeSessionPresentation: ReturnType<typeof projectClaudeChatProjectedSessionPresentation>
+  isSessionBusy: boolean
+  sessionStorageKey: string
+  permissionMode: PermissionMode
+  onPermissionModeChange: (mode: PermissionMode) => void
+  branchProps: {
+    branchMenuOpen: boolean
+    setBranchMenuOpen: Props['setBranchMenuOpen']
+    branchControlWidthCh: number
+    branchLoading: boolean
+    branchSwitching: boolean
+    hasActiveProject: boolean
+    branchCurrent?: string
+    branchDisplayValue: string
+    branchSearchInputRef: Props['branchSearchInputRef']
+    branchQuery: string
+    setBranchQuery: (value: string) => void
+    branchActionError: string | null
+    clearBranchActionError: () => void
+    checkoutBranch: (name: string) => void | Promise<void>
+    filteredBranches: string[]
+    openBranchCreateModal: () => void | Promise<void>
+    browserModeEnabled: boolean
+    setBrowserModeEnabled: (enabled: boolean) => void
+    onOpenSettings: () => void
+  }
+  modelOptions: ReturnType<typeof useClaudeChatSession>['modelOptions']
+  customControls: ReactNode
+  pendingQuestion: ComposerPanelProps['pendingQuestion']
+  pendingPermission: ComposerPanelProps['pendingPermission']
+  controls: ReturnType<typeof useClaudeSessionControls>
+  changesOpen: boolean
+  setChangesOpen: Dispatch<SetStateAction<boolean>>
+}) {
+  return {
+    ...input.composerState,
+    ...input.subagentState,
+    rows: input.activeSessionPresentation.rows,
+    sessionStorageKey: input.sessionStorageKey,
+    permissionMode: input.permissionMode,
+    onPermissionModeChange: input.onPermissionModeChange,
+    ...input.branchProps,
+    modelOptions: input.modelOptions,
+    customControls: input.customControls,
+    pendingQuestion: input.pendingQuestion,
+    pendingPermission: input.pendingPermission,
+    isSessionBusy: input.isSessionBusy,
+    guardrailState: input.controls.guardrailState,
+    guardrailPrompt: input.controls.guardrailPrompt,
+    onDismissGuardrailWarning: input.controls.dismissGuardrailWarning,
+    onContinueGuardrailOnce: input.controls.continueOnce,
+    onDisableGuardrailsForSession: input.controls.disableGuardrailsForSession,
+    sessionChangeTargets: input.controls.revertTargets,
+    onRevertSessionChange: async (targetId: string) => {
+      await input.controls.revertTarget(targetId)
+    },
+    todoOpen: input.changesOpen,
+    onTodoToggle: () => input.setChangesOpen(value => !value),
+    compactionState: input.controls.compactionState,
+    sendPrompt: async () => {
+      await input.controls.withGuardrails(input.composerState.sendPrompt)
+    },
+  }
+}
+
+function buildClaudeChatPaneBranchProps(input: {
+  branchMenuOpen: boolean
+  setBranchMenuOpen: Props['setBranchMenuOpen']
+  branchControlWidthCh: number
+  branchLoading: boolean
+  branchSwitching: boolean
+  hasActiveProject: boolean
+  branchCurrent?: string
+  branchDisplayValue: string
+  branchSearchInputRef: Props['branchSearchInputRef']
+  branchQuery: string
+  setBranchQuery: (value: string) => void
+  branchActionError: string | null
+  clearBranchActionError: () => void
+  checkoutBranch: (name: string) => void | Promise<void>
+  filteredBranches: string[]
+  openBranchCreateModal: () => void | Promise<void>
+  browserModeEnabled: boolean
+  setBrowserModeEnabled: (enabled: boolean) => void
+  onOpenSettings: () => void
+}) {
+  return input
+}
+
+function buildClaudeChatCustomControls(
+  composerState: ReturnType<typeof useClaudeChatPaneComposer>
+) {
+  return (
+    <ClaudeChatTraitControls
+      selectedModelId={composerState.selectedModelId}
+      effort={composerState.effort}
+      thinking={composerState.thinking}
+      fastMode={composerState.fastMode}
+      onEffortChange={composerState.setEffort}
+      onThinkingChange={composerState.setThinking}
+      onFastModeChange={composerState.setFastMode}
+    />
+  )
+}
+
+function useClaudeChatPanePendingState(input: {
+  pendingApproval: ReturnType<typeof useClaudeChatSession>['pendingApproval']
+  pendingUserInput: ReturnType<typeof useClaudeChatSession>['pendingUserInput']
+  respondToUserInput: ReturnType<typeof useClaudeChatSession>['respondToUserInput']
+  approveAction: ReturnType<typeof useClaudeChatSession>['approveAction']
+  permissionMode: PermissionMode
+}) {
+  const {
+    pendingApproval,
+    pendingUserInput,
+    respondToUserInput,
+    approveAction,
+    permissionMode,
+  } = input
+  const pendingQuestion = buildPendingQuestion(pendingUserInput, respondToUserInput)
+  const pendingPermission = buildPendingPermission(
+    pendingApproval,
+    approveAction,
+    permissionMode
+  )
+
+  useEffect(() => {
+    if (permissionMode !== 'yolo-write' || !pendingApproval) {
+      return
+    }
+    void approveAction(pendingApproval.id, 'acceptForSession')
+  }, [approveAction, pendingApproval, permissionMode])
+
+  return {
+    pendingQuestion,
+    pendingPermission,
+  }
+}
+
+function useClaudeChatPaneRuntime(input: {
+  directory: string
+  sessionStorageKey: string
+  onFirstMessage?: () => void
+  onTitleChange?: (title: string) => void
+  permissionMode: PermissionMode
+  sessionGuardrailPreferences: SessionGuardrailPreferences
+}) {
+  const session = useClaudeChatSession(input.directory, input.sessionStorageKey)
+  const sessionState = useClaudeChatPaneSessionState({
+    directory: input.directory,
+    sessionStorageKey: input.sessionStorageKey,
+    messages: session.messages,
+    isStreaming: session.isStreaming,
+    subagents: session.subagents,
+    modelOptions: session.modelOptions,
+    permissionMode: input.permissionMode,
+    onFirstMessage: input.onFirstMessage,
+    onTitleChange: input.onTitleChange,
+    startTurn: session.startTurn,
+    interruptTurn: session.interruptTurn,
+    loadSubagentMessages: session.loadSubagentMessages,
+    archiveProviderSession: session.archiveProviderSession,
+    sessionGuardrailPreferences: input.sessionGuardrailPreferences,
+  })
+
+  return {
+    ...session,
+    ...sessionState,
+  }
+}
+
+function useClaudeChatPaneState({
   directory,
   sessionStorageKey,
   onFirstMessage,
@@ -104,344 +392,74 @@ export function ClaudeChatPane({
   openBranchCreateModal,
   browserModeEnabled = false,
   setBrowserModeEnabled = () => {},
+  sessionGuardrailPreferences,
+  onOpenSettings,
 }: Props) {
   const {
-    messages,
+    connectionStatus,
+    isStreaming,
     pendingApproval,
     pendingUserInput,
-    isStreaming,
-    subagents,
-    modelOptions,
-    startTurn,
-    interruptTurn,
     approveAction,
     respondToUserInput,
-    archiveProviderSession,
-    loadSubagentMessages,
-  } = useClaudeChatSession(directory, sessionStorageKey);
-  const [composer, setComposer] = useState("");
-  const [composerAttachments, setComposerAttachments] = useState<Attachment[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string | undefined>(undefined);
-  const [effort, setEffort] = useState<ClaudeChatEffort | undefined>(undefined);
-  const [isPlanMode, setIsPlanMode] = useState(false);
-  const [thinking, setThinking] = useState(true);
-  const [fastMode, setFastMode] = useState(false);
-  const [selectedBackgroundAgentId, setSelectedBackgroundAgentId] = useState<string | null>(null);
-  const [archivedBackgroundAgentIds, setArchivedBackgroundAgentIds] = useState<string[]>([]);
-  const [subagentMessages, setSubagentMessages] = useState<Record<string, ClaudeChatMessageItem[]>>({});
-  const [subagentLoading, setSubagentLoading] = useState<Record<string, boolean>>({});
-  const [subagentErrors, setSubagentErrors] = useState<Record<string, string | null>>({});
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const activeSessionPresentation = useMemo(
-    () => projectClaudeChatProjectedSessionPresentation(messages, isStreaming, subagents),
-    [isStreaming, messages, subagents],
-  );
+    modelOptions,
+    activeSessionPresentation,
+    controls,
+    composerState,
+    subagentState,
+  } = useClaudeChatPaneRuntime({
+    directory,
+    sessionStorageKey,
+    onFirstMessage,
+    onTitleChange,
+    permissionMode,
+    sessionGuardrailPreferences,
+  })
+  const [changesOpen, setChangesOpen] = useState(false)
+  const { pendingQuestion, pendingPermission } = useClaudeChatPanePendingState({
+    pendingApproval,
+    pendingUserInput,
+    respondToUserInput,
+    approveAction,
+    permissionMode,
+  })
+  const customControls = buildClaudeChatCustomControls(composerState)
 
-  useEffect(() => {
-    if (!selectedModel && modelOptions.length > 0) {
-      setSelectedModel(modelOptions[0]?.key);
-    }
-  }, [modelOptions, selectedModel]);
-
-  const selectedModelId = useMemo(
-    () => selectedModel?.split("/")[1] ?? undefined,
-    [selectedModel],
-  );
-  const addComposerAttachments = (attachments: Attachment[]) => {
-    setComposerAttachments((current) => addClaudeComposerAttachments(current, attachments));
-  };
-  const removeAttachment = (url: string) => {
-    setComposerAttachments((current) => current.filter((item) => item.url !== url));
-  };
-  const pickImageAttachment = async () => {
-    try {
-      const selection = await window.orxa.opencode.pickImage();
-      if (!selection) {
-        return;
-      }
-      addComposerAttachments([selection]);
-    } catch {
-      // Keep Claude composer behavior silent for now; picker failures are non-fatal.
-    }
-  };
-  const promptEffort = useMemo(
-    () => (effort === "ultrathink" && !isClaudeUltrathinkPrompt(composer) ? applyClaudePromptEffortPrefix(composer, effort) : composer),
-    [composer, effort],
-  );
-  const hasUserMessages = useMemo(
-    () => messages.some((item) => item.kind === "message" && item.role === "user"),
-    [messages],
-  );
-
-  const activeSubagent = useMemo(
-    () => subagents.find((agent) => agent.id === selectedBackgroundAgentId) ?? null,
-    [selectedBackgroundAgentId, subagents],
-  );
-  const backgroundAgents = useMemo(
-    () => buildClaudeChatBackgroundAgents(subagents),
-    [subagents],
-  );
-  const visibleBackgroundAgents = useMemo(
-    () => backgroundAgents.filter((agent) => !archivedBackgroundAgentIds.includes(agent.id) && !(agent.sessionID && archivedBackgroundAgentIds.includes(agent.sessionID))),
-    [archivedBackgroundAgentIds, backgroundAgents],
-  );
-  const hasLoadedSelectedSubagentMessages = useMemo(
-    () => (activeSubagent ? Boolean(subagentMessages[activeSubagent.id]) : false),
-    [activeSubagent, subagentMessages],
-  );
-
-  useEffect(() => {
-    setArchivedBackgroundAgentIds((current) =>
-      current.filter((id) => backgroundAgents.some((agent) => agent.id === id || agent.sessionID === id)),
-    );
-  }, [backgroundAgents]);
-
-  useEffect(() => {
-    const sessionID = activeSubagent?.sessionID;
-    if (!sessionID) {
-      return;
-    }
-    let cancelled = false;
-    let timer: number | null = null;
-    const shouldShowLoading = !hasLoadedSelectedSubagentMessages;
-
-    const load = async (showLoading: boolean) => {
-      if (showLoading) {
-        setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: true }));
-      }
-      setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: null }));
-      try {
-        const history = await loadSubagentMessages(sessionID);
-        if (cancelled) {
-          return;
-        }
-        setSubagentMessages((prev) => ({ ...prev, [activeSubagent.id]: historyToMessageItems(history) }));
-      } catch (error) {
-        if (!cancelled) {
-          setSubagentErrors((prev) => ({ ...prev, [activeSubagent.id]: error instanceof Error ? error.message : String(error) }));
-        }
-      } finally {
-        if (!cancelled && showLoading) {
-          setSubagentLoading((prev) => ({ ...prev, [activeSubagent.id]: false }));
-        }
-      }
-    };
-
-    void load(shouldShowLoading);
-    timer = window.setInterval(() => {
-      void load(false);
-    }, 1300);
-
-    return () => {
-      cancelled = true;
-      if (timer !== null) {
-        window.clearInterval(timer);
-      }
-    };
-  }, [activeSubagent, hasLoadedSelectedSubagentMessages, loadSubagentMessages]);
-
-  const subagentDetailPresentation = useMemo(() => {
-    if (!activeSubagent) {
-      return null;
-    }
-    const detailMessages = subagentMessages[activeSubagent.id] ?? [];
-    return projectClaudeChatProjectedSessionPresentation(detailMessages, false).rows;
-  }, [activeSubagent, subagentMessages]);
-
-  const pendingQuestion = useMemo(() => {
-    if (!pendingUserInput) {
-      return null;
-    }
-    const questions: AgentQuestion[] = [
-        {
-          id: pendingUserInput.elicitationId ?? pendingUserInput.id,
-          header: pendingUserInput.server,
-          text: pendingUserInput.message,
-          options: pendingUserInput.options?.map((option) => ({ label: option.label, value: option.value })),
-        },
-      ];
-    return {
-      questions,
-      onSubmit: (answers: Record<string, string | string[]>) => {
-        const firstValue = Object.values(answers)[0];
-        const response = Array.isArray(firstValue) ? firstValue.join(", ") : (firstValue ?? "").toString();
-        void respondToUserInput(pendingUserInput.id, response);
-      },
-      onReject: () => {
-        void respondToUserInput(pendingUserInput.id, "");
-      },
-    };
-  }, [pendingUserInput, respondToUserInput]);
-
-  const pendingPermission = useMemo(() => {
-    if (!pendingApproval) {
-      return null;
-    }
-    return {
-      description: pendingApproval.reason,
-      command: pendingApproval.command ? [pendingApproval.command] : undefined,
-      onDecide: (decision: "allow_once" | "allow_always" | "reject") => {
-        const mapped = decision === "allow_once" ? "accept" : decision === "allow_always" ? "acceptForSession" : "decline";
-        void approveAction(pendingApproval.id, mapped);
-      },
-    };
-  }, [approveAction, pendingApproval]);
-
-  return (
-    <>
-      <VirtualizedTimeline
-        rows={activeSessionPresentation.rows}
-        scrollRef={scrollContainerRef}
-        className="messages-scroll codex-messages"
-        ariaLabel="claude conversation"
-        estimateSize={estimateUnifiedTimelineRowHeight}
-        virtualize={false}
-        sessionId={sessionStorageKey}
-        emptyState={(
-          <div className="center-pane-rail">
-            <div className="codex-empty">
-              <Bot size={24} color="var(--text-muted)" />
-              <span>Send a prompt to start chatting with Claude.</span>
-            </div>
-          </div>
-        )}
-        renderRow={(row) => (
-          <div className="center-pane-rail center-pane-rail--row">
-            <UnifiedTimelineRowView key={row.id} row={row} />
-          </div>
-        )}
-        footer={(
-          <div className="center-pane-rail center-pane-rail--row">
-            <div ref={messagesEndRef} />
-          </div>
-        )}
-      />
-      <div className="codex-composer-area">
-      <div className="center-pane-rail center-pane-rail--composer">
-          <ComposerPanel
-            placeholder="Send to Claude..."
-            composer={composer}
-            setComposer={setComposer}
-            composerAttachments={composerAttachments}
-            removeAttachment={removeAttachment}
-            slashMenuOpen={false}
-            filteredSlashCommands={[]}
-            slashSelectedIndex={0}
-            insertSlashCommand={() => {}}
-            handleSlashKeyDown={() => {}}
-            addComposerAttachments={addComposerAttachments}
-            sendPrompt={async () => {
-              const trimmed = composer.trim();
-              if (!trimmed && composerAttachments.length === 0) {
-                return;
-              }
-              onFirstMessage?.();
-              if (!hasUserMessages && trimmed) {
-                onTitleChange?.(deriveSessionTitleFromPrompt(trimmed));
-              }
-              const attachmentsToSend = [...composerAttachments];
-              setComposer("");
-              setComposerAttachments([]);
-              try {
-                await startTurn(promptEffort, {
-                  model: selectedModelId,
-                  permissionMode: isPlanMode ? "plan" : permissionMode,
-                  effort,
-                  fastMode,
-                  thinking,
-                  attachments: attachmentsToSend,
-                  displayPrompt: buildClaudeDisplayPrompt(trimmed, attachmentsToSend.length),
-                });
-              } catch {
-                setComposer(trimmed);
-                setComposerAttachments(attachmentsToSend);
-              }
-            }}
-            abortActiveSession={() => void interruptTurn()}
-            isSessionBusy={isStreaming}
-            isSendingPrompt={false}
-            pickImageAttachment={pickImageAttachment}
-            hasActiveSession={true}
-            isPlanMode={isPlanMode}
-            hasPlanAgent
-            togglePlanMode={setIsPlanMode}
-            browserModeEnabled={browserModeEnabled}
-            setBrowserModeEnabled={setBrowserModeEnabled}
-            agentOptions={[]}
-            onAgentChange={() => {}}
-            permissionMode={permissionMode}
-            onPermissionModeChange={onPermissionModeChange}
-            compactionProgress={0}
-            compactionHint="Context usage"
-            compactionCompacted={false}
-            branchMenuOpen={branchMenuOpen}
-            setBranchMenuOpen={setBranchMenuOpen}
-            branchControlWidthCh={branchControlWidthCh}
-            branchLoading={branchLoading}
-            branchSwitching={branchSwitching}
-            hasActiveProject={hasActiveProject}
-            branchCurrent={branchCurrent}
-            branchDisplayValue={branchDisplayValue}
-            branchSearchInputRef={branchSearchInputRef}
-            branchQuery={branchQuery}
-            setBranchQuery={setBranchQuery}
-            branchActionError={branchActionError}
-            clearBranchActionError={clearBranchActionError}
-            checkoutBranch={checkoutBranch}
-            filteredBranches={filteredBranches}
-            openBranchCreateModal={openBranchCreateModal}
-            modelSelectOptions={modelOptions}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            selectedVariant={undefined}
-            setSelectedVariant={() => {}}
-            variantOptions={[]}
-            customControls={(
-              <ClaudeTraitsPicker
-                model={selectedModelId}
-                effort={effort}
-                thinking={thinking}
-                fastMode={fastMode}
-                onEffortChange={setEffort}
-                onThinkingChange={setThinking}
-                onFastModeChange={setFastMode}
-              />
-            )}
-            backgroundAgents={visibleBackgroundAgents}
-            selectedBackgroundAgentId={selectedBackgroundAgentId}
-            onOpenBackgroundAgent={(id) => setSelectedBackgroundAgentId(id)}
-            onCloseBackgroundAgent={() => setSelectedBackgroundAgentId(null)}
-            onArchiveBackgroundAgent={async (agent) => {
-              const sessionID = agent.sessionID;
-              if (sessionID) {
-                await archiveProviderSession(sessionID);
-              }
-              setArchivedBackgroundAgentIds((current) => {
-                const next = new Set(current);
-                next.add(agent.id);
-                if (sessionID) {
-                  next.add(sessionID);
-                }
-                return [...next];
-              });
-              if (selectedBackgroundAgentId === agent.id) {
-                setSelectedBackgroundAgentId(null);
-              }
-            }}
-            backgroundAgentDetail={
-              subagentDetailPresentation
-                ? subagentDetailPresentation.map((row) => <UnifiedTimelineRowView key={row.id} row={row} />)
-                : null
-            }
-            backgroundAgentTaskText={activeSubagent?.taskText ?? null}
-            backgroundAgentDetailLoading={activeSubagent ? (subagentLoading[activeSubagent.id] ?? false) : false}
-            backgroundAgentDetailError={activeSubagent ? (subagentErrors[activeSubagent.id] ?? null) : null}
-            pendingQuestion={pendingQuestion}
-            pendingPermission={pendingPermission}
-          />
-        </div>
-      </div>
-    </>
-  );
+  return buildClaudeChatPaneViewModel({
+    composerState,
+    subagentState,
+    activeSessionPresentation,
+    isSessionBusy: isStreaming || connectionStatus === 'connecting',
+    sessionStorageKey,
+    permissionMode,
+    onPermissionModeChange,
+    branchProps: buildClaudeChatPaneBranchProps({
+      branchMenuOpen,
+      setBranchMenuOpen,
+      branchControlWidthCh,
+      branchLoading,
+      branchSwitching,
+      hasActiveProject,
+      branchCurrent,
+      branchDisplayValue,
+      branchSearchInputRef,
+      branchQuery,
+      setBranchQuery,
+      branchActionError,
+      clearBranchActionError,
+      checkoutBranch,
+      filteredBranches,
+      openBranchCreateModal,
+      browserModeEnabled,
+      setBrowserModeEnabled,
+      onOpenSettings,
+    }),
+    modelOptions,
+    customControls,
+    pendingQuestion,
+    pendingPermission,
+    controls,
+    changesOpen,
+    setChangesOpen,
+  })
 }

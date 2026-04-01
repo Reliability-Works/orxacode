@@ -1,27 +1,28 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
-import type { ProjectBootstrap, ProjectListItem } from "@shared/ipc";
-import { removePersistedValue } from "../lib/persistence";
-import { opencodeClient } from "../lib/services/opencodeClient";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react'
+import type { ProjectBootstrap, ProjectListItem } from '@shared/ipc'
+import { removePersistedValue } from '../lib/persistence'
+import { opencodeClient } from '../lib/services/opencodeClient'
 import {
   LEGACY_SESSION_TITLES_KEY,
   LEGACY_SESSION_TYPES_KEY,
   readLocalStorageRecord,
-} from "./useWorkspaceSessionMetadata";
+} from './useWorkspaceSessionMetadata'
 import {
   migrateLegacySessionMetadata,
   type WorkspaceSessionReference,
-} from "../lib/workspace-session-metadata";
-import type { SessionType } from "../types/canvas";
+} from '../lib/workspace-session-metadata'
+import { normalizeSessionType } from '../lib/session-types'
+import type { SessionType } from '../types/canvas'
 
 type UseWorkspaceSessionMetadataMigrationInput = {
-  projects: ProjectListItem[];
-  projectData?: ProjectBootstrap;
-  projectDataByDirectory: Record<string, ProjectBootstrap>;
-  setProjectDataForDirectory: (directory: string, project: ProjectBootstrap) => void;
-  bumpProjectCacheVersion: () => void;
-  setSessionTypes: Dispatch<SetStateAction<Record<string, SessionType>>>;
-  setSessionTitles: Dispatch<SetStateAction<Record<string, string>>>;
-};
+  projects: ProjectListItem[]
+  projectData?: ProjectBootstrap
+  projectDataByDirectory: Record<string, ProjectBootstrap>
+  setProjectDataForDirectory: (directory: string, project: ProjectBootstrap) => void
+  bumpProjectCacheVersion: () => void
+  setSessionTypes: Dispatch<SetStateAction<Record<string, SessionType>>>
+  setSessionTitles: Dispatch<SetStateAction<Record<string, string>>>
+}
 
 export function useWorkspaceSessionMetadataMigration({
   projects,
@@ -32,74 +33,82 @@ export function useWorkspaceSessionMetadataMigration({
   setSessionTypes,
   setSessionTitles,
 }: UseWorkspaceSessionMetadataMigrationInput) {
-  const sessionMetadataMigrationDoneRef = useRef(false);
+  const sessionMetadataMigrationDoneRef = useRef(false)
 
   useEffect(() => {
     if (sessionMetadataMigrationDoneRef.current || projects.length === 0) {
-      return;
+      return
     }
 
-    let cancelled = false;
+    let cancelled = false
     void (async () => {
-      const legacyTypes = readLocalStorageRecord<SessionType>(LEGACY_SESSION_TYPES_KEY);
-      const legacyTitles = readLocalStorageRecord<string>(LEGACY_SESSION_TITLES_KEY);
+      const legacyTypes = Object.fromEntries(
+        Object.entries(readLocalStorageRecord<string>(LEGACY_SESSION_TYPES_KEY))
+          .map(([key, value]) => [key, normalizeSessionType(value)])
+          .filter((entry): entry is [string, SessionType] => Boolean(entry[1]))
+      )
+      const legacyTitles = readLocalStorageRecord<string>(LEGACY_SESSION_TITLES_KEY)
       if (Object.keys(legacyTypes).length === 0 && Object.keys(legacyTitles).length === 0) {
-        sessionMetadataMigrationDoneRef.current = true;
-        return;
+        sessionMetadataMigrationDoneRef.current = true
+        return
       }
 
-      const discoveredSessions: WorkspaceSessionReference[] = [];
-      let fullyLoaded = true;
+      const discoveredSessions: WorkspaceSessionReference[] = []
+      let fullyLoaded = true
 
       for (const project of projects) {
         let data: ProjectBootstrap | undefined =
           projectData?.directory === project.worktree
             ? projectData
-            : projectDataByDirectory[project.worktree];
+            : projectDataByDirectory[project.worktree]
 
         if (!data) {
-          data = await opencodeClient.refreshProject(project.worktree).catch(() => undefined);
+          data = await opencodeClient.refreshProject(project.worktree).catch(() => undefined)
           if (data) {
-            setProjectDataForDirectory(project.worktree, data);
-            bumpProjectCacheVersion();
+            setProjectDataForDirectory(project.worktree, data)
+            bumpProjectCacheVersion()
           } else {
-            fullyLoaded = false;
-            continue;
+            fullyLoaded = false
+            continue
           }
         }
 
         for (const session of data.sessions) {
           if (session.time.archived) {
-            continue;
+            continue
           }
           discoveredSessions.push({
             directory: project.worktree,
             sessionID: session.id,
-          });
+          })
         }
       }
 
       if (cancelled) {
-        return;
+        return
       }
 
       if (Object.keys(legacyTypes).length > 0) {
-        setSessionTypes((current) => migrateLegacySessionMetadata(legacyTypes, current, discoveredSessions));
+        setSessionTypes(current =>
+          migrateLegacySessionMetadata(legacyTypes, current, discoveredSessions)
+        )
       }
       if (Object.keys(legacyTitles).length > 0) {
-        setSessionTitles((current) => migrateLegacySessionMetadata(legacyTitles, current, discoveredSessions));
+        setSessionTitles(current =>
+          migrateLegacySessionMetadata(legacyTitles, current, discoveredSessions)
+        )
       }
 
       if (fullyLoaded) {
-        removePersistedValue(LEGACY_SESSION_TYPES_KEY);
-        removePersistedValue(LEGACY_SESSION_TITLES_KEY);
-        sessionMetadataMigrationDoneRef.current = true;
+        removePersistedValue(LEGACY_SESSION_TYPES_KEY)
+        removePersistedValue(LEGACY_SESSION_TITLES_KEY)
+        sessionMetadataMigrationDoneRef.current = true
       }
-    })();
+    })()
 
     return () => {
-      cancelled = true;
-    };
+      cancelled = true
+    }
   }, [
     bumpProjectCacheVersion,
     projectData,
@@ -108,5 +117,5 @@ export function useWorkspaceSessionMetadataMigration({
     setProjectDataForDirectory,
     setSessionTitles,
     setSessionTypes,
-  ]);
+  ])
 }

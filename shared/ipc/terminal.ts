@@ -1,26 +1,26 @@
-export type OrxaTerminalOwner = "workspace" | "canvas" | "claude" | "kanban";
+export type OrxaTerminalOwner = 'workspace' | 'canvas' | 'claude' | 'kanban'
 
 export type OrxaTerminalSession = {
-  id: string;
-  directory: string;
-  cwd: string;
-  title: string;
-  owner: OrxaTerminalOwner;
-  status: "running" | "exited";
-  pid: number;
-  exitCode: number | null;
-  createdAt: number;
-};
+  id: string
+  directory: string
+  cwd: string
+  title: string
+  owner: OrxaTerminalOwner
+  status: 'running' | 'exited'
+  pid: number
+  exitCode: number | null
+  createdAt: number
+}
 
 export type TerminalConnectResult = {
-  ptyID: string;
-  directory: string;
-  connected: boolean;
-};
+  ptyID: string
+  directory: string
+  connected: boolean
+}
 
 export type ClaudeTerminalCreateResult = {
-  processId: string;
-  directory: string;
-};
+  processId: string
+  directory: string
+}
 
-export type ClaudeTerminalMode = "standard" | "full";
+export type ClaudeTerminalMode = 'standard' | 'full'

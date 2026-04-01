@@ -1,6 +1,6 @@
-@import "./domains/layout-app-shell-layout.css";
-@import "./domains/layout-git-browser-sidebars.css";
-@import "./domains/layout-canvas-tiles.css";
-@import "./domains/layout-dashboards-modals.css";
-@import "./domains/layout-chat-feed.css";
-@import "./domains/layout-settings.css";
+@import './domains/layout-app-shell-layout.css';
+@import './domains/layout-git-browser-sidebars.css';
+@import './domains/layout-canvas-tiles.css';
+@import './domains/layout-dashboards-modals.css';
+@import './domains/layout-chat-feed.css';
+@import './domains/layout-settings.css';

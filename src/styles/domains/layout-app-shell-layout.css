@@ -548,7 +548,7 @@ body.is-resizing * {
 }
 
 .composer-resize-handle::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 3px;
   border-top: 1px solid currentColor;
@@ -628,8 +628,8 @@ body.is-resizing * {
 }
 
 .composer-input-actions .composer-stop-button {
-  border-color: #A3A3A3;
-  background: #B3B3B3;
+  border-color: #a3a3a3;
+  background: #b3b3b3;
   color: #171717;
 }
 
@@ -639,8 +639,8 @@ body.is-resizing * {
 }
 
 .composer-input-actions .composer-stop-button:hover:not(:disabled) {
-  border-color: #C4C4C4;
-  background: #CACACA;
+  border-color: #c4c4c4;
+  background: #cacaca;
 }
 
 .composer-attachments {
@@ -704,7 +704,7 @@ body.is-resizing * {
   object-fit: contain;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: #0A0A0A;
+  background: #0a0a0a;
 }
 
 .composer-image-preview-modal p {
@@ -766,8 +766,10 @@ body.is-resizing * {
   width: 22px;
   height: 22px;
   border-radius: 999px;
-  background:
-    conic-gradient(var(--accent-green) var(--compaction-progress), var(--border-secondary) 0);
+  background: conic-gradient(
+    var(--accent-green) var(--compaction-progress),
+    var(--border-secondary) 0
+  );
   -webkit-mask: radial-gradient(circle at center, transparent 45%, #000 47%);
   mask: radial-gradient(circle at center, transparent 45%, #000 47%);
   transition: background 140ms ease;
@@ -775,8 +777,7 @@ body.is-resizing * {
 }
 
 .composer-compaction-indicator.compacted .composer-compaction-glyph {
-  background:
-    conic-gradient(var(--accent-green) 100%, var(--border-secondary) 0);
+  background: conic-gradient(var(--accent-green) 100%, var(--border-secondary) 0);
 }
 
 .composer-compaction-label {
@@ -1196,6 +1197,14 @@ body.is-resizing * {
 .composer-permission-control:hover {
 }
 
+.composer-guardrail-indicator--warning {
+  color: var(--accent-amber, #f59e0b);
+}
+
+.composer-guardrail-indicator--hard-stop {
+  color: var(--accent-red, #ef4444);
+}
+
 .composer-permission-label {
   font-size: 11px;
   color: var(--text-tertiary);
@@ -1373,7 +1382,7 @@ body.is-resizing * {
 }
 
 .agent-mode-toggle input:checked::after {
-  content: "";
+  content: '';
   position: absolute;
   left: 3px;
   top: 1px;
@@ -1586,8 +1595,13 @@ body.is-resizing * {
 /* ── MCP Status Indicator ──────────────────────────────────────────── */
 
 @keyframes mcp-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .files-panel {

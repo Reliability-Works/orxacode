@@ -72,7 +72,7 @@
   cursor: pointer;
 }
 
-.plan-toggle-inline input[type="checkbox"] {
+.plan-toggle-inline input[type='checkbox'] {
   display: none;
 }
 

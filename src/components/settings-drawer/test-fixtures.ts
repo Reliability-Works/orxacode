@@ -1,0 +1,27 @@
+import type { AppPreferences } from '~/types/app'
+
+export const TEST_APP_PREFERENCES: AppPreferences = {
+  showOperationsPane: true,
+  autoOpenTerminalOnCreate: true,
+  confirmDangerousActions: true,
+  permissionMode: 'ask-write',
+  sessionGuardrailsEnabled: true,
+  sessionTokenBudget: 120000,
+  sessionRuntimeBudgetMinutes: 45,
+  commitGuidancePrompt: '',
+  codeFont: 'IBM Plex Mono',
+  hiddenModels: [],
+  codexPath: '',
+  codexArgs: '',
+  codexDefaultModel: '',
+  codexReasoningEffort: 'medium',
+  codexAccessMode: 'on-request',
+  gitAgent: 'opencode',
+  notifyOnAwaitingInput: false,
+  notifyOnTaskComplete: false,
+  collaborationModesEnabled: false,
+  subagentSystemNotificationsEnabled: false,
+  enableAssistantStreaming: true,
+  theme: 'glass',
+  uiFont: 'Inter',
+}

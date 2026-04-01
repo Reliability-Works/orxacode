@@ -1,234 +1,329 @@
-import { contextBridge, ipcRenderer } from "electron";
-import { IPC, type OrxaBridge } from "../shared/ipc";
-import { createIpcEventHub } from "./services/ipc-event-hub";
+import { contextBridge, ipcRenderer } from 'electron'
+import { IPC, type OrxaBridge } from '../shared/ipc'
+import { createIpcEventHub } from './services/ipc-event-hub'
 
-const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch]);
+const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch])
 
 const bridge: OrxaBridge = {
   persistence: {
-    get: (key) => ipcRenderer.sendSync(IPC.persistenceGet, key),
+    get: key => ipcRenderer.sendSync(IPC.persistenceGet, key),
     set: (key, value) => ipcRenderer.sendSync(IPC.persistenceSet, key, value),
-    remove: (key) => ipcRenderer.sendSync(IPC.persistenceRemove, key),
+    remove: key => ipcRenderer.sendSync(IPC.persistenceRemove, key),
   },
   app: {
-    openExternal: (url) => ipcRenderer.invoke(IPC.appOpenExternal, url),
-    openFile: (options) => ipcRenderer.invoke(IPC.appOpenFile, options),
-    readTextFile: (filePath) => ipcRenderer.invoke(IPC.appReadTextFile, filePath),
-    writeTextFile: (filePath, content) => ipcRenderer.invoke(IPC.appWriteTextFile, filePath, content),
-    revealInFinder: (dirPath) => ipcRenderer.invoke(IPC.appRevealInFinder, dirPath),
-    scanPorts: (directory) => ipcRenderer.invoke(IPC.appScanPorts, directory),
-    httpRequest: (options) => ipcRenderer.invoke(IPC.appHttpRequest, options),
-    listSkillsFromDir: (directory) => ipcRenderer.invoke(IPC.appListSkillsFromDir, directory),
-    runAgentCli: (options) => ipcRenderer.invoke(IPC.appRunAgentCli, options),
-    listDiagnostics: (limit) => ipcRenderer.invoke(IPC.appListDiagnostics, limit),
-    reportRendererDiagnostic: (input) => ipcRenderer.invoke(IPC.appReportRendererDiagnostic, input),
-    setWindowVibrancy: (vibrancy) => ipcRenderer.invoke(IPC.appSetWindowVibrancy, vibrancy),
+    openExternal: url => ipcRenderer.invoke(IPC.appOpenExternal, url),
+    openFile: options => ipcRenderer.invoke(IPC.appOpenFile, options),
+    readTextFile: filePath => ipcRenderer.invoke(IPC.appReadTextFile, filePath),
+    writeTextFile: (filePath, content) =>
+      ipcRenderer.invoke(IPC.appWriteTextFile, filePath, content),
+    revealInFinder: dirPath => ipcRenderer.invoke(IPC.appRevealInFinder, dirPath),
+    scanPorts: directory => ipcRenderer.invoke(IPC.appScanPorts, directory),
+    httpRequest: options => ipcRenderer.invoke(IPC.appHttpRequest, options),
+    listSkillsFromDir: directory => ipcRenderer.invoke(IPC.appListSkillsFromDir, directory),
+    runAgentCli: options => ipcRenderer.invoke(IPC.appRunAgentCli, options),
+    listDiagnostics: limit => ipcRenderer.invoke(IPC.appListDiagnostics, limit),
+    reportRendererDiagnostic: input => ipcRenderer.invoke(IPC.appReportRendererDiagnostic, input),
+    setWindowVibrancy: vibrancy => ipcRenderer.invoke(IPC.appSetWindowVibrancy, vibrancy),
   },
   updates: {
     getPreferences: () => ipcRenderer.invoke(IPC.updatesGetPreferences),
-    setPreferences: (input) => ipcRenderer.invoke(IPC.updatesSetPreferences, input),
+    setPreferences: input => ipcRenderer.invoke(IPC.updatesSetPreferences, input),
     checkNow: () => ipcRenderer.invoke(IPC.updatesCheckNow),
     downloadAndInstall: () => ipcRenderer.invoke(IPC.updatesDownloadAndInstall),
   },
   runtime: {
     getState: () => ipcRenderer.invoke(IPC.runtimeGetState),
     listProfiles: () => ipcRenderer.invoke(IPC.runtimeListProfiles),
-    saveProfile: (profile) => ipcRenderer.invoke(IPC.runtimeSaveProfile, profile),
-    deleteProfile: (id) => ipcRenderer.invoke(IPC.runtimeDeleteProfile, id),
-    attach: (profileID) => ipcRenderer.invoke(IPC.runtimeAttach, profileID),
-    startLocal: (profileID) => ipcRenderer.invoke(IPC.runtimeStartLocal, profileID),
+    saveProfile: profile => ipcRenderer.invoke(IPC.runtimeSaveProfile, profile),
+    deleteProfile: id => ipcRenderer.invoke(IPC.runtimeDeleteProfile, id),
+    attach: profileID => ipcRenderer.invoke(IPC.runtimeAttach, profileID),
+    startLocal: profileID => ipcRenderer.invoke(IPC.runtimeStartLocal, profileID),
     stopLocal: () => ipcRenderer.invoke(IPC.runtimeStopLocal),
+  },
+  worktrees: {
+    list: workspaceDir => ipcRenderer.invoke(IPC.worktreesList, workspaceDir),
+    create: input => ipcRenderer.invoke(IPC.worktreesCreate, input),
+    open: (directory, target) => ipcRenderer.invoke(IPC.worktreesOpen, directory, target),
+    delete: (workspaceDir, directory) =>
+      ipcRenderer.invoke(IPC.worktreesDelete, workspaceDir, directory),
   },
   opencode: {
     bootstrap: () => ipcRenderer.invoke(IPC.opencodeBootstrap),
     checkDependencies: () => ipcRenderer.invoke(IPC.opencodeCheckDependencies),
     addProjectDirectory: () => ipcRenderer.invoke(IPC.opencodeAddProjectDirectory),
-    removeProjectDirectory: (directory) => ipcRenderer.invoke(IPC.opencodeRemoveProjectDirectory, directory),
-    selectProject: (directory) => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),
-    refreshProject: (directory) => ipcRenderer.invoke(IPC.opencodeRefreshProject, directory),
-    createSession: (directory, title, permissionMode) => ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title, permissionMode),
-    deleteSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeDeleteSession, directory, sessionID),
-    abortSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeAbortSession, directory, sessionID),
-    renameSession: (directory, sessionID, title) => ipcRenderer.invoke(IPC.opencodeRenameSession, directory, sessionID, title),
-    archiveSession: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeArchiveSession, directory, sessionID),
+    removeProjectDirectory: directory =>
+      ipcRenderer.invoke(IPC.opencodeRemoveProjectDirectory, directory),
+    selectProject: directory => ipcRenderer.invoke(IPC.opencodeSelectProject, directory),
+    refreshProject: directory => ipcRenderer.invoke(IPC.opencodeRefreshProject, directory),
+    createSession: (directory, title, permissionMode) =>
+      ipcRenderer.invoke(IPC.opencodeCreateSession, directory, title, permissionMode),
+    deleteSession: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeDeleteSession, directory, sessionID),
+    abortSession: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeAbortSession, directory, sessionID),
+    renameSession: (directory, sessionID, title) =>
+      ipcRenderer.invoke(IPC.opencodeRenameSession, directory, sessionID, title),
+    archiveSession: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeArchiveSession, directory, sessionID),
     createWorktreeSession: (directory, sessionID, name) =>
       ipcRenderer.invoke(IPC.opencodeCreateWorktreeSession, directory, sessionID, name),
-    getSessionRuntime: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
-    loadMessages: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
+    getSessionRuntime: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
+    loadMessages: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
     loadExecutionLedger: (directory, sessionID, cursor) =>
       ipcRenderer.invoke(IPC.opencodeLoadExecutionLedger, directory, sessionID, cursor),
-    clearExecutionLedger: (directory, sessionID) => ipcRenderer.invoke(IPC.opencodeClearExecutionLedger, directory, sessionID),
+    clearExecutionLedger: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeClearExecutionLedger, directory, sessionID),
     loadChangeProvenance: (directory, sessionID, cursor) =>
       ipcRenderer.invoke(IPC.opencodeLoadChangeProvenance, directory, sessionID, cursor),
     getFileProvenance: (directory, sessionID, relativePath) =>
       ipcRenderer.invoke(IPC.opencodeGetFileProvenance, directory, sessionID, relativePath),
-    sendPrompt: (input) => ipcRenderer.invoke(IPC.opencodeSendPrompt, input),
+    sendPrompt: input => ipcRenderer.invoke(IPC.opencodeSendPrompt, input),
     replyPermission: (directory, requestID, reply, message) =>
       ipcRenderer.invoke(IPC.opencodeReplyPermission, directory, requestID, reply, message),
     replyQuestion: (directory, requestID, answers) =>
       ipcRenderer.invoke(IPC.opencodeReplyQuestion, directory, requestID, answers),
-    rejectQuestion: (directory, requestID) => ipcRenderer.invoke(IPC.opencodeRejectQuestion, directory, requestID),
+    rejectQuestion: (directory, requestID) =>
+      ipcRenderer.invoke(IPC.opencodeRejectQuestion, directory, requestID),
     getConfig: (scope, directory) => ipcRenderer.invoke(IPC.opencodeGetConfig, scope, directory),
-    updateConfig: (scope, patch, directory) => ipcRenderer.invoke(IPC.opencodeUpdateConfig, scope, patch, directory),
-    readRawConfig: (scope, directory) => ipcRenderer.invoke(IPC.opencodeReadRawConfig, scope, directory),
-    writeRawConfig: (scope, content, directory) => ipcRenderer.invoke(IPC.opencodeWriteRawConfig, scope, content, directory),
-    listProviders: (directory) => ipcRenderer.invoke(IPC.opencodeListProviders, directory),
-    listAgents: (directory) => ipcRenderer.invoke(IPC.opencodeListAgents, directory),
+    updateConfig: (scope, patch, directory) =>
+      ipcRenderer.invoke(IPC.opencodeUpdateConfig, scope, patch, directory),
+    readRawConfig: (scope, directory) =>
+      ipcRenderer.invoke(IPC.opencodeReadRawConfig, scope, directory),
+    writeRawConfig: (scope, content, directory) =>
+      ipcRenderer.invoke(IPC.opencodeWriteRawConfig, scope, content, directory),
+    listProviders: directory => ipcRenderer.invoke(IPC.opencodeListProviders, directory),
+    listAgents: directory => ipcRenderer.invoke(IPC.opencodeListAgents, directory),
     pickImage: () => ipcRenderer.invoke(IPC.opencodePickImage),
-    gitDiff: (directory) => ipcRenderer.invoke(IPC.opencodeGitDiff, directory),
-    gitStatus: (directory) => ipcRenderer.invoke(IPC.opencodeGitStatus, directory),
-    gitLog: (directory) => ipcRenderer.invoke(IPC.opencodeGitLog, directory),
-    gitIssues: (directory) => ipcRenderer.invoke(IPC.opencodeGitIssues, directory),
-    gitPrs: (directory) => ipcRenderer.invoke(IPC.opencodeGitPrs, directory),
-    openDirectoryIn: (directory, target) => ipcRenderer.invoke(IPC.opencodeOpenDirectoryIn, directory, target),
-    gitCommitSummary: (directory, includeUnstaged) => ipcRenderer.invoke(IPC.opencodeGitCommitSummary, directory, includeUnstaged),
+    gitDiff: directory => ipcRenderer.invoke(IPC.opencodeGitDiff, directory),
+    gitStatus: directory => ipcRenderer.invoke(IPC.opencodeGitStatus, directory),
+    gitLog: directory => ipcRenderer.invoke(IPC.opencodeGitLog, directory),
+    gitIssues: directory => ipcRenderer.invoke(IPC.opencodeGitIssues, directory),
+    gitPrs: directory => ipcRenderer.invoke(IPC.opencodeGitPrs, directory),
+    openDirectoryIn: (directory, target) =>
+      ipcRenderer.invoke(IPC.opencodeOpenDirectoryIn, directory, target),
+    gitCommitSummary: (directory, includeUnstaged) =>
+      ipcRenderer.invoke(IPC.opencodeGitCommitSummary, directory, includeUnstaged),
     gitGenerateCommitMessage: (directory, includeUnstaged, guidancePrompt) =>
-      ipcRenderer.invoke(IPC.opencodeGitGenerateCommitMessage, directory, includeUnstaged, guidancePrompt),
-    gitCommit: (directory, request) => ipcRenderer.invoke(IPC.opencodeGitCommit, directory, request),
-    gitBranches: (directory) => ipcRenderer.invoke(IPC.opencodeGitBranches, directory),
-    gitCheckoutBranch: (directory, branch) => ipcRenderer.invoke(IPC.opencodeGitCheckoutBranch, directory, branch),
-    gitStageAll: (directory) => ipcRenderer.invoke(IPC.opencodeGitStageAll, directory),
-    gitRestoreAllUnstaged: (directory) => ipcRenderer.invoke(IPC.opencodeGitRestoreAllUnstaged, directory),
-    gitStagePath: (directory, filePath) => ipcRenderer.invoke(IPC.opencodeGitStagePath, directory, filePath),
-    gitRestorePath: (directory, filePath) => ipcRenderer.invoke(IPC.opencodeGitRestorePath, directory, filePath),
-    gitUnstagePath: (directory, filePath) => ipcRenderer.invoke(IPC.opencodeGitUnstagePath, directory, filePath),
+      ipcRenderer.invoke(
+        IPC.opencodeGitGenerateCommitMessage,
+        directory,
+        includeUnstaged,
+        guidancePrompt
+      ),
+    gitCommit: (directory, request) =>
+      ipcRenderer.invoke(IPC.opencodeGitCommit, directory, request),
+    gitBranches: directory => ipcRenderer.invoke(IPC.opencodeGitBranches, directory),
+    gitCheckoutBranch: (directory, branch) =>
+      ipcRenderer.invoke(IPC.opencodeGitCheckoutBranch, directory, branch),
+    gitStageAll: directory => ipcRenderer.invoke(IPC.opencodeGitStageAll, directory),
+    gitRestoreAllUnstaged: directory =>
+      ipcRenderer.invoke(IPC.opencodeGitRestoreAllUnstaged, directory),
+    gitStagePath: (directory, filePath) =>
+      ipcRenderer.invoke(IPC.opencodeGitStagePath, directory, filePath),
+    gitRestorePath: (directory, filePath) =>
+      ipcRenderer.invoke(IPC.opencodeGitRestorePath, directory, filePath),
+    gitUnstagePath: (directory, filePath) =>
+      ipcRenderer.invoke(IPC.opencodeGitUnstagePath, directory, filePath),
     listSkills: () => ipcRenderer.invoke(IPC.opencodeListSkills),
-    readAgentsMd: (directory) => ipcRenderer.invoke(IPC.opencodeReadAgentsMd, directory),
-    writeAgentsMd: (directory, content) => ipcRenderer.invoke(IPC.opencodeWriteAgentsMd, directory, content),
+    readAgentsMd: directory => ipcRenderer.invoke(IPC.opencodeReadAgentsMd, directory),
+    writeAgentsMd: (directory, content) =>
+      ipcRenderer.invoke(IPC.opencodeWriteAgentsMd, directory, content),
     readGlobalAgentsMd: () => ipcRenderer.invoke(IPC.opencodeReadGlobalAgentsMd),
-    writeGlobalAgentsMd: (content) => ipcRenderer.invoke(IPC.opencodeWriteGlobalAgentsMd, content),
+    writeGlobalAgentsMd: content => ipcRenderer.invoke(IPC.opencodeWriteGlobalAgentsMd, content),
     listAgentFiles: () => ipcRenderer.invoke(IPC.opencodeListAgentFiles),
-    readAgentFile: (filename) => ipcRenderer.invoke(IPC.opencodeReadAgentFile, filename),
-    writeAgentFile: (filename, content) => ipcRenderer.invoke(IPC.opencodeWriteAgentFile, filename, content),
-    deleteAgentFile: (filename) => ipcRenderer.invoke(IPC.opencodeDeleteAgentFile, filename),
+    readAgentFile: filename => ipcRenderer.invoke(IPC.opencodeReadAgentFile, filename),
+    writeAgentFile: (filename, content) =>
+      ipcRenderer.invoke(IPC.opencodeWriteAgentFile, filename, content),
+    deleteAgentFile: filename => ipcRenderer.invoke(IPC.opencodeDeleteAgentFile, filename),
     openFileIn: (filePath, target) => ipcRenderer.invoke(IPC.opencodeOpenFileIn, filePath, target),
-    listFiles: (directory, relativePath) => ipcRenderer.invoke(IPC.opencodeListFiles, directory, relativePath),
-    countProjectFiles: (directory) => ipcRenderer.invoke(IPC.opencodeCountProjectFiles, directory),
-    readProjectFile: (directory, relativePath) => ipcRenderer.invoke(IPC.opencodeReadProjectFile, directory, relativePath),
-    listArtifacts: (query) => ipcRenderer.invoke(IPC.opencodeArtifactsList, query),
-    getArtifact: (id) => ipcRenderer.invoke(IPC.opencodeArtifactsGet, id),
-    deleteArtifact: (id) => ipcRenderer.invoke(IPC.opencodeArtifactsDelete, id),
-    listArtifactSessions: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsListSessions, workspace),
-    listWorkspaceArtifactSummary: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsListWorkspaceSummary, workspace),
+    listFiles: (directory, relativePath) =>
+      ipcRenderer.invoke(IPC.opencodeListFiles, directory, relativePath),
+    countProjectFiles: directory => ipcRenderer.invoke(IPC.opencodeCountProjectFiles, directory),
+    readProjectFile: (directory, relativePath) =>
+      ipcRenderer.invoke(IPC.opencodeReadProjectFile, directory, relativePath),
+    listArtifacts: query => ipcRenderer.invoke(IPC.opencodeArtifactsList, query),
+    getArtifact: id => ipcRenderer.invoke(IPC.opencodeArtifactsGet, id),
+    deleteArtifact: id => ipcRenderer.invoke(IPC.opencodeArtifactsDelete, id),
+    listArtifactSessions: workspace =>
+      ipcRenderer.invoke(IPC.opencodeArtifactsListSessions, workspace),
+    listWorkspaceArtifactSummary: workspace =>
+      ipcRenderer.invoke(IPC.opencodeArtifactsListWorkspaceSummary, workspace),
     getArtifactRetentionPolicy: () => ipcRenderer.invoke(IPC.opencodeArtifactsGetRetention),
-    setArtifactRetentionPolicy: (input) => ipcRenderer.invoke(IPC.opencodeArtifactsSetRetention, input),
-    pruneArtifactsNow: (workspace) => ipcRenderer.invoke(IPC.opencodeArtifactsPrune, workspace),
-    exportArtifactBundle: (input) => ipcRenderer.invoke(IPC.opencodeArtifactsExportBundle, input),
-    listWorkspaceContext: (workspace) => ipcRenderer.invoke(IPC.opencodeContextList, workspace),
-    readWorkspaceContext: (workspace, id) => ipcRenderer.invoke(IPC.opencodeContextRead, workspace, id),
-    writeWorkspaceContext: (input) => ipcRenderer.invoke(IPC.opencodeContextWrite, input),
-    deleteWorkspaceContext: (workspace, id) => ipcRenderer.invoke(IPC.opencodeContextDelete, workspace, id),
+    setArtifactRetentionPolicy: input =>
+      ipcRenderer.invoke(IPC.opencodeArtifactsSetRetention, input),
+    pruneArtifactsNow: workspace => ipcRenderer.invoke(IPC.opencodeArtifactsPrune, workspace),
+    exportArtifactBundle: input => ipcRenderer.invoke(IPC.opencodeArtifactsExportBundle, input),
+    listWorkspaceContext: workspace => ipcRenderer.invoke(IPC.opencodeContextList, workspace),
+    readWorkspaceContext: (workspace, id) =>
+      ipcRenderer.invoke(IPC.opencodeContextRead, workspace, id),
+    writeWorkspaceContext: input => ipcRenderer.invoke(IPC.opencodeContextWrite, input),
+    deleteWorkspaceContext: (workspace, id) =>
+      ipcRenderer.invoke(IPC.opencodeContextDelete, workspace, id),
     getServerDiagnostics: () => ipcRenderer.invoke(IPC.opencodeGetServerDiagnostics),
     repairRuntime: () => ipcRenderer.invoke(IPC.opencodeRepairRuntime),
   },
   terminal: {
     list: (directory, owner) => ipcRenderer.invoke(IPC.terminalList, directory, owner),
-    create: (directory, cwd, title, owner) => ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
+    create: (directory, cwd, title, owner) =>
+      ipcRenderer.invoke(IPC.terminalCreate, directory, cwd, title, owner),
     connect: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalConnect, directory, ptyID),
-    write: (directory, ptyID, data) => ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
-    resize: (directory, ptyID, cols, rows) => ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
+    write: (directory, ptyID, data) =>
+      ipcRenderer.invoke(IPC.terminalWrite, directory, ptyID, data),
+    resize: (directory, ptyID, cols, rows) =>
+      ipcRenderer.invoke(IPC.terminalResize, directory, ptyID, cols, rows),
     close: (directory, ptyID) => ipcRenderer.invoke(IPC.terminalClose, directory, ptyID),
   },
   claudeTerminal: {
-    create: (directory, mode, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalCreate, directory, mode, cols, rows),
+    create: (directory, mode, cols, rows) =>
+      ipcRenderer.invoke(IPC.claudeTerminalCreate, directory, mode, cols, rows),
     write: (processId, data) => ipcRenderer.invoke(IPC.claudeTerminalWrite, processId, data),
-    resize: (processId, cols, rows) => ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
-    close: (processId) => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
+    resize: (processId, cols, rows) =>
+      ipcRenderer.invoke(IPC.claudeTerminalResize, processId, cols, rows),
+    close: processId => ipcRenderer.invoke(IPC.claudeTerminalClose, processId),
   },
   claudeChat: {
     health: () => ipcRenderer.invoke(IPC.claudeChatHealth),
     listModels: () => ipcRenderer.invoke(IPC.claudeChatListModels),
-    getState: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
+    getState: sessionKey => ipcRenderer.invoke(IPC.claudeChatGetState, sessionKey),
     startTurn: (sessionKey, directory, prompt, options) =>
       ipcRenderer.invoke(IPC.claudeChatStartTurn, sessionKey, directory, prompt, options),
-    interruptTurn: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
-    approve: (requestId, decision) => ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
-    respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
-    getSessionMessages: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
-    renameProviderSession: (sessionId, title, directory) => ipcRenderer.invoke(IPC.claudeChatRenameProviderSession, sessionId, title, directory),
-    archiveSession: (sessionKey) => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
-    archiveProviderSession: (sessionId, directory) => ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
+    interruptTurn: sessionKey => ipcRenderer.invoke(IPC.claudeChatInterruptTurn, sessionKey),
+    approve: (requestId, decision) =>
+      ipcRenderer.invoke(IPC.claudeChatApprove, requestId, decision),
+    respondToUserInput: (requestId, response) =>
+      ipcRenderer.invoke(IPC.claudeChatRespondToUserInput, requestId, response),
+    getSessionMessages: (sessionId, directory) =>
+      ipcRenderer.invoke(IPC.claudeChatGetSessionMessages, sessionId, directory),
+    listSessions: () => ipcRenderer.invoke(IPC.claudeChatListSessions),
+    resumeProviderSession: (providerThreadId, directory) =>
+      ipcRenderer.invoke(IPC.claudeChatResumeProviderSession, providerThreadId, directory),
+    renameProviderSession: (sessionId, title, directory) =>
+      ipcRenderer.invoke(IPC.claudeChatRenameProviderSession, sessionId, title, directory),
+    archiveSession: sessionKey => ipcRenderer.invoke(IPC.claudeChatArchiveSession, sessionKey),
+    archiveProviderSession: (sessionId, directory) =>
+      ipcRenderer.invoke(IPC.claudeChatArchiveProviderSession, sessionId, directory),
   },
   kanban: {
     listWorkspaces: () => ipcRenderer.invoke(IPC.kanbanListWorkspaces),
     addWorkspaceDirectory: () => ipcRenderer.invoke(IPC.kanbanAddWorkspaceDirectory),
-    removeWorkspaceDirectory: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanRemoveWorkspaceDirectory, workspaceDir),
-    getSettings: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGetSettings, workspaceDir),
-    updateSettings: (input) => ipcRenderer.invoke(IPC.kanbanUpdateSettings, input),
-    getBoard: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGetBoard, workspaceDir),
-    importLegacyJobs: (input) => ipcRenderer.invoke(IPC.kanbanImportLegacyJobs, input),
-    createTask: (input) => ipcRenderer.invoke(IPC.kanbanCreateTask, input),
-    updateTask: (input) => ipcRenderer.invoke(IPC.kanbanUpdateTask, input),
-    moveTask: (input) => ipcRenderer.invoke(IPC.kanbanMoveTask, input),
-    trashTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanTrashTask, workspaceDir, taskId),
-    restoreTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanRestoreTask, workspaceDir, taskId),
-    deleteTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanDeleteTask, workspaceDir, taskId),
-    linkTasks: (workspaceDir, fromTaskId, toTaskId) => ipcRenderer.invoke(IPC.kanbanLinkTasks, workspaceDir, fromTaskId, toTaskId),
-    unlinkTasks: (workspaceDir, fromTaskId, toTaskId) => ipcRenderer.invoke(IPC.kanbanUnlinkTasks, workspaceDir, fromTaskId, toTaskId),
-    startTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanStartTask, workspaceDir, taskId),
-    resumeTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanResumeTask, workspaceDir, taskId),
-    stopTask: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanStopTask, workspaceDir, taskId),
-    getTaskRuntime: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanGetTaskRuntime, workspaceDir, taskId),
-    listWorktrees: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanListWorktrees, workspaceDir),
-    createWorktree: (input) => ipcRenderer.invoke(IPC.kanbanCreateWorktree, input),
-    openWorktree: (workspaceDir, worktreeId) => ipcRenderer.invoke(IPC.kanbanOpenWorktree, workspaceDir, worktreeId),
-    deleteWorktree: (workspaceDir, worktreeId) => ipcRenderer.invoke(IPC.kanbanDeleteWorktree, workspaceDir, worktreeId),
-    mergeWorktree: (workspaceDir, worktreeId) => ipcRenderer.invoke(IPC.kanbanMergeWorktree, workspaceDir, worktreeId),
-    resolveMergeWithAgent: (workspaceDir, worktreeId, provider) => ipcRenderer.invoke(IPC.kanbanResolveMergeWithAgent, workspaceDir, worktreeId, provider),
-    getWorktreeStatus: (workspaceDir, worktreeId) => ipcRenderer.invoke(IPC.kanbanGetWorktreeStatus, workspaceDir, worktreeId),
-    createWorktreeIncludeFromGitignore: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanCreateWorktreeIncludeFromGitignore, workspaceDir),
-    runScriptShortcut: (workspaceDir, taskId, shortcutId) => ipcRenderer.invoke(IPC.kanbanRunScriptShortcut, workspaceDir, taskId, shortcutId),
-    createTaskTerminal: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanCreateTaskTerminal, workspaceDir, taskId),
-    getTaskTerminal: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanGetTaskTerminal, workspaceDir, taskId),
-    connectTaskTerminal: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanConnectTaskTerminal, workspaceDir, taskId),
-    closeTaskTerminal: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanCloseTaskTerminal, workspaceDir, taskId),
-    getTaskDetail: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanGetTaskDetail, workspaceDir, taskId),
-    createCheckpoint: (workspaceDir, taskId, label) => ipcRenderer.invoke(IPC.kanbanCreateCheckpoint, workspaceDir, taskId, label),
-    listCheckpoints: (workspaceDir, taskId) => ipcRenderer.invoke(IPC.kanbanListCheckpoints, workspaceDir, taskId),
+    removeWorkspaceDirectory: workspaceDir =>
+      ipcRenderer.invoke(IPC.kanbanRemoveWorkspaceDirectory, workspaceDir),
+    getSettings: workspaceDir => ipcRenderer.invoke(IPC.kanbanGetSettings, workspaceDir),
+    updateSettings: input => ipcRenderer.invoke(IPC.kanbanUpdateSettings, input),
+    getBoard: workspaceDir => ipcRenderer.invoke(IPC.kanbanGetBoard, workspaceDir),
+    importLegacyJobs: input => ipcRenderer.invoke(IPC.kanbanImportLegacyJobs, input),
+    createTask: input => ipcRenderer.invoke(IPC.kanbanCreateTask, input),
+    updateTask: input => ipcRenderer.invoke(IPC.kanbanUpdateTask, input),
+    moveTask: input => ipcRenderer.invoke(IPC.kanbanMoveTask, input),
+    trashTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanTrashTask, workspaceDir, taskId),
+    restoreTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanRestoreTask, workspaceDir, taskId),
+    deleteTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanDeleteTask, workspaceDir, taskId),
+    linkTasks: (workspaceDir, fromTaskId, toTaskId) =>
+      ipcRenderer.invoke(IPC.kanbanLinkTasks, workspaceDir, fromTaskId, toTaskId),
+    unlinkTasks: (workspaceDir, fromTaskId, toTaskId) =>
+      ipcRenderer.invoke(IPC.kanbanUnlinkTasks, workspaceDir, fromTaskId, toTaskId),
+    startTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanStartTask, workspaceDir, taskId),
+    resumeTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanResumeTask, workspaceDir, taskId),
+    stopTask: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanStopTask, workspaceDir, taskId),
+    getTaskRuntime: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanGetTaskRuntime, workspaceDir, taskId),
+    listWorktrees: workspaceDir => ipcRenderer.invoke(IPC.kanbanListWorktrees, workspaceDir),
+    createWorktree: input => ipcRenderer.invoke(IPC.kanbanCreateWorktree, input),
+    openWorktree: (workspaceDir, worktreeId) =>
+      ipcRenderer.invoke(IPC.kanbanOpenWorktree, workspaceDir, worktreeId),
+    deleteWorktree: (workspaceDir, worktreeId) =>
+      ipcRenderer.invoke(IPC.kanbanDeleteWorktree, workspaceDir, worktreeId),
+    mergeWorktree: (workspaceDir, worktreeId) =>
+      ipcRenderer.invoke(IPC.kanbanMergeWorktree, workspaceDir, worktreeId),
+    resolveMergeWithAgent: (workspaceDir, worktreeId, provider) =>
+      ipcRenderer.invoke(IPC.kanbanResolveMergeWithAgent, workspaceDir, worktreeId, provider),
+    getWorktreeStatus: (workspaceDir, worktreeId) =>
+      ipcRenderer.invoke(IPC.kanbanGetWorktreeStatus, workspaceDir, worktreeId),
+    createWorktreeIncludeFromGitignore: workspaceDir =>
+      ipcRenderer.invoke(IPC.kanbanCreateWorktreeIncludeFromGitignore, workspaceDir),
+    runScriptShortcut: (workspaceDir, taskId, shortcutId) =>
+      ipcRenderer.invoke(IPC.kanbanRunScriptShortcut, workspaceDir, taskId, shortcutId),
+    createTaskTerminal: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanCreateTaskTerminal, workspaceDir, taskId),
+    getTaskTerminal: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanGetTaskTerminal, workspaceDir, taskId),
+    connectTaskTerminal: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanConnectTaskTerminal, workspaceDir, taskId),
+    closeTaskTerminal: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanCloseTaskTerminal, workspaceDir, taskId),
+    getTaskDetail: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanGetTaskDetail, workspaceDir, taskId),
+    createCheckpoint: (workspaceDir, taskId, label) =>
+      ipcRenderer.invoke(IPC.kanbanCreateCheckpoint, workspaceDir, taskId, label),
+    listCheckpoints: (workspaceDir, taskId) =>
+      ipcRenderer.invoke(IPC.kanbanListCheckpoints, workspaceDir, taskId),
     getCheckpointDiff: (workspaceDir, taskId, fromCheckpointId, toCheckpointId) =>
-      ipcRenderer.invoke(IPC.kanbanGetCheckpointDiff, workspaceDir, taskId, fromCheckpointId, toCheckpointId),
+      ipcRenderer.invoke(
+        IPC.kanbanGetCheckpointDiff,
+        workspaceDir,
+        taskId,
+        fromCheckpointId,
+        toCheckpointId
+      ),
     addReviewComment: (workspaceDir, taskId, filePath, line, body) =>
       ipcRenderer.invoke(IPC.kanbanAddReviewComment, workspaceDir, taskId, filePath, line, body),
-    sendReviewFeedback: (workspaceDir, taskId, body) => ipcRenderer.invoke(IPC.kanbanSendReviewFeedback, workspaceDir, taskId, body),
-    commitTask: (workspaceDir, taskId, message) => ipcRenderer.invoke(IPC.kanbanCommitTask, workspaceDir, taskId, message),
-    openTaskPr: (workspaceDir, taskId, baseBranch, message) => ipcRenderer.invoke(IPC.kanbanOpenTaskPr, workspaceDir, taskId, baseBranch, message),
-    gitState: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGitState, workspaceDir),
-    gitFetch: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGitFetch, workspaceDir),
-    gitPull: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGitPull, workspaceDir),
-    gitPush: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanGitPush, workspaceDir),
-    gitCheckout: (workspaceDir, branch) => ipcRenderer.invoke(IPC.kanbanGitCheckout, workspaceDir, branch),
-    listRuns: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanListRuns, workspaceDir),
+    sendReviewFeedback: (workspaceDir, taskId, body) =>
+      ipcRenderer.invoke(IPC.kanbanSendReviewFeedback, workspaceDir, taskId, body),
+    commitTask: (workspaceDir, taskId, message) =>
+      ipcRenderer.invoke(IPC.kanbanCommitTask, workspaceDir, taskId, message),
+    openTaskPr: (workspaceDir, taskId, baseBranch, message) =>
+      ipcRenderer.invoke(IPC.kanbanOpenTaskPr, workspaceDir, taskId, baseBranch, message),
+    gitState: workspaceDir => ipcRenderer.invoke(IPC.kanbanGitState, workspaceDir),
+    gitFetch: workspaceDir => ipcRenderer.invoke(IPC.kanbanGitFetch, workspaceDir),
+    gitPull: workspaceDir => ipcRenderer.invoke(IPC.kanbanGitPull, workspaceDir),
+    gitPush: workspaceDir => ipcRenderer.invoke(IPC.kanbanGitPush, workspaceDir),
+    gitCheckout: (workspaceDir, branch) =>
+      ipcRenderer.invoke(IPC.kanbanGitCheckout, workspaceDir, branch),
+    listRuns: workspaceDir => ipcRenderer.invoke(IPC.kanbanListRuns, workspaceDir),
     getRun: (workspaceDir, runId) => ipcRenderer.invoke(IPC.kanbanGetRun, workspaceDir, runId),
-    listAutomations: (workspaceDir) => ipcRenderer.invoke(IPC.kanbanListAutomations, workspaceDir),
-    createAutomation: (input) => ipcRenderer.invoke(IPC.kanbanCreateAutomation, input),
-    updateAutomation: (input) => ipcRenderer.invoke(IPC.kanbanUpdateAutomation, input),
-    deleteAutomation: (workspaceDir, automationId) => ipcRenderer.invoke(IPC.kanbanDeleteAutomation, workspaceDir, automationId),
-    runAutomationNow: (workspaceDir, automationId) => ipcRenderer.invoke(IPC.kanbanRunAutomationNow, workspaceDir, automationId),
-    startManagementSession: (workspaceDir, provider) => ipcRenderer.invoke(IPC.kanbanStartManagementSession, workspaceDir, provider),
-    getManagementSession: (workspaceDir, provider) => ipcRenderer.invoke(IPC.kanbanGetManagementSession, workspaceDir, provider),
-    sendManagementPrompt: (workspaceDir, provider, prompt) => ipcRenderer.invoke(IPC.kanbanSendManagementPrompt, workspaceDir, provider, prompt),
+    listAutomations: workspaceDir => ipcRenderer.invoke(IPC.kanbanListAutomations, workspaceDir),
+    createAutomation: input => ipcRenderer.invoke(IPC.kanbanCreateAutomation, input),
+    updateAutomation: input => ipcRenderer.invoke(IPC.kanbanUpdateAutomation, input),
+    deleteAutomation: (workspaceDir, automationId) =>
+      ipcRenderer.invoke(IPC.kanbanDeleteAutomation, workspaceDir, automationId),
+    runAutomationNow: (workspaceDir, automationId) =>
+      ipcRenderer.invoke(IPC.kanbanRunAutomationNow, workspaceDir, automationId),
+    startManagementSession: (workspaceDir, provider) =>
+      ipcRenderer.invoke(IPC.kanbanStartManagementSession, workspaceDir, provider),
+    getManagementSession: (workspaceDir, provider) =>
+      ipcRenderer.invoke(IPC.kanbanGetManagementSession, workspaceDir, provider),
+    sendManagementPrompt: (workspaceDir, provider, prompt) =>
+      ipcRenderer.invoke(IPC.kanbanSendManagementPrompt, workspaceDir, provider, prompt),
   },
   browser: {
     getState: () => ipcRenderer.invoke(IPC.browserGetState),
-    setVisible: (visible) => ipcRenderer.invoke(IPC.browserSetVisible, visible),
-    setBounds: (bounds) => ipcRenderer.invoke(IPC.browserSetBounds, bounds),
+    setVisible: visible => ipcRenderer.invoke(IPC.browserSetVisible, visible),
+    setBounds: bounds => ipcRenderer.invoke(IPC.browserSetBounds, bounds),
     openTab: (url, activate) => ipcRenderer.invoke(IPC.browserOpenTab, url, activate),
-    closeTab: (tabID) => ipcRenderer.invoke(IPC.browserCloseTab, tabID),
-    switchTab: (tabID) => ipcRenderer.invoke(IPC.browserSwitchTab, tabID),
+    closeTab: tabID => ipcRenderer.invoke(IPC.browserCloseTab, tabID),
+    switchTab: tabID => ipcRenderer.invoke(IPC.browserSwitchTab, tabID),
     navigate: (url, tabID) => ipcRenderer.invoke(IPC.browserNavigate, url, tabID),
-    back: (tabID) => ipcRenderer.invoke(IPC.browserBack, tabID),
-    forward: (tabID) => ipcRenderer.invoke(IPC.browserForward, tabID),
-    reload: (tabID) => ipcRenderer.invoke(IPC.browserReload, tabID),
-    listHistory: (limit) => ipcRenderer.invoke(IPC.browserListHistory, limit),
+    back: tabID => ipcRenderer.invoke(IPC.browserBack, tabID),
+    forward: tabID => ipcRenderer.invoke(IPC.browserForward, tabID),
+    reload: tabID => ipcRenderer.invoke(IPC.browserReload, tabID),
+    listHistory: limit => ipcRenderer.invoke(IPC.browserListHistory, limit),
     clearHistory: () => ipcRenderer.invoke(IPC.browserClearHistory),
-    performAgentAction: (request) => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
+    performAgentAction: request => ipcRenderer.invoke(IPC.browserPerformAgentAction, request),
     inspectEnable: () => ipcRenderer.invoke(IPC.browserInspectEnable),
     inspectDisable: () => ipcRenderer.invoke(IPC.browserInspectDisable),
   },
   mcpDevTools: {
-    start: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsStart, directory),
-    stop: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsStop, directory),
-    getStatus: (directory) => ipcRenderer.invoke(IPC.mcpDevToolsGetStatus, directory),
+    start: directory => ipcRenderer.invoke(IPC.mcpDevToolsStart, directory),
+    stop: directory => ipcRenderer.invoke(IPC.mcpDevToolsStop, directory),
+    getStatus: directory => ipcRenderer.invoke(IPC.mcpDevToolsGetStatus, directory),
     listTools: () => ipcRenderer.invoke(IPC.mcpDevToolsListTools),
   },
   usage: {
@@ -243,25 +338,44 @@ const bridge: OrxaBridge = {
     start: (cwd, options) => ipcRenderer.invoke(IPC.codexStart, cwd, options),
     stop: () => ipcRenderer.invoke(IPC.codexStop),
     getState: () => ipcRenderer.invoke(IPC.codexGetState),
-    startThread: (options) => ipcRenderer.invoke(IPC.codexStartThread, options),
-    listThreads: (options) => ipcRenderer.invoke(IPC.codexListThreads, options),
-    getThreadRuntime: (threadId) => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
-    resumeThread: (threadId) => ipcRenderer.invoke(IPC.codexResumeThread, threadId),
-    archiveThreadTree: (threadId) => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
+    startThread: options => ipcRenderer.invoke(IPC.codexStartThread, options),
+    listBrowserThreads: () => ipcRenderer.invoke(IPC.codexListBrowserThreads),
+    listWorkspaceThreads: workspaceRoot =>
+      ipcRenderer.invoke(IPC.codexListWorkspaceThreads, workspaceRoot),
+    listThreads: options => ipcRenderer.invoke(IPC.codexListThreads, options),
+    getThreadRuntime: threadId => ipcRenderer.invoke(IPC.codexGetThreadRuntime, threadId),
+    resumeThread: threadId => ipcRenderer.invoke(IPC.codexResumeThread, threadId),
+    resumeProviderThread: (threadId, directory) =>
+      ipcRenderer.invoke(IPC.codexResumeProviderThread, threadId, directory),
+    archiveThreadTree: threadId => ipcRenderer.invoke(IPC.codexArchiveThreadTree, threadId),
     setThreadName: (threadId, name) => ipcRenderer.invoke(IPC.codexSetThreadName, threadId, name),
-    generateRunMetadata: (cwd, prompt) => ipcRenderer.invoke(IPC.codexGenerateRunMetadata, cwd, prompt),
+    generateRunMetadata: (cwd, prompt) =>
+      ipcRenderer.invoke(IPC.codexGenerateRunMetadata, cwd, prompt),
     startTurn: (threadId, prompt, cwd, model, effort, collaborationMode, attachments) =>
-      ipcRenderer.invoke(IPC.codexStartTurn, threadId, prompt, cwd, model, effort, collaborationMode, attachments),
-    steerTurn: (threadId, turnId, prompt) => ipcRenderer.invoke(IPC.codexSteerTurn, threadId, turnId, prompt),
+      ipcRenderer.invoke(
+        IPC.codexStartTurn,
+        threadId,
+        prompt,
+        cwd,
+        model,
+        effort,
+        collaborationMode,
+        attachments
+      ),
+    steerTurn: (threadId, turnId, prompt) =>
+      ipcRenderer.invoke(IPC.codexSteerTurn, threadId, turnId, prompt),
     approve: (requestId, decision) => ipcRenderer.invoke(IPC.codexApprove, requestId, decision),
-    deny: (requestId) => ipcRenderer.invoke(IPC.codexDeny, requestId),
-    respondToUserInput: (requestId, response) => ipcRenderer.invoke(IPC.codexRespondToUserInput, requestId, response),
-    interruptTurn: (threadId, turnId) => ipcRenderer.invoke(IPC.codexInterruptTurn, threadId, turnId),
-    interruptThreadTree: (threadId, turnId) => ipcRenderer.invoke(IPC.codexInterruptThreadTree, threadId, turnId),
+    deny: requestId => ipcRenderer.invoke(IPC.codexDeny, requestId),
+    respondToUserInput: (requestId, response) =>
+      ipcRenderer.invoke(IPC.codexRespondToUserInput, requestId, response),
+    interruptTurn: (threadId, turnId) =>
+      ipcRenderer.invoke(IPC.codexInterruptTurn, threadId, turnId),
+    interruptThreadTree: (threadId, turnId) =>
+      ipcRenderer.invoke(IPC.codexInterruptThreadTree, threadId, turnId),
   },
   events: {
-    subscribe: (listener) => eventHub.subscribe(listener),
+    subscribe: listener => eventHub.subscribe(listener),
   },
-};
+}
 
-contextBridge.exposeInMainWorld("orxa", bridge);
+contextBridge.exposeInMainWorld('orxa', bridge)

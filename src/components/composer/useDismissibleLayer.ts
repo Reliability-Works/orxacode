@@ -1,40 +1,40 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, type RefObject } from 'react'
 
 export function useDismissibleLayer(
   open: boolean,
   layerRef: RefObject<HTMLElement | null>,
-  onDismiss: () => void,
+  onDismiss: () => void
 ) {
   useEffect(() => {
     if (!open) {
-      return;
+      return
     }
 
     const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
+      const target = event.target as Node | null
       if (!target) {
-        return;
+        return
       }
       if (layerRef.current?.contains(target)) {
-        return;
+        return
       }
-      onDismiss();
-    };
+      onDismiss()
+    }
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") {
-        return;
+      if (event.key !== 'Escape') {
+        return
       }
-      event.preventDefault();
-      event.stopPropagation();
-      onDismiss();
-    };
+      event.preventDefault()
+      event.stopPropagation()
+      onDismiss()
+    }
 
-    window.addEventListener("mousedown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener('mousedown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
     return () => {
-      window.removeEventListener("mousedown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [layerRef, onDismiss, open]);
+      window.removeEventListener('mousedown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [layerRef, onDismiss, open])
 }

@@ -1,109 +1,119 @@
-import type { DelegationEventBlock, TimelineBlock, TimelineEvent } from "../../lib/message-feed-timeline";
-import { pluralize } from "../../lib/message-feed-timeline";
-import { parseFileReference } from "../../lib/markdown";
+import type {
+  DelegationEventBlock,
+  TimelineBlock,
+  TimelineEvent,
+} from '../../lib/message-feed-timeline'
+import { pluralize } from '../../lib/message-feed-timeline'
+import { parseFileReference } from '../../lib/markdown'
 
 function recomputeExplorationSummary(entries: readonly (TimelineEvent | { kind?: string })[]) {
-  const reads = entries.filter((e) => e.kind === "read").length;
-  const searches = entries.filter((e) => e.kind === "search" || e.kind === "list").length;
-  const parts: string[] = [];
-  if (reads > 0) parts.push(pluralize(reads, "file"));
-  if (searches > 0) parts.push(pluralize(searches, "search", "searches"));
-  if (parts.length === 0) parts.push(pluralize(entries.length, "step"));
-  return `Explored ${parts.join(", ")}`;
+  const reads = entries.filter(e => e.kind === 'read').length
+  const searches = entries.filter(e => e.kind === 'search' || e.kind === 'list').length
+  const parts: string[] = []
+  if (reads > 0) parts.push(pluralize(reads, 'file'))
+  if (searches > 0) parts.push(pluralize(searches, 'search', 'searches'))
+  if (parts.length === 0) parts.push(pluralize(entries.length, 'step'))
+  return `Explored ${parts.join(', ')}`
 }
 
-function groupAdjacentExplorationBlocks<T extends TimelineBlock | DelegationEventBlock>(blocks: T[]): T[] {
-  const next: T[] = [];
-  let pending: T | null = null;
+function groupAdjacentExplorationBlocks<T extends TimelineBlock | DelegationEventBlock>(
+  blocks: T[]
+): T[] {
+  const next: T[] = []
+  let pending: T | null = null
 
   const flush = () => {
     if (!pending) {
-      return;
+      return
     }
-    next.push(pending);
-    pending = null;
-  };
+    next.push(pending)
+    pending = null
+  }
 
   for (const block of blocks) {
-    if (block.type !== "exploration") {
-      flush();
-      next.push(block);
-      continue;
+    if (block.type !== 'exploration') {
+      flush()
+      next.push(block)
+      continue
     }
 
-    if (!pending || pending.type !== "exploration") {
-      pending = block;
-      continue;
+    if (!pending || pending.type !== 'exploration') {
+      pending = block
+      continue
     }
 
-    const mergedEntries = [...pending.entries, ...block.entries];
+    const mergedEntries = [...pending.entries, ...block.entries]
     pending = {
       ...pending,
       id: `${pending.id}:${block.id}`,
       summary: recomputeExplorationSummary(mergedEntries),
       entries: mergedEntries,
-    } as T;
+    } as T
   }
 
-  flush();
-  return next;
+  flush()
+  return next
 }
 
 function renderActivityLabel(label: string, onOpenFileReference?: (reference: string) => void) {
-  const diffMatch = label.match(/^(.*?)(\+\d+)\s*\|\s*(-\d+)(.*)$/);
-  const baseLabel = diffMatch ? `${diffMatch[1] ?? ""}${diffMatch[4] ?? ""}`.trimEnd() : label;
-  const activityMatch = baseLabel.match(/^(Edited|Created|Deleted|Editing|Creating|Deleting|Reading|Read|Writing|Wrote|Moved|Copied)\s+(.+)$/);
-  const rawTarget = activityMatch?.[2]?.trim();
-  const parsedTarget = rawTarget ? parseFileReference(rawTarget) : null;
+  const diffMatch = label.match(/^(.*?)(\+\d+)\s*\|\s*(-\d+)(.*)$/)
+  const baseLabel = diffMatch ? `${diffMatch[1] ?? ''}${diffMatch[4] ?? ''}`.trimEnd() : label
+  const activityMatch = baseLabel.match(
+    /^(Edited|Created|Deleted|Editing|Creating|Deleting|Reading|Read|Writing|Wrote|Moved|Copied)\s+(.+)$/
+  )
+  const rawTarget = activityMatch?.[2]?.trim()
+  const parsedTarget = rawTarget ? parseFileReference(rawTarget) : null
 
   const content = (
     <>
-      {activityMatch ? `${activityMatch[1]} ` : ""}
+      {activityMatch ? `${activityMatch[1]} ` : ''}
       {parsedTarget ? (
         <span
-          role={onOpenFileReference ? "button" : undefined}
+          role={onOpenFileReference ? 'button' : undefined}
           tabIndex={onOpenFileReference ? 0 : undefined}
-          className={`message-file-link${onOpenFileReference ? " interactive" : ""}`}
+          className={`message-file-link${onOpenFileReference ? ' interactive' : ''}`}
           title={parsedTarget.raw}
-          onClick={(event) => {
+          onClick={event => {
             if (!onOpenFileReference) {
-              return;
+              return
             }
-            event.stopPropagation();
-            onOpenFileReference(parsedTarget.raw);
+            event.stopPropagation()
+            onOpenFileReference(parsedTarget.raw)
           }}
-          onKeyDown={(event) => {
+          onKeyDown={event => {
             if (!onOpenFileReference) {
-              return;
+              return
             }
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              event.stopPropagation();
-              onOpenFileReference(parsedTarget.raw);
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              event.stopPropagation()
+              onOpenFileReference(parsedTarget.raw)
             }
           }}
         >
           <span className="message-file-link-name">{parsedTarget.path}</span>
-          {parsedTarget.lineLabel ? <span className="message-file-link-line">{parsedTarget.lineLabel}</span> : null}
+          {parsedTarget.lineLabel ? (
+            <span className="message-file-link-line">{parsedTarget.lineLabel}</span>
+          ) : null}
         </span>
       ) : (
-        activityMatch?.[2] ?? baseLabel
+        (activityMatch?.[2] ?? baseLabel)
       )}
       {diffMatch ? (
         <>
-          {" "}
-          <span className="message-diff-add">{diffMatch[2] ?? ""}</span>
-          {" | "}
-          <span className="message-diff-del">{diffMatch[3] ?? ""}</span>
+          {' '}
+          <span className="message-diff-add">{diffMatch[2] ?? ''}</span>
+          {' | '}
+          <span className="message-diff-del">{diffMatch[3] ?? ''}</span>
         </>
       ) : null}
     </>
-  );
+  )
 
   if (parsedTarget || diffMatch) {
-    return content;
+    return content
   }
-  return label;
+  return label
 }
 
 function EventDetails({
@@ -112,10 +122,10 @@ function EventDetails({
   failure,
   reason,
 }: {
-  command?: string;
-  output?: string;
-  failure?: string;
-  reason?: string;
+  command?: string
+  output?: string
+  failure?: string
+  reason?: string
 }) {
   return (
     <>
@@ -124,65 +134,74 @@ function EventDetails({
       {failure ? <pre className="message-timeline-row-error-block">{failure}</pre> : null}
       {reason ? <small className="message-timeline-row-reason">{reason}</small> : null}
     </>
-  );
+  )
 }
 
 export function MessageTimelineBlocks({
   blocks,
   onOpenFileReference,
 }: {
-  blocks: TimelineBlock[];
-  onOpenFileReference?: (reference: string) => void;
+  blocks: TimelineBlock[]
+  onOpenFileReference?: (reference: string) => void
 }) {
-  const groupedBlocks = groupAdjacentExplorationBlocks(blocks);
+  const groupedBlocks = groupAdjacentExplorationBlocks(blocks)
   return (
     <>
-      {groupedBlocks.map((block) =>
-        block.type === "exploration" ? (
+      {groupedBlocks.map(block =>
+        block.type === 'exploration' ? (
           <details key={block.id} className="message-exploration">
             <summary className="message-exploration-summary">{block.summary}</summary>
-              <div className="message-exploration-entries">
-              {block.entries.map((entry) => (
+            <div className="message-exploration-entries">
+              {block.entries.map(entry => (
                 <span key={entry.id} className="message-exploration-entry">
                   {renderActivityLabel(entry.label, onOpenFileReference)}
                 </span>
               ))}
             </div>
           </details>
-        ) : (
-          block.entry.output || block.entry.failure ? (
-            <details key={block.id} className="message-timeline-disclosure" open={Boolean(block.entry.failure)}>
-              <summary className="message-timeline-disclosure-summary">
-                <span className="message-timeline-row-label">{renderActivityLabel(block.entry.label, onOpenFileReference)}</span>
-              </summary>
-              <div className="message-timeline-disclosure-body">
-                <EventDetails
-                  command={block.entry.command}
-                  output={block.entry.output}
-                  failure={block.entry.failure}
-                  reason={block.entry.reason}
-                />
-              </div>
-            </details>
-          ) : (
-            <div key={block.id} className="message-timeline-row">
-              <span className="message-timeline-row-label">{renderActivityLabel(block.entry.label, onOpenFileReference)}</span>
-              <EventDetails command={block.entry.command} reason={block.entry.reason} />
+        ) : block.entry.output || block.entry.failure ? (
+          <details
+            key={block.id}
+            className="message-timeline-disclosure"
+            open={Boolean(block.entry.failure)}
+          >
+            <summary className="message-timeline-disclosure-summary">
+              <span className="message-timeline-row-label">
+                {renderActivityLabel(block.entry.label, onOpenFileReference)}
+              </span>
+            </summary>
+            <div className="message-timeline-disclosure-body">
+              <EventDetails
+                command={block.entry.command}
+                output={block.entry.output}
+                failure={block.entry.failure}
+                reason={block.entry.reason}
+              />
             </div>
-          )
-        ),
+          </details>
+        ) : (
+          <div key={block.id} className="message-timeline-row">
+            <span className="message-timeline-row-label">
+              {renderActivityLabel(block.entry.label, onOpenFileReference)}
+            </span>
+            <EventDetails command={block.entry.command} reason={block.entry.reason} />
+          </div>
+        )
       )}
     </>
-  );
+  )
 }
 
 export function DelegationEventBlocks({ blocks }: { blocks: DelegationEventBlock[] }) {
-  const groupedBlocks = groupAdjacentExplorationBlocks(blocks);
+  const groupedBlocks = groupAdjacentExplorationBlocks(blocks)
   return (
     <>
       {groupedBlocks.map((block, blockIndex) =>
-        block.type === "exploration" ? (
-          <details key={`${block.id}:${blockIndex}`} className="message-exploration delegation-event-exploration">
+        block.type === 'exploration' ? (
+          <details
+            key={`${block.id}:${blockIndex}`}
+            className="message-exploration delegation-event-exploration"
+          >
             <summary className="message-exploration-summary">{block.summary}</summary>
             <div className="message-exploration-entries">
               {block.entries.map((entry, entryIndex) => (
@@ -194,15 +213,23 @@ export function DelegationEventBlocks({ blocks }: { blocks: DelegationEventBlock
           </details>
         ) : (
           <div key={`${block.id}:${blockIndex}`} className="delegation-modal-event-row">
-            <span className="delegation-modal-event-label">{renderActivityLabel(block.entry.summary)}</span>
-            {block.entry.command ? <small className="delegation-modal-event-command">Command: {block.entry.command}</small> : null}
-            {block.entry.failure ? <small className="delegation-modal-event-error">Error: {block.entry.failure}</small> : null}
+            <span className="delegation-modal-event-label">
+              {renderActivityLabel(block.entry.summary)}
+            </span>
+            {block.entry.command ? (
+              <small className="delegation-modal-event-command">
+                Command: {block.entry.command}
+              </small>
+            ) : null}
+            {block.entry.failure ? (
+              <small className="delegation-modal-event-error">Error: {block.entry.failure}</small>
+            ) : null}
             {block.entry.details && !block.entry.failure ? (
               <small className="delegation-event-details">{block.entry.details}</small>
             ) : null}
           </div>
-        ),
+        )
       )}
     </>
-  );
+  )
 }

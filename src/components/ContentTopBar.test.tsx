@@ -1,10 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { ContentTopBar } from "./ContentTopBar";
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import { ContentTopBar } from './ContentTopBar'
 
 function buildProps() {
-  const onSelectOpenTarget = vi.fn();
-  const openDirectoryInTarget = vi.fn(async () => undefined);
+  const onSelectOpenTarget = vi.fn()
+  const openDirectoryInTarget = vi.fn(async () => undefined)
 
   return {
     props: {
@@ -15,8 +15,8 @@ function buildProps() {
       browserSidebarOpen: false,
       toggleBrowserSidebar: vi.fn(),
       gitDiffStats: { additions: 0, deletions: 0, filesChanged: 0, hasChanges: false },
-      contentPaneTitle: "Workspace",
-      activeProjectDir: "/tmp/workspace",
+      contentPaneTitle: 'Workspace',
+      activeProjectDir: '/tmp/workspace',
       projectData: null,
       terminalOpen: false,
       toggleTerminal: vi.fn(async () => undefined),
@@ -34,10 +34,10 @@ function buildProps() {
       onViewWorkspace: vi.fn(),
       onCopyPath: vi.fn(),
       onCopySessionId: vi.fn(),
-      activeOpenTarget: { id: "finder" as const, label: "finder", logo: "/finder.png" },
+      activeOpenTarget: { id: 'finder' as const, label: 'finder', logo: '/finder.png' },
       openTargets: [
-        { id: "cursor" as const, label: "cursor", logo: "/cursor.png" },
-        { id: "finder" as const, label: "finder", logo: "/finder.png" },
+        { id: 'cursor' as const, label: 'cursor', logo: '/cursor.png' },
+        { id: 'finder' as const, label: 'finder', logo: '/finder.png' },
       ],
       onSelectOpenTarget,
       openDirectoryInTarget,
@@ -47,125 +47,151 @@ function buildProps() {
       commitNextStepOptions: [],
       setCommitNextStep: vi.fn(),
       customRunCommands: [],
-      onUpsertCustomRunCommand: vi.fn((input) => ({
-        id: "custom-run",
+      onUpsertCustomRunCommand: vi.fn(input => ({
+        id: 'custom-run',
         title: input.title,
         commands: input.commands,
         updatedAt: Date.now(),
       })),
       onRunCustomRunCommand: vi.fn(async () => undefined),
       onDeleteCustomRunCommand: vi.fn(),
+      activeWorkspaceWorktree: {
+        directory: '/tmp/workspace/.worktrees/feature-a',
+        label: 'feature-a',
+        branch: 'feature-a',
+        isMain: false,
+      },
+      onOpenWorkspaceDetail: vi.fn(),
     },
     onSelectOpenTarget,
     openDirectoryInTarget,
-  };
+  }
 }
 
-describe("ContentTopBar open target control", () => {
-  it("selects target from menu without launching app", () => {
-    const { props, onSelectOpenTarget, openDirectoryInTarget } = buildProps();
-    render(<ContentTopBar {...props} openMenuOpen setOpenMenuOpen={vi.fn()} />);
+describe('ContentTopBar open target control', () => {
+  it('selects target from menu without launching app', () => {
+    const { props, onSelectOpenTarget, openDirectoryInTarget } = buildProps()
+    render(<ContentTopBar {...props} openMenuOpen setOpenMenuOpen={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "cursor" }));
+    fireEvent.click(screen.getByRole('button', { name: 'cursor' }))
 
-    expect(onSelectOpenTarget).toHaveBeenCalledWith("cursor");
-    expect(openDirectoryInTarget).not.toHaveBeenCalled();
-  });
+    expect(onSelectOpenTarget).toHaveBeenCalledWith('cursor')
+    expect(openDirectoryInTarget).not.toHaveBeenCalled()
+  })
 
-  it("launches active target when main open button is clicked", () => {
-    const { props, openDirectoryInTarget } = buildProps();
-    render(<ContentTopBar {...props} />);
+  it('launches active target when main open button is clicked', () => {
+    const { props, openDirectoryInTarget } = buildProps()
+    render(<ContentTopBar {...props} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "finder" }));
+    fireEvent.click(screen.getByRole('button', { name: 'finder' }))
 
-    expect(openDirectoryInTarget).toHaveBeenCalledWith("finder");
-  });
+    expect(openDirectoryInTarget).toHaveBeenCalledWith('finder')
+  })
 
-  it("opens run editor when no custom command exists", () => {
-    const { props } = buildProps();
-    render(<ContentTopBar {...props} />);
+  it('opens run editor when no custom command exists', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Custom run command' }))
 
-    expect(screen.getByRole("dialog", { name: "Run" })).toBeInTheDocument();
-  });
+    expect(screen.getByRole('dialog', { name: 'Run' })).toBeInTheDocument()
+  })
 
-  it("closes run editor with the close button", () => {
-    const { props } = buildProps();
-    render(<ContentTopBar {...props} />);
+  it('closes run editor with the close button', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close custom run command modal" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Custom run command' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close custom run command modal' }))
 
-    expect(screen.queryByRole("dialog", { name: "Run" })).not.toBeInTheDocument();
-  });
+    expect(screen.queryByRole('dialog', { name: 'Run' })).not.toBeInTheDocument()
+  })
 
-  it("renders saved commands in menu and allows running one", () => {
-    const { props } = buildProps();
-    const runMock = vi.fn(async () => undefined);
+  it('renders saved commands in menu and allows running one', () => {
+    const { props } = buildProps()
+    const runMock = vi.fn(async () => undefined)
     render(
       <ContentTopBar
         {...props}
         customRunCommands={[
-          { id: "install-run", title: "Install + Run", commands: "npm install\nnpm run dev", updatedAt: Date.now() },
+          {
+            id: 'install-run',
+            title: 'Install + Run',
+            commands: 'npm install\nnpm run dev',
+            updatedAt: Date.now(),
+          },
         ]}
         onRunCustomRunCommand={runMock}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
-    fireEvent.click(screen.getByRole("button", { name: "Run Install + Run" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Custom run command' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run Install + Run' }))
 
     expect(runMock).toHaveBeenCalledWith({
-      id: "install-run",
-      title: "Install + Run",
-      commands: "npm install\nnpm run dev",
+      id: 'install-run',
+      title: 'Install + Run',
+      commands: 'npm install\nnpm run dev',
       updatedAt: expect.any(Number),
-    });
-  });
+    })
+  })
 
-  it("deletes a saved command from the run menu", () => {
-    const { props } = buildProps();
-    const deleteMock = vi.fn();
-    const confirmMock = vi.spyOn(window, "confirm").mockReturnValue(true);
+  it('deletes a saved command from the run menu', () => {
+    const { props } = buildProps()
+    const deleteMock = vi.fn()
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(
       <ContentTopBar
         {...props}
         customRunCommands={[
-          { id: "install-run", title: "Install + Run", commands: "npm install\nnpm run dev", updatedAt: Date.now() },
+          {
+            id: 'install-run',
+            title: 'Install + Run',
+            commands: 'npm install\nnpm run dev',
+            updatedAt: Date.now(),
+          },
         ]}
         onDeleteCustomRunCommand={deleteMock}
-      />,
-    );
+      />
+    )
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom run command" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete Install + Run" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Custom run command' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Install + Run' }))
 
-    expect(confirmMock).toHaveBeenCalledWith('Delete custom run command "Install + Run"?');
-    expect(deleteMock).toHaveBeenCalledWith("install-run");
-    confirmMock.mockRestore();
-  });
+    expect(confirmMock).toHaveBeenCalledWith('Delete custom run command "Install + Run"?')
+    expect(deleteMock).toHaveBeenCalledWith('install-run')
+    confirmMock.mockRestore()
+  })
 
-  it("hides the terminal toggle when the integrated terminal is unavailable", () => {
-    const { props } = buildProps();
-    render(<ContentTopBar {...props} showTerminalToggle={false} />);
+  it('hides the terminal toggle when the integrated terminal is unavailable', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} showTerminalToggle={false} />)
 
-    expect(screen.queryByRole("button", { name: "Toggle terminal" })).not.toBeInTheDocument();
-  });
+    expect(screen.queryByRole('button', { name: 'Toggle terminal' })).not.toBeInTheDocument()
+  })
 
-  it("toggles the browser sidebar from the top bar", () => {
-    const { props } = buildProps();
-    render(<ContentTopBar {...props} />);
+  it('toggles the browser sidebar from the top bar', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
 
-    fireEvent.click(screen.getByRole("button", { name: "Open browser sidebar" }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open browser sidebar' }))
 
-    expect(props.toggleBrowserSidebar).toHaveBeenCalledTimes(1);
-  });
+    expect(props.toggleBrowserSidebar).toHaveBeenCalledTimes(1)
+  })
 
-  it("shows orxa code brand in the topbar", () => {
-    const { props } = buildProps();
-    render(<ContentTopBar {...props} />);
+  it('shows orxa code brand in the topbar', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
 
-    expect(screen.getByText("orxa code")).toBeInTheDocument();
-  });
-});
+    expect(screen.getByText('orxa code')).toBeInTheDocument()
+  })
+
+  it('shows the active worktree button and opens workspace detail from it', () => {
+    const { props } = buildProps()
+    render(<ContentTopBar {...props} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /feature-a/i }))
+
+    expect(props.onOpenWorkspaceDetail).toHaveBeenCalledTimes(1)
+  })
+})

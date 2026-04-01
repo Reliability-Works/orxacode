@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import type { UnifiedProjectedSessionPresentation } from "../lib/session-presentation";
-import type { UnifiedTimelineRenderRow } from "../components/chat/unified-timeline-model";
+import { useEffect, useState } from 'react'
+import type { UnifiedProjectedSessionPresentation } from '../lib/session-presentation'
+import type { UnifiedTimelineRenderRow } from '../components/chat/unified-timeline-model'
 
 /**
  * Client-side streaming buffer. When `enableStreaming` is false and a session is
@@ -13,29 +13,29 @@ import type { UnifiedTimelineRenderRow } from "../components/chat/unified-timeli
 export function useStreamingBuffer(
   presentation: UnifiedProjectedSessionPresentation | null | undefined,
   isSessionBusy: boolean,
-  enableStreaming: boolean,
+  enableStreaming: boolean
 ): UnifiedProjectedSessionPresentation | null | undefined {
-  const [snapshot, setSnapshot] = useState<UnifiedTimelineRenderRow[] | null>(null);
-  const [wasBusy, setWasBusy] = useState(false);
+  const [snapshot, setSnapshot] = useState<UnifiedTimelineRenderRow[] | null>(null)
+  const [wasBusy, setWasBusy] = useState(false)
 
   useEffect(() => {
     if (!enableStreaming) {
       // Capture snapshot when a turn begins (transition idle → busy)
       if (isSessionBusy && !wasBusy && presentation) {
-        setSnapshot(presentation.rows);
+        setSnapshot(presentation.rows)
       }
       // Clear snapshot when the turn ends (transition busy → idle)
       if (!isSessionBusy && wasBusy) {
-        setSnapshot(null);
+        setSnapshot(null)
       }
     } else {
-      setSnapshot(null);
+      setSnapshot(null)
     }
-    setWasBusy(isSessionBusy);
-  }, [isSessionBusy, enableStreaming, presentation, wasBusy]);
+    setWasBusy(isSessionBusy)
+  }, [isSessionBusy, enableStreaming, presentation, wasBusy])
 
-  if (!presentation) return presentation;
-  if (enableStreaming) return presentation;
+  if (!presentation) return presentation
+  if (enableStreaming) return presentation
 
   // When session is busy and we have a pre-turn snapshot, show the snapshot
   // plus a placeholder activity label so the user knows something is happening.
@@ -45,8 +45,8 @@ export function useStreamingBuffer(
       rows: snapshot,
       latestActivity: presentation.latestActivity,
       latestActivityContent: presentation.latestActivityContent,
-    };
+    }
   }
 
-  return presentation;
+  return presentation
 }

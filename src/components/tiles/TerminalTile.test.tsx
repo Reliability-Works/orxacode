@@ -1,17 +1,19 @@
-import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TerminalTile } from "./TerminalTile";
-import type { CanvasTile, CanvasTheme } from "../../types/canvas";
+import type { ReactNode } from 'react'
+import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { TerminalTile } from './TerminalTile'
+import type { CanvasTile, CanvasTheme } from '../../types/canvas'
 
-const terminalWriteMocks: Array<ReturnType<typeof vi.fn>> = [];
-let eventSubscriptionListener: ((event: { type: string; payload: Record<string, unknown> }) => void) | null = null;
-const serializeMock = vi.fn(() => "\u001b[31mserialized prompt\u001b[0m");
+const terminalWriteMocks: Array<ReturnType<typeof vi.fn>> = []
+let eventSubscriptionListener:
+  | ((event: { type: string; payload: Record<string, unknown> }) => void)
+  | null = null
+const serializeMock = vi.fn(() => '\u001b[31mserialized prompt\u001b[0m')
 
-vi.mock("xterm", () => {
+vi.mock('xterm', () => {
   function Terminal() {
-    const write = vi.fn();
-    terminalWriteMocks.push(write);
+    const write = vi.fn()
+    terminalWriteMocks.push(write)
     return {
       loadAddon: vi.fn(),
       open: vi.fn(),
@@ -25,90 +27,93 @@ vi.mock("xterm", () => {
       buffer: {
         active: {
           length: 2,
-          getLine: (index: number) => [
-            { translateToString: () => "prompt line" },
-            { translateToString: () => "typed input" },
-          ][index],
+          getLine: (index: number) =>
+            [
+              { translateToString: () => 'prompt line' },
+              { translateToString: () => 'typed input' },
+            ][index],
         },
       },
-      unicode: { activeVersion: "6" },
-    };
+      unicode: { activeVersion: '6' },
+    }
   }
 
-  return { Terminal };
-});
+  return { Terminal }
+})
 
-vi.mock("xterm-addon-fit", () => {
+vi.mock('xterm-addon-fit', () => {
   function FitAddon() {
-    return { fit: vi.fn() };
+    return { fit: vi.fn() }
   }
 
-  return { FitAddon };
-});
+  return { FitAddon }
+})
 
-vi.mock("xterm-addon-unicode11", () => ({
+vi.mock('xterm-addon-unicode11', () => ({
   Unicode11Addon: function Unicode11Addon() {
-    return {};
+    return {}
   },
-}));
+}))
 
-vi.mock("xterm-addon-webgl", () => ({
+vi.mock('xterm-addon-webgl', () => ({
   WebglAddon: function WebglAddon() {
     return {
       onContextLoss: vi.fn(),
       dispose: vi.fn(),
-    };
+    }
   },
-}));
+}))
 
-vi.mock("xterm-addon-serialize", () => ({
+vi.mock('xterm-addon-serialize', () => ({
   SerializeAddon: function SerializeAddon() {
-    return { serialize: serializeMock };
+    return { serialize: serializeMock }
   },
-}));
+}))
 
-vi.mock("xterm/css/xterm.css", () => ({}));
+vi.mock('xterm/css/xterm.css', () => ({}))
 
-vi.mock("../CanvasTile", () => ({
+vi.mock('../CanvasTile', () => ({
   CanvasTileComponent: ({
     children,
     label,
     metadata,
     onRemove,
   }: {
-    children: ReactNode;
-    label: string;
-    metadata?: string;
-    onRemove?: () => void;
+    children: ReactNode
+    label: string
+    metadata?: string
+    onRemove?: () => void
   }) => (
     <div>
       <div>{label}</div>
       {metadata ? <div>{metadata}</div> : null}
-      <button type="button" onClick={onRemove}>remove</button>
+      <button type="button" onClick={onRemove}>
+        remove
+      </button>
       {children}
     </div>
   ),
-}));
+}))
 
 class MockResizeObserver {
-  observe = vi.fn();
-  unobserve = vi.fn();
-  disconnect = vi.fn();
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
 }
 
-window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
 const DEFAULT_THEME: CanvasTheme = {
-  preset: "midnight",
-  background: "#0C0C0C",
-  tileBorder: "#1F1F1F",
-  accent: "#22C55E",
-};
+  preset: 'midnight',
+  background: '#0C0C0C',
+  tileBorder: '#1F1F1F',
+  accent: '#22C55E',
+}
 
 function makeTile(overrides: Partial<CanvasTile> = {}): CanvasTile {
   return {
-    id: "terminal-1",
-    type: "terminal",
+    id: 'terminal-1',
+    type: 'terminal',
     x: 40,
     y: 40,
     width: 560,
@@ -116,14 +121,14 @@ function makeTile(overrides: Partial<CanvasTile> = {}): CanvasTile {
     zIndex: 1,
     minimized: false,
     maximized: false,
-    meta: { directory: "/workspace/project", cwd: "/workspace/project" },
+    meta: { directory: '/workspace/project', cwd: '/workspace/project' },
     ...overrides,
-  };
+  }
 }
 
 function renderTerminalTile(tileOverrides: Partial<CanvasTile> = {}) {
-  const onUpdate = vi.fn();
-  const onRemove = vi.fn();
+  const onUpdate = vi.fn()
+  const onRemove = vi.fn()
   const view = render(
     <TerminalTile
       tile={makeTile(tileOverrides)}
@@ -131,130 +136,123 @@ function renderTerminalTile(tileOverrides: Partial<CanvasTile> = {}) {
       onUpdate={onUpdate}
       onRemove={onRemove}
       onBringToFront={vi.fn()}
-    />,
-  );
-  return { ...view, onUpdate, onRemove };
+    />
+  )
+  return { ...view, onUpdate, onRemove }
 }
 
-describe("TerminalTile", () => {
-  beforeEach(() => {
-    terminalWriteMocks.length = 0;
-    eventSubscriptionListener = null;
-    serializeMock.mockClear();
-    vi.useRealTimers();
-    Object.defineProperty(window, "orxa", {
-      configurable: true,
-      value: {
-        terminal: {
-          list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-1" })),
-          connect: vi.fn(async () => ({ connected: true, ptyID: "pty-1", directory: "/workspace/project" })),
-          resize: vi.fn(async () => true),
-          write: vi.fn(async () => true),
-          close: vi.fn(async () => true),
-        },
-        events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
-          }),
-        },
-      },
-    });
-  });
-
-  it("retries transient PTY connect failures before subscribing to output", async () => {
+function registerTerminalTileConnectionTests() {
+  it('retries transient PTY connect failures before subscribing to output', async () => {
     const connectMock = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Unexpected server response: 500"))
-      .mockResolvedValue({ connected: true, ptyID: "pty-1", directory: "/workspace/project" });
+      .mockRejectedValueOnce(new Error('Unexpected server response: 500'))
+      .mockResolvedValue({ connected: true, ptyID: 'pty-1', directory: '/workspace/project' })
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
           list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-1" })),
+          create: vi.fn(async () => ({ id: 'pty-1' })),
           connect: connectMock,
           resize: vi.fn(async () => true),
           write: vi.fn(async () => true),
           close: vi.fn(async () => true),
         },
         events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
           }),
         },
       },
-    });
+    })
 
-    renderTerminalTile();
+    renderTerminalTile()
 
+    await waitFor(
+      () => {
+        expect(connectMock).toHaveBeenCalledTimes(2)
+      },
+      { timeout: 4000 }
+    )
+
+    expect(window.orxa.events.subscribe).toHaveBeenCalledTimes(1)
     await waitFor(() => {
-      expect(connectMock).toHaveBeenCalledTimes(2);
-    }, { timeout: 4000 });
-
-    expect(window.orxa.events.subscribe).toHaveBeenCalledTimes(1);
+      expect(window.orxa.terminal.resize).toHaveBeenCalledWith(
+        '/workspace/project',
+        'pty-1',
+        80,
+        24
+      )
+    })
     await waitFor(() => {
-      expect(window.orxa.terminal.resize).toHaveBeenCalledWith("/workspace/project", "pty-1", 80, 24);
-    });
-    await waitFor(() => {
-      expect(screen.queryByText("Connecting terminal...")).not.toBeInTheDocument();
-    });
-  });
+      expect(screen.queryByText('Connecting terminal...')).not.toBeInTheDocument()
+    })
+  })
 
-  it("shows a visible error when PTY connect never succeeds", async () => {
+  it('shows a visible error when PTY connect never succeeds', async () => {
     const connectMock = vi.fn(async () => {
-      throw new Error("Unexpected server response: 500");
-    });
+      throw new Error('Unexpected server response: 500')
+    })
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
           list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-1" })),
+          create: vi.fn(async () => ({ id: 'pty-1' })),
           connect: connectMock,
           resize: vi.fn(async () => true),
           write: vi.fn(async () => true),
           close: vi.fn(async () => true),
         },
         events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
           }),
         },
       },
-    });
+    })
 
-    renderTerminalTile();
+    renderTerminalTile()
 
-    await waitFor(() => {
-      expect(screen.getByText("Unexpected server response: 500")).toBeInTheDocument();
-    }, { timeout: 4000 });
+    await waitFor(
+      () => {
+        expect(screen.getByText('Unexpected server response: 500')).toBeInTheDocument()
+      },
+      { timeout: 4000 }
+    )
 
-    expect(connectMock).toHaveBeenCalledTimes(5);
-    expect(window.orxa.events.subscribe).not.toHaveBeenCalled();
-  });
+    expect(connectMock).toHaveBeenCalledTimes(5)
+    expect(window.orxa.events.subscribe).not.toHaveBeenCalled()
+  })
+}
 
-  it("reuses a persisted canvas PTY instead of creating a new one", async () => {
-    const listMock = vi.fn(async () => [{
-      id: "pty-existing",
-      directory: "/workspace/project",
-      cwd: "/workspace/project",
-      title: "Terminal",
-      owner: "canvas",
-      status: "running",
-      pid: 123,
-      exitCode: null,
-      createdAt: Date.now(),
-    }]);
-    const createMock = vi.fn(async () => ({ id: "pty-new" }));
-    const connectMock = vi.fn(async () => ({ connected: true, ptyID: "pty-existing", directory: "/workspace/project" }));
+function registerTerminalTileReuseTests() {
+  it('reuses a persisted canvas PTY instead of creating a new one', async () => {
+    const listMock = vi.fn(async () => [
+      {
+        id: 'pty-existing',
+        directory: '/workspace/project',
+        cwd: '/workspace/project',
+        title: 'Terminal',
+        owner: 'canvas',
+        status: 'running',
+        pid: 123,
+        exitCode: null,
+        createdAt: Date.now(),
+      },
+    ])
+    const createMock = vi.fn(async () => ({ id: 'pty-new' }))
+    const connectMock = vi.fn(async () => ({
+      connected: true,
+      ptyID: 'pty-existing',
+      directory: '/workspace/project',
+    }))
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
@@ -266,35 +264,41 @@ describe("TerminalTile", () => {
           close: vi.fn(async () => true),
         },
         events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
           }),
         },
       },
-    });
+    })
 
     renderTerminalTile({
-      meta: { directory: "/workspace/project", cwd: "/workspace/project", ptyId: "pty-existing" },
-    });
+      meta: { directory: '/workspace/project', cwd: '/workspace/project', ptyId: 'pty-existing' },
+    })
 
     await waitFor(() => {
-      expect(connectMock).toHaveBeenCalledWith("/workspace/project", "pty-existing");
-    });
-    expect(listMock).toHaveBeenCalledWith("/workspace/project", "canvas");
-    expect(createMock).not.toHaveBeenCalled();
-  });
+      expect(connectMock).toHaveBeenCalledWith('/workspace/project', 'pty-existing')
+    })
+    expect(listMock).toHaveBeenCalledWith('/workspace/project', 'canvas')
+    expect(createMock).not.toHaveBeenCalled()
+  })
+}
 
-  it("does not close the PTY when the tile unmounts during session switches", async () => {
-    const closeMock = vi.fn(async () => true);
+function registerTerminalTileLifecycleTests() {
+  it('does not close the PTY when the tile unmounts during session switches', async () => {
+    const closeMock = vi.fn(async () => true)
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
           list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-1" })),
-          connect: vi.fn(async () => ({ connected: true, ptyID: "pty-1", directory: "/workspace/project" })),
+          create: vi.fn(async () => ({ id: 'pty-1' })),
+          connect: vi.fn(async () => ({
+            connected: true,
+            ptyID: 'pty-1',
+            directory: '/workspace/project',
+          })),
           resize: vi.fn(async () => true),
           write: vi.fn(async () => true),
           close: closeMock,
@@ -303,169 +307,232 @@ describe("TerminalTile", () => {
           subscribe: vi.fn(() => vi.fn()),
         },
       },
-    });
+    })
 
-    const view = renderTerminalTile();
+    const view = renderTerminalTile()
     await waitFor(() => {
-      expect(window.orxa.terminal.connect).toHaveBeenCalled();
-    });
+      expect(window.orxa.terminal.connect).toHaveBeenCalled()
+    })
 
-    view.onUpdate.mockClear();
-    view.unmount();
-    expect(closeMock).not.toHaveBeenCalled();
-    expect(view.onUpdate).not.toHaveBeenCalled();
-  });
+    view.onUpdate.mockClear()
+    view.unmount()
+    expect(closeMock).not.toHaveBeenCalled()
+    expect(view.onUpdate).not.toHaveBeenCalled()
+  })
 
-  it("closes the PTY when the tile is explicitly removed", async () => {
-    const closeMock = vi.fn(async () => true);
+  it('closes the PTY when the tile is explicitly removed', async () => {
+    const closeMock = vi.fn(async () => true)
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
           list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-1" })),
-          connect: vi.fn(async () => ({ connected: true, ptyID: "pty-1", directory: "/workspace/project" })),
+          create: vi.fn(async () => ({ id: 'pty-1' })),
+          connect: vi.fn(async () => ({
+            connected: true,
+            ptyID: 'pty-1',
+            directory: '/workspace/project',
+          })),
           resize: vi.fn(async () => true),
           write: vi.fn(async () => true),
           close: closeMock,
         },
         events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
           }),
         },
       },
-    });
+    })
 
-    renderTerminalTile({ meta: { directory: "/workspace/project", cwd: "/workspace/project", ptyId: "pty-1" } });
+    renderTerminalTile({
+      meta: { directory: '/workspace/project', cwd: '/workspace/project', ptyId: 'pty-1' },
+    })
     await waitFor(() => {
-      expect(window.orxa.terminal.connect).toHaveBeenCalled();
-    });
+      expect(window.orxa.terminal.connect).toHaveBeenCalled()
+    })
 
-    screen.getByRole("button", { name: "remove" }).click();
+    screen.getByRole('button', { name: 'remove' }).click()
     await waitFor(() => {
-      expect(closeMock).toHaveBeenCalledWith("/workspace/project", "pty-1");
-    });
-  });
+      expect(closeMock).toHaveBeenCalledWith('/workspace/project', 'pty-1')
+    })
+  })
+}
 
-  it("persists a screen snapshot while output is flowing", async () => {
-    const view = renderTerminalTile({ meta: { directory: "/workspace/project", cwd: "/workspace/project", ptyId: "pty-1" } });
+function registerTerminalTilePersistenceTests() {
+  it('persists a screen snapshot while output is flowing', async () => {
+    const view = renderTerminalTile({
+      meta: { directory: '/workspace/project', cwd: '/workspace/project', ptyId: 'pty-1' },
+    })
 
     await waitFor(() => {
-      expect(window.orxa.events.subscribe).toHaveBeenCalled();
-    });
+      expect(window.orxa.events.subscribe).toHaveBeenCalled()
+    })
 
-    view.onUpdate.mockClear();
+    view.onUpdate.mockClear()
     eventSubscriptionListener?.({
-      type: "pty.output",
+      type: 'pty.output',
       payload: {
-        ptyID: "pty-1",
-        directory: "/workspace/project",
-        chunk: "prompt update",
+        ptyID: 'pty-1',
+        directory: '/workspace/project',
+        chunk: 'prompt update',
       },
-    });
+    })
     await waitFor(() => {
-      expect(view.onUpdate).toHaveBeenCalledWith("terminal-1", {
+      expect(view.onUpdate).toHaveBeenCalledWith('terminal-1', {
         meta: {
-          directory: "/workspace/project",
-          cwd: "/workspace/project",
-          ptyId: "pty-1",
-          serializedOutput: "\u001b[31mserialized prompt\u001b[0m",
+          directory: '/workspace/project',
+          cwd: '/workspace/project',
+          ptyId: 'pty-1',
+          serializedOutput: '\u001b[31mserialized prompt\u001b[0m',
         },
-      });
-    });
-  });
+      })
+    })
+  })
 
-  it("restores a saved output replay before reconnecting", async () => {
+  it('restores a saved output replay before reconnecting', async () => {
     renderTerminalTile({
       meta: {
-        directory: "/workspace/project",
-        cwd: "/workspace/project",
-        ptyId: "pty-existing",
-        serializedOutput: "\u001b[31mrestored prompt\u001b[0m",
+        directory: '/workspace/project',
+        cwd: '/workspace/project',
+        ptyId: 'pty-existing',
+        serializedOutput: '\u001b[31mrestored prompt\u001b[0m',
       },
-    });
+    })
 
     await waitFor(() => {
-      expect(window.orxa.terminal.connect).toHaveBeenCalled();
-    });
+      expect(window.orxa.terminal.connect).toHaveBeenCalled()
+    })
 
-    expect(terminalWriteMocks.at(-1)).toHaveBeenCalledWith("\u001b[31mrestored prompt\u001b[0m");
-  });
+    expect(terminalWriteMocks.at(-1)).toHaveBeenCalledWith('\u001b[31mrestored prompt\u001b[0m')
+  })
+}
 
-  it("bootstraps claude code tiles through the claude CLI startup command", async () => {
+function registerTerminalTileStartupCommandTests() {
+  it('bootstraps claude code tiles through the claude CLI startup command', async () => {
     renderTerminalTile({
-      type: "claude_code",
+      type: 'claude_code',
       meta: {
-        directory: "/workspace/project",
-        cwd: "/workspace/project",
-        startupCommand: "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n",
-        startupFilter: "claude",
+        directory: '/workspace/project',
+        cwd: '/workspace/project',
+        startupCommand:
+          'env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n',
+        startupFilter: 'claude',
       },
-    });
+    })
 
     await waitFor(() => {
       expect(window.orxa.terminal.write).toHaveBeenCalledWith(
-        "/workspace/project",
-        "pty-1",
-        "env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n",
-      );
-    });
-  });
+        '/workspace/project',
+        'pty-1',
+        'env -u ANTHROPIC_BASE_URL -u ANTHROPIC_AUTH_TOKEN -u ANTHROPIC_API_KEY claude\n'
+      )
+    })
+  })
 
-  it("bootstraps codex and opencode canvas tiles through terminal startup commands", async () => {
+  it('bootstraps codex and opencode canvas tiles through terminal startup commands', async () => {
     renderTerminalTile({
-      type: "codex_cli",
+      type: 'codex_cli',
       meta: {
-        directory: "/workspace/project",
-        cwd: "/workspace/project",
-        startupCommand: "codex\n",
+        directory: '/workspace/project',
+        cwd: '/workspace/project',
+        startupCommand: 'codex\n',
       },
-    });
+    })
 
     await waitFor(() => {
-      expect(window.orxa.terminal.write).toHaveBeenCalledWith("/workspace/project", "pty-1", "codex\n");
-    });
+      expect(window.orxa.terminal.write).toHaveBeenCalledWith(
+        '/workspace/project',
+        'pty-1',
+        'codex\n'
+      )
+    })
 
-    vi.clearAllMocks();
-    terminalWriteMocks.length = 0;
-    eventSubscriptionListener = null;
-    serializeMock.mockClear();
+    vi.clearAllMocks()
+    terminalWriteMocks.length = 0
+    eventSubscriptionListener = null
+    serializeMock.mockClear()
 
-    Object.defineProperty(window, "orxa", {
+    Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
         terminal: {
           list: vi.fn(async () => []),
-          create: vi.fn(async () => ({ id: "pty-2" })),
-          connect: vi.fn(async () => ({ connected: true, ptyID: "pty-2", directory: "/workspace/project" })),
+          create: vi.fn(async () => ({ id: 'pty-2' })),
+          connect: vi.fn(async () => ({
+            connected: true,
+            ptyID: 'pty-2',
+            directory: '/workspace/project',
+          })),
           resize: vi.fn(async () => true),
           write: vi.fn(async () => true),
           close: vi.fn(async () => true),
         },
         events: {
-          subscribe: vi.fn((listener) => {
-            eventSubscriptionListener = listener;
-            return vi.fn();
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
           }),
         },
       },
-    });
+    })
 
     renderTerminalTile({
-      id: "terminal-2",
-      type: "opencode_cli",
+      id: 'terminal-2',
+      type: 'opencode_cli',
       meta: {
-        directory: "/workspace/project",
-        cwd: "/workspace/project",
-        startupCommand: "opencode\n",
+        directory: '/workspace/project',
+        cwd: '/workspace/project',
+        startupCommand: 'opencode\n',
       },
-    });
+    })
 
     await waitFor(() => {
-      expect(window.orxa.terminal.write).toHaveBeenCalledWith("/workspace/project", "pty-2", "opencode\n");
-    });
-  });
-});
+      expect(window.orxa.terminal.write).toHaveBeenCalledWith(
+        '/workspace/project',
+        'pty-2',
+        'opencode\n'
+      )
+    })
+  })
+}
+
+describe('TerminalTile', () => {
+  beforeEach(() => {
+    terminalWriteMocks.length = 0
+    eventSubscriptionListener = null
+    serializeMock.mockClear()
+    vi.useRealTimers()
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        terminal: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'pty-1' })),
+          connect: vi.fn(async () => ({
+            connected: true,
+            ptyID: 'pty-1',
+            directory: '/workspace/project',
+          })),
+          resize: vi.fn(async () => true),
+          write: vi.fn(async () => true),
+          close: vi.fn(async () => true),
+        },
+        events: {
+          subscribe: vi.fn(listener => {
+            eventSubscriptionListener = listener
+            return vi.fn()
+          }),
+        },
+      },
+    })
+  })
+
+  registerTerminalTileConnectionTests()
+  registerTerminalTileReuseTests()
+  registerTerminalTileLifecycleTests()
+  registerTerminalTilePersistenceTests()
+  registerTerminalTileStartupCommandTests()
+})

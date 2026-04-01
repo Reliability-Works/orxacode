@@ -1,5 +1,5 @@
-import { spawn, type IPty } from "node-pty";
+import { spawn, type IPty } from 'node-pty'
 
-export type NativePtyProcess = IPty;
+export type NativePtyProcess = IPty
 
-export const spawnNativePty = spawn;
+export const spawnNativePty = spawn

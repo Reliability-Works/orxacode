@@ -1,0 +1,15 @@
+{
+  "threshold": 5,
+  "reporters": ["console", "html"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/dist-electron/**",
+    "**/coverage/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/test/**"
+  ],
+  "absolute": false,
+  "gitignore": true
+}
