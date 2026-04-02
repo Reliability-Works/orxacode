@@ -9,6 +9,7 @@ import {
   type Agent,
   createOpencodeClient,
   type Config,
+  type Event as OpencodeEvent,
   type FileDiff,
   type OpencodeClient,
   type ProviderListResponse,
@@ -43,6 +44,7 @@ import type {
   OrxaEvent,
   ProjectListItem,
   ProjectBootstrap,
+  ProjectEventReplay,
   ProjectRefreshCold,
   ProjectRefreshDelta,
   PromptRequest,
@@ -302,6 +304,32 @@ const MANAGED_SERVER_ENV_ALLOWLIST = new Set([
 ])
 
 const MAC_DESKTOP_OPENCODE_BINARY = '/Applications/OpenCode.app/Contents/MacOS/opencode-cli'
+const PROJECT_EVENT_REPLAY_BUFFER_LIMIT = 800
+const PROJECT_EVENT_REPLAY_PERSISTED_LIMIT = 220
+const PROJECT_EVENT_REPLAY_PERSIST_DEBOUNCE_MS = 260
+const PROJECT_EVENT_REPLAY_SESSION_SUFFIX = '__project-stream-events__'
+const SESSION_RUNTIME_DELTA_MIN_INTERVAL_MS = 250
+
+type ProjectEventReplayEntry = {
+  cursor: number
+  event: OpencodeEvent
+}
+
+type SessionRuntimeDeltaPushState = {
+  inFlight: boolean
+  pending: boolean
+  lastPushedAt: number
+  latestCursor?: number
+  timer?: ReturnType<typeof setTimeout>
+}
+
+export function eventSessionIDFromOpencodeEvent(event: OpencodeEvent) {
+  const properties =
+    event.properties && typeof event.properties === 'object'
+      ? (event.properties as Record<string, unknown>)
+      : undefined
+  return typeof properties?.sessionID === 'string' ? properties.sessionID : undefined
+}
 
 function shouldPassManagedCredentialEnv(key: string) {
   return /^[A-Z0-9_]+$/.test(key) && /(?:_KEY|_TOKEN|_SECRET|_PASSWORD)$/.test(key)
@@ -828,6 +856,15 @@ export class OpencodeService {
   private promptFence = new Map<string, number>()
   private gitDiffInFlight = new Map<string, Promise<string>>()
   private gitStatusInFlight = new Map<string, Promise<string>>()
+  private projectEventCursorByDirectory = new Map<string, number>()
+  private projectEventReplayByDirectory = new Map<string, ProjectEventReplayEntry[]>()
+  private projectEventReplayPersistTimerByDirectory = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >()
+  private projectEventReplayHydratedDirectories = new Set<string>()
+  private sessionRuntimeDeltaSubscribers = new Set<string>()
+  private sessionRuntimeDeltaPushBySession = new Map<string, SessionRuntimeDeltaPushState>()
 
   constructor(providerSessionDirectory: ProviderSessionDirectory | null = null) {
     this.providerSessionDirectory = providerSessionDirectory
@@ -835,6 +872,7 @@ export class OpencodeService {
 
   setProviderSessionDirectory(providerSessionDirectory: ProviderSessionDirectory | null) {
     this.providerSessionDirectory = providerSessionDirectory
+    this.projectEventReplayHydratedDirectories.clear()
   }
 
   setPerformanceTelemetryService(performanceTelemetryService: PerformanceTelemetryService | null) {
@@ -1101,6 +1139,7 @@ export class OpencodeService {
   async disconnect() {
     this.stopProjectStream()
     this.stopGlobalStream()
+    this.clearAllSessionRuntimeDelta()
 
     this.setState({
       status: 'disconnected',
@@ -1161,7 +1200,13 @@ export class OpencodeService {
   }
 
   async removeProjectDirectory(directory: string) {
-    this.projectStore.remove(path.resolve(directory))
+    const normalizedDirectory = path.resolve(directory)
+    this.projectStore.remove(normalizedDirectory)
+    this.projectEventCursorByDirectory.delete(normalizedDirectory)
+    this.projectEventReplayByDirectory.delete(normalizedDirectory)
+    this.projectEventReplayHydratedDirectories.delete(normalizedDirectory)
+    this.clearProjectReplayPersistence(normalizedDirectory)
+    this.clearSessionRuntimeDeltaForDirectory(normalizedDirectory)
     return true
   }
 
@@ -2558,6 +2603,7 @@ export class OpencodeService {
       this.projectAbort.abort()
       this.projectAbort = undefined
     }
+    this.flushProjectReplayPersistence()
   }
 
   private startGlobalStream() {
@@ -2597,8 +2643,300 @@ export class OpencodeService {
     void loop()
   }
 
+  private projectReplaySessionKey(directory: string) {
+    return makeProviderRuntimeSessionKey('opencode', directory, PROJECT_EVENT_REPLAY_SESSION_SUFFIX)
+  }
+
+  private hydrateProjectReplayState(directory: string) {
+    if (this.projectEventReplayHydratedDirectories.has(directory)) {
+      return
+    }
+    this.projectEventReplayHydratedDirectories.add(directory)
+    const binding = this.providerSessionDirectory?.getBinding(
+      this.projectReplaySessionKey(directory),
+      'opencode'
+    )
+    if (!binding) {
+      return
+    }
+
+    let headCursor = 0
+    if (isRecord(binding.resumeCursor) && typeof binding.resumeCursor.cursor === 'number') {
+      const resumeCursor = Math.max(0, Math.floor(binding.resumeCursor.cursor))
+      headCursor = Math.max(headCursor, resumeCursor)
+    }
+
+    const payload = isRecord(binding.runtimePayload) ? binding.runtimePayload : null
+    const rawEntries = Array.isArray(payload?.events) ? payload.events : []
+    const parsedEntries: ProjectEventReplayEntry[] = []
+    for (const entry of rawEntries) {
+      if (!isRecord(entry)) {
+        continue
+      }
+      const cursor = typeof entry.cursor === 'number' ? Math.max(0, Math.floor(entry.cursor)) : 0
+      const event =
+        isRecord(entry.event) && typeof entry.event.type === 'string' ? entry.event : null
+      if (!cursor || !event) {
+        continue
+      }
+      parsedEntries.push({ cursor, event: event as OpencodeEvent })
+    }
+
+    parsedEntries.sort((left, right) => left.cursor - right.cursor)
+    if (parsedEntries.length > PROJECT_EVENT_REPLAY_BUFFER_LIMIT) {
+      parsedEntries.splice(0, parsedEntries.length - PROJECT_EVENT_REPLAY_BUFFER_LIMIT)
+    }
+    if (parsedEntries.length > 0) {
+      this.projectEventReplayByDirectory.set(directory, parsedEntries)
+      headCursor = Math.max(headCursor, parsedEntries[parsedEntries.length - 1]?.cursor ?? 0)
+    }
+    if (payload && typeof payload.cursor === 'number') {
+      headCursor = Math.max(headCursor, Math.max(0, Math.floor(payload.cursor)))
+    }
+    if (headCursor > 0) {
+      this.projectEventCursorByDirectory.set(directory, headCursor)
+    }
+  }
+
+  private persistProjectReplayState(directory: string) {
+    if (!this.providerSessionDirectory) {
+      return
+    }
+    const entries = this.projectEventReplayByDirectory.get(directory) ?? []
+    const headCursor =
+      this.projectEventCursorByDirectory.get(directory) ??
+      (entries.length > 0 ? (entries[entries.length - 1]?.cursor ?? 0) : 0)
+    const persistedEntries = entries.slice(-PROJECT_EVENT_REPLAY_PERSISTED_LIMIT)
+    this.providerSessionDirectory.upsert({
+      provider: 'opencode',
+      sessionKey: this.projectReplaySessionKey(directory),
+      status: 'running',
+      resumeCursor: { directory, cursor: headCursor },
+      runtimePayload: {
+        directory,
+        cursor: headCursor,
+        events: persistedEntries,
+      },
+    })
+  }
+
+  private schedulePersistProjectReplayState(directory: string) {
+    if (!this.providerSessionDirectory) {
+      return
+    }
+    if (this.projectEventReplayPersistTimerByDirectory.has(directory)) {
+      return
+    }
+    const timer = setTimeout(() => {
+      this.projectEventReplayPersistTimerByDirectory.delete(directory)
+      this.persistProjectReplayState(directory)
+    }, PROJECT_EVENT_REPLAY_PERSIST_DEBOUNCE_MS)
+    this.projectEventReplayPersistTimerByDirectory.set(directory, timer)
+  }
+
+  private flushProjectReplayPersistence() {
+    for (const [directory, timer] of this.projectEventReplayPersistTimerByDirectory.entries()) {
+      clearTimeout(timer)
+      this.projectEventReplayPersistTimerByDirectory.delete(directory)
+      this.persistProjectReplayState(directory)
+    }
+  }
+
+  private clearProjectReplayPersistence(directory: string) {
+    const timer = this.projectEventReplayPersistTimerByDirectory.get(directory)
+    if (timer) {
+      clearTimeout(timer)
+      this.projectEventReplayPersistTimerByDirectory.delete(directory)
+    }
+    this.providerSessionDirectory?.remove(this.projectReplaySessionKey(directory), 'opencode')
+  }
+
+  private sessionRuntimeDeltaKey(directory: string, sessionID: string) {
+    return `${directory}::${sessionID}`
+  }
+
+  private clearSessionRuntimeDeltaState(sessionKey: string) {
+    const state = this.sessionRuntimeDeltaPushBySession.get(sessionKey)
+    if (!state) {
+      return
+    }
+    if (state.timer) {
+      clearTimeout(state.timer)
+    }
+    this.sessionRuntimeDeltaPushBySession.delete(sessionKey)
+  }
+
+  private clearSessionRuntimeDeltaForDirectory(directory: string) {
+    const prefix = `${directory}::`
+    for (const sessionKey of this.sessionRuntimeDeltaSubscribers) {
+      if (!sessionKey.startsWith(prefix)) {
+        continue
+      }
+      this.sessionRuntimeDeltaSubscribers.delete(sessionKey)
+      this.clearSessionRuntimeDeltaState(sessionKey)
+    }
+  }
+
+  private clearAllSessionRuntimeDelta() {
+    for (const sessionKey of this.sessionRuntimeDeltaPushBySession.keys()) {
+      this.clearSessionRuntimeDeltaState(sessionKey)
+    }
+    this.sessionRuntimeDeltaSubscribers.clear()
+  }
+
+  private requestSessionRuntimeDeltaPush(directory: string, sessionID: string, cursor?: number) {
+    const sessionKey = this.sessionRuntimeDeltaKey(directory, sessionID)
+    if (!this.sessionRuntimeDeltaSubscribers.has(sessionKey)) {
+      return
+    }
+    const state = this.sessionRuntimeDeltaPushBySession.get(sessionKey) ?? {
+      inFlight: false,
+      pending: false,
+      lastPushedAt: 0,
+    }
+    state.pending = true
+    if (typeof cursor === 'number' && Number.isFinite(cursor) && cursor > 0) {
+      const nextCursor = Math.floor(cursor)
+      state.latestCursor = Math.max(state.latestCursor ?? 0, nextCursor)
+    }
+    if (state.inFlight) {
+      this.sessionRuntimeDeltaPushBySession.set(sessionKey, state)
+      return
+    }
+    if (state.timer) {
+      this.sessionRuntimeDeltaPushBySession.set(sessionKey, state)
+      return
+    }
+
+    const now = Date.now()
+    const waitMs = Math.max(0, SESSION_RUNTIME_DELTA_MIN_INTERVAL_MS - (now - state.lastPushedAt))
+    if (waitMs > 0) {
+      state.timer = setTimeout(() => {
+        const nextState = this.sessionRuntimeDeltaPushBySession.get(sessionKey)
+        if (!nextState) {
+          return
+        }
+        nextState.timer = undefined
+        this.sessionRuntimeDeltaPushBySession.set(sessionKey, nextState)
+        void this.flushSessionRuntimeDeltaPush(directory, sessionID, sessionKey)
+      }, waitMs)
+      this.sessionRuntimeDeltaPushBySession.set(sessionKey, state)
+      return
+    }
+
+    this.sessionRuntimeDeltaPushBySession.set(sessionKey, state)
+    void this.flushSessionRuntimeDeltaPush(directory, sessionID, sessionKey)
+  }
+
+  private async flushSessionRuntimeDeltaPush(
+    directory: string,
+    sessionID: string,
+    sessionKey: string
+  ) {
+    const state = this.sessionRuntimeDeltaPushBySession.get(sessionKey)
+    if (!state || state.inFlight || !state.pending) {
+      return
+    }
+    if (!this.sessionRuntimeDeltaSubscribers.has(sessionKey)) {
+      this.clearSessionRuntimeDeltaState(sessionKey)
+      return
+    }
+
+    state.pending = false
+    state.inFlight = true
+    this.sessionRuntimeDeltaPushBySession.set(sessionKey, state)
+
+    try {
+      const runtime = await this.getSessionRuntimeCore(directory, sessionID)
+      if (!this.sessionRuntimeDeltaSubscribers.has(sessionKey)) {
+        return
+      }
+      this.emit({
+        type: 'opencode.session.runtime',
+        payload: {
+          directory,
+          sessionID,
+          cursor: state.latestCursor,
+          runtime,
+        },
+      })
+      state.lastPushedAt = Date.now()
+    } catch {
+      // noop: runtime snapshots are best-effort stream deltas
+    } finally {
+      const latest = this.sessionRuntimeDeltaPushBySession.get(sessionKey)
+      if (latest) {
+        latest.inFlight = false
+        this.sessionRuntimeDeltaPushBySession.set(sessionKey, latest)
+        if (!this.sessionRuntimeDeltaSubscribers.has(sessionKey)) {
+          this.clearSessionRuntimeDeltaState(sessionKey)
+        } else if (latest.pending) {
+          this.requestSessionRuntimeDeltaPush(directory, sessionID, latest.latestCursor)
+        }
+      }
+    }
+  }
+
+  async subscribeSessionRuntimeDelta(directory: string, sessionID: string) {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const sessionKey = this.sessionRuntimeDeltaKey(normalizedDirectory, sessionID)
+    this.sessionRuntimeDeltaSubscribers.add(sessionKey)
+    this.requestSessionRuntimeDeltaPush(normalizedDirectory, sessionID)
+    return true
+  }
+
+  async unsubscribeSessionRuntimeDelta(directory: string, sessionID: string) {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const sessionKey = this.sessionRuntimeDeltaKey(normalizedDirectory, sessionID)
+    this.sessionRuntimeDeltaSubscribers.delete(sessionKey)
+    this.clearSessionRuntimeDeltaState(sessionKey)
+    return true
+  }
+
+  private recordProjectReplayEvent(directory: string, event: OpencodeEvent) {
+    this.hydrateProjectReplayState(directory)
+    const nextCursor = (this.projectEventCursorByDirectory.get(directory) ?? 0) + 1
+    this.projectEventCursorByDirectory.set(directory, nextCursor)
+
+    const existing = this.projectEventReplayByDirectory.get(directory) ?? []
+    const next = [...existing, { cursor: nextCursor, event }]
+    if (next.length > PROJECT_EVENT_REPLAY_BUFFER_LIMIT) {
+      next.splice(0, next.length - PROJECT_EVENT_REPLAY_BUFFER_LIMIT)
+    }
+    this.projectEventReplayByDirectory.set(directory, next)
+    this.schedulePersistProjectReplayState(directory)
+    return nextCursor
+  }
+
+  async replayProjectEvents(directory: string, cursor = 0): Promise<ProjectEventReplay> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    this.hydrateProjectReplayState(normalizedDirectory)
+    const normalizedCursor = Number.isFinite(cursor) && cursor > 0 ? Math.floor(cursor) : 0
+    const entries = this.projectEventReplayByDirectory.get(normalizedDirectory) ?? []
+    const headCursor = this.projectEventCursorByDirectory.get(normalizedDirectory) ?? 0
+    if (entries.length === 0) {
+      return {
+        directory: normalizedDirectory,
+        cursor: headCursor,
+        events: [],
+      }
+    }
+    const oldestCursor = entries[0]?.cursor ?? headCursor
+    if (normalizedCursor > 0 && normalizedCursor < oldestCursor) {
+      throw new Error('project-event-replay-cursor-expired')
+    }
+    return {
+      directory: normalizedDirectory,
+      cursor: headCursor,
+      events: entries
+        .filter(entry => entry.cursor > normalizedCursor)
+        .map(entry => ({ cursor: entry.cursor, event: entry.event })),
+    }
+  }
+
   private startProjectStream(directory: string) {
     this.stopProjectStream()
+    this.hydrateProjectReplayState(directory)
     const abort = new AbortController()
     this.projectAbort = abort
 
@@ -2611,13 +2949,31 @@ export class OpencodeService {
               break
             }
 
+            const cursor = this.recordProjectReplayEvent(directory, event)
+            const sessionID = eventSessionIDFromOpencodeEvent(event)
+
             this.emit({
               type: 'opencode.project',
               payload: {
                 directory,
+                sessionID,
+                cursor,
                 event,
               },
             })
+
+            if (sessionID) {
+              this.emit({
+                type: 'opencode.session',
+                payload: {
+                  directory,
+                  sessionID,
+                  cursor,
+                  event,
+                },
+              })
+              this.requestSessionRuntimeDeltaPush(directory, sessionID, cursor)
+            }
           }
         } catch (error) {
           if (abort.signal.aborted) {

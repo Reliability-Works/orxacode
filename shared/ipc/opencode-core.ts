@@ -2,6 +2,7 @@ import type {
   Agent,
   Command,
   Config,
+  Event as OpencodeEvent,
   FileDiff,
   FormatterStatus,
   LspStatus,
@@ -53,6 +54,17 @@ export type ProjectRefreshCold = Pick<
   ProjectBootstrap,
   'directory' | 'path' | 'providers' | 'agents' | 'config' | 'mcp' | 'lsp' | 'formatter' | 'vcs'
 >
+
+export type ProjectEventReplayRecord = {
+  cursor: number
+  event: OpencodeEvent
+}
+
+export type ProjectEventReplay = {
+  directory: string
+  cursor: number
+  events: ProjectEventReplayRecord[]
+}
 
 export type ProjectListItem = {
   id: string

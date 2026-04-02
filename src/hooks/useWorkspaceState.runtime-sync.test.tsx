@@ -8,9 +8,11 @@ import {
   renderWorkspaceStateHook,
   resetWorkspaceStateForTests,
 } from './useWorkspaceState.test-helpers'
+import { resetPersistedOpencodeReplayCheckpointsForTests } from './opencode-replay-checkpoints'
 
 beforeEach(() => {
   resetWorkspaceStateForTests()
+  resetPersistedOpencodeReplayCheckpointsForTests()
 })
 
 it('clears stale busy status when a fresh runtime snapshot no longer confirms it', async () => {
@@ -137,6 +139,545 @@ it('falls back to full project refresh when delta refresh fails', async () => {
   expect(
     useUnifiedRuntimeStore.getState().projectDataByDirectory[directory]?.sessions.map(s => s.id)
   ).toEqual(['session-fallback'])
+})
+
+it('applies replayed project events before refresh and skips redundant runtime reloads', async () => {
+  const directory = '/repo'
+  const sessionID = 'session-replayed'
+  const now = Date.now()
+  const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) =>
+    createRuntimeSnapshot(directory, currentSessionID, [])
+  )
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      opencode: {
+        selectProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+        ),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+        ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: sessionID, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: { [sessionID]: { type: 'busy' } },
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
+        replayProjectEvents: vi.fn(async () => ({
+          directory,
+          cursor: 3,
+          events: [
+            {
+              cursor: 3,
+              event: {
+                type: 'session.idle',
+                properties: { sessionID },
+              },
+            },
+          ],
+        })),
+        createSession: vi.fn(async () => ({
+          id: 'unused',
+          slug: 'unused',
+          title: 'unused',
+          time: { created: now, updated: now },
+        })),
+        getSessionRuntime: getSessionRuntimeMock,
+        sendPrompt: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.selectProject as unknown as (
+        directory: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, { showLanding: false })
+  })
+
+  getSessionRuntimeMock.mockClear()
+
+  await act(async () => {
+    await result.current.refreshProject(directory, false)
+  })
+
+  expect(window.orxa.opencode.replayProjectEvents).toHaveBeenCalledWith(directory, 0)
+  expect(getSessionRuntimeMock).not.toHaveBeenCalled()
+})
+
+it('short-circuits background refresh delta invoke when replay already yielded events', async () => {
+  const directory = '/repo'
+  const sessionID = 'session-replayed-background'
+  const now = Date.now()
+  const refreshProjectDeltaMock = vi.fn(async () => ({
+    ...(() => {
+      const bootstrap = createProjectBootstrap(directory, [
+        { id: sessionID, time: { updated: now } },
+      ])
+      return {
+        directory,
+        sessions: bootstrap.sessions,
+        sessionStatus: bootstrap.sessionStatus,
+        permissions: bootstrap.permissions,
+        questions: bootstrap.questions,
+        commands: bootstrap.commands,
+        ptys: bootstrap.ptys,
+      }
+    })(),
+  }))
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      opencode: {
+        selectProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+        ),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+        ),
+        refreshProjectDelta: refreshProjectDeltaMock,
+        replayProjectEvents: vi.fn(async () => ({
+          directory,
+          cursor: 4,
+          events: [
+            {
+              cursor: 4,
+              event: {
+                type: 'session.idle',
+                properties: { sessionID },
+              },
+            },
+          ],
+        })),
+        createSession: vi.fn(async () => ({
+          id: 'unused',
+          slug: 'unused',
+          title: 'unused',
+          time: { created: now, updated: now },
+        })),
+        getSessionRuntime: vi.fn(async (_directory: string, currentSessionID: string) =>
+          createRuntimeSnapshot(directory, currentSessionID, [])
+        ),
+        sendPrompt: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.selectProject as unknown as (
+        directory: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, { showLanding: false })
+  })
+
+  await act(async () => {
+    await result.current.refreshProject(directory, true)
+  })
+
+  expect(window.orxa.opencode.replayProjectEvents).toHaveBeenCalledWith(directory, 0)
+  expect(refreshProjectDeltaMock).not.toHaveBeenCalled()
+})
+
+it('suppresses immediate runtime polling invokes while stream activity is fresh', async () => {
+  vi.useFakeTimers()
+  try {
+    const directory = '/repo'
+    const sessionID = 'session-stream-poll-skip'
+    const now = Date.now()
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) =>
+      createRuntimeSnapshot(directory, currentSessionID, [])
+    )
+
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProjectDelta: vi.fn(async () => ({
+            ...(() => {
+              const bootstrap = createProjectBootstrap(directory, [
+                { id: sessionID, time: { updated: now } },
+              ])
+              return {
+                directory,
+                sessions: bootstrap.sessions,
+                sessionStatus: bootstrap.sessionStatus,
+                permissions: bootstrap.permissions,
+                questions: bootstrap.questions,
+                commands: bootstrap.commands,
+                ptys: bootstrap.ptys,
+              }
+            })(),
+          })),
+          replayProjectEvents: vi.fn(async () => ({
+            directory,
+            cursor: 0,
+            events: [],
+          })),
+          createSession: vi.fn(async () => ({
+            id: sessionID,
+            slug: sessionID,
+            title: sessionID,
+            time: { created: now, updated: now },
+          })),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    })
+
+    const { result } = renderWorkspaceStateHook()
+
+    await act(async () => {
+      await (
+        result.current.selectProject as unknown as (
+          directory: string,
+          options?: unknown
+        ) => Promise<void>
+      )(directory, { showLanding: false, sessionID })
+    })
+
+    await act(async () => {
+      await result.current.selectSession(sessionID, directory)
+    })
+
+    getSessionRuntimeMock.mockClear()
+
+    await act(async () => {
+      result.current.startResponsePolling(directory, sessionID)
+    })
+
+    await act(async () => {
+      result.current.applyOpencodeStreamEvent(directory, {
+        type: 'session.status',
+        properties: {
+          sessionID,
+          status: { type: 'busy' },
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(750)
+    })
+
+    expect(getSessionRuntimeMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      result.current.stopResponsePolling()
+    })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('completes polling lifecycle directly from terminal stream status events', async () => {
+  vi.useFakeTimers()
+  try {
+    const directory = '/repo'
+    const sessionID = 'session-stream-terminal-complete'
+    const now = Date.now()
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) =>
+      createRuntimeSnapshot(directory, currentSessionID, [])
+    )
+
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProjectDelta: vi.fn(async () => ({
+            ...(() => {
+              const bootstrap = createProjectBootstrap(directory, [
+                { id: sessionID, time: { updated: now } },
+              ])
+              return {
+                directory,
+                sessions: bootstrap.sessions,
+                sessionStatus: bootstrap.sessionStatus,
+                permissions: bootstrap.permissions,
+                questions: bootstrap.questions,
+                commands: bootstrap.commands,
+                ptys: bootstrap.ptys,
+              }
+            })(),
+          })),
+          replayProjectEvents: vi.fn(async () => ({
+            directory,
+            cursor: 0,
+            events: [],
+          })),
+          createSession: vi.fn(async () => ({
+            id: sessionID,
+            slug: sessionID,
+            title: sessionID,
+            time: { created: now, updated: now },
+          })),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    })
+
+    const { result } = renderWorkspaceStateHook()
+
+    await act(async () => {
+      await (
+        result.current.selectProject as unknown as (
+          directory: string,
+          options?: unknown
+        ) => Promise<void>
+      )(directory, { showLanding: false, sessionID })
+    })
+
+    await act(async () => {
+      await result.current.selectSession(sessionID, directory)
+    })
+
+    getSessionRuntimeMock.mockClear()
+
+    await act(async () => {
+      result.current.startResponsePolling(directory, sessionID)
+    })
+
+    await act(async () => {
+      result.current.applyOpencodeStreamEvent(directory, {
+        type: 'session.idle',
+        properties: {
+          sessionID,
+        },
+      })
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000)
+    })
+
+    expect(getSessionRuntimeMock).not.toHaveBeenCalled()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('backs off fallback polling cadence when stream remains quiet', async () => {
+  vi.useFakeTimers()
+  try {
+    const directory = '/repo'
+    const sessionID = 'session-poll-backoff'
+    const now = Date.now()
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) => ({
+      ...createRuntimeSnapshot(directory, currentSessionID, []),
+      sessionStatus: { type: 'busy' },
+    }))
+
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProjectDelta: vi.fn(async () => ({
+            ...(() => {
+              const bootstrap = createProjectBootstrap(directory, [
+                { id: sessionID, time: { updated: now } },
+              ])
+              return {
+                directory,
+                sessions: bootstrap.sessions,
+                sessionStatus: { [sessionID]: { type: 'busy' } },
+                permissions: bootstrap.permissions,
+                questions: bootstrap.questions,
+                commands: bootstrap.commands,
+                ptys: bootstrap.ptys,
+              }
+            })(),
+          })),
+          replayProjectEvents: vi.fn(async () => ({
+            directory,
+            cursor: 0,
+            events: [],
+          })),
+          createSession: vi.fn(async () => ({
+            id: sessionID,
+            slug: sessionID,
+            title: sessionID,
+            time: { created: now, updated: now },
+          })),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    })
+
+    const { result } = renderWorkspaceStateHook()
+
+    await act(async () => {
+      await (
+        result.current.selectProject as unknown as (
+          directory: string,
+          options?: unknown
+        ) => Promise<void>
+      )(directory, { showLanding: false, sessionID })
+    })
+
+    await act(async () => {
+      await result.current.selectSession(sessionID, directory)
+    })
+
+    getSessionRuntimeMock.mockClear()
+
+    await act(async () => {
+      result.current.startResponsePolling(directory, sessionID)
+    })
+
+    for (let step = 0; step < 12 && getSessionRuntimeMock.mock.calls.length === 0; step += 1) {
+      await act(async () => {
+        vi.advanceTimersByTime(300)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+    }
+    const firstCallCount = getSessionRuntimeMock.mock.calls.length
+    expect(firstCallCount).toBeGreaterThanOrEqual(1)
+
+    await act(async () => {
+      vi.advanceTimersByTime(900)
+      await Promise.resolve()
+    })
+    expect(getSessionRuntimeMock).toHaveBeenCalledTimes(firstCallCount)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('defers the first fallback runtime poll until quiet-window budget elapses', async () => {
+  vi.useFakeTimers()
+  try {
+    const directory = '/repo'
+    const sessionID = 'session-first-poll-quiet-window'
+    const now = Date.now()
+    const getSessionRuntimeMock = vi.fn(async (_directory: string, currentSessionID: string) => ({
+      ...createRuntimeSnapshot(directory, currentSessionID, []),
+      sessionStatus: { type: 'busy' },
+    }))
+
+    Object.defineProperty(window, 'orxa', {
+      configurable: true,
+      value: {
+        opencode: {
+          selectProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProject: vi.fn(async () =>
+            createProjectBootstrap(directory, [{ id: sessionID, time: { updated: now } }])
+          ),
+          refreshProjectDelta: vi.fn(async () => ({
+            ...(() => {
+              const bootstrap = createProjectBootstrap(directory, [
+                { id: sessionID, time: { updated: now } },
+              ])
+              return {
+                directory,
+                sessions: bootstrap.sessions,
+                sessionStatus: { [sessionID]: { type: 'busy' } },
+                permissions: bootstrap.permissions,
+                questions: bootstrap.questions,
+                commands: bootstrap.commands,
+                ptys: bootstrap.ptys,
+              }
+            })(),
+          })),
+          replayProjectEvents: vi.fn(async () => ({
+            directory,
+            cursor: 0,
+            events: [],
+          })),
+          createSession: vi.fn(async () => ({
+            id: sessionID,
+            slug: sessionID,
+            title: sessionID,
+            time: { created: now, updated: now },
+          })),
+          getSessionRuntime: getSessionRuntimeMock,
+          sendPrompt: vi.fn(async () => true),
+        },
+      },
+    })
+
+    const { result } = renderWorkspaceStateHook()
+
+    await act(async () => {
+      await (
+        result.current.selectProject as unknown as (
+          directory: string,
+          options?: unknown
+        ) => Promise<void>
+      )(directory, { showLanding: false, sessionID })
+    })
+
+    await act(async () => {
+      await result.current.selectSession(sessionID, directory)
+    })
+
+    getSessionRuntimeMock.mockClear()
+
+    await act(async () => {
+      result.current.startResponsePolling(directory, sessionID)
+    })
+
+    await act(async () => {
+      vi.advanceTimersByTime(1_000)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(getSessionRuntimeMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(500)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(getSessionRuntimeMock.mock.calls.length).toBeGreaterThanOrEqual(1)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 it('refreshes messages immediately after sending the initial prompt for a new session', async () => {

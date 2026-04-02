@@ -74,6 +74,7 @@ import { useAppCoreAwaitingInput } from './app-core-awaiting-input'
 import { useAppCoreBootstrap } from './app-core-bootstrap'
 import { useAppCoreDiagnostics } from './app-core-debug'
 import { useAppCoreBrowser } from './app-core-browser'
+import { shouldHideBrowserViewForPendingInput } from './app-core-browser-visibility'
 import { createSessionAction } from './app-core-session'
 import { useAppCoreSidebarResize } from './app-core-sidebar-resize'
 import { useAppCoreTerminal } from './app-core-terminal'
@@ -607,6 +608,7 @@ export default function App() {
     refreshMessages,
     selectSession: selectSessionRaw,
     createSession: createWorkspaceSession,
+    applyRuntimeSnapshot,
     applyOpencodeStreamEvent,
     queueRefresh,
     startResponsePolling,
@@ -2000,12 +2002,21 @@ export default function App() {
     setDebugLogs,
     setRuntime,
     setStatusLine,
+    openSettings: () => setSettingsOpen(true),
+    toggleWorkspaceSidebar: () => setProjectsSidebarVisible(current => !current),
+    toggleOperationsSidebar: () =>
+      setAppPreferences(current => ({
+        ...current,
+        showOperationsPane: !current.showOperationsPane,
+      })),
+    toggleBrowserSidebar: () => setBrowserSidebarOpen(current => !current),
     setBrowserRuntimeState,
     setBrowserHistoryItems,
     setBrowserActionRunning,
     setMcpDevToolsState,
     handleUpdaterTelemetry,
     bootstrap,
+    applyRuntimeSnapshot,
     applyOpencodeStreamEvent,
     activeProjectDir,
     activeSessionID,
@@ -3023,12 +3034,27 @@ export default function App() {
     setStatusLine,
   })
 
-  // Hide BrowserView when permission/question modals are open
+  // Hide BrowserView whenever an active pending approval/question dock is shown.
+  // This prevents BrowserView from intercepting clicks intended for dock actions.
   useEffect(() => {
-    if (pendingPermission || pendingQuestion) {
+    const hasPendingInputDock = shouldHideBrowserViewForPendingInput({
+      pendingPermission,
+      pendingQuestion,
+      dockPendingPermission,
+      dockPendingQuestion,
+    })
+    if (hasPendingInputDock) {
       void window.orxa.browser.setVisible(false).catch(() => {})
+      return
     }
-  }, [pendingPermission, pendingQuestion])
+    void window.orxa.browser.setVisible(browserPaneVisible).catch(() => {})
+  }, [
+    browserPaneVisible,
+    dockPendingPermission,
+    dockPendingQuestion,
+    pendingPermission,
+    pendingQuestion,
+  ])
 
   const workspaceClassName = [
     'workspace',

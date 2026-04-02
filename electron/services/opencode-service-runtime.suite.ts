@@ -4,6 +4,7 @@ import {
   buildManagedRuntimeConfigOverride,
   buildManagedServerEnv,
   compareOpencodeVersions,
+  eventSessionIDFromOpencodeEvent,
   OpencodeService,
   pickLatestManagedOpencodeBinary,
   resolveManagedServerLaunchPort,
@@ -163,6 +164,129 @@ describe('OpencodeService refreshProjectDelta', () => {
   })
 })
 
+describe('OpencodeService replayProjectEvents', () => {
+  it('returns buffered project events after the requested cursor', async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      replayProjectEvents: (
+        directory: string,
+        cursor?: number
+      ) => Promise<{
+        directory: string
+        cursor: number
+        events: Array<{ cursor: number; event: { type: string } }>
+      }>
+      ensureWorkspaceDirectory: (directory: string) => string
+      projectEventCursorByDirectory: Map<string, number>
+      projectEventReplayByDirectory: Map<string, Array<{ cursor: number; event: { type: string } }>>
+      projectEventReplayHydratedDirectories: Set<string>
+    }
+
+    service.ensureWorkspaceDirectory = directory => directory
+    service.projectEventCursorByDirectory = new Map([['/repo', 5]])
+    service.projectEventReplayByDirectory = new Map([
+      [
+        '/repo',
+        [
+          { cursor: 3, event: { type: 'session.updated' } },
+          { cursor: 4, event: { type: 'message.updated' } },
+          { cursor: 5, event: { type: 'session.idle' } },
+        ],
+      ],
+    ])
+    service.projectEventReplayHydratedDirectories = new Set(['/repo'])
+
+    const replay = await service.replayProjectEvents('/repo', 3)
+
+    expect(replay).toEqual({
+      directory: '/repo',
+      cursor: 5,
+      events: [
+        { cursor: 4, event: { type: 'message.updated' } },
+        { cursor: 5, event: { type: 'session.idle' } },
+      ],
+    })
+  })
+
+  it('fails when requested cursor is older than buffered range', async () => {
+    const service = Object.create(OpencodeService.prototype) as {
+      replayProjectEvents: (directory: string, cursor?: number) => Promise<unknown>
+      ensureWorkspaceDirectory: (directory: string) => string
+      projectEventCursorByDirectory: Map<string, number>
+      projectEventReplayByDirectory: Map<string, Array<{ cursor: number; event: { type: string } }>>
+      projectEventReplayHydratedDirectories: Set<string>
+    }
+
+    service.ensureWorkspaceDirectory = directory => directory
+    service.projectEventCursorByDirectory = new Map([['/repo', 10]])
+    service.projectEventReplayByDirectory = new Map([
+      [
+        '/repo',
+        [
+          { cursor: 8, event: { type: 'session.updated' } },
+          { cursor: 9, event: { type: 'message.updated' } },
+          { cursor: 10, event: { type: 'session.idle' } },
+        ],
+      ],
+    ])
+    service.projectEventReplayHydratedDirectories = new Set(['/repo'])
+
+    await expect(service.replayProjectEvents('/repo', 7)).rejects.toThrow(
+      'project-event-replay-cursor-expired'
+    )
+  })
+
+  it('hydrates persisted replay state when in-memory replay ring is empty', async () => {
+    const getBinding = vi.fn(() => ({
+      provider: 'opencode',
+      sessionKey: 'opencode::/repo::__project-stream-events__',
+      status: 'running',
+      resumeCursor: { directory: '/repo', cursor: 6 },
+      runtimePayload: {
+        cursor: 6,
+        events: [
+          { cursor: 5, event: { type: 'message.updated', properties: { sessionID: 'session-1' } } },
+          { cursor: 6, event: { type: 'session.idle', properties: { sessionID: 'session-1' } } },
+        ],
+      },
+      updatedAt: new Date().toISOString(),
+    }))
+
+    const service = Object.create(OpencodeService.prototype) as {
+      replayProjectEvents: (
+        directory: string,
+        cursor?: number
+      ) => Promise<{
+        directory: string
+        cursor: number
+        events: Array<{ cursor: number; event: { type: string } }>
+      }>
+      ensureWorkspaceDirectory: (directory: string) => string
+      projectEventCursorByDirectory: Map<string, number>
+      projectEventReplayByDirectory: Map<string, Array<{ cursor: number; event: { type: string } }>>
+      projectEventReplayHydratedDirectories: Set<string>
+      providerSessionDirectory: { getBinding: ReturnType<typeof vi.fn> }
+    }
+
+    service.ensureWorkspaceDirectory = directory => directory
+    service.projectEventCursorByDirectory = new Map()
+    service.projectEventReplayByDirectory = new Map()
+    service.projectEventReplayHydratedDirectories = new Set()
+    service.providerSessionDirectory = { getBinding }
+
+    const replay = await service.replayProjectEvents('/repo', 4)
+
+    expect(getBinding).toHaveBeenCalledTimes(1)
+    expect(replay).toEqual({
+      directory: '/repo',
+      cursor: 6,
+      events: [
+        { cursor: 5, event: { type: 'message.updated', properties: { sessionID: 'session-1' } } },
+        { cursor: 6, event: { type: 'session.idle', properties: { sessionID: 'session-1' } } },
+      ],
+    })
+  })
+})
+
 describe('OpencodeService runtime dependency detection', () => {
   it('marks opencode installed when shell fallback succeeds', async () => {
     const service = Object.create(OpencodeService.prototype) as {
@@ -207,6 +331,31 @@ describe('OpencodeService runtime dependency detection', () => {
     const opencode = report.dependencies.find(item => item.key === 'opencode')
 
     expect(opencode?.installed).toBe(false)
+  })
+})
+
+describe('eventSessionIDFromOpencodeEvent', () => {
+  it('extracts sessionID from stream event properties', () => {
+    const sessionID = eventSessionIDFromOpencodeEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'session-123',
+        status: { type: 'busy' },
+      },
+    } as unknown as Parameters<typeof eventSessionIDFromOpencodeEvent>[0])
+
+    expect(sessionID).toBe('session-123')
+  })
+
+  it('returns undefined when stream event has no sessionID', () => {
+    const sessionID = eventSessionIDFromOpencodeEvent({
+      type: 'project.updated',
+      properties: {
+        directory: '/repo',
+      },
+    } as unknown as Parameters<typeof eventSessionIDFromOpencodeEvent>[0])
+
+    expect(sessionID).toBeUndefined()
   })
 })
 

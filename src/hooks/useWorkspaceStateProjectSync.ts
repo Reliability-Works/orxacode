@@ -27,6 +27,10 @@ import { useWorkspaceQueuedRefresh } from './useWorkspaceQueuedRefresh'
 import type { SetMessages, SetProjectData, UnifiedRuntimeState } from './useWorkspaceState-store'
 import { measurePerf, reportPerf } from '../lib/performance'
 import { persistProjectSessions } from '../state/unified-runtime-store-helpers'
+import {
+  getPersistedOpencodeReplayCheckpoint,
+  setPersistedOpencodeReplayCheckpoint,
+} from './opencode-replay-checkpoints'
 
 type UseWorkspaceStateProjectSyncArgs = {
   activeProjectDir?: string
@@ -66,6 +70,9 @@ const BACKGROUND_REFRESH_COOLDOWN_MS = 1_500
 const RUNTIME_EXTRAS_REUSE_WINDOW_MS = 12_000
 const PROJECT_COLD_REFRESH_REUSE_WINDOW_MS = 45_000
 const MAX_STREAM_EVENT_BATCH_SIZE = 100
+const RESPONSE_POLL_INTERVAL_MS = 700
+const STREAM_POLL_SKIP_WINDOW_MS = 1_200
+const MAX_FALLBACK_POLL_INTERVAL_MS = 2_800
 
 function computeLastUpdated(sessions: Array<{ time: { updated: number } }>) {
   return sessions.reduce((max, session) => Math.max(max, session.time.updated), 0)
@@ -82,6 +89,63 @@ function getStaleBusySessionIDs(
       const statusType = sessionStatus[sessionID]?.type
       return statusType === 'busy' || statusType === 'retry'
     })
+}
+
+function isRunningSessionStatus(statusType: string | undefined) {
+  const normalized = (statusType ?? '').toLowerCase()
+  return (
+    normalized.includes('busy') || normalized.includes('running') || normalized.includes('retry')
+  )
+}
+
+function hasAssistantOutputInStreamEvent(event: OpencodeEvent) {
+  const properties =
+    event.properties && typeof event.properties === 'object'
+      ? (event.properties as Record<string, unknown>)
+      : undefined
+  if (!properties) {
+    return false
+  }
+  const info = properties.info
+  if (info && typeof info === 'object' && (info as { role?: unknown }).role === 'assistant') {
+    return true
+  }
+  const message = properties.message
+  if (
+    message &&
+    typeof message === 'object' &&
+    (message as { info?: { role?: unknown } }).info?.role === 'assistant'
+  ) {
+    return true
+  }
+  return false
+}
+
+function streamEventStatusType(event: OpencodeEvent) {
+  if (event.type === 'session.idle') {
+    return 'idle'
+  }
+  if (event.type === 'session.error') {
+    return 'error'
+  }
+  if (event.type !== 'session.status') {
+    return undefined
+  }
+  const properties =
+    event.properties && typeof event.properties === 'object'
+      ? (event.properties as Record<string, unknown>)
+      : undefined
+  const status =
+    properties?.status && typeof properties.status === 'object'
+      ? (properties.status as { type?: unknown })
+      : undefined
+  return typeof status?.type === 'string' ? status.type : undefined
+}
+
+function nextFallbackPollDelayMs(consecutiveFallbackPolls: number) {
+  const normalizedCount = Math.max(0, consecutiveFallbackPolls)
+  const exponentialDelay = RESPONSE_POLL_INTERVAL_MS * 2 ** normalizedCount
+  return Math.min(MAX_FALLBACK_POLL_INTERVAL_MS, exponentialDelay)
 }
 
 function mergeExecutionLedgerReplay(
@@ -139,6 +203,30 @@ function mergeChangeProvenanceReplay(
     cursor: Math.max(existing.cursor, replay.cursor),
     records: mergedRecords,
   }
+}
+
+function mergeReplayCheckpoint(
+  directory: string,
+  replayCursor: number,
+  sessionCursors: Record<string, number>
+) {
+  const existing = getPersistedOpencodeReplayCheckpoint(directory)
+  const mergedSessionCursors = { ...existing.sessionCursors }
+  for (const [sessionID, cursor] of Object.entries(sessionCursors)) {
+    const normalizedCursor = Number.isFinite(cursor) ? Math.floor(cursor) : 0
+    if (normalizedCursor <= 0) {
+      continue
+    }
+    mergedSessionCursors[sessionID] = Math.max(
+      mergedSessionCursors[sessionID] ?? 0,
+      normalizedCursor
+    )
+  }
+  const normalizedReplayCursor = Number.isFinite(replayCursor) ? Math.floor(replayCursor) : 0
+  setPersistedOpencodeReplayCheckpoint(directory, {
+    cursor: Math.max(existing.cursor, normalizedReplayCursor, 0),
+    sessionCursors: mergedSessionCursors,
+  })
 }
 
 function resolveNextSessionID(
@@ -441,6 +529,7 @@ function useWorkspaceRefreshActions({
   setActiveSessionID,
   setMessages,
   projection,
+  applyOpencodeStreamEvent,
 }: {
   activeProjectDir?: string
   activeSessionID?: string
@@ -450,6 +539,7 @@ function useWorkspaceRefreshActions({
   setActiveSessionID: (sessionID: string | undefined) => void
   setMessages: SetMessages
   projection: ReturnType<typeof useWorkspaceRuntimeProjection>
+  applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent, cursor?: number) => void
 }) {
   const runtimeLoadInFlightRef = useRef(new Map<string, Promise<RuntimeSnapshot | undefined>>())
   const projectRefreshInFlightRef = useRef(new Map<string, Promise<ProjectBootstrap>>())
@@ -506,8 +596,39 @@ function useWorkspaceRefreshActions({
         try {
           const cachedProject = getRuntimeState().projectDataByDirectory[directory]
           const canUseDeltaRefresh = Boolean(cachedProject)
+          const replayedSessionIDs = new Set<string>()
+          let replayedEventCount = 0
           if (canUseDeltaRefresh && !projectColdRefreshLastAtRef.current.has(directory)) {
             projectColdRefreshLastAtRef.current.set(directory, Date.now())
+          }
+
+          if (canUseDeltaRefresh && window.orxa.opencode.replayProjectEvents) {
+            const replayCheckpoint = getPersistedOpencodeReplayCheckpoint(directory)
+            const replayCursor = Math.max(0, replayCheckpoint.cursor)
+            try {
+              const replay = await window.orxa.opencode.replayProjectEvents(directory, replayCursor)
+              const replaySessionCursors: Record<string, number> = {}
+              if (replay.events.length > 0) {
+                for (const entry of replay.events) {
+                  applyOpencodeStreamEvent(directory, entry.event, entry.cursor)
+                  replayedEventCount += 1
+                  const replaySessionID = extractEventSessionID(entry.event)
+                  if (replaySessionID) {
+                    replayedSessionIDs.add(replaySessionID)
+                    replaySessionCursors[replaySessionID] = Math.max(
+                      replaySessionCursors[replaySessionID] ?? 0,
+                      entry.cursor
+                    )
+                  }
+                }
+              }
+              mergeReplayCheckpoint(directory, replay.cursor, replaySessionCursors)
+            } catch {
+              setPersistedOpencodeReplayCheckpoint(directory, {
+                cursor: 0,
+                sessionCursors: replayCheckpoint.sessionCursors,
+              })
+            }
           }
 
           const refreshMetricBase = {
@@ -521,8 +642,23 @@ function useWorkspaceRefreshActions({
           }
 
           let usedDeltaRefresh = false
+          let replayOnlyRefresh = false
           let merged: ProjectBootstrap
-          if (canUseDeltaRefresh) {
+          if (canUseDeltaRefresh && skipMessageLoad && replayedEventCount > 0) {
+            const replayProjected = getRuntimeState().projectDataByDirectory[directory]
+            if (replayProjected) {
+              merged = replayProjected
+              usedDeltaRefresh = true
+              replayOnlyRefresh = true
+            } else {
+              merged = projection.commitProjectData(
+                directory,
+                (await measurePerf(refreshMetricBase, () =>
+                  window.orxa.opencode.refreshProject(directory)
+                )) as ProjectBootstrap
+              )
+            }
+          } else if (canUseDeltaRefresh) {
             try {
               const delta = (await measurePerf(refreshMetricBase, () =>
                 window.orxa.opencode.refreshProjectDelta(directory)
@@ -553,6 +689,7 @@ function useWorkspaceRefreshActions({
           const lastColdRefreshedAt = projectColdRefreshLastAtRef.current.get(directory) ?? 0
           const shouldRefreshCold =
             usedDeltaRefresh &&
+            !replayOnlyRefresh &&
             Boolean(window.orxa.opencode.refreshProjectCold) &&
             (!skipMessageLoad ||
               Date.now() - lastColdRefreshedAt > PROJECT_COLD_REFRESH_REUSE_WINDOW_MS)
@@ -593,16 +730,21 @@ function useWorkspaceRefreshActions({
           projection.syncTerminalTabs(merged.ptys)
 
           if (nextSessionID && !skipMessageLoad) {
-            const latest = await loadRuntimeForSession(directory, nextSessionID, {
-              reuseWindowMs: 900,
-            })
-            if (latest && getRuntimeState().activeSessionID === nextSessionID) {
-              projection.applyRuntimeSnapshot(directory, nextSessionID, latest)
+            if (!replayedSessionIDs.has(nextSessionID)) {
+              const latest = await loadRuntimeForSession(directory, nextSessionID, {
+                reuseWindowMs: 900,
+              })
+              if (latest && getRuntimeState().activeSessionID === nextSessionID) {
+                projection.applyRuntimeSnapshot(directory, nextSessionID, latest)
+              }
             }
           }
 
           for (const busySessionID of staleBusySessionIDs) {
             if (busySessionID === nextSessionID && !skipMessageLoad) {
+              continue
+            }
+            if (replayedSessionIDs.has(busySessionID)) {
               continue
             }
             void loadRuntimeForSession(directory, busySessionID, { reuseWindowMs: 900 }).then(
@@ -629,6 +771,7 @@ function useWorkspaceRefreshActions({
       return refreshPromise
     },
     [
+      applyOpencodeStreamEvent,
       getRuntimeState,
       loadRuntimeForSession,
       projection,
@@ -705,34 +848,237 @@ function useWorkspaceResponsePolling({
   projection: ReturnType<typeof useWorkspaceRuntimeProjection>
 }) {
   const responsePollTimer = useRef<number | undefined>(undefined)
+  const pollingTokenRef = useRef(0)
+  const activePollingRef = useRef<
+    | {
+        directory: string
+        sessionID: string
+        token: number
+      }
+    | undefined
+  >(undefined)
   const promptLifecycleRef = useRef<
     Record<
       string,
-      { startedAt: number; firstEventRecorded: boolean; firstAssistantRecorded: boolean }
+      {
+        startedAt: number
+        firstEventRecorded: boolean
+        firstAssistantRecorded: boolean
+        lastStreamEventAt?: number
+        consecutiveFallbackPolls: number
+      }
     >
   >({})
 
+  const isActivePollingTarget = useCallback(
+    (directory: string, sessionID: string, token: number) => {
+      const current = activePollingRef.current
+      return (
+        current?.directory === directory &&
+        current?.sessionID === sessionID &&
+        current?.token === token
+      )
+    },
+    []
+  )
+
   const stopResponsePolling = useCallback(() => {
+    const active = activePollingRef.current
     if (responsePollTimer.current) {
       window.clearTimeout(responsePollTimer.current)
       responsePollTimer.current = undefined
     }
+    pollingTokenRef.current += 1
+    activePollingRef.current = undefined
+    if (active && window.orxa.opencode.unsubscribeSessionRuntimeDelta) {
+      void window.orxa.opencode
+        .unsubscribeSessionRuntimeDelta(active.directory, active.sessionID)
+        .catch(() => undefined)
+    }
   }, [])
+
+  const getLiveSessionStatusType = useCallback(
+    (directory: string, sessionID: string) => {
+      const state = getRuntimeState()
+      const runtimeSessionKey = makeUnifiedSessionKey('opencode', directory, sessionID)
+      const runtimeStatus = state.opencodeSessions[runtimeSessionKey]?.runtimeSnapshot
+        ?.sessionStatus as { type?: string } | undefined
+      const projectStatus = state.projectDataByDirectory[directory]?.sessionStatus?.[sessionID] as
+        | { type?: string }
+        | undefined
+      return runtimeStatus?.type ?? projectStatus?.type
+    },
+    [getRuntimeState]
+  )
+
+  const maybeReportFirstAssistantFromStore = useCallback(
+    (directory: string, sessionID: string, lifecycleKey: string) => {
+      const lifecycle = promptLifecycleRef.current[lifecycleKey]
+      if (!lifecycle || lifecycle.firstAssistantRecorded) {
+        return
+      }
+      const state = getRuntimeState()
+      const runtimeSessionKey = makeUnifiedSessionKey('opencode', directory, sessionID)
+      const messages = state.opencodeSessions[runtimeSessionKey]?.messages ?? []
+      if (!messages.some(message => message.info.role === 'assistant')) {
+        return
+      }
+      lifecycle.firstAssistantRecorded = true
+      reportPerf({
+        surface: 'session',
+        metric: 'prompt.first_assistant_output_ms',
+        kind: 'span',
+        value: performance.now() - lifecycle.startedAt,
+        unit: 'ms',
+        process: 'renderer',
+        component: 'workspace-response-polling',
+        workspaceHash: directory,
+        sessionHash: sessionID,
+      })
+    },
+    [getRuntimeState]
+  )
+
+  const completePromptLifecycle = useCallback(
+    (directory: string, sessionID: string, lifecycleKey: string) => {
+      const lifecycle = promptLifecycleRef.current[lifecycleKey]
+      if (!lifecycle) {
+        return false
+      }
+      maybeReportFirstAssistantFromStore(directory, sessionID, lifecycleKey)
+      reportPerf({
+        surface: 'session',
+        metric: 'prompt.complete_ms',
+        kind: 'span',
+        value: performance.now() - lifecycle.startedAt,
+        unit: 'ms',
+        process: 'renderer',
+        component: 'workspace-response-polling',
+        workspaceHash: directory,
+        sessionHash: sessionID,
+      })
+      delete promptLifecycleRef.current[lifecycleKey]
+      stopResponsePolling()
+      return true
+    },
+    [maybeReportFirstAssistantFromStore, stopResponsePolling]
+  )
+
+  const maybeFinalizePromptLifecycle = useCallback(
+    (directory: string, sessionID: string, lifecycleKey: string) => {
+      const lifecycle = promptLifecycleRef.current[lifecycleKey]
+      if (!lifecycle) {
+        return false
+      }
+      const statusType = getLiveSessionStatusType(directory, sessionID)
+      const hasRunningStatus = isRunningSessionStatus(statusType)
+      if (hasRunningStatus) {
+        return false
+      }
+      return completePromptLifecycle(directory, sessionID, lifecycleKey)
+    },
+    [completePromptLifecycle, getLiveSessionStatusType]
+  )
+
+  const observeStreamEvent = useCallback(
+    (directory: string, event: OpencodeEvent) => {
+      const sessionID = extractEventSessionID(event)
+      if (!sessionID) {
+        return
+      }
+      const lifecycleKey = `${directory}::${sessionID}`
+      const lifecycle = promptLifecycleRef.current[lifecycleKey]
+      if (!lifecycle) {
+        return
+      }
+      lifecycle.lastStreamEventAt = performance.now()
+      lifecycle.consecutiveFallbackPolls = 0
+      if (!lifecycle.firstEventRecorded) {
+        lifecycle.firstEventRecorded = true
+        reportPerf({
+          surface: 'session',
+          metric: 'prompt.first_event_ms',
+          kind: 'span',
+          value: performance.now() - lifecycle.startedAt,
+          unit: 'ms',
+          process: 'renderer',
+          component: 'workspace-response-polling',
+          workspaceHash: directory,
+          sessionHash: sessionID,
+        })
+      }
+      if (!lifecycle.firstAssistantRecorded && hasAssistantOutputInStreamEvent(event)) {
+        lifecycle.firstAssistantRecorded = true
+        reportPerf({
+          surface: 'session',
+          metric: 'prompt.first_assistant_output_ms',
+          kind: 'span',
+          value: performance.now() - lifecycle.startedAt,
+          unit: 'ms',
+          process: 'renderer',
+          component: 'workspace-response-polling',
+          workspaceHash: directory,
+          sessionHash: sessionID,
+        })
+      }
+      const statusType = streamEventStatusType(event)
+      if (statusType && !isRunningSessionStatus(statusType)) {
+        void completePromptLifecycle(directory, sessionID, lifecycleKey)
+      }
+    },
+    [completePromptLifecycle]
+  )
 
   const startResponsePolling = useCallback(
     (directory: string, sessionID: string) => {
       stopResponsePolling()
+      const token = pollingTokenRef.current + 1
+      pollingTokenRef.current = token
+      activePollingRef.current = { directory, sessionID, token }
+      if (window.orxa.opencode.subscribeSessionRuntimeDelta) {
+        void window.orxa.opencode
+          .subscribeSessionRuntimeDelta(directory, sessionID)
+          .catch(() => undefined)
+      }
       const lifecycleKey = `${directory}::${sessionID}`
       promptLifecycleRef.current[lifecycleKey] = {
         startedAt: performance.now(),
         firstEventRecorded: false,
         firstAssistantRecorded: false,
+        lastStreamEventAt: performance.now(),
+        consecutiveFallbackPolls: 0,
       }
-      const poll = () => {
+      const poll = (delayMs = RESPONSE_POLL_INTERVAL_MS) => {
         responsePollTimer.current = window.setTimeout(() => {
+          if (!isActivePollingTarget(directory, sessionID, token)) {
+            return
+          }
           const state = getRuntimeState()
           if (state.activeWorkspaceDirectory !== directory || state.activeSessionID !== sessionID) {
             stopResponsePolling()
+            return
+          }
+          const lifecycle = promptLifecycleRef.current[lifecycleKey]
+          const sinceLastStreamEvent =
+            lifecycle?.lastStreamEventAt !== undefined
+              ? performance.now() - lifecycle.lastStreamEventAt
+              : Number.POSITIVE_INFINITY
+          if (sinceLastStreamEvent <= STREAM_POLL_SKIP_WINDOW_MS) {
+            if (lifecycle) {
+              lifecycle.consecutiveFallbackPolls = 0
+            }
+            maybeReportFirstAssistantFromStore(directory, sessionID, lifecycleKey)
+            if (
+              lifecycle?.firstEventRecorded &&
+              maybeFinalizePromptLifecycle(directory, sessionID, lifecycleKey)
+            ) {
+              return
+            }
+            const remainingQuietWindow = Math.max(
+              80,
+              Math.ceil(STREAM_POLL_SKIP_WINDOW_MS - sinceLastStreamEvent + 16)
+            )
+            poll(remainingQuietWindow)
             return
           }
           void measurePerf(
@@ -750,6 +1096,9 @@ function useWorkspaceResponsePolling({
             () => loadOpencodeRuntimeSnapshot(directory, sessionID, { reuseWindowMs: 900 })
           )
             .then(runtime => {
+              if (!isActivePollingTarget(directory, sessionID, token)) {
+                return
+              }
               reportPerf({
                 surface: 'background',
                 metric: 'background.poll_count',
@@ -796,43 +1145,42 @@ function useWorkspaceResponsePolling({
                   sessionHash: sessionID,
                 })
               }
-              const sessionStatusType = (
-                (runtime.sessionStatus as { type?: string } | undefined)?.type ?? ''
-              ).toLowerCase()
+              const runtimeSessionStatusType = (
+                runtime.sessionStatus as { type?: string } | undefined
+              )?.type
               const shouldContinue =
-                merged.length === 0 ||
-                sessionStatusType.includes('busy') ||
-                sessionStatusType.includes('running') ||
-                sessionStatusType.includes('retry')
+                merged.length === 0 || isRunningSessionStatus(runtimeSessionStatusType)
               if (shouldContinue) {
-                poll()
+                const nextLifecycle = promptLifecycleRef.current[lifecycleKey]
+                const nextConsecutiveFallbackPolls =
+                  (nextLifecycle?.consecutiveFallbackPolls ?? 0) + 1
+                if (nextLifecycle) {
+                  nextLifecycle.consecutiveFallbackPolls = nextConsecutiveFallbackPolls
+                }
+                poll(nextFallbackPollDelayMs(nextConsecutiveFallbackPolls))
                 return
               }
-              if (lifecycle) {
-                reportPerf({
-                  surface: 'session',
-                  metric: 'prompt.complete_ms',
-                  kind: 'span',
-                  value: performance.now() - lifecycle.startedAt,
-                  unit: 'ms',
-                  process: 'renderer',
-                  component: 'workspace-response-polling',
-                  workspaceHash: directory,
-                  sessionHash: sessionID,
-                })
-                delete promptLifecycleRef.current[lifecycleKey]
-              }
-              stopResponsePolling()
+              void maybeFinalizePromptLifecycle(directory, sessionID, lifecycleKey)
             })
             .catch(() => {
+              if (!isActivePollingTarget(directory, sessionID, token)) {
+                return
+              }
               delete promptLifecycleRef.current[lifecycleKey]
               stopResponsePolling()
             })
-        }, 700)
+        }, delayMs)
       }
-      poll()
+      poll(RESPONSE_POLL_INTERVAL_MS)
     },
-    [getRuntimeState, projection, stopResponsePolling]
+    [
+      getRuntimeState,
+      maybeFinalizePromptLifecycle,
+      maybeReportFirstAssistantFromStore,
+      projection,
+      isActivePollingTarget,
+      stopResponsePolling,
+    ]
   )
 
   useEffect(() => {
@@ -842,13 +1190,16 @@ function useWorkspaceResponsePolling({
   }, [stopResponsePolling])
 
   return {
+    observeStreamEvent,
     startResponsePolling,
     stopResponsePolling,
   }
 }
 
 function useWorkspaceStreamEvents() {
-  const queuedEventsRef = useRef<Array<{ directory: string; event: OpencodeEvent }>>([])
+  const queuedEventsRef = useRef<
+    Array<{ directory: string; event: OpencodeEvent; cursor?: number }>
+  >([])
   const flushScheduledRef = useRef(false)
   const flushQueuedEventsRef = useRef<() => void>(() => undefined)
 
@@ -890,6 +1241,8 @@ function useWorkspaceStreamEvents() {
     })
 
     const persistedMessages = new Map<string, ReturnType<typeof normalizeMessageBundles>>()
+    const replayCursorByDirectory = new Map<string, number>()
+    const replaySessionCursorsByDirectory = new Map<string, Record<string, number>>()
 
     useUnifiedRuntimeStore.setState(state => {
       let nextProjectDataByDirectory = state.projectDataByDirectory
@@ -901,7 +1254,13 @@ function useWorkspaceStreamEvents() {
       const getSessionRuntime = (sessionKey: string) => nextOpencodeSessions[sessionKey]
 
       for (const queued of queuedEvents) {
-        const { directory, event } = queued
+        const { directory, event, cursor } = queued
+        if (typeof cursor === 'number' && Number.isFinite(cursor) && cursor > 0) {
+          replayCursorByDirectory.set(
+            directory,
+            Math.max(replayCursorByDirectory.get(directory) ?? 0, cursor)
+          )
+        }
         const nextProject = applyOpencodeProjectEvent(getProjectSnapshot(directory), event)
         if (nextProject) {
           const normalizedSessions = [...nextProject.sessions].sort(
@@ -932,6 +1291,15 @@ function useWorkspaceStreamEvents() {
         const eventSessionID = extractEventSessionID(event)
         if (!eventSessionID) {
           continue
+        }
+
+        if (typeof cursor === 'number' && Number.isFinite(cursor) && cursor > 0) {
+          const currentSessionCursors = replaySessionCursorsByDirectory.get(directory) ?? {}
+          currentSessionCursors[eventSessionID] = Math.max(
+            currentSessionCursors[eventSessionID] ?? 0,
+            cursor
+          )
+          replaySessionCursorsByDirectory.set(directory, currentSessionCursors)
         }
 
         const opencodeSessionKey = makeUnifiedSessionKey('opencode', directory, eventSessionID)
@@ -1012,6 +1380,14 @@ function useWorkspaceStreamEvents() {
       setPersistedOpencodeState(sessionKey, { messages })
     }
 
+    for (const [directory, replayCursor] of replayCursorByDirectory.entries()) {
+      mergeReplayCheckpoint(
+        directory,
+        replayCursor,
+        replaySessionCursorsByDirectory.get(directory) ?? {}
+      )
+    }
+
     reportPerf({
       surface: 'event_bus',
       metric: 'event.batch.flush_ms',
@@ -1031,8 +1407,8 @@ function useWorkspaceStreamEvents() {
   }, [flushQueuedEvents])
 
   return useCallback(
-    (directory: string, event: OpencodeEvent) => {
-      queuedEventsRef.current.push({ directory, event })
+    (directory: string, event: OpencodeEvent, cursor?: number) => {
+      queuedEventsRef.current.push({ directory, event, cursor })
       scheduleFlush(flushQueuedEventsRef.current)
     },
     [scheduleFlush]
@@ -1041,6 +1417,18 @@ function useWorkspaceStreamEvents() {
 
 export function useWorkspaceStateProjectSync(args: UseWorkspaceStateProjectSyncArgs) {
   const projection = useWorkspaceRuntimeProjection(args)
+  const applyOpencodeStreamEventInternal = useWorkspaceStreamEvents()
+  const polling = useWorkspaceResponsePolling({
+    getRuntimeState: args.getRuntimeState,
+    projection,
+  })
+  const applyOpencodeStreamEvent = useCallback(
+    (directory: string, event: OpencodeEvent, cursor?: number) => {
+      polling.observeStreamEvent(directory, event)
+      applyOpencodeStreamEventInternal(directory, event, cursor)
+    },
+    [applyOpencodeStreamEventInternal, polling]
+  )
   const refresh = useWorkspaceRefreshActions({
     activeProjectDir: args.activeProjectDir,
     activeSessionID: args.activeSessionID,
@@ -1050,10 +1438,7 @@ export function useWorkspaceStateProjectSync(args: UseWorkspaceStateProjectSyncA
     setActiveSessionID: args.setActiveSessionID,
     setMessages: args.setMessages,
     projection,
-  })
-  const polling = useWorkspaceResponsePolling({
-    getRuntimeState: args.getRuntimeState,
-    projection,
+    applyOpencodeStreamEvent,
   })
   const queued = useWorkspaceQueuedRefresh({
     activeProjectDir: args.activeProjectDir,
@@ -1061,7 +1446,6 @@ export function useWorkspaceStateProjectSync(args: UseWorkspaceStateProjectSyncA
     refreshMessages: refresh.refreshMessages,
     setStatusLine: args.setStatusLine,
   })
-  const applyOpencodeStreamEvent = useWorkspaceStreamEvents()
 
   return {
     applyRuntimeSnapshot: projection.applyRuntimeSnapshot,

@@ -208,6 +208,13 @@ const bridge: OrxaBridge = {
         () => ipcRenderer.invoke(IPC.opencodeRefreshProjectDelta, directory),
         [directory]
       ),
+    replayProjectEvents: (directory, cursor) =>
+      invokeMeasured(
+        IPC.opencodeReplayProjectEvents,
+        'workspace',
+        () => ipcRenderer.invoke(IPC.opencodeReplayProjectEvents, directory, cursor),
+        [directory, cursor]
+      ),
     refreshProjectCold: directory =>
       invokeMeasured(
         IPC.opencodeRefreshProjectCold,
@@ -246,6 +253,10 @@ const bridge: OrxaBridge = {
         () => ipcRenderer.invoke(IPC.opencodeGetSessionRuntimeCore, directory, sessionID),
         [directory, sessionID]
       ),
+    subscribeSessionRuntimeDelta: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeSubscribeSessionRuntimeDelta, directory, sessionID),
+    unsubscribeSessionRuntimeDelta: (directory, sessionID) =>
+      ipcRenderer.invoke(IPC.opencodeUnsubscribeSessionRuntimeDelta, directory, sessionID),
     loadMessages: (directory, sessionID) =>
       invokeMeasured(
         IPC.opencodeLoadMessages,

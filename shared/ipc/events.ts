@@ -29,6 +29,7 @@ import type {
   KanbanWorktree,
   KanbanWorktreeStatusDetail,
 } from './kanban'
+import type { SessionRuntimeSnapshot } from './opencode-core'
 import type { Event as OpencodeEvent } from '@opencode-ai/sdk/v2/client'
 
 type StreamEventSummary = OpencodeEvent
@@ -42,6 +43,16 @@ export type OrxaEvent =
       type: 'runtime.error'
       payload: {
         message: string
+      }
+    }
+  | {
+      type: 'app.command'
+      payload: {
+        command:
+          | 'open-settings'
+          | 'toggle-workspace-sidebar'
+          | 'toggle-operations-sidebar'
+          | 'toggle-browser-sidebar'
       }
     }
   | {
@@ -63,7 +74,27 @@ export type OrxaEvent =
       type: 'opencode.project'
       payload: {
         directory: string
+        sessionID?: string
+        cursor?: number
         event: StreamEventSummary
+      }
+    }
+  | {
+      type: 'opencode.session'
+      payload: {
+        directory: string
+        sessionID: string
+        cursor?: number
+        event: StreamEventSummary
+      }
+    }
+  | {
+      type: 'opencode.session.runtime'
+      payload: {
+        directory: string
+        sessionID: string
+        cursor?: number
+        runtime: SessionRuntimeSnapshot
       }
     }
   | {

@@ -8,8 +8,9 @@ import type {
   McpDevToolsServerState,
   OrxaEvent,
   RuntimeState,
+  SessionRuntimeSnapshot,
 } from '@shared/ipc'
-import { handleProjectRuntimeEvent } from './app-core-project-events'
+import { handleOrxaDiagnosticsEvent } from './app-core-orxa-event-handlers'
 import { reportPerf } from './lib/performance'
 
 export type DebugLogLevel = 'info' | 'warn' | 'error'
@@ -27,6 +28,10 @@ type DiagnosticsContext = {
   setDebugLogs: Dispatch<SetStateAction<Array<{ id: string; time: number } & DebugLogInput>>>
   setRuntime: Dispatch<SetStateAction<RuntimeState>>
   setStatusLine: Dispatch<SetStateAction<string>>
+  openSettings: () => void
+  toggleWorkspaceSidebar: () => void
+  toggleOperationsSidebar: () => void
+  toggleBrowserSidebar: () => void
   setBrowserRuntimeState: Dispatch<SetStateAction<BrowserState>>
   setBrowserHistoryItems: Dispatch<SetStateAction<BrowserHistoryItem[]>>
   setBrowserActionRunning: Dispatch<SetStateAction<boolean>>
@@ -35,7 +40,13 @@ type DiagnosticsContext = {
     payload: Extract<OrxaEvent, { type: 'updater.telemetry' }>['payload']
   ) => void
   bootstrap: () => Promise<void>
-  applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent) => void
+  applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent, cursor?: number) => void
+  applyRuntimeSnapshot: (
+    directory: string,
+    sessionID: string,
+    runtime: SessionRuntimeSnapshot,
+    pruneSession?: boolean
+  ) => SessionRuntimeSnapshot['messages']
   activeProjectDir: string | undefined
   activeSessionID: string | undefined
   addSessionFeedNotice: (
@@ -120,6 +131,45 @@ function debugLogFromProjectEvent(
   }
 }
 
+function debugLogFromSessionEvent(
+  event: Extract<OrxaEvent, { type: 'opencode.session' }>
+): DebugLogInput {
+  const streamType = String(event.payload.event.type ?? 'session.event')
+  const properties =
+    event.payload.event.properties && typeof event.payload.event.properties === 'object'
+      ? (event.payload.event.properties as Record<string, unknown>)
+      : undefined
+  return {
+    level: 'info',
+    eventType: `session.${streamType}`,
+    summary: `Session stream event: ${streamType}`,
+    details: stringifyDetails({
+      directory: event.payload.directory,
+      sessionID: event.payload.sessionID,
+      cursor: event.payload.cursor,
+      properties,
+    }),
+  }
+}
+
+function debugLogFromSessionRuntimeEvent(
+  event: Extract<OrxaEvent, { type: 'opencode.session.runtime' }>
+): DebugLogInput {
+  const statusType = ((event.payload.runtime.sessionStatus as { type?: string } | undefined)
+    ?.type ?? 'unknown') as string
+  return {
+    level: statusType === 'retry' ? 'warn' : 'info',
+    eventType: 'session.runtime.delta',
+    summary: `Session runtime delta: ${statusType}`,
+    details: stringifyDetails({
+      directory: event.payload.directory,
+      sessionID: event.payload.sessionID,
+      cursor: event.payload.cursor,
+      messageCount: event.payload.runtime.messages.length,
+    }),
+  }
+}
+
 function debugLogFromBrowserAgentAction(
   event: Extract<OrxaEvent, { type: 'browser.agent.action' }>
 ): DebugLogInput {
@@ -182,6 +232,14 @@ export function toDebugLogFromEvent(event: OrxaEvent): DebugLogInput {
 
   if (event.type === 'opencode.project') {
     return debugLogFromProjectEvent(event)
+  }
+
+  if (event.type === 'opencode.session') {
+    return debugLogFromSessionEvent(event)
+  }
+
+  if (event.type === 'opencode.session.runtime') {
+    return debugLogFromSessionRuntimeEvent(event)
   }
 
   if (event.type === 'browser.agent.action') {
@@ -371,17 +429,7 @@ function appendBrowserHistoryItem(
 }
 
 function useOrxaEventDiagnostics(context: DiagnosticsContext) {
-  const {
-    appendDebugLog,
-    bootstrap,
-    handleUpdaterTelemetry,
-    setBrowserActionRunning,
-    setBrowserHistoryItems,
-    setBrowserRuntimeState,
-    setMcpDevToolsState,
-    setRuntime,
-    setStatusLine,
-  } = context
+  const { appendDebugLog, setBrowserHistoryItems, setStatusLine } = context
 
   useEffect(() => {
     const events = window.orxa?.events
@@ -392,51 +440,18 @@ function useOrxaEventDiagnostics(context: DiagnosticsContext) {
 
     const unsubscribe = events.subscribe(event => {
       appendDebugLog(toDebugLogFromEvent(event))
-
-      if (event.type === 'runtime.status') {
-        setRuntime(event.payload)
-      } else if (event.type === 'runtime.error') {
-        setStatusLine(event.payload.message)
-      } else if (event.type === 'updater.telemetry') {
-        handleUpdaterTelemetry(event.payload)
-      } else if (event.type === 'browser.state') {
-        setBrowserRuntimeState(event.payload)
-      } else if (event.type === 'mcp.devtools.status') {
-        setMcpDevToolsState(event.payload.state)
-      } else if (event.type === 'browser.history.added') {
-        appendBrowserHistoryItem(setBrowserHistoryItems, event.payload)
-      } else if (event.type === 'browser.history.cleared') {
-        setBrowserHistoryItems([])
-      } else if (event.type === 'browser.agent.action') {
-        setBrowserActionRunning(false)
-      } else if (event.type === 'opencode.global') {
-        if (
-          event.payload.event.type === 'project.updated' ||
-          event.payload.event.type === 'global.disposed' ||
-          event.payload.event.type === 'server.connected'
-        ) {
-          void bootstrap()
-        }
-      } else if (event.type === 'opencode.project') {
-        handleProjectRuntimeEvent(event, context)
-      }
+      handleOrxaDiagnosticsEvent(event, {
+        ...context,
+        appendBrowserHistoryItem: payload =>
+          appendBrowserHistoryItem(setBrowserHistoryItems, payload),
+        clearBrowserHistory: () => setBrowserHistoryItems([]),
+      })
     })
 
     return () => {
       unsubscribe()
     }
-  }, [
-    appendDebugLog,
-    bootstrap,
-    context,
-    handleUpdaterTelemetry,
-    setBrowserActionRunning,
-    setBrowserHistoryItems,
-    setBrowserRuntimeState,
-    setMcpDevToolsState,
-    setRuntime,
-    setStatusLine,
-  ])
+  }, [appendDebugLog, context, setBrowserHistoryItems, setStatusLine])
 }
 
 export function useAppCoreDiagnostics(context: DiagnosticsContext) {

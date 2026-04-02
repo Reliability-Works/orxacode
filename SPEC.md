@@ -210,7 +210,9 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
   - Progress:
     - [x] Added per-session cursor replay for execution ledger/provenance hydration in renderer runtime sync (replay from current cursor; fallback to full snapshot if cursor regresses).
     - [x] Added project-delta replay fallback so `refreshProjectDelta` failures hard-cut over to full `refreshProject` snapshot refresh.
-    - [ ] Next: persist and apply cursor checkpoints for project/session stream deltas (beyond execution artifacts) during resume.
+    - [x] Persisted and applied project/session replay checkpoints for stream deltas: project events now carry cursor metadata, resume refresh applies replayed events from persisted cursor checkpoints before delta refresh, and replayed sessions skip redundant runtime reloads.
+    - [x] Added service-level persisted replay continuity across long disconnects: project stream replay ring now hydrates from provider-session persistence and flushes a bounded cursor/event tail back to persistence with debounce.
+    - [ ] Next: evaluate 7C H long-lived transport cutover plan and identify the smallest safe first slice to reduce invoke-heavy hot-path usage.
   - Validate with:
     - `prompt.first_event_ms`
     - `prompt.first_assistant_output_ms`
@@ -220,6 +222,16 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
 - [ ] **H. Long-lived session transport across Electron boundary**
   - Move away from invoke-heavy reconcile loops in hot session paths.
   - Include lifecycle, cleanup, replay, and backpressure handling.
+  - Progress:
+    - [x] Background resume refresh now short-circuits `refreshProjectDelta` invoke when replay already yielded stream events, reducing invoke-heavy hot-path churn while preserving fallback full refresh behavior.
+    - [x] Active response polling is now stream-aware fallback: fresh stream activity suppresses immediate runtime poll invokes and only falls back to invoke snapshots after a quiet window.
+    - [x] Response polling now re-arms to the remaining quiet-window budget (instead of fixed cadence) and can complete prompt lifecycle directly from terminal stream status events, further reducing invoke churn.
+    - [x] Added fallback-poll backoff during prolonged stream-quiet running states to reduce repeated invoke pressure while preserving recovery polling.
+    - [x] First fallback poll is now deferred behind the quiet-window budget at lifecycle start (without prematurely finalizing before first stream event), reducing early invoke bursts on new prompt lifecycles.
+    - [x] Added polling lifecycle token guard so stale async poll responses are ignored after polling stop/restart, reducing stale follow-up scheduling risk.
+    - [x] Added first session-scoped transport contract slice: main-process now emits `opencode.session` deltas (directory/sessionID/cursor/event) alongside project stream events, and renderer routes session-scoped deltas through dedicated handling while avoiding duplicate project-path apply for session-scoped events.
+    - [x] Prototyped a true long-lived renderer/main session runtime-delta transport slice: renderer explicitly subscribes/unsubscribes per active session lifecycle, main coalesces/throttles runtime-core delta pushes (`opencode.session.runtime`) with backpressure guards, and stale/teardown paths cleanly drop pending pushes.
+    - [ ] Next: run telemetry validation pass (`ipc.inflight_count`, `ipc.invoke_rtt_ms` p95, dropped/recovered stream counters, renderer long-task rate) under active stream load and tune cadence if needed.
   - Validate with:
     - `ipc.inflight_count`
     - `ipc.invoke_rtt_ms` p95

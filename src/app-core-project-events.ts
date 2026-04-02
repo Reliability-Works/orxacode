@@ -1,5 +1,6 @@
 import type { Event as OpencodeEvent } from '@opencode-ai/sdk/v2/client'
 import type { OrxaEvent } from '@shared/ipc'
+import type { SessionRuntimeSnapshot } from '@shared/ipc'
 
 export type ProjectRuntimeEventContext = {
   activeProjectDir: string | undefined
@@ -9,7 +10,13 @@ export type ProjectRuntimeEventContext = {
     sessionID: string,
     notice: { label: string; detail: string; tone: 'info' | 'error' }
   ) => void
-  applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent) => void
+  applyOpencodeStreamEvent: (directory: string, event: OpencodeEvent, cursor?: number) => void
+  applyRuntimeSnapshot: (
+    directory: string,
+    sessionID: string,
+    runtime: SessionRuntimeSnapshot,
+    pruneSession?: boolean
+  ) => SessionRuntimeSnapshot['messages']
   buildSessionFeedNoticeKey: (directory: string, sessionID: string) => string
   getManualSessionStopState: (
     sessionKey: string | null
@@ -47,9 +54,10 @@ function readProjectEventMetadata(
       ? (event.payload.event.properties as Record<string, unknown>)
       : undefined
   const eventSessionID =
-    eventProperties && typeof eventProperties.sessionID === 'string'
+    event.payload.sessionID ??
+    (eventProperties && typeof eventProperties.sessionID === 'string'
       ? eventProperties.sessionID
-      : undefined
+      : undefined)
   const eventSessionKey = eventSessionID
     ? context.buildSessionFeedNoticeKey(event.payload.directory, eventSessionID)
     : null
@@ -124,7 +132,9 @@ function buildSessionErrorState(
   const useRecoverableReason =
     !useInterruptedReason && isRecoverableSessionError(message, errorCode)
   return {
-    detail: useInterruptedReason ? interruptedDetail : message || 'Session stopped due to an error.',
+    detail: useInterruptedReason
+      ? interruptedDetail
+      : message || 'Session stopped due to an error.',
     interruptedAlreadyNoticed: Boolean(metadata.manualStopState?.noticeEmitted),
     sessionID: metadata.eventSessionID ?? activeSessionID,
     useInterruptedReason,
@@ -170,11 +180,18 @@ function finalizeSessionError(
   state: SessionErrorState,
   context: Pick<
     ProjectRuntimeEventContext,
-    'activeSessionID' | 'markManualSessionStopNoticeEmitted' | 'pushToast' | 'setStatusLine' | 'stopResponsePolling'
+    | 'activeSessionID'
+    | 'markManualSessionStopNoticeEmitted'
+    | 'pushToast'
+    | 'setStatusLine'
+    | 'stopResponsePolling'
   >
 ) {
   if (state.useInterruptedReason && metadata.eventSessionKey) {
-    context.markManualSessionStopNoticeEmitted(metadata.eventSessionKey, metadata.manualStopAt ?? metadata.now)
+    context.markManualSessionStopNoticeEmitted(
+      metadata.eventSessionKey,
+      metadata.manualStopAt ?? metadata.now
+    )
   }
   if (!state.useInterruptedReason) {
     context.setStatusLine(state.detail)
@@ -212,7 +229,9 @@ function handleSessionErrorEvent(
     context.isRecoverableSessionError
   )
 
-  if (maybeSkipInterruptedSessionError(state, context.activeSessionID, context.stopResponsePolling)) {
+  if (
+    maybeSkipInterruptedSessionError(state, context.activeSessionID, context.stopResponsePolling)
+  ) {
     return
   }
 
@@ -225,7 +244,10 @@ function handleSessionIdleEvent(
   metadata: ProjectEventMetadata,
   context: Pick<
     ProjectRuntimeEventContext,
-    'activeSessionID' | 'addSessionFeedNotice' | 'markManualSessionStopNoticeEmitted' | 'stopResponsePolling'
+    | 'activeSessionID'
+    | 'addSessionFeedNotice'
+    | 'markManualSessionStopNoticeEmitted'
+    | 'stopResponsePolling'
   >
 ) {
   if (!metadata.isRecentManualStop || !metadata.eventSessionID) {
@@ -239,7 +261,10 @@ function handleSessionIdleEvent(
       tone: 'info',
     })
     if (metadata.eventSessionKey) {
-      context.markManualSessionStopNoticeEmitted(metadata.eventSessionKey, metadata.manualStopAt ?? metadata.now)
+      context.markManualSessionStopNoticeEmitted(
+        metadata.eventSessionKey,
+        metadata.manualStopAt ?? metadata.now
+      )
     }
   }
 
@@ -252,7 +277,13 @@ export function handleProjectRuntimeEvent(
   event: Extract<OrxaEvent, { type: 'opencode.project' }>,
   context: ProjectRuntimeEventContext
 ) {
-  context.applyOpencodeStreamEvent(event.payload.directory, event.payload.event)
+  if (!event.payload.sessionID) {
+    context.applyOpencodeStreamEvent(
+      event.payload.directory,
+      event.payload.event,
+      event.payload.cursor
+    )
+  }
   const metadata = readProjectEventMetadata(event, context)
 
   if (shouldQueueProjectRefresh(event, context.activeProjectDir, metadata.kind)) {
@@ -271,4 +302,36 @@ export function handleProjectRuntimeEvent(
   if (metadata.kind === 'session.idle') {
     handleSessionIdleEvent(event, metadata, context)
   }
+}
+
+export function handleSessionRuntimeEvent(
+  event: Extract<OrxaEvent, { type: 'opencode.session' }>,
+  context: Pick<ProjectRuntimeEventContext, 'applyOpencodeStreamEvent'>
+) {
+  context.applyOpencodeStreamEvent(
+    event.payload.directory,
+    event.payload.event,
+    event.payload.cursor
+  )
+}
+
+export function handleSessionRuntimeDeltaEvent(
+  event: Extract<OrxaEvent, { type: 'opencode.session.runtime' }>,
+  context: Pick<
+    ProjectRuntimeEventContext,
+    'activeProjectDir' | 'activeSessionID' | 'applyRuntimeSnapshot'
+  >
+) {
+  if (event.payload.directory !== context.activeProjectDir) {
+    return
+  }
+  if (event.payload.sessionID !== context.activeSessionID) {
+    return
+  }
+  context.applyRuntimeSnapshot(
+    event.payload.directory,
+    event.payload.sessionID,
+    event.payload.runtime,
+    true
+  )
 }

@@ -51,7 +51,11 @@ function useWorkspaceStateBridges({
   mergeProjectData?: (project: ProjectBootstrap) => ProjectBootstrap
   replaceCollapsedProjects: (next: Record<string, boolean>) => void
   setActiveSession: (sessionID: string | undefined, provider?: UnifiedProvider) => void
-  setOpencodeMessages: (directory: string, sessionID: string, messages: SessionMessageBundle[]) => void
+  setOpencodeMessages: (
+    directory: string,
+    sessionID: string,
+    messages: SessionMessageBundle[]
+  ) => void
   setProjectDataForDirectory: (directory: string, data: ProjectBootstrap) => void
 }) {
   const getRuntimeState = useCallback(() => useUnifiedRuntimeStore.getState(), [])
@@ -194,6 +198,7 @@ export function useWorkspaceState(options: UseWorkspaceStateOptions) {
     refreshMessages: projectSync.refreshMessages,
     selectSession: lifecycle.selectSession,
     createSession: lifecycle.createSession,
+    applyRuntimeSnapshot: projectSync.applyRuntimeSnapshot,
     applyOpencodeStreamEvent: projectSync.applyOpencodeStreamEvent,
     queueRefresh: projectSync.queueRefresh,
     startResponsePolling: projectSync.startResponsePolling,
