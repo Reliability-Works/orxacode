@@ -84,6 +84,61 @@ it('clears stale busy status when a fresh runtime snapshot no longer confirms it
   })
 })
 
+it('falls back to full project refresh when delta refresh fails', async () => {
+  const directory = '/repo'
+  const now = Date.now()
+  const refreshProjectDeltaMock = vi.fn(async () => {
+    throw new Error('delta failed')
+  })
+  const refreshProjectMock = vi.fn(async () =>
+    createProjectBootstrap(directory, [{ id: 'session-fallback', time: { updated: now + 1 } }])
+  )
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      opencode: {
+        selectProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: 'session-seed', time: { updated: now } }])
+        ),
+        refreshProject: refreshProjectMock,
+        refreshProjectDelta: refreshProjectDeltaMock,
+        createSession: vi.fn(async () => ({
+          id: 'unused',
+          slug: 'unused',
+          title: 'unused',
+          time: { created: now, updated: now },
+        })),
+        getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) =>
+          createRuntimeSnapshot(directory, sessionID, [])
+        ),
+        sendPrompt: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.selectProject as unknown as (
+        directory: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, { showLanding: false })
+  })
+
+  await act(async () => {
+    await result.current.refreshProject(directory)
+  })
+
+  expect(refreshProjectDeltaMock).toHaveBeenCalledWith(directory)
+  expect(refreshProjectMock).toHaveBeenCalledWith(directory)
+  expect(
+    useUnifiedRuntimeStore.getState().projectDataByDirectory[directory]?.sessions.map(s => s.id)
+  ).toEqual(['session-fallback'])
+})
+
 it('refreshes messages immediately after sending the initial prompt for a new session', async () => {
   const directory = '/repo'
   const now = Date.now()

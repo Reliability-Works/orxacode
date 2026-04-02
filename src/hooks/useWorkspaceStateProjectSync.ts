@@ -510,45 +510,49 @@ function useWorkspaceRefreshActions({
             projectColdRefreshLastAtRef.current.set(directory, Date.now())
           }
 
-          let merged = canUseDeltaRefresh
-            ? projection.commitProjectDelta(
+          const refreshMetricBase = {
+            surface: 'workspace' as const,
+            metric: 'workspace.refresh_ms' as const,
+            kind: 'span' as const,
+            unit: 'ms' as const,
+            process: 'renderer' as const,
+            component: 'workspace-state-project-sync',
+            workspaceHash: directory,
+          }
+
+          let usedDeltaRefresh = false
+          let merged: ProjectBootstrap
+          if (canUseDeltaRefresh) {
+            try {
+              const delta = (await measurePerf(refreshMetricBase, () =>
+                window.orxa.opencode.refreshProjectDelta(directory)
+              )) as ProjectRefreshDelta
+              merged = projection.commitProjectDelta(directory, delta)
+              usedDeltaRefresh = true
+            } catch {
+              merged = projection.commitProjectData(
                 directory,
-                (await measurePerf(
-                  {
-                    surface: 'workspace',
-                    metric: 'workspace.refresh_ms',
-                    kind: 'span',
-                    unit: 'ms',
-                    process: 'renderer',
-                    component: 'workspace-state-project-sync',
-                    workspaceHash: directory,
-                  },
-                  () => window.orxa.opencode.refreshProjectDelta(directory)
-                )) as ProjectRefreshDelta
-              )
-            : projection.commitProjectData(
-                directory,
-                (await measurePerf(
-                  {
-                    surface: 'workspace',
-                    metric: 'workspace.refresh_ms',
-                    kind: 'span',
-                    unit: 'ms',
-                    process: 'renderer',
-                    component: 'workspace-state-project-sync',
-                    workspaceHash: directory,
-                  },
-                  () => window.orxa.opencode.refreshProject(directory)
+                (await measurePerf(refreshMetricBase, () =>
+                  window.orxa.opencode.refreshProject(directory)
                 )) as ProjectBootstrap
               )
+            }
+          } else {
+            merged = projection.commitProjectData(
+              directory,
+              (await measurePerf(refreshMetricBase, () =>
+                window.orxa.opencode.refreshProject(directory)
+              )) as ProjectBootstrap
+            )
+          }
 
-          if (!canUseDeltaRefresh) {
+          if (!usedDeltaRefresh) {
             projectColdRefreshLastAtRef.current.set(directory, Date.now())
           }
 
           const lastColdRefreshedAt = projectColdRefreshLastAtRef.current.get(directory) ?? 0
           const shouldRefreshCold =
-            canUseDeltaRefresh &&
+            usedDeltaRefresh &&
             Boolean(window.orxa.opencode.refreshProjectCold) &&
             (!skipMessageLoad ||
               Date.now() - lastColdRefreshedAt > PROJECT_COLD_REFRESH_REUSE_WINDOW_MS)
