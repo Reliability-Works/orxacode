@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { Event as OpencodeEvent, Session } from '@opencode-ai/sdk/v2/client'
 import type {
+  ExecutionLedgerSnapshot,
   ProjectBootstrap,
   ProjectRefreshCold,
   ProjectRefreshDelta,
+  SessionProvenanceSnapshot,
   SessionRuntimeSnapshot,
 } from '@shared/ipc'
 import type { TerminalTab } from '../components/TerminalPanel'
@@ -82,6 +84,63 @@ function getStaleBusySessionIDs(
     })
 }
 
+function mergeExecutionLedgerReplay(
+  existing: ExecutionLedgerSnapshot,
+  replay: ExecutionLedgerSnapshot,
+  requestedCursor: number
+): ExecutionLedgerSnapshot {
+  if (requestedCursor <= 0) {
+    return replay
+  }
+  if (replay.cursor < requestedCursor) {
+    throw new Error('execution-ledger-cursor-regressed')
+  }
+  const knownRecordIds = new Set(existing.records.map(record => record.id))
+  const mergedRecords = [...existing.records]
+  for (const record of replay.records) {
+    if (knownRecordIds.has(record.id)) {
+      continue
+    }
+    knownRecordIds.add(record.id)
+    mergedRecords.push(record)
+  }
+  return {
+    cursor: Math.max(existing.cursor, replay.cursor),
+    records: mergedRecords,
+  }
+}
+
+function buildProvenanceRecordKey(record: SessionProvenanceSnapshot['records'][number]) {
+  return `${record.eventID}:${record.filePath}:${record.operation}`
+}
+
+function mergeChangeProvenanceReplay(
+  existing: SessionProvenanceSnapshot,
+  replay: SessionProvenanceSnapshot,
+  requestedCursor: number
+): SessionProvenanceSnapshot {
+  if (requestedCursor <= 0) {
+    return replay
+  }
+  if (replay.cursor < requestedCursor) {
+    throw new Error('change-provenance-cursor-regressed')
+  }
+  const knownRecordKeys = new Set(existing.records.map(buildProvenanceRecordKey))
+  const mergedRecords = [...existing.records]
+  for (const record of replay.records) {
+    const key = buildProvenanceRecordKey(record)
+    if (knownRecordKeys.has(key)) {
+      continue
+    }
+    knownRecordKeys.add(key)
+    mergedRecords.push(record)
+  }
+  return {
+    cursor: Math.max(existing.cursor, replay.cursor),
+    records: mergedRecords,
+  }
+}
+
 function resolveNextSessionID(
   currentActiveSessionID: string | undefined,
   sortedSessions: Array<{ id: string }>,
@@ -145,20 +204,61 @@ function useWorkspaceRuntimeProjection({
         return
       }
       const existingRuntime = getRuntimeState().opencodeSessions[runtimeKey]?.runtimeSnapshot
+      const existingExecutionLedger = existingRuntime?.executionLedger ?? { cursor: 0, records: [] }
+      const existingChangeProvenance = existingRuntime?.changeProvenance ?? {
+        cursor: 0,
+        records: [],
+      }
+      const requestedExecutionCursor = Math.max(0, existingExecutionLedger.cursor)
+      const requestedChangeProvenanceCursor = Math.max(0, existingChangeProvenance.cursor)
       const request = Promise.all([
         opencodeBridge.loadSessionDiff
           ? opencodeBridge.loadSessionDiff(directory, sessionID).catch(() => [])
           : Promise.resolve(existingRuntime?.sessionDiff ?? []),
         opencodeBridge.loadExecutionLedger
           ? opencodeBridge
-              .loadExecutionLedger(directory, sessionID, 0)
-              .catch(() => ({ cursor: 0, records: [] }))
-          : Promise.resolve(existingRuntime?.executionLedger ?? { cursor: 0, records: [] }),
+              .loadExecutionLedger(directory, sessionID, requestedExecutionCursor)
+              .then(replay =>
+                mergeExecutionLedgerReplay(
+                  existingExecutionLedger,
+                  replay,
+                  requestedExecutionCursor
+                )
+              )
+              .catch(async error => {
+                if (
+                  error instanceof Error &&
+                  error.message === 'execution-ledger-cursor-regressed'
+                ) {
+                  return opencodeBridge
+                    .loadExecutionLedger?.(directory, sessionID, 0)
+                    .catch(() => existingExecutionLedger)
+                }
+                return existingExecutionLedger
+              })
+          : Promise.resolve(existingExecutionLedger),
         opencodeBridge.loadChangeProvenance
           ? opencodeBridge
-              .loadChangeProvenance(directory, sessionID, 0)
-              .catch(() => ({ cursor: 0, records: [] }))
-          : Promise.resolve(existingRuntime?.changeProvenance ?? { cursor: 0, records: [] }),
+              .loadChangeProvenance(directory, sessionID, requestedChangeProvenanceCursor)
+              .then(replay =>
+                mergeChangeProvenanceReplay(
+                  existingChangeProvenance,
+                  replay,
+                  requestedChangeProvenanceCursor
+                )
+              )
+              .catch(async error => {
+                if (
+                  error instanceof Error &&
+                  error.message === 'change-provenance-cursor-regressed'
+                ) {
+                  return opencodeBridge
+                    .loadChangeProvenance?.(directory, sessionID, 0)
+                    .catch(() => existingChangeProvenance)
+                }
+                return existingChangeProvenance
+              })
+          : Promise.resolve(existingChangeProvenance),
       ])
         .then(([sessionDiff, executionLedger, changeProvenance]) => {
           const currentRuntime = getRuntimeState().opencodeSessions[runtimeKey]?.runtimeSnapshot
@@ -304,11 +404,13 @@ function useWorkspaceRuntimeProjection({
         executionLedger: mergedExecutionLedger,
         changeProvenance: mergedChangeProvenance,
       })
-      if (
-        mergedSessionDiff.length === 0 &&
-        mergedExecutionLedger.records.length === 0 &&
-        mergedChangeProvenance.records.length === 0
-      ) {
+      const loadedCoreSnapshot =
+        runtime.sessionDiff.length === 0 &&
+        runtime.executionLedger.cursor === 0 &&
+        runtime.executionLedger.records.length === 0 &&
+        runtime.changeProvenance.cursor === 0 &&
+        runtime.changeProvenance.records.length === 0
+      if (loadedCoreSnapshot) {
         queueRuntimeExtrasHydration(directory, sessionID)
       }
       return messages

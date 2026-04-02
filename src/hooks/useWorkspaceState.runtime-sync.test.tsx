@@ -675,3 +675,180 @@ it('hydrates runtime extras lazily after loading core session runtime', async ()
   expect(runtime?.executionLedger.cursor).toBe(1)
   expect(runtime?.changeProvenance.cursor).toBe(1)
 })
+
+it('replays execution artifacts from stored cursors after loading core runtime snapshots', async () => {
+  const directory = '/repo'
+  const now = Date.now()
+  const createdSession = {
+    id: 'session-core-replay',
+    slug: 'session-core-replay',
+    title: 'Core replay runtime',
+    time: { created: now, updated: now },
+  }
+
+  const getSessionRuntimeCoreMock = vi.fn(async (_directory: string, sessionID: string) =>
+    createRuntimeSnapshot(directory, sessionID, [])
+  )
+  const getSessionRuntimeMock = vi.fn(async (_directory: string, sessionID: string) =>
+    createRuntimeSnapshot(directory, sessionID, [])
+  )
+  const loadSessionDiffMock = vi.fn(async () => [] as never[])
+  const loadExecutionLedgerMock = vi.fn(
+    async (_directory: string, _sessionID: string, cursor = 0) => {
+      if (cursor === 1) {
+        return {
+          cursor: 2,
+          records: [
+            {
+              id: 'ledger-2',
+              directory,
+              sessionID: createdSession.id,
+              timestamp: now + 1,
+              kind: 'edit',
+              summary: 'Updated README.md',
+              actor: { type: 'main' },
+            },
+          ],
+        }
+      }
+      return {
+        cursor: 2,
+        records: [],
+      }
+    }
+  )
+  const loadChangeProvenanceMock = vi.fn(
+    async (_directory: string, _sessionID: string, cursor = 0) => {
+      if (cursor === 1) {
+        return {
+          cursor: 2,
+          records: [
+            {
+              filePath: 'README.md',
+              operation: 'edit',
+              actorType: 'main',
+              eventID: 'event-2',
+              timestamp: now + 1,
+            },
+          ],
+        }
+      }
+      return {
+        cursor: 2,
+        records: [],
+      }
+    }
+  )
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      opencode: {
+        selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }])
+        ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: bootstrap.sessionStatus,
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
+        createSession: vi.fn(async () => createdSession),
+        getSessionRuntimeCore: getSessionRuntimeCoreMock,
+        getSessionRuntime: getSessionRuntimeMock,
+        loadSessionDiff: loadSessionDiffMock,
+        loadExecutionLedger: loadExecutionLedgerMock,
+        loadChangeProvenance: loadChangeProvenanceMock,
+        sendPrompt: vi.fn(async () => true),
+        deleteSession: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+  const sessionKey = `opencode::${directory}::${createdSession.id}`
+  const seededRuntime = createRuntimeSnapshot(directory, createdSession.id, [])
+  seededRuntime.executionLedger = {
+    cursor: 1,
+    records: [
+      {
+        id: 'ledger-1',
+        directory,
+        sessionID: createdSession.id,
+        timestamp: now,
+        kind: 'read',
+        summary: 'Read README.md',
+        actor: { type: 'main' },
+      },
+    ],
+  }
+  seededRuntime.changeProvenance = {
+    cursor: 1,
+    records: [
+      {
+        filePath: 'README.md',
+        operation: 'edit',
+        actorType: 'main',
+        eventID: 'event-1',
+        timestamp: now,
+      },
+    ],
+  }
+
+  useUnifiedRuntimeStore.setState(state => ({
+    ...state,
+    opencodeSessions: {
+      ...state.opencodeSessions,
+      [sessionKey]: {
+        key: sessionKey,
+        directory,
+        sessionID: createdSession.id,
+        runtimeSnapshot: seededRuntime,
+        messages: [],
+        todoItems: [],
+      },
+    },
+  }))
+
+  await act(async () => {
+    await (
+      result.current.createSession as unknown as (
+        directory: string,
+        prompt?: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, 'Ship replay cursor support', { availableAgentNames: new Set<string>() })
+  })
+
+  await waitFor(() => {
+    expect(loadSessionDiffMock).toHaveBeenCalledWith(directory, createdSession.id)
+    expect(loadExecutionLedgerMock).toHaveBeenCalledWith(directory, createdSession.id, 1)
+    expect(loadChangeProvenanceMock).toHaveBeenCalledWith(directory, createdSession.id, 1)
+  })
+
+  expect(loadExecutionLedgerMock).not.toHaveBeenCalledWith(directory, createdSession.id, 0)
+  expect(loadChangeProvenanceMock).not.toHaveBeenCalledWith(directory, createdSession.id, 0)
+
+  const runtime = useUnifiedRuntimeStore.getState().opencodeSessions[sessionKey]?.runtimeSnapshot
+  expect(runtime?.executionLedger.cursor).toBe(2)
+  expect(runtime?.executionLedger.records.map(record => record.id)).toEqual([
+    'ledger-1',
+    'ledger-2',
+  ])
+  expect(runtime?.changeProvenance.cursor).toBe(2)
+  expect(runtime?.changeProvenance.records.map(record => record.eventID)).toEqual([
+    'event-1',
+    'event-2',
+  ])
+})

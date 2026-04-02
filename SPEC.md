@@ -207,6 +207,9 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
 - [ ] **G. Sequence-based stream + replay model for opencode session UX**
   - Per-session/per-workspace cursor.
   - Replay missed deltas first; snapshot fallback only on replay failure.
+  - Progress:
+    - [x] Added per-session cursor replay for execution ledger/provenance hydration in renderer runtime sync (replay from current cursor; fallback to full snapshot if cursor regresses).
+    - [ ] Next: persist and apply cursor checkpoints for project/session stream deltas (beyond execution artifacts) during resume.
   - Validate with:
     - `prompt.first_event_ms`
     - `prompt.first_assistant_output_ms`
