@@ -17,6 +17,8 @@
     "test": "vitest run",
     "test:perf-guard": "vitest run electron/preload.test.ts electron/services/performance-telemetry-service.test.ts src/hooks/useWorkspaceState.runtime-sync.test.tsx src/hooks/useClaudeChatSession.test.tsx src/hooks/useClaudeChatSessionLiveSync.test.tsx",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:hook:raw": "vitest run --coverage --reporter=dot --pool=forks --maxWorkers=50% --coverage.reporter=text --coverage.reporter=json-summary",
+    "test:coverage:hook": "node scripts/run-coverage-hook.mjs",
     "test:watch": "vitest",
     "ci": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm knip && pnpm test:coverage",
     "lint": "eslint .",
