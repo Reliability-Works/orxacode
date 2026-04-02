@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { access } from 'node:fs/promises'
-import { app, BrowserWindow, Menu, nativeImage, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage } from 'electron'
 import type { OrxaEvent } from '../shared/ipc'
 import { OpencodeService } from './services/opencode-service'
 import { CodexService } from './services/codex-service'
@@ -21,6 +21,7 @@ import {
   pickRemoteDebuggingPort,
   refreshShellPathInBackground,
 } from './services/startup-environment'
+import { buildApplicationMenuTemplate } from './services/application-menu'
 import { resolveRendererHtmlPath } from './services/renderer-entry'
 import { DiagnosticsService } from './services/diagnostics-service'
 import { PerformanceTelemetryService } from './services/performance-telemetry-service'
@@ -230,35 +231,38 @@ function attachMainWindow(window: BrowserWindow) {
   return window
 }
 
-function buildAppMenuTemplate(): MenuItemConstructorOptions[] {
-  const helpMenu: MenuItemConstructorOptions = {
-    role: 'help',
-    submenu: [
-      {
-        label: 'Check for updates',
-        click: () => {
-          void autoUpdaterController?.checkNow()
-        },
-      },
-    ],
+function dispatchAppCommand(
+  command: Extract<OrxaEvent, { type: 'app.command' }>['payload']['command']
+) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
   }
-
-  if (process.platform === 'darwin') {
-    return [
-      { role: 'appMenu' },
-      { role: 'fileMenu' },
-      { role: 'editMenu' },
-      { role: 'viewMenu' },
-      { role: 'windowMenu' },
-      helpMenu,
-    ]
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
   }
-
-  return [{ role: 'fileMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' }, helpMenu]
+  mainWindow.show()
+  publishEvent({
+    type: 'app.command',
+    payload: { command },
+  })
 }
 
 function setupApplicationMenu() {
-  Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate()))
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildApplicationMenuTemplate({
+        appName: app.name || 'Orxa Code',
+        platform: process.platform,
+        onCheckForUpdates: () => {
+          void autoUpdaterController?.checkNow()
+        },
+        onOpenSettings: () => dispatchAppCommand('open-settings'),
+        onToggleWorkspaceSidebar: () => dispatchAppCommand('toggle-workspace-sidebar'),
+        onToggleOperationsSidebar: () => dispatchAppCommand('toggle-operations-sidebar'),
+        onToggleBrowserSidebar: () => dispatchAppCommand('toggle-browser-sidebar'),
+      })
+    )
+  )
 }
 
 async function configureMacAppIdentity() {
