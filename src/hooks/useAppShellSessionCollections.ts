@@ -26,6 +26,7 @@ type SidebarTrackedSession = {
 type UseAppShellSessionCollectionsInput = {
   projectData?: ProjectBootstrap
   projectDataByDirectory: Record<string, ProjectBootstrap>
+  workspaceRootByDirectory: Record<string, string>
   activeProjectDir?: string
   activeSessionID?: string
   projectCacheVersion: number
@@ -495,6 +496,7 @@ function useDerivedSessionCollections({
 export function useAppShellSessionCollections({
   projectData,
   projectDataByDirectory,
+  workspaceRootByDirectory,
   activeProjectDir,
   activeSessionID,
   projectCacheVersion,
@@ -505,8 +507,6 @@ export function useAppShellSessionCollections({
   getSessionType,
   normalizePresentationProvider,
 }: UseAppShellSessionCollectionsInput) {
-  const workspaceRootByDirectory = useUnifiedRuntimeStore(state => state.workspaceRootByDirectory)
-
   const liveBackgroundSessionIDsByProject = useMemo(() => {
     return buildLiveBackgroundSessionIDsByProject(backgroundSessionDescriptors)
   }, [backgroundSessionDescriptors])

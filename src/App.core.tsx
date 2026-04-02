@@ -9,6 +9,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react'
+import { useStoreWithEqualityFn } from 'zustand/traditional'
 import { GitCommitHorizontal, Send, Upload } from 'lucide-react'
 import type {
   AgentsDocument,
@@ -26,6 +27,8 @@ import type {
   SkillEntry,
   SessionMessageBundle,
   ProviderUsageStats,
+  ProjectBootstrap,
+  WorkspaceWorktree,
   AppDiagnosticInput,
   PerfSnapshotExport,
   PerfSnapshotExportInput,
@@ -276,6 +279,40 @@ type DebugLogEntry = {
   eventType: string
   summary: string
   details?: string
+}
+
+type ScopedWorkspaceShellState = {
+  workspaceMetaByDirectory: Record<string, { lastOpenedAt: number; lastUpdatedAt: number }>
+  workspaceRootByDirectory: Record<string, string>
+  worktreesByWorkspace: Record<string, WorkspaceWorktree[]>
+}
+
+function areRecordReferencesEqual<T>(left: Record<string, T>, right: Record<string, T>): boolean {
+  if (left === right) {
+    return true
+  }
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) {
+    return false
+  }
+  for (const key of leftKeys) {
+    if (!(key in right) || left[key] !== right[key]) {
+      return false
+    }
+  }
+  return true
+}
+
+function areScopedWorkspaceShellStatesEqual(
+  left: ScopedWorkspaceShellState,
+  right: ScopedWorkspaceShellState
+): boolean {
+  return (
+    areRecordReferencesEqual(left.workspaceMetaByDirectory, right.workspaceMetaByDirectory) &&
+    areRecordReferencesEqual(left.workspaceRootByDirectory, right.workspaceRootByDirectory) &&
+    areRecordReferencesEqual(left.worktreesByWorkspace, right.worktreesByWorkspace)
+  )
 }
 
 const OPEN_TARGETS: OpenTargetOption[] = [
@@ -623,9 +660,7 @@ export default function App() {
   const [projectCacheVersion, setProjectCacheVersion] = useState(0)
   const canvasState = useCanvasState(activeSessionID ?? '__none__', activeProjectDir ?? undefined)
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true)
-  const workspaceMetaByDirectory = useUnifiedRuntimeStore(state => state.workspaceMetaByDirectory)
   const setOpencodeMessages = useUnifiedRuntimeStore(state => state.setOpencodeMessages)
-  const projectDataByDirectory = useUnifiedRuntimeStore(state => state.projectDataByDirectory)
   const setSessionReadAt = useUnifiedRuntimeStore(state => state.setSessionReadAt)
   const removeClaudeSession = useUnifiedRuntimeStore(state => state.removeClaudeSession)
   const removeClaudeChatSession = useUnifiedRuntimeStore(state => state.removeClaudeChatSession)
@@ -634,10 +669,83 @@ export default function App() {
   const setCodexThread = useUnifiedRuntimeStore(state => state.setCodexThread)
   const setCodexStreaming = useUnifiedRuntimeStore(state => state.setCodexStreaming)
   const replaceCodexMessages = useUnifiedRuntimeStore(state => state.replaceCodexMessages)
+
+  const scopedProjectDirectories = useMemo(() => {
+    const directories = new Set(projects.map(project => project.worktree))
+    if (projectData?.directory) {
+      directories.add(projectData.directory)
+    }
+    return [...directories]
+  }, [projectData?.directory, projects])
+
+  const scopedProjectDataByDirectory = useStoreWithEqualityFn(
+    useUnifiedRuntimeStore,
+    useCallback(
+      state => {
+        const next: Record<string, ProjectBootstrap> = {}
+        for (const directory of scopedProjectDirectories) {
+          const cached = state.projectDataByDirectory[directory]
+          if (cached) {
+            next[directory] = cached
+          }
+        }
+        return next
+      },
+      [scopedProjectDirectories]
+    ),
+    areRecordReferencesEqual
+  )
+
+  const scopedWorkspaceDirectories = useMemo(() => {
+    const directories = new Set(scopedProjectDirectories)
+    if (activeProjectDir) {
+      directories.add(activeProjectDir)
+    }
+    return [...directories]
+  }, [activeProjectDir, scopedProjectDirectories])
+
+  const workspaceShellState = useStoreWithEqualityFn(
+    useUnifiedRuntimeStore,
+    useCallback(
+      state => {
+        const workspaceMetaByDirectory: ScopedWorkspaceShellState['workspaceMetaByDirectory'] = {}
+        const workspaceRootByDirectory: ScopedWorkspaceShellState['workspaceRootByDirectory'] = {}
+        const workspaceRoots = new Set<string>()
+        for (const directory of scopedWorkspaceDirectories) {
+          const meta = state.workspaceMetaByDirectory[directory]
+          if (meta) {
+            workspaceMetaByDirectory[directory] = meta
+          }
+          const workspaceRoot = state.workspaceRootByDirectory[directory]
+          if (workspaceRoot) {
+            workspaceRootByDirectory[directory] = workspaceRoot
+            workspaceRoots.add(workspaceRoot)
+          }
+        }
+        const worktreesByWorkspace: ScopedWorkspaceShellState['worktreesByWorkspace'] = {}
+        for (const workspaceRoot of workspaceRoots) {
+          const worktrees = state.worktreesByWorkspace[workspaceRoot]
+          if (worktrees) {
+            worktreesByWorkspace[workspaceRoot] = worktrees
+          }
+        }
+        return {
+          workspaceMetaByDirectory,
+          workspaceRootByDirectory,
+          worktreesByWorkspace,
+        }
+      },
+      [scopedWorkspaceDirectories]
+    ),
+    areScopedWorkspaceShellStatesEqual
+  )
+  const { workspaceMetaByDirectory, workspaceRootByDirectory, worktreesByWorkspace } =
+    workspaceShellState
+
   useWorkspaceSessionMetadataMigration({
     projects,
     projectData: projectData ?? undefined,
-    projectDataByDirectory,
+    projectDataByDirectory: scopedProjectDataByDirectory,
     setProjectDataForDirectory,
     bumpProjectCacheVersion: () => setProjectCacheVersion(version => version + 1),
     setSessionTypes,
@@ -944,8 +1052,6 @@ export default function App() {
   const branchSearchInputRef = useRef<HTMLInputElement | null>(null)
   const terminalAutoCreateTried = useRef(false)
   const abortActiveSessionRef = useRef<(() => Promise<void>) | null>(null)
-  const workspaceRootByDirectory = useUnifiedRuntimeStore(state => state.workspaceRootByDirectory)
-  const worktreesByWorkspace = useUnifiedRuntimeStore(state => state.worktreesByWorkspace)
   const setSelectedWorkspaceWorktree = useUnifiedRuntimeStore(
     state => state.setSelectedWorkspaceWorktree
   )
@@ -955,12 +1061,12 @@ export default function App() {
   }, [scheduleGitRefresh])
 
   const cachedProjects = useMemo(() => {
-    const next = { ...projectDataByDirectory }
+    const next = { ...scopedProjectDataByDirectory }
     if (projectData?.directory) {
       next[projectData.directory] = projectData
     }
     return next
-  }, [projectData, projectDataByDirectory])
+  }, [projectData, scopedProjectDataByDirectory])
   const { backgroundSessionDescriptors, visibleBackgroundAgents } = useBackgroundSessionDescriptors(
     {
       activeProjectDir: activeProjectDir ?? undefined,
@@ -983,7 +1089,8 @@ export default function App() {
     getSessionIndicator,
   } = useAppShellSessionCollections({
     projectData: projectData ?? undefined,
-    projectDataByDirectory,
+    projectDataByDirectory: scopedProjectDataByDirectory,
+    workspaceRootByDirectory,
     activeProjectDir,
     activeSessionID: activeSessionID ?? undefined,
     projectCacheVersion,
@@ -1927,16 +2034,17 @@ export default function App() {
     })
 
   const allProjectSessions = useMemo(() => {
-    const map: Record<string, Array<{ id: string; title?: string; slug: string }>> = {}
-    const allData = { ...projectDataByDirectory }
-    if (projectData?.directory) {
-      allData[projectData.directory] = projectData
-    }
-    for (const [directory, data] of Object.entries(allData)) {
-      map[directory] = data.sessions.map(s => ({ id: s.id, title: s.title, slug: s.slug }))
-    }
-    return map
-  }, [projectData, projectDataByDirectory])
+    return Object.fromEntries(
+      Object.entries(cachedSessionsByProject).map(([directory, sessionsForProject]) => [
+        directory,
+        sessionsForProject.map(session => ({
+          id: session.id,
+          title: session.title,
+          slug: session.slug,
+        })),
+      ])
+    )
+  }, [cachedSessionsByProject])
 
   const setSessionReadTimestamp = useCallback(
     (directory: string, sessionID: string, nextReadAt: number) => {
@@ -1947,7 +2055,7 @@ export default function App() {
   )
 
   useEffect(() => {
-    const cachedProjects = { ...projectDataByDirectory }
+    const cachedProjects = { ...scopedProjectDataByDirectory }
     if (projectData?.directory) {
       cachedProjects[projectData.directory] = projectData
     }
@@ -1977,7 +2085,7 @@ export default function App() {
     initCodexSession,
     projectCacheVersion,
     projectData,
-    projectDataByDirectory,
+    scopedProjectDataByDirectory,
     replaceCodexMessages,
     setCodexStreaming,
     setCodexThread,
@@ -2272,7 +2380,7 @@ export default function App() {
 
   const removeSessionFromLocalProjectCache = useCallback(
     (directory: string, sessionID: string) => {
-      const cachedProject = projectDataByDirectory[directory]
+      const cachedProject = useUnifiedRuntimeStore.getState().projectDataByDirectory[directory]
       if (!cachedProject) {
         return
       }
@@ -2292,7 +2400,7 @@ export default function App() {
       }
       setProjectCacheVersion(version => version + 1)
     },
-    [activeProjectDir, projectDataByDirectory, setProjectData, setProjectDataForDirectory]
+    [activeProjectDir, setProjectData, setProjectDataForDirectory]
   )
 
   const archiveSession = useCallback(

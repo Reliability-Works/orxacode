@@ -83,6 +83,7 @@ function registerBackgroundSessionHidingTest() {
         projectDataByDirectory: {
           '/repo/marketing-websites': projectData,
         },
+        workspaceRootByDirectory: {},
         activeProjectDir: '/repo/marketing-websites',
         activeSessionID: 'session-main',
         projectCacheVersion: 0,
@@ -179,6 +180,10 @@ function registerWorkspaceDetailAggregationTest() {
         projectDataByDirectory: {
           '/repo/project': rootProjectData,
         },
+        workspaceRootByDirectory: {
+          '/repo/project': '/repo/project',
+          '/repo/project/.worktrees/feature-a': '/repo/project',
+        },
         activeProjectDir: '/repo/project/.worktrees/feature-a',
         activeSessionID: 'session-worktree',
         projectCacheVersion: 0,
@@ -186,8 +191,7 @@ function registerWorkspaceDetailAggregationTest() {
         archivedBackgroundAgentIds: {},
         hiddenBackgroundSessionIdsByProject: {},
         backgroundSessionDescriptors: [],
-        getSessionType: sessionID =>
-          sessionID === 'session-worktree' ? 'codex' : 'opencode',
+        getSessionType: sessionID => (sessionID === 'session-worktree' ? 'codex' : 'opencode'),
         normalizePresentationProvider: sessionType =>
           sessionType === 'codex' || sessionType === 'claude' || sessionType === 'claude-chat'
             ? sessionType
@@ -259,6 +263,10 @@ function registerWorkspaceSessionDeduplicationTest() {
         projectDataByDirectory: {
           '/repo/project': rootProjectData,
           '/repo/project/.worktrees/feature-a': worktreeProjectData,
+        },
+        workspaceRootByDirectory: {
+          '/repo/project': '/repo/project',
+          '/repo/project/.worktrees/feature-a': '/repo/project',
         },
         activeProjectDir: '/repo/project',
         activeSessionID: 'session-claude',

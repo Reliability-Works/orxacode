@@ -198,8 +198,9 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
   - Validate with:
     - component-level render metrics (app shell/sidebar/composer)
     - typing latency traces
-- [ ] **F-follow-up. Push remaining App shell map reads behind scoped selectors**
-  - `App.core` still reads broad project/session maps for some migration and cross-workspace flows; split those into scoped selectors in follow-up.
+- [x] **F-follow-up. Push remaining App shell map reads behind scoped selectors**
+  - `App.core` now consumes scoped, equality-checked subsets for project cache and workspace shell maps instead of subscribing to full `projectDataByDirectory` / `workspace*` maps.
+  - Session search payload derivation now reuses `cachedSessionsByProject` from session-collection surfaces instead of rebuilding from the full project map.
 
 ### Phase 7C — Deeper architecture (1–2 weeks)
 
