@@ -5,6 +5,8 @@ import { useComposerState } from './useComposerState'
 function registerAbortTests() {
   it('marks manual abort requests before aborting active session', async () => {
     const abortSessionMock = vi.fn(async () => true)
+    const refreshMessagesMock = vi.fn(async () => undefined)
+    const refreshProjectMock = vi.fn(async () => undefined)
     Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
@@ -18,8 +20,8 @@ function registerAbortTests() {
     const { result } = renderHook(() =>
       useComposerState('/repo', 'session-1', {
         availableSlashCommands: [],
-        refreshMessages: vi.fn(async () => undefined),
-        refreshProject: vi.fn(async () => undefined),
+        refreshMessages: refreshMessagesMock,
+        refreshProject: refreshProjectMock,
         sessions: [{ id: 'session-1', title: 'Session 1' }],
         selectedAgent: 'build',
         availableAgentNames: new Set(['build']),
@@ -39,6 +41,8 @@ function registerAbortTests() {
 
     expect(onSessionAbortRequested).toHaveBeenCalledWith('/repo', 'session-1')
     expect(abortSessionMock).toHaveBeenCalledWith('/repo', 'session-1')
+    expect(refreshMessagesMock).not.toHaveBeenCalled()
+    expect(refreshProjectMock).not.toHaveBeenCalled()
   })
 }
 
@@ -133,7 +137,7 @@ function registerAgentSelectionTests() {
 }
 
 function registerRenameTests() {
-  it('refreshes project data after auto-renaming an OpenCode session title', async () => {
+  it('avoids redundant project refresh after auto-renaming an OpenCode session title', async () => {
     const sendPromptMock = vi.fn(async () => true)
     const renameSessionMock = vi.fn(async () => true)
     const refreshProjectMock = vi.fn(async () => undefined)
@@ -173,7 +177,7 @@ function registerRenameTests() {
     })
 
     expect(renameSessionMock).toHaveBeenCalledWith('/repo', 'session-1', 'Ship booking flow')
-    expect(refreshProjectMock).toHaveBeenCalledWith('/repo')
+    expect(refreshProjectMock).not.toHaveBeenCalled()
     expect(sendPromptMock).toHaveBeenCalled()
   })
 }
@@ -183,6 +187,7 @@ function registerPollingTests() {
     const sendPromptMock = vi.fn(async () => true)
     const startResponsePolling = vi.fn()
     const onPromptAccepted = vi.fn()
+    const refreshMessagesMock = vi.fn(async () => undefined)
     Object.defineProperty(window, 'orxa', {
       configurable: true,
       value: {
@@ -196,7 +201,7 @@ function registerPollingTests() {
     const { result } = renderHook(() =>
       useComposerState('/repo', 'session-1', {
         availableSlashCommands: [],
-        refreshMessages: vi.fn(async () => undefined),
+        refreshMessages: refreshMessagesMock,
         refreshProject: vi.fn(async () => undefined),
         sessions: [{ id: 'session-1', title: 'Session 1' }],
         selectedAgent: undefined,
@@ -226,6 +231,7 @@ function registerPollingTests() {
       text: 'hello',
       promptSource: 'user',
     })
+    expect(refreshMessagesMock).not.toHaveBeenCalled()
   })
 }
 

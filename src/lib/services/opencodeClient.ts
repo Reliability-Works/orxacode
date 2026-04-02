@@ -11,6 +11,7 @@ import type {
   ExecutionLedgerSnapshot,
   GitBranchState,
   ProjectBootstrap,
+  ProjectRefreshCold,
   ProjectListItem,
   PromptRequest,
   SessionMessageBundle,
@@ -151,6 +152,12 @@ export const opencodeClient = {
 
   async refreshProject(directory: string): Promise<ProjectBootstrap> {
     return withRetry('refreshProject', () => getBridge().refreshProject(directory), { retries: 2 })
+  },
+
+  async refreshProjectCold(directory: string): Promise<ProjectRefreshCold> {
+    return withRetry('refreshProjectCold', () => getBridge().refreshProjectCold(directory), {
+      retries: 1,
+    })
   },
 
   async createSession(

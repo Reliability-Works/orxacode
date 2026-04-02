@@ -35,7 +35,10 @@ export function OpencodeBackgroundSessionManager({ directory, sessionID }: Props
             workspaceHash: directory,
             sessionHash: sessionID,
           },
-          () => window.orxa.opencode.getSessionRuntime(directory, sessionID)
+          () =>
+            window.orxa.opencode.getSessionRuntimeCore
+              ? window.orxa.opencode.getSessionRuntimeCore(directory, sessionID)
+              : window.orxa.opencode.getSessionRuntime(directory, sessionID)
         )
         reportPerf({
           surface: 'background',

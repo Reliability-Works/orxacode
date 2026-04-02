@@ -320,3 +320,358 @@ it('can select a session in another workspace immediately after selecting that w
   expect(result.current.activeSessionID).toBe(targetSessionId)
   expect(getSessionRuntimeMock).toHaveBeenCalledWith(targetDirectory, targetSessionId)
 })
+
+it('batches burst opencode stream events into a single flush while preserving order', async () => {
+  const directory = '/repo'
+  const now = Date.now()
+  const createdSession = {
+    id: 'session-batched-events',
+    slug: 'session-batched-events',
+    title: 'Batched events',
+    time: { created: now, updated: now },
+  }
+  const reportPerfMock = vi.fn(async () => undefined)
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      app: {
+        reportPerf: reportPerfMock,
+      },
+      opencode: {
+        selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }])
+        ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: bootstrap.sessionStatus,
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
+        createSession: vi.fn(async () => createdSession),
+        getSessionRuntimeCore: vi.fn(async (_directory: string, sessionID: string) =>
+          createRuntimeSnapshot(directory, sessionID, [])
+        ),
+        getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) =>
+          createRuntimeSnapshot(directory, sessionID, [])
+        ),
+        loadSessionDiff: vi.fn(async () => []),
+        loadExecutionLedger: vi.fn(async () => ({ cursor: 0, records: [] })),
+        loadChangeProvenance: vi.fn(async () => ({ cursor: 0, records: [] })),
+        sendPrompt: vi.fn(async () => true),
+        deleteSession: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.createSession as unknown as (
+        directory: string,
+        prompt?: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, 'Batch stream updates', { availableAgentNames: new Set<string>() })
+  })
+
+  let hadSecondMessageBeforeFlush = false
+  await act(async () => {
+    result.current.applyOpencodeStreamEvent(directory, {
+      type: 'message.updated',
+      properties: {
+        info: {
+          id: 'assistant-1',
+          role: 'assistant',
+          sessionID: createdSession.id,
+          time: { created: now + 1, updated: now + 1 },
+        },
+      },
+    } as never)
+    result.current.applyOpencodeStreamEvent(directory, {
+      type: 'message.updated',
+      properties: {
+        info: {
+          id: 'assistant-2',
+          role: 'assistant',
+          sessionID: createdSession.id,
+          time: { created: now + 2, updated: now + 2 },
+        },
+      },
+    } as never)
+
+    const earlyState = useUnifiedRuntimeStore.getState()
+    const sessionKey = `opencode::${directory}::${createdSession.id}`
+    hadSecondMessageBeforeFlush =
+      earlyState.opencodeSessions[sessionKey]?.messages.some(
+        bundle => bundle.info.id === 'assistant-2'
+      ) ?? false
+  })
+
+  expect(hadSecondMessageBeforeFlush).toBe(false)
+
+  await waitFor(() => {
+    const state = useUnifiedRuntimeStore.getState()
+    const sessionKey = `opencode::${directory}::${createdSession.id}`
+    const ids = state.opencodeSessions[sessionKey]?.messages.map(bundle => bundle.info.id) ?? []
+    expect(ids).toContain('assistant-1')
+    expect(ids).toContain('assistant-2')
+    expect(ids.indexOf('assistant-1')).toBeLessThan(ids.indexOf('assistant-2'))
+  })
+
+  await waitFor(() => {
+    const perfCalls = reportPerfMock.mock.calls as unknown as Array<
+      [
+        {
+          metric?: string
+          value?: number
+        },
+      ]
+    >
+    const metrics = perfCalls.map(call => call[0]?.metric)
+    expect(metrics).toContain('event.batch.size')
+    expect(metrics).toContain('event.batch.flush_ms')
+    expect(
+      perfCalls.some(call => call[0]?.metric === 'event.batch.size' && call[0]?.value === 2)
+    ).toBe(true)
+  })
+})
+
+it('yields large stream bursts across multiple bounded flushes', async () => {
+  const directory = '/repo'
+  const now = Date.now()
+  const createdSession = {
+    id: 'session-large-burst',
+    slug: 'session-large-burst',
+    title: 'Large burst',
+    time: { created: now, updated: now },
+  }
+  const reportPerfMock = vi.fn(async () => undefined)
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      app: {
+        reportPerf: reportPerfMock,
+      },
+      opencode: {
+        selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }])
+        ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: bootstrap.sessionStatus,
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
+        createSession: vi.fn(async () => createdSession),
+        getSessionRuntimeCore: vi.fn(async (_directory: string, sessionID: string) =>
+          createRuntimeSnapshot(directory, sessionID, [])
+        ),
+        getSessionRuntime: vi.fn(async (_directory: string, sessionID: string) =>
+          createRuntimeSnapshot(directory, sessionID, [])
+        ),
+        loadSessionDiff: vi.fn(async () => []),
+        loadExecutionLedger: vi.fn(async () => ({ cursor: 0, records: [] })),
+        loadChangeProvenance: vi.fn(async () => ({ cursor: 0, records: [] })),
+        sendPrompt: vi.fn(async () => true),
+        deleteSession: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.createSession as unknown as (
+        directory: string,
+        prompt?: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, 'Batch stream updates', { availableAgentNames: new Set<string>() })
+  })
+
+  const burstCount = 220
+  await act(async () => {
+    for (let index = 0; index < burstCount; index += 1) {
+      result.current.applyOpencodeStreamEvent(directory, {
+        type: 'message.updated',
+        properties: {
+          info: {
+            id: `assistant-${index}`,
+            role: 'assistant',
+            sessionID: createdSession.id,
+            time: { created: now + index + 1, updated: now + index + 1 },
+          },
+        },
+      } as never)
+    }
+  })
+
+  await waitFor(() => {
+    const state = useUnifiedRuntimeStore.getState()
+    const sessionKey = `opencode::${directory}::${createdSession.id}`
+    expect(state.opencodeSessions[sessionKey]?.messages).toHaveLength(burstCount)
+  })
+
+  await waitFor(() => {
+    const perfCalls = reportPerfMock.mock.calls as unknown as Array<
+      [
+        {
+          metric?: string
+          value?: number
+        },
+      ]
+    >
+    const batchSizes = perfCalls
+      .filter(call => call[0]?.metric === 'event.batch.size')
+      .map(call => Number(call[0]?.value ?? 0))
+      .filter(value => Number.isFinite(value) && value > 0)
+    expect(batchSizes.length).toBeGreaterThan(1)
+    expect(Math.max(...batchSizes)).toBeLessThanOrEqual(100)
+    expect(batchSizes.reduce((sum, value) => sum + value, 0)).toBe(burstCount)
+  })
+})
+
+it('hydrates runtime extras lazily after loading core session runtime', async () => {
+  const directory = '/repo'
+  const now = Date.now()
+  const createdSession = {
+    id: 'session-core-runtime',
+    slug: 'session-core-runtime',
+    title: 'Core runtime',
+    time: { created: now, updated: now },
+  }
+
+  const getSessionRuntimeCoreMock = vi.fn(async (_directory: string, sessionID: string) =>
+    createRuntimeSnapshot(directory, sessionID, [])
+  )
+  const getSessionRuntimeMock = vi.fn(async (_directory: string, sessionID: string) =>
+    createRuntimeSnapshot(directory, sessionID, [])
+  )
+  const loadSessionDiffMock = vi.fn(
+    async () =>
+      [
+        {
+          path: 'src/App.tsx',
+          type: 'M',
+          diff: '@@ -1 +1 @@\n-old\n+new\n',
+        },
+      ] as never[]
+  )
+  const loadExecutionLedgerMock = vi.fn(async () => ({
+    cursor: 1,
+    records: [
+      {
+        id: 'ledger-1',
+        directory,
+        sessionID: createdSession.id,
+        timestamp: now,
+        kind: 'edit',
+        summary: 'Updated App.tsx',
+        actor: { type: 'main' },
+      },
+    ],
+  }))
+  const loadChangeProvenanceMock = vi.fn(async () => ({
+    cursor: 1,
+    records: [
+      {
+        filePath: 'src/App.tsx',
+        operation: 'edit',
+        actorType: 'main',
+        eventID: 'event-1',
+        timestamp: now,
+      },
+    ],
+  }))
+
+  Object.defineProperty(window, 'orxa', {
+    configurable: true,
+    value: {
+      opencode: {
+        selectProject: vi.fn(async () => createProjectBootstrap(directory, [])),
+        refreshProject: vi.fn(async () =>
+          createProjectBootstrap(directory, [{ id: createdSession.id, time: { updated: now } }])
+        ),
+        refreshProjectDelta: vi.fn(async () => ({
+          ...(() => {
+            const bootstrap = createProjectBootstrap(directory, [
+              { id: createdSession.id, time: { updated: now } },
+            ])
+            return {
+              directory,
+              sessions: bootstrap.sessions,
+              sessionStatus: bootstrap.sessionStatus,
+              permissions: bootstrap.permissions,
+              questions: bootstrap.questions,
+              commands: bootstrap.commands,
+              ptys: bootstrap.ptys,
+            }
+          })(),
+        })),
+        createSession: vi.fn(async () => createdSession),
+        getSessionRuntimeCore: getSessionRuntimeCoreMock,
+        getSessionRuntime: getSessionRuntimeMock,
+        loadSessionDiff: loadSessionDiffMock,
+        loadExecutionLedger: loadExecutionLedgerMock,
+        loadChangeProvenance: loadChangeProvenanceMock,
+        sendPrompt: vi.fn(async () => true),
+        deleteSession: vi.fn(async () => true),
+      },
+    },
+  })
+
+  const { result } = renderWorkspaceStateHook()
+
+  await act(async () => {
+    await (
+      result.current.createSession as unknown as (
+        directory: string,
+        prompt?: string,
+        options?: unknown
+      ) => Promise<void>
+    )(directory, 'Ship this', { availableAgentNames: new Set<string>() })
+  })
+
+  expect(getSessionRuntimeCoreMock).toHaveBeenCalledWith(directory, createdSession.id)
+  expect(getSessionRuntimeMock).not.toHaveBeenCalled()
+
+  await waitFor(() => {
+    expect(loadSessionDiffMock).toHaveBeenCalledWith(directory, createdSession.id)
+    expect(loadExecutionLedgerMock).toHaveBeenCalledWith(directory, createdSession.id, 0)
+    expect(loadChangeProvenanceMock).toHaveBeenCalledWith(directory, createdSession.id, 0)
+  })
+
+  const runtime =
+    useUnifiedRuntimeStore.getState().opencodeSessions[
+      `opencode::${directory}::${createdSession.id}`
+    ]?.runtimeSnapshot
+  expect(runtime?.sessionDiff).toHaveLength(1)
+  expect(runtime?.executionLedger.cursor).toBe(1)
+  expect(runtime?.changeProvenance.cursor).toBe(1)
+})

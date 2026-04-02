@@ -47,6 +47,8 @@ type FooterProps = {
   latestActivityContent?: string | null
 }
 
+const VIRTUALIZATION_ROW_THRESHOLD = 80
+
 const AssistantPlaceholderFooter = memo(function AssistantPlaceholderFooter({
   optimisticUserPrompt,
   assistantLabel,
@@ -68,11 +70,7 @@ const AssistantPlaceholderFooter = memo(function AssistantPlaceholderFooter({
         </div>
       ) : null}
       <div className="center-pane-rail center-pane-rail--row">
-        <MessageCardFrame
-          role="assistant"
-          label={assistantLabel}
-          timestamp={placeholderTimestamp}
-        >
+        <MessageCardFrame role="assistant" label={assistantLabel} timestamp={placeholderTimestamp}>
           <div className="message-parts">
             <section className="message-part thinking-panel">
               <div className="message-thinking">
@@ -190,6 +188,7 @@ export const MessageFeed = memo(function MessageFeed({
     placeholderTimestamp,
   } = computedPresentation
   const feedRows = useFeedRowsWithNotices(renderedRows, sessionNotices)
+  const shouldVirtualize = feedRows.length >= VIRTUALIZATION_ROW_THRESHOLD
   const hasVisibleContent = renderedRows.length > 0 || Boolean(optimisticUserPrompt)
 
   const footer = MessageFeedFooter({
@@ -218,7 +217,7 @@ export const MessageFeed = memo(function MessageFeed({
       className="messages-scroll"
       onScroll={undefined}
       style={messageFeedStyle}
-      virtualize={false}
+      virtualize={shouldVirtualize}
       sessionId={sessionId}
       emptyState={emptyState}
       estimateSize={estimateUnifiedTimelineRowHeight}

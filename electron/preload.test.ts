@@ -46,8 +46,12 @@ type OrxaBridge = {
     exportPerfSnapshot: (input?: unknown) => Promise<unknown>
   }
   opencode: {
+    selectProject: (directory: string) => Promise<unknown>
     refreshProject: (directory: string) => Promise<unknown>
     refreshProjectDelta: (directory: string) => Promise<unknown>
+    refreshProjectCold: (directory: string) => Promise<unknown>
+    getSessionRuntimeCore: (directory: string, sessionID: string) => Promise<unknown>
+    loadSessionDiff: (directory: string, sessionID: string) => Promise<unknown>
     getArtifactRetentionPolicy: () => Promise<unknown>
     setArtifactRetentionPolicy: (input: unknown) => Promise<unknown>
     pruneArtifactsNow: (workspace?: string) => Promise<unknown>
@@ -285,6 +289,93 @@ describe('preload opencode bridge', () => {
     resolveRefresh?.({ directory: '/repo' })
     await Promise.all([first, second])
   })
+
+  it('dedupes in-flight project selection for same workspace', async () => {
+    const bridge = await loadBridge()
+    let resolveSelection: ((value: unknown) => void) | undefined
+    const selectionPromise = new Promise(resolve => {
+      resolveSelection = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.opencodeSelectProject) {
+        return selectionPromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.opencode.selectProject('/repo')
+    const second = bridge.opencode.selectProject('/repo')
+
+    const selectionInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.opencodeSelectProject
+    )
+    expect(selectionInvocations).toHaveLength(1)
+
+    resolveSelection?.({ directory: '/repo' })
+    await Promise.all([first, second])
+  })
+
+  it('dedupes in-flight session runtime core requests for same session', async () => {
+    const bridge = await loadBridge()
+    let resolveRuntime: ((value: unknown) => void) | undefined
+    const runtimePromise = new Promise(resolve => {
+      resolveRuntime = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.opencodeGetSessionRuntimeCore) {
+        return runtimePromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.opencode.getSessionRuntimeCore('/repo', 'session-1')
+    const second = bridge.opencode.getSessionRuntimeCore('/repo', 'session-1')
+
+    const runtimeInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.opencodeGetSessionRuntimeCore
+    )
+    expect(runtimeInvocations).toHaveLength(1)
+
+    resolveRuntime?.({ directory: '/repo', sessionID: 'session-1' })
+    await Promise.all([first, second])
+  })
+
+  it('dedupes in-flight cold project refresh for same workspace', async () => {
+    const bridge = await loadBridge()
+    let resolveRefresh: ((value: unknown) => void) | undefined
+    const refreshPromise = new Promise(resolve => {
+      resolveRefresh = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.opencodeRefreshProjectCold) {
+        return refreshPromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.opencode.refreshProjectCold('/repo')
+    const second = bridge.opencode.refreshProjectCold('/repo')
+
+    const refreshInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.opencodeRefreshProjectCold
+    )
+    expect(refreshInvocations).toHaveLength(1)
+
+    resolveRefresh?.({ directory: '/repo' })
+    await Promise.all([first, second])
+  })
 })
 
 describe('preload codex bridge', () => {
@@ -397,6 +488,35 @@ describe('preload codex bridge', () => {
       'turn-1'
     )
   })
+
+  it('dedupes in-flight provider resume calls for the same thread', async () => {
+    const bridge = await loadBridge()
+    let resolveResume: ((value: unknown) => void) | undefined
+    const resumePromise = new Promise(resolve => {
+      resolveResume = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.codexResumeProviderThread) {
+        return resumePromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.codex.resumeProviderThread('thread-1', '/repo')
+    const second = bridge.codex.resumeProviderThread('thread-1', '/repo')
+
+    const resumeInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.codexResumeProviderThread
+    )
+    expect(resumeInvocations).toHaveLength(1)
+
+    resolveResume?.({ ok: true })
+    await Promise.all([first, second])
+  })
 })
 
 describe('preload claude chat bridge', () => {
@@ -433,5 +553,34 @@ describe('preload claude chat bridge', () => {
         surface: 'claude_chat',
       })
     )
+  })
+
+  it('dedupes in-flight provider session resume for matching inputs', async () => {
+    const bridge = await loadBridge()
+    let resolveResume: ((value: unknown) => void) | undefined
+    const resumePromise = new Promise(resolve => {
+      resolveResume = resolve
+    })
+
+    electronMocks.invoke.mockImplementation((channel: string) => {
+      if (channel === IPC.claudeChatResumeProviderSession) {
+        return resumePromise
+      }
+      if (channel === IPC.appReportPerf) {
+        return Promise.resolve(undefined)
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const first = bridge.claudeChat.resumeProviderSession('provider-thread-1', '/repo')
+    const second = bridge.claudeChat.resumeProviderSession('provider-thread-1', '/repo')
+
+    const resumeInvocations = electronMocks.invoke.mock.calls.filter(
+      call => call[0] === IPC.claudeChatResumeProviderSession
+    )
+    expect(resumeInvocations).toHaveLength(1)
+
+    resolveResume?.({ sessionKey: 'provider-thread-1' })
+    await Promise.all([first, second])
   })
 })

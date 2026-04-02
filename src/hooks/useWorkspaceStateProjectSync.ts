@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { Event as OpencodeEvent, Session } from '@opencode-ai/sdk/v2/client'
-import type { ProjectBootstrap, ProjectRefreshDelta, SessionRuntimeSnapshot } from '@shared/ipc'
+import type {
+  ProjectBootstrap,
+  ProjectRefreshCold,
+  ProjectRefreshDelta,
+  SessionRuntimeSnapshot,
+} from '@shared/ipc'
 import type { TerminalTab } from '../components/TerminalPanel'
 import { makeUnifiedSessionKey } from '../state/unified-runtime'
 import { useUnifiedRuntimeStore } from '../state/unified-runtime-store'
@@ -10,6 +15,7 @@ import {
   normalizeMessageBundles,
 } from '../lib/opencode-event-reducer'
 import { getPersistedOpencodeState, mergeOpencodeMessages } from './opencode-session-storage'
+import { setPersistedOpencodeState } from './opencode-session-storage'
 import {
   extractEventSessionID,
   loadOpencodeRuntimeSnapshot,
@@ -18,6 +24,7 @@ import {
 import { useWorkspaceQueuedRefresh } from './useWorkspaceQueuedRefresh'
 import type { SetMessages, SetProjectData, UnifiedRuntimeState } from './useWorkspaceState-store'
 import { measurePerf, reportPerf } from '../lib/performance'
+import { persistProjectSessions } from '../state/unified-runtime-store-helpers'
 
 type UseWorkspaceStateProjectSyncArgs = {
   activeProjectDir?: string
@@ -54,6 +61,9 @@ type UseWorkspaceStateProjectSyncArgs = {
 
 type RuntimeSnapshot = Awaited<ReturnType<typeof loadOpencodeRuntimeSnapshot>>
 const BACKGROUND_REFRESH_COOLDOWN_MS = 1_500
+const RUNTIME_EXTRAS_REUSE_WINDOW_MS = 12_000
+const PROJECT_COLD_REFRESH_REUSE_WINDOW_MS = 45_000
+const MAX_STREAM_EVENT_BATCH_SIZE = 100
 
 function computeLastUpdated(sessions: Array<{ time: { updated: number } }>) {
   return sessions.reduce((max, session) => Math.max(max, session.time.updated), 0)
@@ -114,6 +124,66 @@ function useWorkspaceRuntimeProjection({
   | 'setWorkspaceMeta'
   | 'setOpencodeRuntimeSnapshot'
 >) {
+  const runtimeExtrasInFlightRef = useRef(new Map<string, Promise<void>>())
+  const runtimeExtrasLastAtRef = useRef(new Map<string, number>())
+
+  const queueRuntimeExtrasHydration = useCallback(
+    (directory: string, sessionID: string) => {
+      const key = `${directory}::${sessionID}`
+      const lastHydratedAt = runtimeExtrasLastAtRef.current.get(key) ?? 0
+      if (Date.now() - lastHydratedAt < RUNTIME_EXTRAS_REUSE_WINDOW_MS) {
+        return
+      }
+      const inFlight = runtimeExtrasInFlightRef.current.get(key)
+      if (inFlight) {
+        return
+      }
+
+      const runtimeKey = makeUnifiedSessionKey('opencode', directory, sessionID)
+      const opencodeBridge = window.orxa?.opencode
+      if (!opencodeBridge) {
+        return
+      }
+      const existingRuntime = getRuntimeState().opencodeSessions[runtimeKey]?.runtimeSnapshot
+      const request = Promise.all([
+        opencodeBridge.loadSessionDiff
+          ? opencodeBridge.loadSessionDiff(directory, sessionID).catch(() => [])
+          : Promise.resolve(existingRuntime?.sessionDiff ?? []),
+        opencodeBridge.loadExecutionLedger
+          ? opencodeBridge
+              .loadExecutionLedger(directory, sessionID, 0)
+              .catch(() => ({ cursor: 0, records: [] }))
+          : Promise.resolve(existingRuntime?.executionLedger ?? { cursor: 0, records: [] }),
+        opencodeBridge.loadChangeProvenance
+          ? opencodeBridge
+              .loadChangeProvenance(directory, sessionID, 0)
+              .catch(() => ({ cursor: 0, records: [] }))
+          : Promise.resolve(existingRuntime?.changeProvenance ?? { cursor: 0, records: [] }),
+      ])
+        .then(([sessionDiff, executionLedger, changeProvenance]) => {
+          const currentRuntime = getRuntimeState().opencodeSessions[runtimeKey]?.runtimeSnapshot
+          if (!currentRuntime) {
+            return
+          }
+          setOpencodeRuntimeSnapshot(directory, sessionID, {
+            ...currentRuntime,
+            messages: normalizeMessageBundles(currentRuntime.messages),
+            sessionDiff,
+            executionLedger,
+            changeProvenance,
+          })
+          runtimeExtrasLastAtRef.current.set(key, Date.now())
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          runtimeExtrasInFlightRef.current.delete(key)
+        })
+
+      runtimeExtrasInFlightRef.current.set(key, request)
+    },
+    [getRuntimeState, setOpencodeRuntimeSnapshot]
+  )
+
   const buildRuntimeProjectSlice = useCallback(
     (
       directory: string,
@@ -208,6 +278,21 @@ function useWorkspaceRuntimeProjection({
           )
         : normalized
       const runtimeProject = buildRuntimeProjectSlice(directory, runtime)
+      const existingRuntime =
+        getRuntimeState().opencodeSessions[makeUnifiedSessionKey('opencode', directory, sessionID)]
+          ?.runtimeSnapshot
+      const mergedSessionDiff =
+        runtime.sessionDiff.length > 0
+          ? runtime.sessionDiff
+          : (existingRuntime?.sessionDiff ?? runtime.sessionDiff)
+      const mergedExecutionLedger =
+        runtime.executionLedger.cursor > 0 || runtime.executionLedger.records.length > 0
+          ? runtime.executionLedger
+          : (existingRuntime?.executionLedger ?? runtime.executionLedger)
+      const mergedChangeProvenance =
+        runtime.changeProvenance.cursor > 0 || runtime.changeProvenance.records.length > 0
+          ? runtime.changeProvenance
+          : (existingRuntime?.changeProvenance ?? runtime.changeProvenance)
       setOpencodeRuntimeSnapshot(directory, sessionID, {
         ...runtime,
         sessionStatus: runtime.sessionStatus ?? runtimeProject.sessionStatus[sessionID],
@@ -215,10 +300,25 @@ function useWorkspaceRuntimeProjection({
         questions: runtimeProject.questions,
         commands: runtimeProject.commands,
         messages,
+        sessionDiff: mergedSessionDiff,
+        executionLedger: mergedExecutionLedger,
+        changeProvenance: mergedChangeProvenance,
       })
+      if (
+        mergedSessionDiff.length === 0 &&
+        mergedExecutionLedger.records.length === 0 &&
+        mergedChangeProvenance.records.length === 0
+      ) {
+        queueRuntimeExtrasHydration(directory, sessionID)
+      }
       return messages
     },
-    [buildRuntimeProjectSlice, setOpencodeRuntimeSnapshot]
+    [
+      buildRuntimeProjectSlice,
+      getRuntimeState,
+      queueRuntimeExtrasHydration,
+      setOpencodeRuntimeSnapshot,
+    ]
   )
 
   return {
@@ -252,6 +352,7 @@ function useWorkspaceRefreshActions({
   const runtimeLoadInFlightRef = useRef(new Map<string, Promise<RuntimeSnapshot | undefined>>())
   const projectRefreshInFlightRef = useRef(new Map<string, Promise<ProjectBootstrap>>())
   const projectRefreshLastAtRef = useRef(new Map<string, number>())
+  const projectColdRefreshLastAtRef = useRef(new Map<string, number>())
 
   const loadRuntimeForSession = useCallback(
     (
@@ -301,27 +402,67 @@ function useWorkspaceRefreshActions({
 
       const refreshPromise = (async () => {
         try {
-          const useDeltaRefresh = skipMessageLoad
-            ? Boolean(getRuntimeState().projectDataByDirectory[directory])
-            : false
-          const data = await measurePerf(
-            {
-              surface: 'workspace',
-              metric: 'workspace.refresh_ms',
-              kind: 'span',
-              unit: 'ms',
-              process: 'renderer',
-              component: 'workspace-state-project-sync',
-              workspaceHash: directory,
-            },
-            () =>
-              useDeltaRefresh
-                ? window.orxa.opencode.refreshProjectDelta(directory)
-                : window.orxa.opencode.refreshProject(directory)
-          )
-          const merged = useDeltaRefresh
-            ? projection.commitProjectDelta(directory, data as ProjectRefreshDelta)
-            : projection.commitProjectData(directory, data as ProjectBootstrap)
+          const cachedProject = getRuntimeState().projectDataByDirectory[directory]
+          const canUseDeltaRefresh = Boolean(cachedProject)
+          if (canUseDeltaRefresh && !projectColdRefreshLastAtRef.current.has(directory)) {
+            projectColdRefreshLastAtRef.current.set(directory, Date.now())
+          }
+
+          let merged = canUseDeltaRefresh
+            ? projection.commitProjectDelta(
+                directory,
+                (await measurePerf(
+                  {
+                    surface: 'workspace',
+                    metric: 'workspace.refresh_ms',
+                    kind: 'span',
+                    unit: 'ms',
+                    process: 'renderer',
+                    component: 'workspace-state-project-sync',
+                    workspaceHash: directory,
+                  },
+                  () => window.orxa.opencode.refreshProjectDelta(directory)
+                )) as ProjectRefreshDelta
+              )
+            : projection.commitProjectData(
+                directory,
+                (await measurePerf(
+                  {
+                    surface: 'workspace',
+                    metric: 'workspace.refresh_ms',
+                    kind: 'span',
+                    unit: 'ms',
+                    process: 'renderer',
+                    component: 'workspace-state-project-sync',
+                    workspaceHash: directory,
+                  },
+                  () => window.orxa.opencode.refreshProject(directory)
+                )) as ProjectBootstrap
+              )
+
+          if (!canUseDeltaRefresh) {
+            projectColdRefreshLastAtRef.current.set(directory, Date.now())
+          }
+
+          const lastColdRefreshedAt = projectColdRefreshLastAtRef.current.get(directory) ?? 0
+          const shouldRefreshCold =
+            canUseDeltaRefresh &&
+            Boolean(window.orxa.opencode.refreshProjectCold) &&
+            (!skipMessageLoad ||
+              Date.now() - lastColdRefreshedAt > PROJECT_COLD_REFRESH_REUSE_WINDOW_MS)
+          if (shouldRefreshCold) {
+            const coldData = (await window.orxa.opencode
+              .refreshProjectCold(directory)
+              .catch(() => undefined)) as ProjectRefreshCold | undefined
+            if (coldData) {
+              merged = projection.commitProjectData(directory, {
+                ...merged,
+                ...coldData,
+              })
+              projectColdRefreshLastAtRef.current.set(directory, Date.now())
+            }
+          }
+
           const currentState = getRuntimeState()
           if (currentState.activeWorkspaceDirectory === directory) {
             setProjectData(merged)
@@ -600,47 +741,126 @@ function useWorkspaceResponsePolling({
   }
 }
 
-function useWorkspaceStreamEvents({
-  getRuntimeState,
-  projection,
-  setOpencodeTodoItems,
-  setOpencodeRuntimeSnapshot,
-}: Pick<
-  UseWorkspaceStateProjectSyncArgs,
-  'getRuntimeState' | 'setOpencodeTodoItems' | 'setOpencodeRuntimeSnapshot'
-> & { projection: ReturnType<typeof useWorkspaceRuntimeProjection> }) {
-  return useCallback(
-    (directory: string, event: OpencodeEvent) => {
-      const state = getRuntimeState()
-      const existingProject = state.projectDataByDirectory[directory]
-      const nextProject = applyOpencodeProjectEvent(existingProject ?? null, event)
-      if (nextProject) {
-        const normalizedSessions = [...nextProject.sessions].sort(
-          (left: Session, right: Session) => right.time.updated - left.time.updated
-        )
-        projection.commitProjectData(directory, { ...nextProject, sessions: normalizedSessions })
-      }
+function useWorkspaceStreamEvents() {
+  const queuedEventsRef = useRef<Array<{ directory: string; event: OpencodeEvent }>>([])
+  const flushScheduledRef = useRef(false)
+  const flushQueuedEventsRef = useRef<() => void>(() => undefined)
 
-      const eventSessionID = extractEventSessionID(event)
-      if (!eventSessionID) {
-        return
-      }
+  const scheduleFlush = useCallback((flushQueuedEvents: () => void, yieldToMacrotask = false) => {
+    if (flushScheduledRef.current) {
+      return
+    }
+    flushScheduledRef.current = true
+    const runFlush = () => {
+      flushScheduledRef.current = false
+      flushQueuedEvents()
+    }
+    if (yieldToMacrotask) {
+      window.setTimeout(runFlush, 0)
+      return
+    }
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(runFlush)
+      return
+    }
+    Promise.resolve().then(runFlush)
+  }, [])
 
-      const opencodeSessionKey = makeUnifiedSessionKey('opencode', directory, eventSessionID)
-      const currentRuntime = useUnifiedRuntimeStore.getState().opencodeSessions[opencodeSessionKey]
-      const applied = applyOpencodeSessionEvent({
-        directory,
-        sessionID: eventSessionID,
-        snapshot: currentRuntime?.runtimeSnapshot ?? null,
-        messages: currentRuntime?.messages ?? [],
-        event,
-      })
+  const flushQueuedEvents = useCallback(() => {
+    const queuedEvents = queuedEventsRef.current.splice(0, MAX_STREAM_EVENT_BATCH_SIZE)
+    if (queuedEvents.length === 0) {
+      return
+    }
 
-      if (applied.todoItems) {
-        setOpencodeTodoItems(
+    const startedAt = performance.now()
+    reportPerf({
+      surface: 'event_bus',
+      metric: 'event.batch.size',
+      kind: 'gauge',
+      value: queuedEvents.length,
+      unit: 'count',
+      process: 'renderer',
+      component: 'workspace-stream-events',
+    })
+
+    const persistedMessages = new Map<string, ReturnType<typeof normalizeMessageBundles>>()
+
+    useUnifiedRuntimeStore.setState(state => {
+      let nextProjectDataByDirectory = state.projectDataByDirectory
+      let nextWorkspaceMetaByDirectory = state.workspaceMetaByDirectory
+      let nextOpencodeSessions = state.opencodeSessions
+
+      const getProjectSnapshot = (directory: string) =>
+        nextProjectDataByDirectory[directory] ?? null
+      const getSessionRuntime = (sessionKey: string) => nextOpencodeSessions[sessionKey]
+
+      for (const queued of queuedEvents) {
+        const { directory, event } = queued
+        const nextProject = applyOpencodeProjectEvent(getProjectSnapshot(directory), event)
+        if (nextProject) {
+          const normalizedSessions = [...nextProject.sessions].sort(
+            (left: Session, right: Session) => right.time.updated - left.time.updated
+          )
+          if (nextProjectDataByDirectory === state.projectDataByDirectory) {
+            nextProjectDataByDirectory = { ...nextProjectDataByDirectory }
+          }
+          nextProjectDataByDirectory[directory] = {
+            ...nextProject,
+            sessions: normalizedSessions,
+          }
+          persistProjectSessions(directory, normalizedSessions)
+
+          const previousMeta = nextWorkspaceMetaByDirectory[directory]
+          const nextLastUpdatedAt = computeLastUpdated(normalizedSessions)
+          if (!previousMeta || previousMeta.lastUpdatedAt !== nextLastUpdatedAt) {
+            if (nextWorkspaceMetaByDirectory === state.workspaceMetaByDirectory) {
+              nextWorkspaceMetaByDirectory = { ...nextWorkspaceMetaByDirectory }
+            }
+            nextWorkspaceMetaByDirectory[directory] = {
+              lastOpenedAt: previousMeta?.lastOpenedAt ?? Date.now(),
+              lastUpdatedAt: nextLastUpdatedAt,
+            }
+          }
+        }
+
+        const eventSessionID = extractEventSessionID(event)
+        if (!eventSessionID) {
+          continue
+        }
+
+        const opencodeSessionKey = makeUnifiedSessionKey('opencode', directory, eventSessionID)
+        const currentRuntime = getSessionRuntime(opencodeSessionKey)
+        const applied = applyOpencodeSessionEvent({
           directory,
-          eventSessionID,
-          applied.todoItems.map((item, index) => ({
+          sessionID: eventSessionID,
+          snapshot: currentRuntime?.runtimeSnapshot ?? null,
+          messages: currentRuntime?.messages ?? [],
+          event,
+        })
+
+        if (!applied.changed && !applied.todoItems) {
+          continue
+        }
+
+        if (nextOpencodeSessions === state.opencodeSessions) {
+          nextOpencodeSessions = { ...nextOpencodeSessions }
+        }
+
+        const existingSession = currentRuntime ?? {
+          key: opencodeSessionKey,
+          directory,
+          sessionID: eventSessionID,
+          runtimeSnapshot: null,
+          messages: [],
+          todoItems: [],
+        }
+
+        const nextSession = {
+          ...existingSession,
+        }
+
+        if (applied.todoItems) {
+          nextSession.todoItems = applied.todoItems.map((item, index) => ({
             id: `todo-${index}`,
             content: item.content ?? '',
             status:
@@ -652,18 +872,64 @@ function useWorkspaceStreamEvents({
                     ? 'cancelled'
                     : 'pending',
           }))
-        )
+        }
+
+        if (applied.changed && applied.snapshot) {
+          const normalizedMessages = normalizeMessageBundles(applied.messages)
+          nextSession.runtimeSnapshot = {
+            ...applied.snapshot,
+            messages: normalizedMessages,
+          }
+          nextSession.messages = normalizedMessages
+          persistedMessages.set(opencodeSessionKey, normalizedMessages)
+        }
+
+        nextOpencodeSessions[opencodeSessionKey] = nextSession
       }
 
-      if (!applied.changed || !applied.snapshot) {
-        return
+      if (
+        nextProjectDataByDirectory === state.projectDataByDirectory &&
+        nextWorkspaceMetaByDirectory === state.workspaceMetaByDirectory &&
+        nextOpencodeSessions === state.opencodeSessions
+      ) {
+        return state
       }
-      setOpencodeRuntimeSnapshot(directory, eventSessionID, {
-        ...applied.snapshot,
-        messages: normalizeMessageBundles(applied.messages),
-      })
+
+      return {
+        projectDataByDirectory: nextProjectDataByDirectory,
+        workspaceMetaByDirectory: nextWorkspaceMetaByDirectory,
+        opencodeSessions: nextOpencodeSessions,
+      }
+    })
+
+    for (const [sessionKey, messages] of persistedMessages.entries()) {
+      setPersistedOpencodeState(sessionKey, { messages })
+    }
+
+    reportPerf({
+      surface: 'event_bus',
+      metric: 'event.batch.flush_ms',
+      kind: 'span',
+      value: performance.now() - startedAt,
+      unit: 'ms',
+      process: 'renderer',
+      component: 'workspace-stream-events',
+    })
+    if (queuedEventsRef.current.length > 0) {
+      scheduleFlush(flushQueuedEventsRef.current, true)
+    }
+  }, [scheduleFlush])
+
+  useEffect(() => {
+    flushQueuedEventsRef.current = flushQueuedEvents
+  }, [flushQueuedEvents])
+
+  return useCallback(
+    (directory: string, event: OpencodeEvent) => {
+      queuedEventsRef.current.push({ directory, event })
+      scheduleFlush(flushQueuedEventsRef.current)
     },
-    [getRuntimeState, projection, setOpencodeRuntimeSnapshot, setOpencodeTodoItems]
+    [scheduleFlush]
   )
 }
 
@@ -689,12 +955,7 @@ export function useWorkspaceStateProjectSync(args: UseWorkspaceStateProjectSyncA
     refreshMessages: refresh.refreshMessages,
     setStatusLine: args.setStatusLine,
   })
-  const applyOpencodeStreamEvent = useWorkspaceStreamEvents({
-    getRuntimeState: args.getRuntimeState,
-    projection,
-    setOpencodeTodoItems: args.setOpencodeTodoItems,
-    setOpencodeRuntimeSnapshot: args.setOpencodeRuntimeSnapshot,
-  })
+  const applyOpencodeStreamEvent = useWorkspaceStreamEvents()
 
   return {
     applyRuntimeSnapshot: projection.applyRuntimeSnapshot,

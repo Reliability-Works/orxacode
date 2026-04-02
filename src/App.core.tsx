@@ -623,13 +623,8 @@ export default function App() {
   const [projectCacheVersion, setProjectCacheVersion] = useState(0)
   const canvasState = useCanvasState(activeSessionID ?? '__none__', activeProjectDir ?? undefined)
   const [projectsSidebarVisible, setProjectsSidebarVisible] = useState(true)
-  const sessionReadTimestamps = useUnifiedRuntimeStore(state => state.sessionReadTimestamps)
   const workspaceMetaByDirectory = useUnifiedRuntimeStore(state => state.workspaceMetaByDirectory)
-  const codexSessionStateMap = useUnifiedRuntimeStore(state => state.codexSessions)
   const setOpencodeMessages = useUnifiedRuntimeStore(state => state.setOpencodeMessages)
-  const opencodeSessionStateMap = useUnifiedRuntimeStore(state => state.opencodeSessions)
-  const claudeChatSessionStateMap = useUnifiedRuntimeStore(state => state.claudeChatSessions)
-  const claudeSessionStateMap = useUnifiedRuntimeStore(state => state.claudeSessions)
   const projectDataByDirectory = useUnifiedRuntimeStore(state => state.projectDataByDirectory)
   const setSessionReadAt = useUnifiedRuntimeStore(state => state.setSessionReadAt)
   const removeClaudeSession = useUnifiedRuntimeStore(state => state.removeClaudeSession)
@@ -824,10 +819,6 @@ export default function App() {
     }
     return `${activeProjectDir}::${activeSessionID}`
   }, [activeProjectDir, activeSessionID])
-  const activeClaudeSessionState =
-    activeSessionType === 'claude' && activeSessionKey
-      ? claudeSessionStateMap[activeSessionKey]
-      : undefined
   const activeOptimisticOpencodePrompt = useMemo(
     () =>
       activeSessionType === 'opencode' && activeSessionKey
@@ -1149,12 +1140,17 @@ export default function App() {
     () => Math.max(16, Math.min(54, branchDisplayValue.length + 7)),
     [branchDisplayValue]
   )
-  const activeOpencodeRuntime =
-    activeProjectDir && activeSessionID
-      ? (opencodeSessionStateMap[
-          buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
-        ] ?? null)
-      : null
+  const activeOpencodeRuntime = useUnifiedRuntimeStore(
+    useCallback(
+      state =>
+        activeProjectDir && activeSessionID
+          ? (state.opencodeSessions[
+              buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+            ] ?? null)
+          : null,
+      [activeProjectDir, activeSessionID]
+    )
+  )
   const opencodeSessionControls = useOpencodeSessionControls({
     sessionKey:
       activeSessionKey ??
@@ -1966,7 +1962,7 @@ export default function App() {
         if (!persisted.thread && !persisted.isStreaming && persisted.messages.length === 0) {
           continue
         }
-        const existing = codexSessionStateMap[sessionKey]
+        const existing = useUnifiedRuntimeStore.getState().codexSessions[sessionKey]
         if (existing?.thread || existing?.isStreaming || existing?.messages.length) {
           continue
         }
@@ -1977,7 +1973,6 @@ export default function App() {
       }
     }
   }, [
-    codexSessionStateMap,
     getSessionType,
     initCodexSession,
     projectCacheVersion,
@@ -2506,13 +2501,26 @@ export default function App() {
     () => sessions.find(item => item.id === activeSessionID),
     [activeSessionID, sessions]
   )
+  const activeUnifiedSessionStatusSignal = useUnifiedRuntimeStore(
+    useCallback(() => {
+      if (!activeProjectDir || !activeSessionID) {
+        return 'inactive'
+      }
+      const sessionKey =
+        activeSessionKey ?? buildWorkspaceSessionMetadataKey(activeProjectDir, activeSessionID)
+      const status =
+        activeSessionType === 'codex'
+          ? buildCodexSessionStatus(sessionKey, true)
+          : activeSessionType === 'claude-chat'
+            ? buildClaudeChatSessionStatus(sessionKey, true)
+            : activeSessionType === 'claude'
+              ? buildClaudeSessionStatus(sessionKey, true)
+              : buildOpencodeSessionStatus(activeProjectDir, activeSessionID, true, sessionKey)
+      return `${status.type}:${status.busy ? 1 : 0}:${status.awaiting ? 1 : 0}:${status.unread ? 1 : 0}:${status.planReady ? 1 : 0}:${status.activityAt}`
+    }, [activeProjectDir, activeSessionID, activeSessionKey, activeSessionType])
+  )
   const activeUnifiedSessionStatus = useMemo(() => {
-    void activeClaudeSessionState
-    void codexSessionStateMap
-    void claudeChatSessionStateMap
-    void claudeSessionStateMap
-    void opencodeSessionStateMap
-    void sessionReadTimestamps
+    void activeUnifiedSessionStatusSignal
     if (!activeProjectDir || !activeSessionID) {
       return null
     }
@@ -2529,16 +2537,11 @@ export default function App() {
     }
     return buildOpencodeSessionStatus(activeProjectDir, activeSessionID, true, sessionKey)
   }, [
-    activeClaudeSessionState,
     activeProjectDir,
     activeSessionID,
     activeSessionKey,
     activeSessionType,
-    claudeChatSessionStateMap,
-    claudeSessionStateMap,
-    codexSessionStateMap,
-    opencodeSessionStateMap,
-    sessionReadTimestamps,
+    activeUnifiedSessionStatusSignal,
   ])
   // Not memoized: this selector reads session status from projectDataByDirectory
   // via getState() and must re-run on every render to detect busy→idle transitions.
@@ -2892,7 +2895,6 @@ export default function App() {
     toolsPolicy: activePromptToolsPolicy,
     permissionDecisionPending,
     permissionDecisionPendingRequestID,
-    refreshProject,
   })
   const {
     backgroundAgentDetail,

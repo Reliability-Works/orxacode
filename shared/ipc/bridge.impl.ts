@@ -1,6 +1,7 @@
 import type {
   Agent,
   Config,
+  FileDiff,
   ProviderListResponse,
   QuestionAnswer,
   Session,
@@ -33,6 +34,7 @@ import type {
   OpenDirectoryResult,
   OpenDirectoryTarget,
   ProjectBootstrap,
+  ProjectRefreshCold,
   ProjectRefreshDelta,
   ProjectFileDocument,
   ProjectFileEntry,
@@ -179,6 +181,7 @@ export interface OrxaBridge {
     selectProject: (directory: string) => Promise<ProjectBootstrap>
     refreshProject: (directory: string) => Promise<ProjectBootstrap>
     refreshProjectDelta: (directory: string) => Promise<ProjectRefreshDelta>
+    refreshProjectCold: (directory: string) => Promise<ProjectRefreshCold>
     createSession: (
       directory: string,
       title?: string,
@@ -194,7 +197,9 @@ export interface OrxaBridge {
       name?: string
     ) => Promise<WorktreeSessionResult>
     getSessionRuntime: (directory: string, sessionID: string) => Promise<SessionRuntimeSnapshot>
+    getSessionRuntimeCore: (directory: string, sessionID: string) => Promise<SessionRuntimeSnapshot>
     loadMessages: (directory: string, sessionID: string) => Promise<SessionMessageBundle[]>
+    loadSessionDiff: (directory: string, sessionID: string) => Promise<FileDiff[]>
     loadExecutionLedger: (
       directory: string,
       sessionID: string,

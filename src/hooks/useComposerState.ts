@@ -169,8 +169,6 @@ async function abortComposerActiveSession(
   options.onSessionAbortRequested?.(activeProjectDir, activeSessionID)
   await window.orxa.opencode.abortSession(activeProjectDir, activeSessionID)
   options.setStatusLine('Stopping session...')
-  void options.refreshProject(activeProjectDir).catch(() => undefined)
-  void options.refreshMessages().catch(() => undefined)
 }
 
 async function submitComposerPrompt(
@@ -231,7 +229,6 @@ async function submitComposerPrompt(
     if (shouldAutoTitle) {
       const generatedTitle = options.deriveSessionTitleFromPrompt(text)
       await window.orxa.opencode.renameSession(activeProjectDir, activeSessionID, generatedTitle)
-      await options.refreshProject(activeProjectDir)
     }
 
     await measurePerf(
@@ -273,10 +270,6 @@ async function submitComposerPrompt(
       promptSource,
     })
     options.startResponsePolling(activeProjectDir, activeSessionID)
-    void options.refreshMessages()
-    if (shouldAutoTitle) {
-      void options.refreshProject(activeProjectDir).catch(() => undefined)
-    }
   } catch (error) {
     setComposer(text)
     setComposerAttachments(capturedAttachments)

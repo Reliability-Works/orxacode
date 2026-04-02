@@ -1,6 +1,9 @@
 import { useCallback, useMemo } from 'react'
 import type { ProjectBootstrap } from '@shared/ipc'
-import { selectSidebarSessionPresentation, useUnifiedRuntimeStore } from '../state/unified-runtime-store'
+import {
+  selectSidebarSessionPresentation,
+  useUnifiedRuntimeStore,
+} from '../state/unified-runtime-store'
 import type { BackgroundSessionDescriptor } from '../lib/background-session-descriptors'
 
 type SessionListEntry = {
@@ -12,6 +15,12 @@ type SessionListEntry = {
 
 export type WorkspaceDetailSessionEntry = SessionListEntry & {
   directory: string
+}
+
+type SidebarTrackedSession = {
+  id: string
+  directory: string
+  updatedAt: number
 }
 
 type UseAppShellSessionCollectionsInput = {
@@ -83,10 +92,7 @@ function mergeHiddenSessionIDsByProject({
   return next
 }
 
-function resolveWorkspaceRoot(
-  directory: string,
-  workspaceRootByDirectory: Record<string, string>
-) {
+function resolveWorkspaceRoot(directory: string, workspaceRootByDirectory: Record<string, string>) {
   return workspaceRootByDirectory[directory] ?? directory
 }
 
@@ -208,7 +214,10 @@ function buildHiddenSessionIDsByRoot({
   const next: Record<string, string[]> = {}
   for (const directory of Object.keys(mergedProjects)) {
     const workspaceRoot = resolveWorkspaceRoot(directory, workspaceRootByDirectory)
-    const ids = new Set([...(next[workspaceRoot] ?? []), ...(hiddenSessionIDsByProject[directory] ?? [])])
+    const ids = new Set([
+      ...(next[workspaceRoot] ?? []),
+      ...(hiddenSessionIDsByProject[directory] ?? []),
+    ])
     next[workspaceRoot] = [...ids]
   }
   return next
@@ -254,39 +263,75 @@ function buildWorkspaceDetailSessions({
   return sortWorkspaceSessionEntries([...entriesBySessionId.values()], activeProjectDir)
 }
 
-function useSidebarSessionIndicators({
+function buildTrackedSidebarSessions(
+  cachedSessionsByProject: Record<string, WorkspaceDetailSessionEntry[]>
+): SidebarTrackedSession[] {
+  const next = new Map<string, SidebarTrackedSession>()
+  for (const sessions of Object.values(cachedSessionsByProject)) {
+    for (const session of sessions) {
+      const key = `${session.directory}::${session.id}`
+      next.set(key, {
+        id: session.id,
+        directory: session.directory,
+        updatedAt: session.time.updated,
+      })
+    }
+  }
+  return [...next.values()]
+}
+
+function buildSidebarIndicatorSignal({
   activeProjectDir,
   activeSessionID,
-  claudeChatSessions,
-  claudeSessions,
-  codexSessions,
   getSessionType,
   normalizePresentationProvider,
-  opencodeSessions,
-  sessionReadTimestamps,
-  storeProjects,
+  trackedSessions,
 }: {
   activeProjectDir?: string
   activeSessionID?: string
-  claudeChatSessions: ReturnType<typeof useUnifiedRuntimeStore.getState>['claudeChatSessions']
-  claudeSessions: ReturnType<typeof useUnifiedRuntimeStore.getState>['claudeSessions']
-  codexSessions: ReturnType<typeof useUnifiedRuntimeStore.getState>['codexSessions']
   getSessionType: (sessionID: string, directory?: string) => string | undefined
   normalizePresentationProvider: (
     sessionType: string | undefined
   ) => 'opencode' | 'codex' | 'claude' | 'claude-chat' | undefined
-  opencodeSessions: ReturnType<typeof useUnifiedRuntimeStore.getState>['opencodeSessions']
-  sessionReadTimestamps: ReturnType<typeof useUnifiedRuntimeStore.getState>['sessionReadTimestamps']
-  storeProjects: ReturnType<typeof useUnifiedRuntimeStore.getState>['projectDataByDirectory']
+  trackedSessions: SidebarTrackedSession[]
+}) {
+  return trackedSessions
+    .map(session => {
+      const provider = normalizePresentationProvider(getSessionType(session.id, session.directory))
+      if (!provider) {
+        return `${session.directory}::${session.id}:none:idle`
+      }
+      const presentation = selectSidebarSessionPresentation({
+        provider,
+        directory: session.directory,
+        sessionID: session.id,
+        updatedAt: session.updatedAt,
+        isActive: activeProjectDir === session.directory && activeSessionID === session.id,
+        sessionKey: `${session.directory}::${session.id}`,
+      })
+      return `${session.directory}::${session.id}:${presentation.indicator}:${presentation.statusType}`
+    })
+    .join('|')
+}
+
+function useSidebarSessionIndicators({
+  activeProjectDir,
+  activeSessionID,
+  sidebarIndicatorSignal,
+  getSessionType,
+  normalizePresentationProvider,
+}: {
+  activeProjectDir?: string
+  activeSessionID?: string
+  sidebarIndicatorSignal: string
+  getSessionType: (sessionID: string, directory?: string) => string | undefined
+  normalizePresentationProvider: (
+    sessionType: string | undefined
+  ) => 'opencode' | 'codex' | 'claude' | 'claude-chat' | undefined
 }) {
   const getSessionStatusType = useCallback(
     (sessionID: string, directory?: string) => {
-      void opencodeSessions
-      void codexSessions
-      void claudeChatSessions
-      void claudeSessions
-      void sessionReadTimestamps
-      void storeProjects
+      void sidebarIndicatorSignal
       if (!directory) {
         return 'idle'
       }
@@ -307,25 +352,15 @@ function useSidebarSessionIndicators({
     [
       activeProjectDir,
       activeSessionID,
-      claudeChatSessions,
-      claudeSessions,
-      codexSessions,
       getSessionType,
       normalizePresentationProvider,
-      opencodeSessions,
-      sessionReadTimestamps,
-      storeProjects,
+      sidebarIndicatorSignal,
     ]
   )
 
   const getSessionIndicator = useCallback(
     (sessionID: string, directory: string, updatedAt: number) => {
-      void opencodeSessions
-      void codexSessions
-      void claudeChatSessions
-      void claudeSessions
-      void sessionReadTimestamps
-      void storeProjects
+      void sidebarIndicatorSignal
       const sessionType = getSessionType(sessionID, directory)
       const provider = normalizePresentationProvider(sessionType)
       if (!provider) {
@@ -343,14 +378,9 @@ function useSidebarSessionIndicators({
     [
       activeProjectDir,
       activeSessionID,
-      claudeChatSessions,
-      claudeSessions,
-      codexSessions,
       getSessionType,
       normalizePresentationProvider,
-      opencodeSessions,
-      sessionReadTimestamps,
-      storeProjects,
+      sidebarIndicatorSignal,
     ]
   )
 
@@ -463,14 +493,19 @@ function useDerivedSessionCollections({
 }
 
 export function useAppShellSessionCollections({
-  projectData, projectDataByDirectory, activeProjectDir, activeSessionID, projectCacheVersion,
-  pinnedSessions, archivedBackgroundAgentIds, hiddenBackgroundSessionIdsByProject,
-  backgroundSessionDescriptors, getSessionType, normalizePresentationProvider,
+  projectData,
+  projectDataByDirectory,
+  activeProjectDir,
+  activeSessionID,
+  projectCacheVersion,
+  pinnedSessions,
+  archivedBackgroundAgentIds,
+  hiddenBackgroundSessionIdsByProject,
+  backgroundSessionDescriptors,
+  getSessionType,
+  normalizePresentationProvider,
 }: UseAppShellSessionCollectionsInput) {
-  const opencodeSessions = useUnifiedRuntimeStore(state => state.opencodeSessions), codexSessions = useUnifiedRuntimeStore(state => state.codexSessions), claudeChatSessions = useUnifiedRuntimeStore(state => state.claudeChatSessions)
-  const claudeSessions = useUnifiedRuntimeStore(state => state.claudeSessions)
   const workspaceRootByDirectory = useUnifiedRuntimeStore(state => state.workspaceRootByDirectory)
-  const sessionReadTimestamps = useUnifiedRuntimeStore(state => state.sessionReadTimestamps), storeProjects = useUnifiedRuntimeStore(state => state.projectDataByDirectory)
 
   const liveBackgroundSessionIDsByProject = useMemo(() => {
     return buildLiveBackgroundSessionIDsByProject(backgroundSessionDescriptors)
@@ -485,8 +520,8 @@ export function useAppShellSessionCollections({
   }, [
     archivedBackgroundAgentIds,
     hiddenBackgroundSessionIdsByProject,
-      liveBackgroundSessionIDsByProject,
-    ])
+    liveBackgroundSessionIDsByProject,
+  ])
   const {
     sessions,
     cachedSessionsByProject,
@@ -503,17 +538,37 @@ export function useAppShellSessionCollections({
     workspaceRootByDirectory,
   })
 
+  const trackedSidebarSessions = useMemo(
+    () => buildTrackedSidebarSessions(cachedSessionsByProject),
+    [cachedSessionsByProject]
+  )
+
+  const sidebarIndicatorSignal = useUnifiedRuntimeStore(
+    useCallback(
+      () =>
+        buildSidebarIndicatorSignal({
+          activeProjectDir,
+          activeSessionID,
+          getSessionType,
+          normalizePresentationProvider,
+          trackedSessions: trackedSidebarSessions,
+        }),
+      [
+        activeProjectDir,
+        activeSessionID,
+        getSessionType,
+        normalizePresentationProvider,
+        trackedSidebarSessions,
+      ]
+    )
+  )
+
   const { getSessionIndicator, getSessionStatusType } = useSidebarSessionIndicators({
     activeProjectDir,
     activeSessionID,
-    claudeChatSessions,
-    claudeSessions,
-    codexSessions,
+    sidebarIndicatorSignal,
     getSessionType,
     normalizePresentationProvider,
-    opencodeSessions,
-    sessionReadTimestamps,
-    storeProjects,
   })
 
   return {

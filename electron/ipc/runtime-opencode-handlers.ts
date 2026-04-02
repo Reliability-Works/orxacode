@@ -135,6 +135,13 @@ function registerProjectHandlers({
         service.refreshProjectDelta(assertString(directory, 'directory'))
       )
   )
+  registerMeasuredHandler(
+    performanceTelemetryService,
+    IPC.opencodeRefreshProjectCold,
+    'workspace',
+    async (_event, directory: unknown) =>
+      service.refreshProjectCold(assertString(directory, 'directory'))
+  )
 }
 
 function registerSessionHandlers({
@@ -212,6 +219,16 @@ function registerSessionLifecycleHandlers({
   )
   registerMeasuredHandler(
     performanceTelemetryService,
+    IPC.opencodeGetSessionRuntimeCore,
+    'session',
+    async (_event, directory: unknown, sessionID: unknown) =>
+      service.getSessionRuntimeCore(
+        assertString(directory, 'directory'),
+        assertString(sessionID, 'sessionID')
+      )
+  )
+  registerMeasuredHandler(
+    performanceTelemetryService,
     IPC.opencodeLoadMessages,
     'session',
     async (_event, directory: unknown, sessionID: unknown) =>
@@ -223,6 +240,14 @@ function registerSessionLifecycleHandlers({
 }
 
 function registerSessionDataHandlers({ service }: Pick<RuntimeOpencodeHandlersDeps, 'service'>) {
+  ipcMain.handle(
+    IPC.opencodeLoadSessionDiff,
+    async (_event, directory: unknown, sessionID: unknown) =>
+      service.loadSessionDiff(
+        assertString(directory, 'directory'),
+        assertString(sessionID, 'sessionID')
+      )
+  )
   ipcMain.handle(
     IPC.opencodeLoadExecutionLedger,
     async (_event, directory: unknown, sessionID: unknown, cursor?: unknown) =>

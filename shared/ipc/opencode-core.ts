@@ -49,6 +49,11 @@ export type ProjectRefreshDelta = Pick<
   'directory' | 'sessions' | 'sessionStatus' | 'permissions' | 'questions' | 'commands' | 'ptys'
 >
 
+export type ProjectRefreshCold = Pick<
+  ProjectBootstrap,
+  'directory' | 'path' | 'providers' | 'agents' | 'config' | 'mcp' | 'lsp' | 'formatter' | 'vcs'
+>
+
 export type ProjectListItem = {
   id: string
   name?: string

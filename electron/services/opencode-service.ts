@@ -9,6 +9,7 @@ import {
   type Agent,
   createOpencodeClient,
   type Config,
+  type FileDiff,
   type OpencodeClient,
   type ProviderListResponse,
   type QuestionAnswer,
@@ -42,6 +43,7 @@ import type {
   OrxaEvent,
   ProjectListItem,
   ProjectBootstrap,
+  ProjectRefreshCold,
   ProjectRefreshDelta,
   PromptRequest,
   RawConfigDocument,
@@ -846,6 +848,7 @@ export class OpencodeService {
       | 'opencode.bootstrap_ms'
       | 'opencode.refresh_project_ms'
       | 'opencode.refresh_project_delta_ms'
+      | 'opencode.refresh_project_cold_ms'
       | 'opencode.create_session_ms'
       | 'opencode.get_session_runtime_ms'
       | 'opencode.load_messages_ms'
@@ -1200,81 +1203,8 @@ export class OpencodeService {
     return this.refreshProject(normalized)
   }
 
-  async refreshProject(directory: string): Promise<ProjectBootstrap> {
-    const startedAt = performance.now()
-    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+  private async loadProjectHotData(normalizedDirectory: string) {
     const client = this.client(normalizedDirectory)
-
-    const [
-      pathInfo,
-      sessions,
-      sessionStatus,
-      providers,
-      agents,
-      config,
-      permissions,
-      questions,
-      commands,
-      mcp,
-      lsp,
-      formatter,
-      vcs,
-    ] = await Promise.all([
-      this.unwrap(client.path.get({ directory: normalizedDirectory })).catch(() => ({
-        home: homedir(),
-        state: path.join(homedir(), '.local', 'share', 'opencode'),
-        config: path.join(homedir(), '.config', 'opencode'),
-        worktree: normalizedDirectory,
-        directory: normalizedDirectory,
-      })),
-      this.unwrap(
-        client.session.list({ directory: normalizedDirectory, roots: true, limit: 120 })
-      ).catch(() => []),
-      this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
-      this.unwrap(client.provider.list({ directory: normalizedDirectory })).catch(() => ({
-        all: [],
-        connected: [],
-        default: {},
-      })),
-      this.unwrap(client.app.agents({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.config.get({ directory: normalizedDirectory })).catch(() => ({})),
-      this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.mcp.status({ directory: normalizedDirectory })).catch(() => ({})),
-      this.unwrap(client.lsp.status({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.formatter.status({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.vcs.get({ directory: normalizedDirectory })).catch(() => undefined),
-    ])
-
-    const result = {
-      directory: normalizedDirectory,
-      path: pathInfo,
-      sessions,
-      sessionStatus,
-      providers,
-      agents,
-      config,
-      permissions,
-      questions,
-      commands,
-      mcp,
-      lsp,
-      formatter,
-      vcs,
-      ptys: [],
-    }
-    this.recordPerf('opencode.refresh_project_ms', startedAt, {
-      workspaceHash: normalizedDirectory,
-    })
-    return result
-  }
-
-  async refreshProjectDelta(directory: string): Promise<ProjectRefreshDelta> {
-    const startedAt = performance.now()
-    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
-    const client = this.client(normalizedDirectory)
-
     const [sessions, sessionStatus, permissions, questions, commands] = await Promise.all([
       this.unwrap(
         client.session.list({ directory: normalizedDirectory, roots: true, limit: 120 })
@@ -1285,8 +1215,7 @@ export class OpencodeService {
       this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
     ])
 
-    const result: ProjectRefreshDelta = {
-      directory: normalizedDirectory,
+    return {
       sessions,
       sessionStatus,
       permissions,
@@ -1294,11 +1223,97 @@ export class OpencodeService {
       commands,
       ptys: [],
     }
+  }
+
+  private async loadProjectColdData(normalizedDirectory: string) {
+    const client = this.client(normalizedDirectory)
+    const [pathInfo, providers, agents, config, mcp, lsp, formatter, vcs] = await Promise.all([
+      this.unwrap(client.path.get({ directory: normalizedDirectory })).catch(() => ({
+        home: homedir(),
+        state: path.join(homedir(), '.local', 'share', 'opencode'),
+        config: path.join(homedir(), '.config', 'opencode'),
+        worktree: normalizedDirectory,
+        directory: normalizedDirectory,
+      })),
+      this.unwrap(client.provider.list({ directory: normalizedDirectory })).catch(() => ({
+        all: [],
+        connected: [],
+        default: {},
+      })),
+      this.unwrap(client.app.agents({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.config.get({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.mcp.status({ directory: normalizedDirectory })).catch(() => ({})),
+      this.unwrap(client.lsp.status({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.formatter.status({ directory: normalizedDirectory })).catch(() => []),
+      this.unwrap(client.vcs.get({ directory: normalizedDirectory })).catch(() => undefined),
+    ])
+
+    return {
+      path: pathInfo,
+      providers,
+      agents,
+      config,
+      mcp,
+      lsp,
+      formatter,
+      vcs,
+    }
+  }
+
+  async refreshProject(directory: string): Promise<ProjectBootstrap> {
+    const startedAt = performance.now()
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const [hot, cold] = await Promise.all([
+      this.loadProjectHotData(normalizedDirectory),
+      this.loadProjectColdData(normalizedDirectory),
+    ])
+
+    const result = {
+      directory: normalizedDirectory,
+      ...cold,
+      ...hot,
+    }
+    this.recordPerf('opencode.refresh_project_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+    })
+    return result
+  }
+
+  async refreshProjectDelta(directory: string): Promise<ProjectRefreshDelta> {
+    const startedAt = performance.now()
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const hot = await this.loadProjectHotData(normalizedDirectory)
+
+    const result: ProjectRefreshDelta = {
+      directory: normalizedDirectory,
+      ...hot,
+    }
 
     this.recordPerf('opencode.refresh_project_delta_ms', startedAt, {
       workspaceHash: normalizedDirectory,
     })
 
+    return result
+  }
+
+  async refreshProjectCold(directory: string): Promise<ProjectRefreshCold> {
+    const startedAt = performance.now()
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    const cold = await this.loadProjectColdData(normalizedDirectory)
+    const result: ProjectRefreshCold = {
+      directory: normalizedDirectory,
+      path: cold.path,
+      providers: cold.providers,
+      agents: cold.agents,
+      config: cold.config,
+      mcp: cold.mcp,
+      lsp: cold.lsp,
+      formatter: cold.formatter,
+      vcs: cold.vcs,
+    }
+    this.recordPerf('opencode.refresh_project_cold_ms', startedAt, {
+      workspaceHash: normalizedDirectory,
+    })
     return result
   }
 
@@ -1441,42 +1456,21 @@ export class OpencodeService {
     return result
   }
 
-  async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
-    const startedAt = performance.now()
+  private async loadSessionRuntimeCoreData(directory: string, sessionID: string) {
     const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
     this.upsertProviderBinding(normalizedDirectory, sessionID, 'running')
     const client = this.client(normalizedDirectory)
-    void this.syncSessionExecutionArtifacts(normalizedDirectory, sessionID).catch(() => undefined)
-    const [
-      session,
-      sessionStatusMap,
-      permissions,
-      questions,
-      commands,
-      messages,
-      sessionDiff,
-      executionLedger,
-      changeProvenance,
-    ] = await Promise.all([
-      this.unwrap(client.session.get({ directory: normalizedDirectory, sessionID })).catch(
-        () => null
-      ),
-      this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
-      this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
-      this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
-      this.loadMessages(normalizedDirectory, sessionID).catch(() => []),
-      this.unwrap(client.session.diff({ directory: normalizedDirectory, sessionID })).catch(
-        () => []
-      ),
-      this.ledgerStore
-        .loadSnapshot(normalizedDirectory, sessionID, 0)
-        .catch(() => ({ cursor: 0, records: [] })),
-      this.provenanceIndex
-        .loadSnapshot(normalizedDirectory, sessionID, 0)
-        .catch(() => ({ cursor: 0, records: [] })),
-    ])
-
+    const [session, sessionStatusMap, permissions, questions, commands, messages] =
+      await Promise.all([
+        this.unwrap(client.session.get({ directory: normalizedDirectory, sessionID })).catch(
+          () => null
+        ),
+        this.unwrap(client.session.status({ directory: normalizedDirectory })).catch(() => ({})),
+        this.unwrap(client.permission.list({ directory: normalizedDirectory })).catch(() => []),
+        this.unwrap(client.question.list({ directory: normalizedDirectory })).catch(() => []),
+        this.unwrap(client.command.list({ directory: normalizedDirectory })).catch(() => []),
+        this.loadMessages(normalizedDirectory, sessionID).catch(() => []),
+      ])
     const filterBySession = <
       T extends { sessionID?: string; sessionId?: string; session_id?: string },
     >(
@@ -1487,16 +1481,74 @@ export class OpencodeService {
         return typeof sessionValue !== 'string' || sessionValue === sessionID
       })
     const sessionStatusRecord = sessionStatusMap as Record<string, SessionStatus>
-
-    const result = {
-      directory: normalizedDirectory,
-      sessionID,
+    return {
+      normalizedDirectory,
       session,
       sessionStatus: sessionStatusRecord[sessionID],
       permissions: filterBySession(permissions),
       questions: filterBySession(questions),
       commands,
       messages,
+    }
+  }
+
+  async getSessionRuntimeCore(
+    directory: string,
+    sessionID: string
+  ): Promise<SessionRuntimeSnapshot> {
+    const startedAt = performance.now()
+    const core = await this.loadSessionRuntimeCoreData(directory, sessionID)
+    const result = {
+      directory: core.normalizedDirectory,
+      sessionID,
+      session: core.session,
+      sessionStatus: core.sessionStatus,
+      permissions: core.permissions,
+      questions: core.questions,
+      commands: core.commands,
+      messages: core.messages,
+      sessionDiff: [],
+      executionLedger: { cursor: 0, records: [] },
+      changeProvenance: { cursor: 0, records: [] },
+    }
+    this.recordPerf('opencode.get_session_runtime_ms', startedAt, {
+      workspaceHash: core.normalizedDirectory,
+      sessionHash: sessionID,
+    })
+    return result
+  }
+
+  async loadSessionDiff(directory: string, sessionID: string): Promise<FileDiff[]> {
+    const normalizedDirectory = this.ensureWorkspaceDirectory(directory)
+    return this.unwrap(
+      this.client(normalizedDirectory).session.diff({ directory: normalizedDirectory, sessionID })
+    ).catch(() => [])
+  }
+
+  async getSessionRuntime(directory: string, sessionID: string): Promise<SessionRuntimeSnapshot> {
+    const startedAt = performance.now()
+    const core = await this.loadSessionRuntimeCoreData(directory, sessionID)
+    const normalizedDirectory = core.normalizedDirectory
+    void this.syncSessionExecutionArtifacts(normalizedDirectory, sessionID).catch(() => undefined)
+    const [sessionDiff, executionLedger, changeProvenance] = await Promise.all([
+      this.loadSessionDiff(normalizedDirectory, sessionID),
+      this.ledgerStore
+        .loadSnapshot(normalizedDirectory, sessionID, 0)
+        .catch(() => ({ cursor: 0, records: [] })),
+      this.provenanceIndex
+        .loadSnapshot(normalizedDirectory, sessionID, 0)
+        .catch(() => ({ cursor: 0, records: [] })),
+    ])
+
+    const result = {
+      directory: normalizedDirectory,
+      sessionID,
+      session: core.session,
+      sessionStatus: core.sessionStatus,
+      permissions: core.permissions,
+      questions: core.questions,
+      commands: core.commands,
+      messages: core.messages,
       sessionDiff,
       executionLedger,
       changeProvenance,

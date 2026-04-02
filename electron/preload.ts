@@ -6,12 +6,20 @@ const eventHub = createIpcEventHub(ipcRenderer, [IPC.events, IPC.eventsBatch])
 const inflightByChannel = new Map<string, number>()
 const dedupedInvokeInFlight = new Map<string, Promise<unknown>>()
 const DEDUPED_IPC_CHANNELS = new Set<string>([
+  IPC.opencodeBootstrap,
+  IPC.opencodeSelectProject,
   IPC.opencodeGetSessionRuntime,
+  IPC.opencodeGetSessionRuntimeCore,
   IPC.opencodeLoadMessages,
+  IPC.opencodeLoadSessionDiff,
   IPC.opencodeRefreshProject,
   IPC.opencodeRefreshProjectDelta,
+  IPC.opencodeRefreshProjectCold,
+  IPC.codexResumeThread,
+  IPC.codexResumeProviderThread,
   IPC.claudeChatGetState,
   IPC.claudeChatGetSessionMessages,
+  IPC.claudeChatResumeProviderSession,
 ])
 
 function buildInvokeDedupKey(channel: string, requestArgs?: unknown[]) {
@@ -200,6 +208,13 @@ const bridge: OrxaBridge = {
         () => ipcRenderer.invoke(IPC.opencodeRefreshProjectDelta, directory),
         [directory]
       ),
+    refreshProjectCold: directory =>
+      invokeMeasured(
+        IPC.opencodeRefreshProjectCold,
+        'workspace',
+        () => ipcRenderer.invoke(IPC.opencodeRefreshProjectCold, directory),
+        [directory]
+      ),
     createSession: (directory, title, permissionMode) =>
       invokeMeasured(
         IPC.opencodeCreateSession,
@@ -224,11 +239,25 @@ const bridge: OrxaBridge = {
         () => ipcRenderer.invoke(IPC.opencodeGetSessionRuntime, directory, sessionID),
         [directory, sessionID]
       ),
+    getSessionRuntimeCore: (directory, sessionID) =>
+      invokeMeasured(
+        IPC.opencodeGetSessionRuntimeCore,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeGetSessionRuntimeCore, directory, sessionID),
+        [directory, sessionID]
+      ),
     loadMessages: (directory, sessionID) =>
       invokeMeasured(
         IPC.opencodeLoadMessages,
         'session',
         () => ipcRenderer.invoke(IPC.opencodeLoadMessages, directory, sessionID),
+        [directory, sessionID]
+      ),
+    loadSessionDiff: (directory, sessionID) =>
+      invokeMeasured(
+        IPC.opencodeLoadSessionDiff,
+        'session',
+        () => ipcRenderer.invoke(IPC.opencodeLoadSessionDiff, directory, sessionID),
         [directory, sessionID]
       ),
     loadExecutionLedger: (directory, sessionID, cursor) =>

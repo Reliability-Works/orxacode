@@ -107,8 +107,12 @@ export async function loadOpencodeRuntimeSnapshot(
     }
   }
 
-  const promise = window.orxa.opencode
-    .getSessionRuntime(directory, sessionID)
+  const runtimeLoader = window.orxa.opencode.getSessionRuntimeCore
+    ? window.orxa.opencode.getSessionRuntimeCore(directory, sessionID)
+    : window.orxa.opencode.getSessionRuntime(directory, sessionID)
+
+  const promise = runtimeLoader
+    .catch(() => window.orxa.opencode.getSessionRuntime(directory, sessionID))
     .then(snapshot => {
       runtimeSnapshotCache.set(key, { timestamp: Date.now(), snapshot })
       trimRuntimeSnapshotCache()

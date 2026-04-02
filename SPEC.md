@@ -1,6 +1,6 @@
 # Orxa Performance + Stability Spec
 
-**Updated:** 2026-04-01
+**Updated:** 2026-04-02
 
 This spec captures the complete performance/stability effort to date, organized into phases with explicit completion status.
 
@@ -141,7 +141,7 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
 
 ### Phase 7A — Quick wins (1–2 days)
 
-- [ ] **A. Remove redundant post-send/post-event refreshes**
+- [x] **A. Remove redundant post-send/post-event refreshes**
   - Remove immediate `refreshMessages()` / `refreshProject()` follow-ups where stream events are authoritative.
   - Keep explicit fallback refresh only for event types not fully represented in stream state.
   - Validate with:
@@ -149,42 +149,57 @@ This phase is now directly based on the `t3code` review recommendations (A–H),
     - `prompt.first_assistant_output_ms`
     - `background.poll_count`
     - `workspace.refresh_ms`
-- [ ] **B. Expand invoke coalescing/dedupe coverage**
+- [x] **B. Expand invoke coalescing/dedupe coverage**
   - Extend preload dedupe/coalescing for repeated resume/selection/send follow-up invokes.
   - Validate with:
     - `ipc.inflight_count` p95
     - `ipc.invoke_rtt_ms` by channel
     - payload-size buckets by channel
-- [ ] **C. Enable virtualization for long timelines first**
+- [x] **C. Enable virtualization for long timelines first**
   - Start with `MessageFeed` thresholded virtualization for long sessions.
   - Validate with:
     - `render.commit_ms`
     - `render.slow_commit_count`
     - `renderer.longtask_ms`
+- [x] **A-follow-up. Remove remaining post-reply project refreshes in awaiting-input handlers**
+  - `replyPermission` / `replyQuestion` / `rejectQuestion` still force `refreshProject()` despite stream support for `permission.replied` and `question.replied`/`question.rejected`.
+  - Completed for manual and yolo auto-reply paths; handlers now rely on stream-state updates instead of immediate refresh.
 
 ### Phase 7B — Medium refactor (3–5 days)
 
-- [ ] **D. Split hot-path vs cold-path payloads**
+- [x] **D. Split hot-path vs cold-path payloads**
   - `refreshProject`: hot (sessions/status/questions/permissions/commands) vs cold (providers/agents/config/MCP/LSP/formatter/VCS/path).
   - `getSessionRuntime`: core runtime vs lazy extras (diff/ledger/provenance).
+  - Progress:
+    - [x] Add core runtime path (`getSessionRuntimeCore`) and lazy extras hydration (`loadSessionDiff` / ledger / provenance) in renderer sync flow.
+    - [x] Complete `refreshProject` hot/cold split so cold metadata can be fetched on-demand.
+  - Note: full `refreshProject` remains available for bootstrap/compatibility; active refresh loops now use hot delta + cold on-demand hydration.
   - Validate with:
     - `opencode.refresh_project_ms`
     - `opencode.refresh_project_delta_ms`
     - `opencode.get_session_runtime_ms`
     - `ipc.invoke_rtt_ms`
     - payload-size buckets per endpoint
-- [ ] **E. Batch-oriented renderer reducer commits for stream events**
+- [x] **E. Batch-oriented renderer reducer commits for stream events**
   - Accumulate short event bursts and commit one store mutation per flush.
+  - Implemented: queue microtask batching in workspace stream event handler with per-flush single Zustand mutation + telemetry (`event.batch.size`, `event.batch.flush_ms`).
   - Validate with:
     - `render.commit_count`
     - `render.commit_burst_count`
     - `event.batch.size`
     - `event.batch.flush_ms`
-- [ ] **F. Replace whole-map subscriptions with narrow selectors**
+- [x] **E-follow-up. Add max-batch safeguard under sustained event storms**
+  - Added bounded batch size (`100`) with macrotask-yielded continuation for queued overflow to keep long bursts from monopolizing the renderer.
+- [x] **F. Replace whole-map subscriptions with narrow selectors**
   - Refactor app shell/session collection hooks to per-project/per-session slices.
+  - Implemented:
+    - Session collection hook now tracks only visible sidebar sessions and subscribes via derived presentation signal instead of full runtime maps.
+    - Active session status now subscribes to an active-session signal instead of full per-provider session maps.
   - Validate with:
     - component-level render metrics (app shell/sidebar/composer)
     - typing latency traces
+- [ ] **F-follow-up. Push remaining App shell map reads behind scoped selectors**
+  - `App.core` still reads broad project/session maps for some migration and cross-workspace flows; split those into scoped selectors in follow-up.
 
 ### Phase 7C — Deeper architecture (1–2 weeks)
 

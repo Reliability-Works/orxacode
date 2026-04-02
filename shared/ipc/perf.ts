@@ -77,6 +77,7 @@ export const PERF_METRICS = [
   'opencode.bootstrap_ms',
   'opencode.refresh_project_ms',
   'opencode.refresh_project_delta_ms',
+  'opencode.refresh_project_cold_ms',
   'opencode.create_session_ms',
   'opencode.get_session_runtime_ms',
   'opencode.load_messages_ms',

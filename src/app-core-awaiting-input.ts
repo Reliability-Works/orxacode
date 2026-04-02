@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
-import type {
-  PermissionRequest,
-  QuestionAnswer,
-  QuestionRequest,
-} from '@opencode-ai/sdk/v2/client'
+import type { PermissionRequest, QuestionAnswer, QuestionRequest } from '@opencode-ai/sdk/v2/client'
 import type { Attachment } from './hooks/useComposerState'
 import type { AgentQuestion } from './components/chat/QuestionDock'
 import type { UnifiedProvider } from './state/unified-runtime'
@@ -60,7 +56,6 @@ type AppCoreAwaitingInputContext = {
   toolsPolicy: Record<string, boolean> | undefined
   permissionDecisionPending: 'once' | 'always' | 'reject' | null
   permissionDecisionPendingRequestID: string | null
-  refreshProject: (directory: string) => Promise<unknown>
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string) {
@@ -115,7 +110,6 @@ function useYoloPermissionAutoApprove(args: {
   permissionMode: AppPreferences['permissionMode']
   isPermissionDecisionInFlight: boolean
   pendingPermission: PermissionRequest | undefined
-  refreshProject: AppCoreAwaitingInputContext['refreshProject']
   setPermissionDecisionPending: AppCoreAwaitingInputContext['setPermissionDecisionPending']
   setPermissionDecisionPendingRequestID: AppCoreAwaitingInputContext['setPermissionDecisionPendingRequestID']
   setStatusLine: AppCoreAwaitingInputContext['setStatusLine']
@@ -125,7 +119,6 @@ function useYoloPermissionAutoApprove(args: {
     permissionMode,
     isPermissionDecisionInFlight,
     pendingPermission,
-    refreshProject,
     setPermissionDecisionPending,
     setPermissionDecisionPendingRequestID,
     setStatusLine,
@@ -149,9 +142,6 @@ function useYoloPermissionAutoApprove(args: {
           'once',
           'Auto-approved in Yolo mode'
         )
-        if (!cancelled) {
-          await refreshProject(activeProjectDir)
-        }
       } catch (error) {
         if (!cancelled) {
           setStatusLine(error instanceof Error ? error.message : String(error))
@@ -172,7 +162,6 @@ function useYoloPermissionAutoApprove(args: {
     isPermissionDecisionInFlight,
     pendingPermission,
     permissionMode,
-    refreshProject,
     setPermissionDecisionPending,
     setPermissionDecisionPendingRequestID,
     setStatusLine,
@@ -183,7 +172,6 @@ function useReplyPendingPermission(args: {
   activeProjectDir: string | undefined
   confirmDangerousActions: boolean
   pendingPermission: PermissionRequest | undefined
-  refreshProject: AppCoreAwaitingInputContext['refreshProject']
   requestConfirmation: AppCoreAwaitingInputContext['requestConfirmation']
   setAppPreferences: AppCoreAwaitingInputContext['setAppPreferences']
   setPermissionDecisionPending: AppCoreAwaitingInputContext['setPermissionDecisionPending']
@@ -194,7 +182,6 @@ function useReplyPendingPermission(args: {
     activeProjectDir,
     confirmDangerousActions,
     pendingPermission,
-    refreshProject,
     requestConfirmation,
     setAppPreferences,
     setPermissionDecisionPending,
@@ -237,7 +224,6 @@ function useReplyPendingPermission(args: {
           PERMISSION_REPLY_TIMEOUT_MS,
           'Permission response timed out. Please try again.'
         )
-        await refreshProject(activeProjectDir)
         setStatusLine(`Permission ${reply === 'reject' ? 'rejected' : 'approved'}`)
       } catch (error) {
         setStatusLine(error instanceof Error ? error.message : String(error))
@@ -250,7 +236,6 @@ function useReplyPendingPermission(args: {
       activeProjectDir,
       confirmDangerousActions,
       pendingPermission,
-      refreshProject,
       requestConfirmation,
       setAppPreferences,
       setPermissionDecisionPending,
@@ -264,8 +249,8 @@ function usePendingPermissionState(context: AppCoreAwaitingInputContext) {
   const pendingPermission = useMemo(() => context.permissions[0], [context.permissions])
   const isPermissionDecisionInFlight = Boolean(
     pendingPermission &&
-      context.permissionDecisionPending !== null &&
-      context.permissionDecisionPendingRequestID === pendingPermission.id
+    context.permissionDecisionPending !== null &&
+    context.permissionDecisionPendingRequestID === pendingPermission.id
   )
 
   usePermissionDecisionReset({
@@ -280,7 +265,6 @@ function usePendingPermissionState(context: AppCoreAwaitingInputContext) {
     permissionMode: context.appPreferences.permissionMode,
     isPermissionDecisionInFlight,
     pendingPermission,
-    refreshProject: context.refreshProject,
     setPermissionDecisionPending: context.setPermissionDecisionPending,
     setPermissionDecisionPendingRequestID: context.setPermissionDecisionPendingRequestID,
     setStatusLine: context.setStatusLine,
@@ -289,7 +273,6 @@ function usePendingPermissionState(context: AppCoreAwaitingInputContext) {
     activeProjectDir: context.activeProjectDir,
     confirmDangerousActions: context.appPreferences.confirmDangerousActions,
     pendingPermission,
-    refreshProject: context.refreshProject,
     requestConfirmation: context.requestConfirmation,
     setAppPreferences: context.setAppPreferences,
     setPermissionDecisionPending: context.setPermissionDecisionPending,
@@ -306,14 +289,18 @@ function usePendingQuestionState(context: AppCoreAwaitingInputContext) {
     activeSessionID,
     appPreferences,
     questions,
-    refreshProject,
     requestConfirmation,
     setStatusLine,
   } = context
 
   const pendingQuestion = useMemo(() => {
     const question = questions[0] ?? null
-    if (question && activeSessionID && question.sessionID && question.sessionID !== activeSessionID) {
+    if (
+      question &&
+      activeSessionID &&
+      question.sessionID &&
+      question.sessionID !== activeSessionID
+    ) {
       return null
     }
     return question
@@ -332,13 +319,12 @@ function usePendingQuestionState(context: AppCoreAwaitingInputContext) {
       }
       try {
         await window.orxa.opencode.replyQuestion(activeProjectDir, pendingQuestion.id, normalized)
-        await refreshProject(activeProjectDir)
         setStatusLine('Question answered')
       } catch (error) {
         setStatusLine(error instanceof Error ? error.message : String(error))
       }
     },
-    [activeProjectDir, pendingQuestion, refreshProject, setStatusLine]
+    [activeProjectDir, pendingQuestion, setStatusLine]
   )
 
   const rejectPendingQuestion = useCallback(async () => {
@@ -359,7 +345,6 @@ function usePendingQuestionState(context: AppCoreAwaitingInputContext) {
     }
     try {
       await window.orxa.opencode.rejectQuestion(activeProjectDir, pendingQuestion.id)
-      await refreshProject(activeProjectDir)
       setStatusLine('Question rejected')
     } catch (error) {
       setStatusLine(error instanceof Error ? error.message : String(error))
@@ -368,7 +353,6 @@ function usePendingQuestionState(context: AppCoreAwaitingInputContext) {
     activeProjectDir,
     appPreferences.confirmDangerousActions,
     pendingQuestion,
-    refreshProject,
     requestConfirmation,
     setStatusLine,
   ])
