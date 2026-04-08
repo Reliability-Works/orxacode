@@ -1,9 +1,0 @@
-/* Generated from src/styles/layout.css; domain: canvas-tiles. */
-
-/* When a full-pane child (codex, claude, canvas) is the only occupant,
-   collapse the grid to a single row so no empty auto rows create a gap. */
-.content-pane:has(> .codex-pane):not(:has(> .terminal-panel.open)),
-.content-pane:has(> .claude-pane):not(:has(> .terminal-panel.open)),
-.content-pane:has(> .canvas-pane):not(:has(> .terminal-panel.open)) {
-  grid-template-rows: 1fr;
-}

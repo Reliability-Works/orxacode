@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository is an Electron desktop frontend for Opencode.
+This repository is the Orxa Code monorepo (desktop shell, web renderer, shared contracts, and backend server).
 
 ## Canonical Upstream
 
@@ -17,10 +17,10 @@ This repository is an Electron desktop frontend for Opencode.
 
 When behavior appears different between frontend labels and backend routing, follow this chain:
 
-1. `src/` (renderer UI behavior)
-2. `shared/ipc.ts` (IPC contract + payload types)
-3. `electron/main.ts` (IPC handlers)
-4. `electron/services/opencode-service.ts` (bridge/service logic)
+1. `apps/web/src/` (renderer UI behavior)
+2. `packages/contracts/src/ipc.ts` (desktop bridge + payload contracts)
+3. `apps/desktop/src/main.ts` and `apps/desktop/src/preload.ts` (IPC handlers + bridge wiring)
+4. `apps/server/src/` (runtime/backend orchestration)
 5. Opencode SDK/server behavior in upstream repo
 
 ## Alignment Rules
@@ -48,6 +48,4 @@ After non-doc changes:
 
 ## Hierarchical Guidance
 
-- `electron/AGENTS.md` for IPC/main-process/service routing details.
-- `shared/AGENTS.md` for IPC contract rules.
-- `src/AGENTS.md` for renderer/UI interpretation rules.
+- No nested `AGENTS.md` files are currently maintained under `apps/` or `packages/`; use this file plus package-local source structure.

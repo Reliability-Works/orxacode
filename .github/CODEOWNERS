@@ -4,15 +4,18 @@
 # Global fallback - default owners for everything
 * @callum-spencer
 
-# Electron main process (security sensitive)
-electron/ @callum-spencer
+# Desktop app (Electron)
+apps/desktop/ @callum-spencer
 
-# IPC contracts and shared types
-shared/ @callum-spencer
+# Backend service
+apps/server/ @callum-spencer
 
-# Core UI components and state
-src/components/ @callum-spencer
-src/state/ @callum-spencer
+# Web app
+apps/web/ @callum-spencer
+
+# Shared workspace packages
+packages/shared/ @callum-spencer
+packages/contracts/ @callum-spencer
 
 # Build and CI configuration
 .github/workflows/ @callum-spencer

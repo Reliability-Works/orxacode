@@ -7,3 +7,6 @@ node_modules
 pnpm-lock.yaml
 .gitignore
 .prettierignore
+
+# Generated files
+apps/web/src/routeTree.gen.ts

@@ -1,6 +1,6 @@
 # Theming
 
-Orxa Code ships with five built-in themes. You can switch between them in **Settings > Appearance**, or create your own by editing `src/styles/themes.css`.
+Orxa Code theme preference is managed from **Settings > Appearance**. Current theme state wiring lives in `apps/web/src/hooks/useTheme.ts` and base tokens live in `apps/web/src/index.css`.
 
 ## Built-in themes
 
@@ -20,7 +20,7 @@ Themes are CSS custom property overrides applied via a `[data-theme]` attribute 
 document.documentElement.setAttribute('data-theme', appPreferences.theme)
 ```
 
-Each theme block in `src/styles/themes.css` overrides the design tokens defined in `src/styles/base.css`:
+Theme token overrides live in `apps/web/src/index.css`:
 
 ```css
 [data-theme='your-theme'] {
@@ -36,7 +36,7 @@ Each theme block in `src/styles/themes.css` overrides the design tokens defined 
 
 ### 1. Add the theme ID
 
-In `src/types/app.ts`, add your theme ID to the `ThemeId` union:
+In `apps/web/src/hooks/useTheme.ts`, add your theme ID to the `Theme` union:
 
 ```typescript
 export type ThemeId = 'glass' | 'terminal' | 'midnight' | 'ember' | 'arctic' | 'your-theme'
@@ -44,7 +44,7 @@ export type ThemeId = 'glass' | 'terminal' | 'midnight' | 'ember' | 'arctic' | '
 
 ### 2. Define the CSS tokens
 
-Add a new `[data-theme="your-theme"]` block in `src/styles/themes.css`. You need to define all of these tokens:
+Add a new theme token block in `apps/web/src/index.css`. You need to define all of these tokens:
 
 #### Backgrounds
 
@@ -123,7 +123,7 @@ For light themes, use `rgba(0, 0, 0, ...)` instead.
 
 ### 3. Add the theme to the picker
 
-In `src/components/settings-drawer/core-sections-appearance.tsx`, add an entry to the `THEMES` array:
+In `apps/web/src/components/settings/SettingsPanels.tsx`, add an entry to the theme selector options:
 
 ```typescript
 {
@@ -138,7 +138,7 @@ The `swatches` array defines the four colour dots shown in the theme picker card
 
 ### 4. Add the canvas preset (optional)
 
-If you want a matching canvas background, add a preset in `src/components/CanvasThemePicker.tsx`:
+If you want a matching canvas/background treatment, keep it aligned with `apps/web/src/index.css` and the settings/theme controls in `apps/web/src/components/settings/SettingsPanels.tsx`.
 
 ```typescript
 { id: "your-theme", label: "your theme", background: "#...", tileBorder: "#...", accent: "#..." },

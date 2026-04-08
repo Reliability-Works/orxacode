@@ -1,0 +1,334 @@
+import { CommandId, EventId, ThreadId } from '@orxa-code/contracts'
+import { Effect } from 'effect'
+import { expect, it } from 'vitest'
+
+import {
+  asApprovalRequestId,
+  asTurnId,
+  createHarness,
+  ProviderAdapterRequestError,
+  waitFor,
+} from './ProviderCommandReactor.test.helpers.ts'
+
+const setRunningSession = async (
+  harness: Awaited<ReturnType<typeof createHarness>>,
+  commandId: string,
+  providerName: 'codex' | 'claudeAgent',
+  now: string
+) => {
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe(commandId),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('thread-1'),
+        status: 'running',
+        providerName,
+        runtimeMode: 'approval-required',
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+}
+
+const findThread = async (harness: Awaited<ReturnType<typeof createHarness>>) =>
+  (await Effect.runPromise(harness.engine.getReadModel())).threads.find(
+    entry => entry.id === ThreadId.makeUnsafe('thread-1')
+  )
+
+const appendUserInputRequestedActivity = async (
+  harness: Awaited<ReturnType<typeof createHarness>>,
+  now: string
+) => {
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.activity.append',
+      commandId: CommandId.makeUnsafe('cmd-user-input-requested'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      activity: {
+        id: EventId.makeUnsafe('activity-user-input-requested'),
+        tone: 'info',
+        kind: 'user-input.requested',
+        summary: 'User input requested',
+        payload: {
+          requestId: 'user-input-request-1',
+          questions: [
+            {
+              id: 'sandbox_mode',
+              header: 'Sandbox',
+              question: 'Which mode should be used?',
+              options: [
+                {
+                  label: 'workspace-write',
+                  description: 'Allow workspace writes only',
+                },
+              ],
+            },
+          ],
+        },
+        turnId: null,
+        createdAt: now,
+      },
+      createdAt: now,
+    })
+  )
+}
+
+it('reacts to thread.turn.interrupt-requested by calling provider interrupt', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-session-set'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('thread-1'),
+        status: 'running',
+        providerName: 'codex',
+        runtimeMode: 'approval-required',
+        activeTurnId: asTurnId('turn-1'),
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.turn.interrupt',
+      commandId: CommandId.makeUnsafe('cmd-turn-interrupt'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      turnId: asTurnId('turn-1'),
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.interruptTurn.mock.calls.length === 1)
+  expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
+    threadId: 'thread-1',
+  })
+})
+
+it('reacts to thread.approval.respond by forwarding provider approval response', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await setRunningSession(harness, 'cmd-session-set-for-approval', 'codex', now)
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.approval.respond',
+      commandId: CommandId.makeUnsafe('cmd-approval-respond'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      requestId: asApprovalRequestId('approval-request-1'),
+      decision: 'accept',
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.respondToRequest.mock.calls.length === 1)
+  expect(harness.respondToRequest.mock.calls[0]?.[0]).toEqual({
+    threadId: 'thread-1',
+    requestId: 'approval-request-1',
+    decision: 'accept',
+  })
+})
+
+it('reacts to thread.user-input.respond by forwarding structured user input answers', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await setRunningSession(harness, 'cmd-session-set-for-user-input', 'codex', now)
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.user-input.respond',
+      commandId: CommandId.makeUnsafe('cmd-user-input-respond'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      requestId: asApprovalRequestId('user-input-request-1'),
+      answers: {
+        sandbox_mode: 'workspace-write',
+      },
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.respondToUserInput.mock.calls.length === 1)
+  expect(harness.respondToUserInput.mock.calls[0]?.[0]).toEqual({
+    threadId: 'thread-1',
+    requestId: 'user-input-request-1',
+    answers: {
+      sandbox_mode: 'workspace-write',
+    },
+  })
+})
+
+it('surfaces stale provider approval request failures without faking approval resolution', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+  harness.respondToRequest.mockImplementation(() =>
+    Effect.fail(
+      new ProviderAdapterRequestError({
+        provider: 'codex',
+        method: 'session/request_permission',
+        detail: 'Unknown pending permission request: approval-request-1',
+      })
+    )
+  )
+
+  await setRunningSession(harness, 'cmd-session-set-for-approval-error', 'codex', now)
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.activity.append',
+      commandId: CommandId.makeUnsafe('cmd-approval-requested'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      activity: {
+        id: EventId.makeUnsafe('activity-approval-requested'),
+        tone: 'approval',
+        kind: 'approval.requested',
+        summary: 'Command approval requested',
+        payload: {
+          requestId: 'approval-request-1',
+          requestKind: 'command',
+        },
+        turnId: null,
+        createdAt: now,
+      },
+      createdAt: now,
+    })
+  )
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.approval.respond',
+      commandId: CommandId.makeUnsafe('cmd-approval-respond-stale'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      requestId: asApprovalRequestId('approval-request-1'),
+      decision: 'acceptForSession',
+      createdAt: now,
+    })
+  )
+
+  await waitFor(async () => {
+    return (
+      (await findThread(harness))?.activities.some(
+        activity => activity.kind === 'provider.approval.respond.failed'
+      ) ?? false
+    )
+  })
+
+  const thread = await findThread(harness)
+  const failureActivity = thread?.activities.find(
+    activity => activity.kind === 'provider.approval.respond.failed'
+  )
+  expect(failureActivity?.payload).toMatchObject({
+    requestId: 'approval-request-1',
+    detail: expect.stringContaining('Stale pending approval request: approval-request-1'),
+  })
+
+  const resolvedActivity = thread?.activities.find(
+    activity =>
+      activity.kind === 'approval.resolved' &&
+      typeof activity.payload === 'object' &&
+      activity.payload !== null &&
+      (activity.payload as Record<string, unknown>).requestId === 'approval-request-1'
+  )
+  expect(resolvedActivity).toBeUndefined()
+})
+
+it('surfaces stale provider user-input failures without faking user-input resolution', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+  harness.respondToUserInput.mockImplementation(() =>
+    Effect.fail(
+      new ProviderAdapterRequestError({
+        provider: 'claudeAgent',
+        method: 'item/tool/respondToUserInput',
+        detail: 'Unknown pending user-input request: user-input-request-1',
+      })
+    )
+  )
+
+  await setRunningSession(harness, 'cmd-session-set-for-user-input-error', 'claudeAgent', now)
+  await appendUserInputRequestedActivity(harness, now)
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.user-input.respond',
+      commandId: CommandId.makeUnsafe('cmd-user-input-respond-stale'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      requestId: asApprovalRequestId('user-input-request-1'),
+      answers: {
+        sandbox_mode: 'workspace-write',
+      },
+      createdAt: now,
+    })
+  )
+
+  await waitFor(async () => {
+    return (
+      (await findThread(harness))?.activities.some(
+        activity => activity.kind === 'provider.user-input.respond.failed'
+      ) ?? false
+    )
+  })
+
+  const thread = await findThread(harness)
+  const failureActivity = thread?.activities.find(
+    activity => activity.kind === 'provider.user-input.respond.failed'
+  )
+  expect(failureActivity?.payload).toMatchObject({
+    requestId: 'user-input-request-1',
+    detail: expect.stringContaining('Stale pending user-input request: user-input-request-1'),
+  })
+
+  const resolvedActivity = thread?.activities.find(
+    activity =>
+      activity.kind === 'user-input.resolved' &&
+      typeof activity.payload === 'object' &&
+      activity.payload !== null &&
+      (activity.payload as Record<string, unknown>).requestId === 'user-input-request-1'
+  )
+  expect(resolvedActivity).toBeUndefined()
+})
+
+it('reacts to thread.session.stop by stopping provider session and clearing thread session state', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-session-set-for-stop'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('thread-1'),
+        status: 'ready',
+        providerName: 'codex',
+        runtimeMode: 'approval-required',
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.stop',
+      commandId: CommandId.makeUnsafe('cmd-session-stop'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.stopSession.mock.calls.length === 1)
+  const readModel = await Effect.runPromise(harness.engine.getReadModel())
+  const thread = readModel.threads.find(entry => entry.id === ThreadId.makeUnsafe('thread-1'))
+  expect(thread?.session).not.toBeNull()
+  expect(thread?.session?.status).toBe('stopped')
+  expect(thread?.session?.threadId).toBe('thread-1')
+  expect(thread?.session?.activeTurnId).toBeNull()
+})

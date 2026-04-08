@@ -1,5 +1,6 @@
 {
-  "threshold": 5,
+  "threshold": 0,
+  "pattern": "**/src/**/*.{ts,tsx,js,jsx,mjs,cjs,json,css,html}",
   "reporters": ["console", "html"],
   "ignore": [
     "**/node_modules/**",

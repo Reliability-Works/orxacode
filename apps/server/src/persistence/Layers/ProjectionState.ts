@@ -1,0 +1,128 @@
+import { NonNegativeInt } from '@orxa-code/contracts'
+import * as SqlClient from 'effect/unstable/sql/SqlClient'
+import * as SqlSchema from 'effect/unstable/sql/SqlSchema'
+import { Effect, Layer, Schema } from 'effect'
+
+import { toPersistenceSqlError } from '../Errors.ts'
+
+import {
+  ProjectionStateRepository,
+  type ProjectionStateRepositoryShape,
+  GetProjectionStateInput,
+  ProjectionState,
+} from '../Services/ProjectionState.ts'
+
+const MinLastAppliedSequenceRowSchema = Schema.Struct({
+  minLastAppliedSequence: Schema.NullOr(NonNegativeInt),
+})
+
+function makeUpsertProjectionStateRow(sql: SqlClient.SqlClient) {
+  return SqlSchema.void({
+    Request: ProjectionState,
+    execute: row =>
+      sql`
+        INSERT INTO projection_state (
+          projector,
+          last_applied_sequence,
+          updated_at
+        )
+        VALUES (
+          ${row.projector},
+          ${row.lastAppliedSequence},
+          ${row.updatedAt}
+        )
+        ON CONFLICT (projector)
+        DO UPDATE SET
+          last_applied_sequence = excluded.last_applied_sequence,
+          updated_at = excluded.updated_at
+      `,
+  })
+}
+
+function makeGetProjectionStateRow(sql: SqlClient.SqlClient) {
+  return SqlSchema.findOneOption({
+    Request: GetProjectionStateInput,
+    Result: ProjectionState,
+    execute: ({ projector }) =>
+      sql`
+        SELECT
+          projector,
+          last_applied_sequence AS "lastAppliedSequence",
+          updated_at AS "updatedAt"
+        FROM projection_state
+        WHERE projector = ${projector}
+      `,
+  })
+}
+
+function makeListProjectionStateRows(sql: SqlClient.SqlClient) {
+  return SqlSchema.findAll({
+    Request: Schema.Void,
+    Result: ProjectionState,
+    execute: () =>
+      sql`
+        SELECT
+          projector,
+          last_applied_sequence AS "lastAppliedSequence",
+          updated_at AS "updatedAt"
+        FROM projection_state
+        ORDER BY projector ASC
+      `,
+  })
+}
+
+function makeReadMinLastAppliedSequence(sql: SqlClient.SqlClient) {
+  return SqlSchema.findOne({
+    Request: Schema.Void,
+    Result: MinLastAppliedSequenceRowSchema,
+    execute: () =>
+      sql`
+        SELECT
+          MIN(last_applied_sequence) AS "minLastAppliedSequence"
+        FROM projection_state
+      `,
+  })
+}
+
+const makeProjectionStateRepository = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient
+  const upsertProjectionStateRow = makeUpsertProjectionStateRow(sql)
+  const getProjectionStateRow = makeGetProjectionStateRow(sql)
+  const listProjectionStateRows = makeListProjectionStateRows(sql)
+  const readMinLastAppliedSequence = makeReadMinLastAppliedSequence(sql)
+
+  const upsert: ProjectionStateRepositoryShape['upsert'] = row =>
+    upsertProjectionStateRow(row).pipe(
+      Effect.mapError(toPersistenceSqlError('ProjectionStateRepository.upsert:query'))
+    )
+
+  const getByProjector: ProjectionStateRepositoryShape['getByProjector'] = input =>
+    getProjectionStateRow(input).pipe(
+      Effect.mapError(toPersistenceSqlError('ProjectionStateRepository.getByProjector:query'))
+    )
+
+  const listAll: ProjectionStateRepositoryShape['listAll'] = () =>
+    listProjectionStateRows(undefined).pipe(
+      Effect.mapError(toPersistenceSqlError('ProjectionStateRepository.listAll:query'))
+    )
+
+  const minLastAppliedSequence: ProjectionStateRepositoryShape['minLastAppliedSequence'] = () =>
+    readMinLastAppliedSequence(undefined).pipe(
+      Effect.mapError(
+        toPersistenceSqlError('ProjectionStateRepository.minLastAppliedSequence:query')
+      ),
+      Effect.map(row => row.minLastAppliedSequence)
+    )
+
+  return {
+    upsert,
+    getByProjector,
+    listAll,
+    minLastAppliedSequence,
+  } satisfies ProjectionStateRepositoryShape
+})
+
+export const ProjectionStateRepositoryLive = Layer.effect(
+  ProjectionStateRepository,
+  makeProjectionStateRepository
+)

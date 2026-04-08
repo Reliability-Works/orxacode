@@ -15,6 +15,7 @@ release
 dist-ssr
 *.local
 coverage/
+*.tsbuildinfo
 
 # Editor directories and files
 .vscode/*
@@ -32,6 +33,15 @@ coverage/
 
 # Generated image outputs
 output/imagegen/final/
+
+# Playwright MCP local cache
+.playwright-mcp/
+
+# jscpd duplication report output
+report/
+
+# Ad-hoc local handoff/scratch docs
+handoffs/
 
 # Workpack execution state
 .workpack/

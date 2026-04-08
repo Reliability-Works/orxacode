@@ -1,0 +1,72 @@
+{
+  "name": "@orxa-code/shared",
+  "version": "0.0.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./model": {
+      "types": "./src/model.ts",
+      "import": "./src/model.ts"
+    },
+    "./git": {
+      "types": "./src/git.ts",
+      "import": "./src/git.ts"
+    },
+    "./logging": {
+      "types": "./src/logging.ts",
+      "import": "./src/logging.ts"
+    },
+    "./shell": {
+      "types": "./src/shell.ts",
+      "import": "./src/shell.ts"
+    },
+    "./Net": {
+      "types": "./src/Net.ts",
+      "import": "./src/Net.ts"
+    },
+    "./DrainableWorker": {
+      "types": "./src/DrainableWorker.ts",
+      "import": "./src/DrainableWorker.ts"
+    },
+    "./KeyedCoalescingWorker": {
+      "types": "./src/KeyedCoalescingWorker.ts",
+      "import": "./src/KeyedCoalescingWorker.ts"
+    },
+    "./schemaJson": {
+      "types": "./src/schemaJson.ts",
+      "import": "./src/schemaJson.ts"
+    },
+    "./Struct": {
+      "types": "./src/Struct.ts",
+      "import": "./src/Struct.ts"
+    },
+    "./String": {
+      "types": "./src/String.ts",
+      "import": "./src/String.ts"
+    },
+    "./projectionRevert": {
+      "types": "./src/projectionRevert.ts",
+      "import": "./src/projectionRevert.ts"
+    },
+    "./projectionEventPayloads": {
+      "types": "./src/projectionEventPayloads.ts",
+      "import": "./src/projectionEventPayloads.ts"
+    }
+  },
+  "scripts": {
+    "prepare": "effect-language-service patch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@orxa-code/contracts": "workspace:*",
+    "effect": "4.0.0-beta.43"
+  },
+  "devDependencies": {
+    "@effect/language-service": "0.84.3",
+    "@effect/vitest": "4.0.0-beta.43",
+    "@types/node": "*",
+    "typescript": "*",
+    "vitest": "*"
+  }
+}

@@ -26,18 +26,14 @@ Main Process (Electron)
 
 ## Process Boundaries
 
-- `electron/main.ts` — BrowserWindow lifecycle, IPC handlers, service orchestration
-- `electron/preload.ts` — typed API surface exposed as `window.orxa`
-- `electron/services/opencode-service.ts` — OpenCode SDK bridge
-- `electron/services/codex-service.ts` — Codex app-server JSON-RPC client
-- `electron/services/claude-chat-service.ts` — Claude Code structured chat bridge
-- `electron/services/usage-stats-service.ts` — Usage data readers for Claude and Codex
-- `electron/services/browser-controller.ts` — In-app browser (tabs, bounds, history, agent actions)
-- `src/*` — React UI, no direct Node APIs
+- `apps/desktop/src/main.ts` — BrowserWindow lifecycle, desktop IPC handlers, backend process orchestration
+- `apps/desktop/src/preload.ts` — typed API surface exposed as `window.orxa` / `window.desktopBridge`
+- `apps/server/src/` — provider runtime orchestration (OpenCode/Codex/Claude), project state, terminal, persistence
+- `apps/web/src/` — React UI, no direct Node APIs
 
 ## IPC Contract
 
-Defined in `shared/ipc.ts`:
+Defined in `packages/contracts/src/ipc.ts`:
 
 - All renderer-main communication goes through typed channels
 - High-risk inputs are validated in main

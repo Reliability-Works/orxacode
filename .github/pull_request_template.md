@@ -5,9 +5,10 @@
 ## Changes
 
 <!-- List the key changes made -->
-- 
-- 
-- 
+
+-
+-
+-
 
 ## Motivation
 
@@ -16,6 +17,7 @@
 ## Testing
 
 <!-- How was this tested? -->
+
 - [ ] Unit tests pass (`pnpm test`)
 - [ ] Type check passes (`pnpm typecheck`)
 - [ ] Linting passes (`pnpm lint`)
@@ -36,4 +38,5 @@
 ## Related Issues
 
 <!-- Link any related issues -->
+
 Fixes #

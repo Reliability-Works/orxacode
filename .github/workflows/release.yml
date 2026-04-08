@@ -46,7 +46,7 @@ jobs:
         run: pnpm build
 
       - name: Build unpacked artifact
-        run: pnpm exec electron-builder --dir --publish never
+        run: pnpm exec electron-builder --config electron-builder.yml --dir --publish never
 
       - name: Run release smoke test (Linux)
         if: matrix.os == 'ubuntu-latest'

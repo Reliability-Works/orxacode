@@ -124,7 +124,8 @@ pnpm dev
 pnpm lint        # eslint
 pnpm typecheck   # tsc -b
 pnpm test        # vitest
-pnpm dist        # package for distribution
+pnpm build       # build all workspace packages/apps
+pnpm smoke:artifact # validate packaged desktop artifact
 ```
 
 ## License

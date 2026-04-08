@@ -1,0 +1,30 @@
+{
+  "name": "@orxa-code/desktop",
+  "version": "0.0.15",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "pnpm run dev:bundle & pnpm run dev:electron",
+    "dev:bundle": "tsdown --watch",
+    "dev:electron": "node scripts/dev-electron.mjs",
+    "build": "tsdown",
+    "start": "node scripts/start-electron.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "smoke-test": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.43",
+    "electron": "40.6.0",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@orxa-code/contracts": "workspace:*",
+    "@orxa-code/shared": "workspace:*",
+    "@types/node": "*",
+    "tsdown": "*",
+    "typescript": "*",
+    "vitest": "*"
+  },
+  "productName": "Orxa Code (Beta)"
+}

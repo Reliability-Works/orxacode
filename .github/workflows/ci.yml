@@ -9,7 +9,7 @@ on:
 
 jobs:
   verify:
-    name: Verify app quality gates
+    name: Verify workspace quality gates
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,18 +34,28 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Duplication
+        run: pnpm duplication
+
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Performance guards
-        run: pnpm test:perf-guard
+      - name: Performance guards (if configured)
+        run: pnpm run --if-present test:perf-guard
 
-      - name: Test with coverage
-        run: pnpm test:coverage
+      - name: Test with coverage (if configured)
+        run: pnpm run --if-present test:coverage
+
+      - name: Test
+        run: pnpm test
 
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: coverage
+          path: |
+            coverage
+            apps/*/coverage
+            packages/*/coverage
+          if-no-files-found: ignore

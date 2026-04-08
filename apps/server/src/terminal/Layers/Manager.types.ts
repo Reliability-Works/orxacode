@@ -1,0 +1,115 @@
+import { Data, type Effect, type Fiber } from 'effect'
+
+import type { TerminalSessionStatus } from '@orxa-code/contracts'
+
+import type { PtyAdapterShape, PtyExitEvent, PtyProcess } from '../Services/PTY'
+
+export const DEFAULT_HISTORY_LINE_LIMIT = 5_000
+export const DEFAULT_PERSIST_DEBOUNCE_MS = 40
+export const DEFAULT_SUBPROCESS_POLL_INTERVAL_MS = 1_000
+export const DEFAULT_PROCESS_KILL_GRACE_MS = 1_000
+export const DEFAULT_MAX_RETAINED_INACTIVE_SESSIONS = 128
+export const DEFAULT_OPEN_COLS = 120
+export const DEFAULT_OPEN_ROWS = 30
+export const TERMINAL_ENV_BLOCKLIST = new Set([
+  'PORT',
+  'ELECTRON_RENDERER_PORT',
+  'ELECTRON_RUN_AS_NODE',
+])
+
+export type TerminalSubprocessChecker = (
+  terminalPid: number
+) => Effect.Effect<boolean, TerminalSubprocessCheckError>
+
+export class TerminalSubprocessCheckError extends Data.TaggedError('TerminalSubprocessCheckError')<{
+  readonly message: string
+  readonly cause?: unknown
+  readonly terminalPid: number
+  readonly command: 'powershell' | 'pgrep' | 'ps'
+}> {}
+
+export class TerminalProcessSignalError extends Data.TaggedError('TerminalProcessSignalError')<{
+  readonly message: string
+  readonly cause?: unknown
+  readonly signal: 'SIGTERM' | 'SIGKILL'
+}> {}
+
+export interface ShellCandidate {
+  shell: string
+  args?: string[]
+}
+
+export interface TerminalStartInput {
+  threadId: string
+  terminalId: string
+  cwd: string
+  cols: number
+  rows: number
+  env?: Record<string, string>
+}
+
+export interface TerminalSessionState {
+  threadId: string
+  terminalId: string
+  cwd: string
+  status: TerminalSessionStatus
+  pid: number | null
+  history: string
+  pendingHistoryControlSequence: string
+  pendingProcessEvents: Array<PendingProcessEvent>
+  pendingProcessEventIndex: number
+  processEventDrainRunning: boolean
+  exitCode: number | null
+  exitSignal: number | null
+  updatedAt: string
+  cols: number
+  rows: number
+  process: PtyProcess | null
+  unsubscribeData: (() => void) | null
+  unsubscribeExit: (() => void) | null
+  hasRunningSubprocess: boolean
+  runtimeEnv: Record<string, string> | null
+}
+
+export interface PersistHistoryRequest {
+  history: string
+  immediate: boolean
+}
+
+export type PendingProcessEvent =
+  | { type: 'output'; data: string }
+  | { type: 'exit'; event: PtyExitEvent }
+
+export type DrainProcessEventAction =
+  | { type: 'idle' }
+  | {
+      type: 'output'
+      threadId: string
+      terminalId: string
+      history: string | null
+      data: string
+    }
+  | {
+      type: 'exit'
+      process: PtyProcess | null
+      threadId: string
+      terminalId: string
+      exitCode: number | null
+      exitSignal: number | null
+    }
+
+export interface TerminalManagerState {
+  sessions: Map<string, TerminalSessionState>
+  killFibers: Map<PtyProcess, Fiber.Fiber<void, never>>
+}
+
+export interface TerminalManagerOptions {
+  logsDir: string
+  historyLineLimit?: number
+  ptyAdapter: PtyAdapterShape
+  shellResolver?: () => string
+  subprocessChecker?: TerminalSubprocessChecker
+  subprocessPollIntervalMs?: number
+  processKillGraceMs?: number
+  maxRetainedInactiveSessions?: number
+}

@@ -1,0 +1,18 @@
+appId: com.orxa.code
+productName: Orxa Code (Beta)
+artifactName: orxa-code-${version}-${os}-${arch}.${ext}
+mac:
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+protocols:
+  - name: Orxa Code (Beta)
+    schemes:
+      - orxa
+publish:
+  provider: github
+  owner: Reliability-Works
+  repo: orxacode
+  releaseType: release
+extraMetadata:
+  orxaCommitHash: ${env.GITHUB_SHA}

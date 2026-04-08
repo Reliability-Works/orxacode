@@ -2,84 +2,35 @@
   "name": "orxa-code",
   "private": true,
   "version": "0.1.0-beta.55",
-  "description": "Orxa Code Electron desktop app",
+  "description": "Orxa Code monorepo root",
   "author": "Reliability Works",
-  "type": "module",
   "main": "dist-electron/main.js",
+  "type": "module",
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "native:rebuild": "electron-builder install-app-deps",
-    "dev": "vite",
-    "dev:mac": "node scripts/sync-macos-dev-icon.mjs && vite",
-    "build": "tsc -b && vite build",
-    "dist": "pnpm build && electron-builder",
-    "dist:dir": "pnpm build && electron-builder --dir",
-    "typecheck": "tsc -b",
-    "test": "vitest run",
-    "test:perf-guard": "vitest run electron/preload.test.ts electron/services/performance-telemetry-service.test.ts src/hooks/useWorkspaceState.runtime-sync.test.tsx src/hooks/useClaudeChatSession.test.tsx src/hooks/useClaudeChatSessionLiveSync.test.tsx",
-    "test:coverage": "vitest run --coverage",
-    "test:coverage:hook:raw": "vitest run --coverage --reporter=dot --pool=forks --maxWorkers=50% --coverage.reporter=text --coverage.reporter=json-summary",
-    "test:coverage:hook": "node scripts/run-coverage-hook.mjs",
-    "test:watch": "vitest",
-    "ci": "pnpm lint && pnpm typecheck && pnpm format:check && pnpm knip && pnpm test:coverage",
-    "lint": "eslint .",
+    "dev": "node scripts/dev-root.mjs",
+    "dev:desktop": "pnpm --filter @orxa-code/desktop dev",
+    "dev:server": "pnpm --filter @orxa-code/server dev",
+    "dev:web": "pnpm --filter @orxa-code/web dev",
+    "build": "pnpm -r --if-present build",
+    "build:artifact:dir": "pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
+    "smoke:artifact": "node scripts/release-smoke-test.mjs",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm exec eslint --no-error-on-unmatched-pattern apps packages scripts --ext .ts,.tsx,.js,.jsx,.mjs,.cjs",
+    "duplication": "pnpm exec jscpd --config .jscpd.json apps packages",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "knip": "knip",
-    "depcheck": "depcheck",
-    "preview": "vite preview",
-    "smoke:artifact": "node scripts/release-smoke-test.mjs",
-    "postinstall": "pnpm native:rebuild",
-    "predev": "pnpm native:rebuild",
-    "predev:mac": "pnpm native:rebuild",
-    "prebuild": "pnpm native:rebuild",
+    "ci": "pnpm lint && pnpm typecheck && pnpm test",
     "prepare": "husky"
-  },
-  "build": {
-    "appId": "ai.orxa.code",
-    "productName": "Orxa Code",
-    "files": [
-      "dist/**",
-      "dist-electron/**",
-      "package.json"
-    ],
-    "asar": true,
-    "asarUnpack": [
-      "node_modules/better-sqlite3/**",
-      "node_modules/node-pty/**"
-    ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Reliability-Works",
-        "repo": "OpencodeOrxa",
-        "releaseType": "release"
-      }
-    ],
-    "generateUpdatesFilesForAllChannels": true,
-    "mac": {
-      "target": [
-        "dmg",
-        "zip"
-      ],
-      "icon": "build/icon.icns",
-      "category": "public.app-category.developer-tools",
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
-    },
-    "win": {
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "category": "Development"
-    }
   },
   "pnpm": {
     "overrides": {

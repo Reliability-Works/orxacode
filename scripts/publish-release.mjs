@@ -8,6 +8,8 @@ const releaseType = isPrerelease ? 'prerelease' : 'release'
 const args = [
   'exec',
   'electron-builder',
+  '--config',
+  'electron-builder.yml',
   '--publish',
   'always',
   `--config.publish.releaseType=${releaseType}`,

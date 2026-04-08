@@ -4,7 +4,8 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 
 const DIST_DIR = path.resolve(process.cwd(), 'dist')
-const APP_NAME = 'Orxa Code'
+const APP_NAME = 'Orxa Code (Beta)'
+const APP_FALLBACK_MAC_NAME = 'Orxa Code'
 const APP_FALLBACK_LINUX_BINARY = 'orxa-code'
 
 async function pathExists(targetPath) {
@@ -48,6 +49,17 @@ async function resolveExecutablePath() {
       )
       if (await pathExists(macAppBinary)) {
         return macAppBinary
+      }
+      const fallbackMacAppBinary = path.join(
+        DIST_DIR,
+        entry.name,
+        `${APP_FALLBACK_MAC_NAME}.app`,
+        'Contents',
+        'MacOS',
+        APP_FALLBACK_MAC_NAME
+      )
+      if (await pathExists(fallbackMacAppBinary)) {
+        return fallbackMacAppBinary
       }
     }
   }
