@@ -1,0 +1,16 @@
+#!/bin/sh
+
+if command -v corepack >/dev/null 2>&1; then
+  exec corepack pnpm "$@"
+fi
+
+if [ -x /usr/local/bin/corepack ]; then
+  exec /usr/local/bin/corepack pnpm "$@"
+fi
+
+if [ -x /opt/homebrew/bin/corepack ]; then
+  exec /opt/homebrew/bin/corepack pnpm "$@"
+fi
+
+echo "Error: corepack is not available to provide pnpm." >&2
+exit 1

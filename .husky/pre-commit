@@ -1,3 +1,5 @@
+export PATH="$PWD/.husky/_:$PATH"
+
 # Check for newly added large files (>100KB)
 # Allow-list: known-legitimate tracked assets that exceed the limit.
 echo "Checking for large files..."
