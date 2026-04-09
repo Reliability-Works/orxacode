@@ -10,6 +10,10 @@ import {
   ThreadId,
 } from '@orxa-code/contracts'
 import { create } from 'zustand'
+import {
+  getOpencodeStartupTelemetryMessage,
+  isOpencodeStartupTelemetryActivity,
+} from './opencodeStartupTelemetry'
 import { type Project, type Thread } from './types'
 import { type AppState, initialState, mapProject, mapThread, updateThread } from './store.helpers'
 import { applyOrchestrationEvent } from './store.orchestrationEvents'
@@ -17,6 +21,21 @@ import { applyOrchestrationEvent } from './store.orchestrationEvents'
 // Re-export AppState and state transition functions for external consumers.
 export type { AppState }
 export { applyOrchestrationEvent }
+
+export function logOpencodeStartupTelemetryForEvent(event: OrchestrationEvent): void {
+  if (event.type !== 'thread.activity-appended') {
+    return
+  }
+  if (!isOpencodeStartupTelemetryActivity(event.payload.activity)) {
+    return
+  }
+  console.debug('[orxacode][opencode-startup]', {
+    threadId: event.payload.threadId,
+    activityId: event.payload.activity.id,
+    createdAt: event.payload.activity.createdAt,
+    message: getOpencodeStartupTelemetryMessage(event.payload.activity),
+  })
+}
 
 export function applyOrchestrationEvents(
   state: AppState,
@@ -93,8 +112,18 @@ interface AppStore extends AppState {
 export const useStore = create<AppStore>(set => ({
   ...initialState,
   syncServerReadModel: readModel => set(state => syncServerReadModel(state, readModel)),
-  applyOrchestrationEvent: event => set(state => applyOrchestrationEvent(state, event)),
-  applyOrchestrationEvents: events => set(state => applyOrchestrationEvents(state, events)),
+  applyOrchestrationEvent: event =>
+    set(state => {
+      logOpencodeStartupTelemetryForEvent(event)
+      return applyOrchestrationEvent(state, event)
+    }),
+  applyOrchestrationEvents: events =>
+    set(state => {
+      for (const event of events) {
+        logOpencodeStartupTelemetryForEvent(event)
+      }
+      return applyOrchestrationEvents(state, events)
+    }),
   setError: (threadId, error) => set(state => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set(state => setThreadBranch(state, threadId, branch, worktreePath)),

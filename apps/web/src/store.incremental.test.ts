@@ -1,15 +1,25 @@
 import {
   CheckpointRef,
   DEFAULT_MODEL_BY_PROVIDER,
+  EventId,
   MessageId,
   ProjectId,
   ThreadId,
   TurnId,
 } from '@orxa-code/contracts'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 
-import { applyOrchestrationEvent, applyOrchestrationEvents, type AppState } from './store'
+import {
+  applyOrchestrationEvent,
+  applyOrchestrationEvents,
+  logOpencodeStartupTelemetryForEvent,
+  type AppState,
+} from './store'
 import { makeEvent, makeState, makeThread } from './store.test.helpers'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 it('does not mark bootstrap complete for incremental events', () => {
   const state: AppState = {
@@ -183,6 +193,41 @@ it('applies replay batches in sequence and updates session state', () => {
   expect(next.threads[0]?.session?.status).toBe('running')
   expect(next.threads[0]?.latestTurn?.state).toBe('completed')
   expect(next.threads[0]?.messages).toHaveLength(1)
+})
+
+it('logs Opencode startup telemetry to the devtools console when the activity arrives', () => {
+  const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
+  const thread = makeThread()
+  const state = makeState(thread)
+
+  const event = makeEvent('thread.activity-appended', {
+    threadId: thread.id,
+    activity: {
+      id: EventId.makeUnsafe('activity-opencode-startup'),
+      createdAt: '2026-02-27T00:00:02.000Z',
+      turnId: TurnId.makeUnsafe('turn-1'),
+      tone: 'info',
+      kind: 'task.progress',
+      summary: 'Reasoning update',
+      payload: {
+        taskId: 'opencode-startup-turn-1',
+        summary: 'First response token received after 3689ms.',
+        detail: 'First response token received after 3689ms.',
+      },
+    },
+  })
+  logOpencodeStartupTelemetryForEvent(event)
+  const next = applyOrchestrationEvent(state, event)
+
+  expect(debugSpy).toHaveBeenCalledWith('[orxacode][opencode-startup]', {
+    threadId: thread.id,
+    activityId: 'activity-opencode-startup',
+    createdAt: '2026-02-27T00:00:02.000Z',
+    message: 'First response token received after 3689ms.',
+  })
+  expect(next.threads[0]?.activities.some(activity => activity.id === 'activity-opencode-startup')).toBe(
+    true
+  )
 })
 
 it('does not regress latestTurn when an older turn diff completes late', () => {

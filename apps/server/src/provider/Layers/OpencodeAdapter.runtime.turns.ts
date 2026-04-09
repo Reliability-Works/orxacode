@@ -18,6 +18,7 @@
 import {
   type ProviderSendTurnInput,
   type ProviderTurnStartResult,
+  RuntimeTaskId,
   type ThreadId,
   TurnId,
 } from '@orxa-code/contracts'
@@ -33,6 +34,7 @@ import { mapTurnAbort } from './OpencodeAdapter.pure.ts'
 import {
   abortOpencodeSessionIgnoring,
   emitMappedEvents,
+  emitTaskProgressEvent,
   prepareMapperContext,
   requireOpencodeSession,
 } from './OpencodeAdapter.runtime.eventBase.ts'
@@ -45,6 +47,15 @@ import {
 
 const DEFAULT_AGENT = 'build'
 const PLAN_AGENT = 'plan'
+
+function startupTaskId(turnId: TurnId): RuntimeTaskId {
+  return RuntimeTaskId.makeUnsafe(`opencode-startup-${turnId}`)
+}
+
+function describeElapsedMs(startedAtMs: number, nowMs: number): string {
+  const elapsedMs = Math.max(0, nowMs - startedAtMs)
+  return `${elapsedMs}ms`
+}
 
 function toErrorMessageLocal(cause: unknown, fallback: string): string {
   if (cause instanceof Error) return cause.message
@@ -142,6 +153,14 @@ const openTurn = Effect.fn('opencode.openTurn')(function* (
     turnId,
     startedAt,
     providerMessageIds: new Set<string>(),
+    startupTrace: {
+      taskId: startupTaskId(turnId),
+      promptDispatchedAtMs: Date.now(),
+      promptAcceptedAtMs: undefined,
+      firstEventAtMs: undefined,
+      firstContentDeltaAtMs: undefined,
+      firstToolAtMs: undefined,
+    },
   }
   context.turnState = turnState
   context.session = {
@@ -188,6 +207,13 @@ export const sendTurn = (
     }
 
     const turnState = yield* openTurn(deps, context)
+    yield* emitTaskProgressEvent(
+      deps,
+      context,
+      turnState.startupTrace.taskId,
+      'Dispatching prompt to Opencode.',
+      { summary: 'Dispatching prompt to Opencode.' }
+    )
     const model = resolveModelTuple(context, input)
     const agent = resolveAgent(input)
     const variant = resolveVariant(input)
@@ -206,8 +232,22 @@ export const sendTurn = (
           ...(variant ? { variant } : {}),
           ...(context.session.cwd ? { directory: context.session.cwd } : {}),
         }),
-      catch: cause => toRequestError(input.threadId, 'session.prompt', cause),
+      catch: cause => toRequestError(input.threadId, 'session.promptAsync', cause),
     })
+
+    const acceptedAtMs = Date.now()
+    turnState.startupTrace.promptAcceptedAtMs = acceptedAtMs
+    const acceptedSummary = `Prompt accepted by Opencode after ${describeElapsedMs(
+      turnState.startupTrace.promptDispatchedAtMs,
+      acceptedAtMs
+    )}.`
+    yield* emitTaskProgressEvent(
+      deps,
+      context,
+      turnState.startupTrace.taskId,
+      acceptedSummary,
+      { summary: acceptedSummary }
+    )
 
     return {
       threadId: context.session.threadId,

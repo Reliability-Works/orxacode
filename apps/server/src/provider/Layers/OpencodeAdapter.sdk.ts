@@ -109,13 +109,8 @@ export async function createOpencodeSession(input: CreateSessionInput): Promise<
   return unwrap(response, 'session.create')
 }
 
-export interface SendPromptResult {
-  readonly info: OpencodeMessage
-  readonly parts: ReadonlyArray<OpencodePart>
-}
-
-export async function sendOpencodePrompt(input: SendPromptInput): Promise<SendPromptResult> {
-  const response = (await input.client.session.prompt({
+export async function sendOpencodePrompt(input: SendPromptInput): Promise<void> {
+  const response = (await input.client.session.promptAsync({
     sessionID: input.sessionId,
     ...(input.directory ? { directory: input.directory } : {}),
     model: { providerID: input.providerID, modelID: input.modelID },
@@ -124,8 +119,8 @@ export async function sendOpencodePrompt(input: SendPromptInput): Promise<SendPr
     ...(input.system ? { system: input.system } : {}),
     ...(input.messageID ? { messageID: input.messageID } : {}),
     parts: [{ type: 'text', text: input.text }],
-  })) as SdkResponseLike<SendPromptResult>
-  return unwrap(response, 'session.prompt')
+  })) as unknown as SdkResponseLike<void>
+  unwrap(response, 'session.promptAsync')
 }
 
 export async function abortOpencodeSession(input: AbortSessionInput): Promise<boolean> {

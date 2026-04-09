@@ -115,6 +115,15 @@ describe('isLatestTurnSettled', () => {
     completedAt: '2026-02-27T21:10:06.000Z',
   } as const
 
+  it('returns true for a fresh thread with no latest turn', () => {
+    expect(
+      isLatestTurnSettled(null, {
+        orchestrationStatus: 'ready',
+        activeTurnId: undefined,
+      })
+    ).toBe(true)
+  })
+
   it('returns false while the same turn is still active in a running session', () => {
     expect(
       isLatestTurnSettled(latestTurn, {

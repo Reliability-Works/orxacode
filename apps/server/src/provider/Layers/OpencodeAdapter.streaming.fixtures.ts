@@ -94,7 +94,7 @@ export const fixtureToolPartRunning: Extract<OpencodePart, { type: 'tool' }> = {
   tool: 'read',
   state: {
     status: 'running',
-    input: { path: '/tmp/fixture/file.txt' },
+    input: { filePath: '/tmp/fixture/file.txt', offset: 0, limit: 120 },
     time: { start: 1_700_000_001_200 },
   },
 }
@@ -103,10 +103,10 @@ export const fixtureToolPartCompleted: Extract<OpencodePart, { type: 'tool' }> =
   ...fixtureToolPartRunning,
   state: {
     status: 'completed',
-    input: { path: '/tmp/fixture/file.txt' },
+    input: { filePath: '/tmp/fixture/file.txt', offset: 0, limit: 120 },
     output: 'file contents',
     title: 'Read file',
-    metadata: {},
+    metadata: { loaded: ['/tmp/fixture/file.txt'] },
     time: { start: 1_700_000_001_200, end: 1_700_000_001_400 },
   },
 }
@@ -115,7 +115,7 @@ export const fixtureToolPartError: Extract<OpencodePart, { type: 'tool' }> = {
   ...fixtureToolPartRunning,
   state: {
     status: 'error',
-    input: { path: '/tmp/fixture/missing.txt' },
+    input: { filePath: '/tmp/fixture/missing.txt' },
     error: 'File not found',
     time: { start: 1_700_000_001_200, end: 1_700_000_001_350 },
   },

@@ -1,7 +1,7 @@
 // Composer behavior + display scenarios for ChatView browser tests.
 // Extracted from ChatView.browser.tsx to satisfy max-lines.
 
-import { type MessageId } from '@orxa-code/contracts'
+import { ORCHESTRATION_WS_METHODS, type MessageId } from '@orxa-code/contracts'
 import { page } from 'vitest/browser'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -19,6 +19,7 @@ import {
   waitForInteractionModeButton,
   waitForLayout,
   waitForSendButton,
+  wsRequests,
 } from './ChatView.browser.ctx'
 import { createSnapshotForTargetUser, createTerminalContext } from './ChatView.browser.helpers'
 import { DEFAULT_VIEWPORT, suiteHooks } from './ChatView.browser.shared'
@@ -179,6 +180,42 @@ async function runExpiredPillDisablesSendTest(): Promise<void> {
   }
 }
 
+async function runFreshThreadSendDispatchesTurnStartTest(): Promise<void> {
+  const mounted = await mountChatView({
+    viewport: DEFAULT_VIEWPORT,
+    snapshot: createSnapshotForTargetUser({
+      targetMessageId: 'msg-user-send-dispatch-target' as MessageId,
+      targetText: 'send dispatch target',
+    }),
+  })
+  try {
+    await waitForComposerEditor()
+    await page.getByTestId('composer-editor').fill('ship this change')
+    const sendButton = await waitForSendButton()
+    expect(sendButton.disabled).toBe(false)
+    sendButton.click()
+    await vi.waitFor(
+      () => {
+        expect(
+          wsRequests.find(
+            r =>
+              r._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              r.type === 'thread.turn.start' &&
+              r.threadId === THREAD_ID
+          )
+        ).toMatchObject({
+          _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+          type: 'thread.turn.start',
+          threadId: THREAD_ID,
+        })
+      },
+      { timeout: 8_000, interval: 16 }
+    )
+  } finally {
+    await mounted.cleanup()
+  }
+}
+
 describe('ChatView composer behavior', () => {
   suiteHooks()
   it('toggles plan mode with Shift+Tab only while the composer is focused', runPlanModeHotkeyTest)
@@ -189,6 +226,10 @@ describe('ChatView composer behavior', () => {
   it(
     'disables send when the composer only contains an expired terminal pill',
     runExpiredPillDisablesSendTest
+  )
+  it(
+    'dispatches a turn start when sending from an idle thread',
+    runFreshThreadSendDispatchesTurnStartTest
   )
 })
 

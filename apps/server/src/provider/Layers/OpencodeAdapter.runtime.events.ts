@@ -29,10 +29,63 @@ import { mapOpencodeEvent } from './OpencodeAdapter.pure.ts'
 import {
   emitMappedEvents,
   emitRuntimeErrorEvent,
+  emitTaskProgressEvent,
   prepareMapperContext,
   readPartHintFromEvent,
 } from './OpencodeAdapter.runtime.eventBase.ts'
 import type { OpencodeEvent, OpencodeSessionContext } from './OpencodeAdapter.types.ts'
+
+function milestoneSummary(label: string, startedAtMs: number, nowMs: number): string {
+  const elapsedMs = Math.max(0, nowMs - startedAtMs)
+  return `${label} after ${elapsedMs}ms.`
+}
+
+const markStartupMilestones = Effect.fn('opencode.markStartupMilestones')(function* (
+  deps: OpencodeAdapterDeps,
+  context: OpencodeSessionContext,
+  event: OpencodeEvent
+) {
+  const startupTrace = context.turnState?.startupTrace
+  if (!startupTrace) return
+
+  const nowMs = Date.now()
+  if (startupTrace.firstEventAtMs === undefined) {
+    startupTrace.firstEventAtMs = nowMs
+    const summary = milestoneSummary('First runtime event received', startupTrace.promptDispatchedAtMs, nowMs)
+    yield* emitTaskProgressEvent(deps, context, startupTrace.taskId, summary, {
+      summary,
+    })
+  }
+
+  if (event.type === 'message.part.delta' && startupTrace.firstContentDeltaAtMs === undefined) {
+    startupTrace.firstContentDeltaAtMs = nowMs
+    const summary = milestoneSummary(
+      'First response token received',
+      startupTrace.promptDispatchedAtMs,
+      nowMs
+    )
+    yield* emitTaskProgressEvent(deps, context, startupTrace.taskId, summary, {
+      summary,
+    })
+  }
+
+  if (
+    event.type === 'message.part.updated' &&
+    event.properties.part.type === 'tool' &&
+    startupTrace.firstToolAtMs === undefined
+  ) {
+    startupTrace.firstToolAtMs = nowMs
+    const summary = milestoneSummary(
+      'First tool activity received',
+      startupTrace.promptDispatchedAtMs,
+      nowMs
+    )
+    yield* emitTaskProgressEvent(deps, context, startupTrace.taskId, summary, {
+      summary,
+      lastToolName: event.properties.part.tool,
+    })
+  }
+})
 
 /**
  * Resolve any value to a best-effort string error message.
@@ -68,6 +121,7 @@ export const handleIncomingEvent = (
   cacheLookup: (event: OpencodeEvent) => ReturnType<typeof readPartHintFromEvent>
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
+    yield* markStartupMilestones(deps, context, event)
     const hint = cacheLookup(event)
     const mapperContext = yield* prepareMapperContext(deps, context)
     const produced = mapOpencodeEvent(event, mapperContext, hint)

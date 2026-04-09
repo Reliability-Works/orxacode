@@ -53,7 +53,42 @@ describe('deriveWorkLogEntries lifecycle filtering', () => {
     const entries = deriveWorkLogEntries(activities, undefined)
     expect(entries.map(entry => entry.id)).toEqual(['task-progress'])
   })
+})
 
+describe('deriveWorkLogEntries telemetry filtering', () => {
+  it('omits Opencode startup telemetry task progress entries from the visible work log', () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: 'opencode-startup-progress',
+        createdAt: '2026-02-23T00:00:01.000Z',
+        kind: 'task.progress',
+        summary: 'Reasoning update',
+        tone: 'info',
+        payload: {
+          taskId: 'opencode-startup-turn-1',
+          summary: 'Prompt accepted by Opencode after 8ms.',
+          detail: 'Prompt accepted by Opencode after 8ms.',
+        },
+      }),
+      makeActivity({
+        id: 'normal-task-progress',
+        createdAt: '2026-02-23T00:00:02.000Z',
+        kind: 'task.progress',
+        summary: 'Updating files',
+        tone: 'info',
+        payload: {
+          taskId: 'claude-task-1',
+          summary: 'Updating files',
+        },
+      }),
+    ]
+
+    const entries = deriveWorkLogEntries(activities, undefined)
+    expect(entries.map(entry => entry.id)).toEqual(['normal-task-progress'])
+  })
+})
+
+describe('deriveWorkLogEntries turn filtering', () => {
   it('filters by turn id when provided', () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({ id: 'turn-1', turnId: 'turn-1', summary: 'Tool call', kind: 'tool.started' }),
@@ -234,6 +269,36 @@ describe('deriveWorkLogEntries change extraction', () => {
       'apps/web/src/components/ChatView.tsx',
       'apps/web/src/session-logic.ts',
     ])
+  })
+
+  it('does not treat file reads as changed files just because they include file paths in payload data', () => {
+    const activities: OrchestrationThreadActivity[] = [
+      makeActivity({
+        id: 'read-tool',
+        kind: 'tool.completed',
+        summary: 'Read',
+        payload: {
+          itemType: 'mcp_tool_call',
+          title: 'Read',
+          detail: '/tmp/app.ts offset=0 limit=120',
+          data: {
+            input: {
+              filePath: '/tmp/app.ts',
+              offset: 0,
+              limit: 120,
+            },
+            result: {
+              loaded: ['/tmp/app.ts'],
+            },
+          },
+        },
+      }),
+    ]
+
+    const [entry] = deriveWorkLogEntries(activities, undefined)
+    expect(entry?.changedFiles).toBeUndefined()
+    expect(entry?.itemType).toBe('mcp_tool_call')
+    expect(entry?.detail).toBe('/tmp/app.ts offset=0 limit=120')
   })
 })
 

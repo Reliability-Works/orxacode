@@ -47,9 +47,24 @@ describe('OpencodeAdapter.runtime.turns - sendTurn - happy path', () => {
         expect(fakeRuntime.sessionPromptCalls.length).toBe(1)
         expect(fakeRuntime.sessionPromptCalls[0]?.text).toBe('hello opencode')
         expect(fakeRuntime.sessionPromptCalls[0]?.agent).toBe('build')
+        expect(fakeRuntime.sessionPromptCalls[0]?.mode).toBe('promptAsync')
 
-        const events = yield* collectEvents(harness.runtimeEventQueue, 1)
-        expect(events[0]?.type).toBe('turn.started')
+        const events = yield* collectEvents(harness.runtimeEventQueue, 3)
+        expect(events.map(event => event.type)).toEqual([
+          'turn.started',
+          'task.progress',
+          'task.progress',
+        ])
+        const progressSummaries = events
+          .filter(
+            (event): event is Extract<(typeof events)[number], { type: 'task.progress' }> =>
+              event.type === 'task.progress'
+          )
+          .map(event => event.payload.summary)
+        expect(progressSummaries).toEqual([
+          'Dispatching prompt to Opencode.',
+          expect.stringContaining('Prompt accepted by Opencode after '),
+        ])
 
         const context = harness.sessions.get(TEST_THREAD_ID)
         if (context) yield* stopSessionInternal(harness.deps, context)

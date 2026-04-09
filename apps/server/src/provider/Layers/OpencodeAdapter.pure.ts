@@ -32,6 +32,12 @@ import type {
   OpencodePart,
   OpencodeSession,
 } from './OpencodeAdapter.types.ts'
+import {
+  toolDataForPart,
+  toolDetailForPart,
+  toolLifecycleItemTypeForTool,
+  toolTitleForPart,
+} from './OpencodeAdapter.toolSummary.ts'
 import { PROVIDER } from './OpencodeAdapter.types.ts'
 
 export interface OpencodeEventStamp {
@@ -168,25 +174,51 @@ function toolPartEvents(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   const itemId = runtimeItemIdFromPartId(part.id)
-  const title = part.tool
+  const itemType = toolLifecycleItemTypeForTool(part.tool)
+  const title = toolTitleForPart(part)
+  const detail = toolDetailForPart(part)
+  const data = toolDataForPart(part)
   switch (part.state.status) {
     case 'pending':
-    case 'running':
+    case 'running': {
+      const updateEvent = buildToolLifecycleUpdateEvent({
+        ctx,
+        partId: part.id,
+        itemId,
+        itemType,
+        title,
+        detail,
+        data,
+      })
       return [
         {
           ...makeBase(ctx, part.id),
           itemId,
           type: 'item.started',
-          payload: { itemType: 'mcp_tool_call', status: 'inProgress', title },
+          payload: {
+            itemType,
+            status: 'inProgress',
+            title,
+            ...(detail ? { detail } : {}),
+            ...(data ? { data } : {}),
+          },
         },
+        ...(updateEvent ? [updateEvent] : []),
       ]
+    }
     case 'completed':
       return [
         {
           ...makeBase(ctx, part.id),
           itemId,
           type: 'item.completed',
-          payload: { itemType: 'mcp_tool_call', status: 'completed', title },
+          payload: {
+            itemType,
+            status: 'completed',
+            title,
+            ...(detail ? { detail } : {}),
+            ...(data ? { data } : {}),
+          },
         },
       ]
     case 'error':
@@ -196,15 +228,42 @@ function toolPartEvents(
           itemId,
           type: 'item.completed',
           payload: {
-            itemType: 'mcp_tool_call',
+            itemType,
             status: 'failed',
             title,
-            detail: part.state.error.length > 0 ? part.state.error : undefined,
+            detail: part.state.error.length > 0 ? part.state.error : detail,
+            ...(data ? { data } : {}),
           },
         },
       ]
     default:
       return []
+  }
+}
+
+function buildToolLifecycleUpdateEvent(input: {
+  readonly ctx: OpencodeMapperContext
+  readonly partId: string
+  readonly itemId: RuntimeItemId
+  readonly itemType: ReturnType<typeof toolLifecycleItemTypeForTool>
+  readonly title: string
+  readonly detail: string | undefined
+  readonly data: Record<string, unknown> | undefined
+}): ProviderRuntimeEvent | null {
+  if (!input.detail && !input.data) {
+    return null
+  }
+  return {
+    ...makeBase(input.ctx, input.partId),
+    itemId: input.itemId,
+    type: 'item.updated',
+    payload: {
+      itemType: input.itemType,
+      status: 'inProgress',
+      title: input.title,
+      ...(input.detail ? { detail: input.detail } : {}),
+      ...(input.data ? { data: input.data } : {}),
+    },
   }
 }
 

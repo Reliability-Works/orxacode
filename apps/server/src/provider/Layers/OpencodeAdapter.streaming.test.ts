@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
 
 import {
+  FIXTURE_ASSISTANT_MESSAGE_ID,
   FIXTURE_PROVIDER_SESSION_ID,
   fixtureMessageUpdatedCompleted,
   fixtureMessageUpdatedInProgress,
@@ -22,6 +23,7 @@ import {
   fixtureTextPartDelta,
   fixtureTextPartUpdatedCompleted,
   fixtureTextPartUpdatedInProgress,
+  fixtureToolPartUpdatedCompleted,
 } from './OpencodeAdapter.streaming.fixtures.ts'
 import { startSession } from './OpencodeAdapter.runtime.session.ts'
 import { sendTurn } from './OpencodeAdapter.runtime.turns.ts'
@@ -82,6 +84,7 @@ describe('OpencodeAdapter streaming integration - happy path', () => {
           const events = yield* drainEvents(harness.runtimeEventQueue)
           const types = events.map(event => event.type)
 
+          expect(types).toContain('task.progress')
           expect(types).toContain('item.started')
           expect(types).toContain('content.delta')
           expect(types).toContain('item.completed')
@@ -94,6 +97,152 @@ describe('OpencodeAdapter streaming integration - happy path', () => {
             expect(delta.payload.streamKind).toBe('assistant_text')
             expect(delta.payload.delta).toBe('world')
           }
+
+          const taskProgressSummaries = events
+            .filter(
+              (event): event is Extract<(typeof events)[number], { type: 'task.progress' }> =>
+                event.type === 'task.progress'
+            )
+            .map(event => event.payload.summary ?? event.payload.description)
+          expect(taskProgressSummaries).toContain('Dispatching prompt to Opencode.')
+          expect(
+            taskProgressSummaries.some(summary =>
+              summary.includes('Prompt accepted by Opencode after ')
+            )
+          ).toBe(true)
+          expect(
+            taskProgressSummaries.some(summary =>
+              summary.includes('First runtime event received after ')
+            )
+          ).toBe(true)
+          expect(
+            taskProgressSummaries.some(summary =>
+              summary.includes('First response token received after ')
+            )
+          ).toBe(true)
+        })
+      )
+    },
+    STREAMING_TIMEOUT_MS
+  )
+})
+
+describe('OpencodeAdapter streaming integration - tool payloads', () => {
+  it(
+    'maps opencode tool metadata into rich lifecycle payloads for the existing work log UI',
+    async () => {
+      const fakeRuntime = createFakeOpencodeRuntime({
+        sessionId: FIXTURE_PROVIDER_SESSION_ID,
+      })
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const harness = yield* makeTestDeps({
+            createRuntime: makeFakeCreateRuntime(fakeRuntime),
+          })
+
+          yield* startSession(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            runtimeMode: 'full-access',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 1)
+
+          yield* sendTurn(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            input: 'read a file',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 3)
+
+          fakeRuntime.pushEvent(fixtureToolPartUpdatedCompleted)
+          fakeRuntime.pushEvent(fixtureSessionIdle)
+
+          for (let i = 0; i < 8; i += 1) {
+            yield* Effect.yieldNow
+          }
+
+          const events = yield* drainEvents(harness.runtimeEventQueue)
+          const completedTool = events.find(
+            (event): event is Extract<(typeof events)[number], { type: 'item.completed' }> =>
+              event.type === 'item.completed'
+          )
+
+          expect(completedTool).toBeDefined()
+          expect(completedTool?.payload.itemType).toBe('mcp_tool_call')
+          expect(completedTool?.payload.title).toBe('Read')
+          expect(completedTool?.payload.detail).toBe('/tmp/fixture/file.txt offset=0 limit=120')
+          expect(completedTool?.payload.data).toMatchObject({
+            input: {
+              filePath: '/tmp/fixture/file.txt',
+              offset: 0,
+              limit: 120,
+            },
+            result: {
+              loaded: ['/tmp/fixture/file.txt'],
+              title: 'Read file',
+            },
+          })
+        })
+      )
+    },
+    STREAMING_TIMEOUT_MS
+  )
+})
+
+describe('OpencodeAdapter streaming integration - sparse running tools', () => {
+  it(
+    'does not emit an empty item.updated row when a running tool has no useful detail yet',
+    async () => {
+      const fakeRuntime = createFakeOpencodeRuntime({
+        sessionId: FIXTURE_PROVIDER_SESSION_ID,
+      })
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const harness = yield* makeTestDeps({
+            createRuntime: makeFakeCreateRuntime(fakeRuntime),
+          })
+
+          yield* startSession(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            runtimeMode: 'full-access',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 1)
+
+          yield* sendTurn(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            input: 'run a command',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 3)
+
+          fakeRuntime.pushEvent({
+            type: 'message.part.updated',
+            properties: {
+              sessionID: FIXTURE_PROVIDER_SESSION_ID,
+              part: {
+                id: 'part_tool_blank_running',
+                sessionID: FIXTURE_PROVIDER_SESSION_ID,
+                messageID: FIXTURE_ASSISTANT_MESSAGE_ID,
+                type: 'tool',
+                callID: 'call_blank_running',
+                tool: 'bash',
+                state: {
+                  status: 'running',
+                  input: {},
+                  time: { start: 1_700_000_001_200 },
+                },
+              },
+              time: 1_700_000_001_300,
+            },
+          })
+
+          for (let i = 0; i < 8; i += 1) {
+            yield* Effect.yieldNow
+          }
+
+          const events = yield* drainEvents(harness.runtimeEventQueue)
+          const started = events.filter(event => event.type === 'item.started')
+          const updated = events.filter(event => event.type === 'item.updated')
+
+          expect(started).toHaveLength(1)
+          expect(updated).toHaveLength(0)
         })
       )
     },

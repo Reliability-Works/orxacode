@@ -6,6 +6,7 @@ import {
   type TurnId,
 } from '@orxa-code/contracts'
 
+import { isOpencodeStartupTelemetryActivity } from './opencodeStartupTelemetry'
 import type { ChatMessage, ProposedPlan, TurnDiffSummary } from './types'
 
 export interface WorkLogEntry {
@@ -219,6 +220,11 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
 }
 
 function extractChangedFiles(payload: Record<string, unknown> | null): string[] {
+  const itemType = extractWorkLogItemType(payload)
+  const requestKind = extractWorkLogRequestKind(payload)
+  if (itemType !== 'file_change' && requestKind !== 'file-change') {
+    return []
+  }
   const changedFiles: string[] = []
   const seen = new Set<string>()
   collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0)
@@ -419,6 +425,7 @@ export function deriveWorkLogEntries(
     .filter(activity => activity.kind !== 'task.started' && activity.kind !== 'task.completed')
     .filter(activity => activity.kind !== 'context-window.updated')
     .filter(activity => activity.summary !== 'Checkpoint captured')
+    .filter(activity => !isOpencodeStartupTelemetryActivity(activity))
     .filter(activity => !isPlanBoundaryToolActivity(activity))
     .map(toDerivedWorkLogEntry)
   return collapseDerivedWorkLogEntries(entries).map(toWorkLogEntry)

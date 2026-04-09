@@ -3,7 +3,7 @@
  *
  * The opencode adapter's user-facing message surface is much smaller than the
  * Claude adapter's because the opencode SDK collapses every user input into a
- * single `session.prompt(...)` call (handled by `runtime.turns.ts`) and the
+ * single `session.promptAsync(...)` call (handled by `runtime.turns.ts`) and the
  * assistant text deltas are reconstructed inside the f03 pure mapper. There
  * is therefore no streaming user-prompt iterable to manage and no separate
  * assistant-text-block lifecycle to track at the runtime layer.
@@ -19,7 +19,7 @@
  *
  * Anything that needs the runtime queue, the SDK client, or the partHint
  * cache lives in `runtime.events.ts` (event pump), `runtime.turns.ts`
- * (`session.prompt` dispatch), or `runtime.eventBase.ts` (low-level emitters).
+ * (`session.promptAsync` dispatch), or `runtime.eventBase.ts` (low-level emitters).
  *
  * @module OpencodeAdapter.runtime.messages
  */

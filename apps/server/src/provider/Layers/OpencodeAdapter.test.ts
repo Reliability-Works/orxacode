@@ -76,6 +76,7 @@ describe('OpencodeAdapterLive entry layer', () => {
           expect(turn.threadId).toBe(ENTRY_TEST_THREAD_ID)
           expect(fakeRuntime.sessionPromptCalls.length).toBe(1)
           expect(fakeRuntime.sessionPromptCalls[0]?.text).toBe('hello opencode')
+          expect(fakeRuntime.sessionPromptCalls[0]?.mode).toBe('promptAsync')
 
           yield* adapter.interruptTurn(ENTRY_TEST_THREAD_ID)
           expect(fakeRuntime.sessionAbortCalls.length).toBe(1)

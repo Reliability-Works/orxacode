@@ -94,6 +94,7 @@ export function isLatestTurnSettled(
   latestTurn: LatestTurnTiming | null,
   session: SessionActivityState | null
 ): boolean {
+  if (!latestTurn) return true
   if (!latestTurn?.startedAt) return false
   if (!latestTurn.completedAt) return false
   if (!session) return true

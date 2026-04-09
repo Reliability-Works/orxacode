@@ -21,6 +21,7 @@ import type {
   ProviderRuntimeEvent,
   ProviderSendTurnInput,
   ProviderSession,
+  RuntimeTaskId,
   ThreadId,
   ThreadTokenUsageSnapshot,
   TurnId,
@@ -46,6 +47,16 @@ export interface OpencodeTurnState {
   readonly turnId: TurnId
   readonly startedAt: string
   readonly providerMessageIds: Set<string>
+  readonly startupTrace: OpencodeTurnStartupTrace
+}
+
+export interface OpencodeTurnStartupTrace {
+  readonly taskId: RuntimeTaskId
+  readonly promptDispatchedAtMs: number
+  promptAcceptedAtMs: number | undefined
+  firstEventAtMs: number | undefined
+  firstContentDeltaAtMs: number | undefined
+  firstToolAtMs: number | undefined
 }
 
 export interface OpencodeSessionContext {

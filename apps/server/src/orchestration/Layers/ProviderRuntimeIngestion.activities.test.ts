@@ -333,3 +333,59 @@ it('consumes P1 runtime events into thread metadata, diff checkpoints, and activ
   emitP1ToolWarningAndDiff(harness, now)
   await assertP1ThreadProjections(harness)
 })
+
+it('preserves completed tool data on activities so the web work log can extract commands and file changes', async () => {
+  const harness = await createHarness(refs)
+  const now = new Date().toISOString()
+
+  harness.emit({
+    type: 'item.completed',
+    eventId: asEventId('evt-opencode-tool-completed'),
+    provider: 'opencode',
+    createdAt: now,
+    threadId: asThreadId('thread-1'),
+    turnId: asTurnId('turn-opencode-tool'),
+    itemId: asItemId('item-opencode-tool'),
+    payload: {
+      itemType: 'file_change',
+      status: 'completed',
+      title: 'Patch',
+      detail: 'apps/web/src/session-logic.ts +1 more',
+      data: {
+        input: {
+          filePath: 'apps/web/src/session-logic.ts',
+        },
+        result: {
+          files: [
+            { relativePath: 'apps/web/src/session-logic.ts' },
+            { relativePath: 'apps/server/src/provider/Layers/OpencodeAdapter.pure.ts' },
+          ],
+        },
+      },
+    },
+  })
+
+  const thread = await waitForThread(harness.engine, entry =>
+    entry.activities.some(activity => activity.id === 'evt-opencode-tool-completed')
+  )
+  const activity = thread.activities.find(entry => entry.id === 'evt-opencode-tool-completed')
+  const activityPayload =
+    activity?.payload && typeof activity.payload === 'object'
+      ? (activity.payload as Record<string, unknown>)
+      : undefined
+
+  expect(activity?.kind).toBe('tool.completed')
+  expect(activityPayload?.itemType).toBe('file_change')
+  expect(activityPayload?.detail).toBe('apps/web/src/session-logic.ts +1 more')
+  expect(activityPayload?.data).toMatchObject({
+    input: {
+      filePath: 'apps/web/src/session-logic.ts',
+    },
+    result: {
+      files: [
+        { relativePath: 'apps/web/src/session-logic.ts' },
+        { relativePath: 'apps/server/src/provider/Layers/OpencodeAdapter.pure.ts' },
+      ],
+    },
+  })
+})

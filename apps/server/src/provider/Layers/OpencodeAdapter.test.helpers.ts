@@ -48,6 +48,7 @@ export interface FakeSessionPromptCall {
   readonly modelID: string
   readonly agent: string | undefined
   readonly variant: string | undefined
+  readonly mode: 'promptAsync'
 }
 
 export interface FakeSessionAbortCall {
@@ -143,7 +144,7 @@ function buildFakeOpencodeClient(buckets: FakeRuntimeBuckets): OpencodeClient {
           },
         }
       },
-      prompt: async (body: {
+      promptAsync: async (body: {
         sessionID: string
         model: { providerID: string; modelID: string }
         parts: ReadonlyArray<{ type: string; text: string }>
@@ -159,6 +160,7 @@ function buildFakeOpencodeClient(buckets: FakeRuntimeBuckets): OpencodeClient {
           modelID: body.model.modelID,
           agent: body.agent,
           variant: body.variant,
+          mode: 'promptAsync',
         })
         return { data: { info: undefined, parts: [] } }
       },

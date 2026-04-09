@@ -12,7 +12,11 @@
  *
  * @module OpencodeAdapter.runtime.eventBase
  */
-import { type ProviderRuntimeEvent, type ThreadId } from '@orxa-code/contracts'
+import {
+  type ProviderRuntimeEvent,
+  type RuntimeTaskId,
+  type ThreadId,
+} from '@orxa-code/contracts'
 import { Effect } from 'effect'
 
 import {
@@ -155,6 +159,34 @@ export const emitRuntimeErrorEvent = Effect.fn('emitRuntimeErrorEvent')(function
     threadId: context.session.threadId,
     ...(context.turnState ? { turnId: context.turnState.turnId } : {}),
     payload: { message, class: 'provider_error' },
+    providerRefs: {},
+  })
+})
+
+export const emitTaskProgressEvent = Effect.fn('emitTaskProgressEvent')(function* (
+  deps: OpencodeAdapterDeps,
+  context: OpencodeSessionContext,
+  taskId: RuntimeTaskId,
+  description: string,
+  options?: {
+    readonly summary?: string | undefined
+    readonly lastToolName?: string | undefined
+  }
+) {
+  const stamp = yield* deps.makeEventStamp()
+  yield* deps.offerRuntimeEvent({
+    type: 'task.progress',
+    eventId: stamp.eventId,
+    provider: PROVIDER,
+    createdAt: stamp.createdAt,
+    threadId: context.session.threadId,
+    ...(context.turnState ? { turnId: context.turnState.turnId } : {}),
+    payload: {
+      taskId,
+      description,
+      ...(options?.summary ? { summary: options.summary } : {}),
+      ...(options?.lastToolName ? { lastToolName: options.lastToolName } : {}),
+    },
     providerRefs: {},
   })
 })
