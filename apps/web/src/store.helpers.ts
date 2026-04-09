@@ -80,7 +80,7 @@ export function updateProject(
 }
 
 export function normalizeModelSelection<
-  T extends { provider: 'codex' | 'claudeAgent'; model: string },
+  T extends { provider: 'codex' | 'claudeAgent' | 'opencode'; model: string },
 >(selection: T): T {
   return {
     ...selection,
@@ -114,7 +114,7 @@ export function toLegacySessionStatus(
 }
 
 export function toLegacyProvider(providerName: string | null): ProviderKind {
-  if (providerName === 'codex' || providerName === 'claudeAgent') {
+  if (providerName === 'codex' || providerName === 'claudeAgent' || providerName === 'opencode') {
     return providerName
   }
   return 'codex'
@@ -243,7 +243,7 @@ export function mapProject(project: {
   id: string
   title: string
   workspaceRoot: string
-  defaultModelSelection?: { provider: 'codex' | 'claudeAgent'; model: string } | null
+  defaultModelSelection?: { provider: 'codex' | 'claudeAgent' | 'opencode'; model: string } | null
   scripts: ReadonlyArray<Project['scripts'][number]>
   createdAt: string
   updatedAt: string

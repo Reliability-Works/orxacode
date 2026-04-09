@@ -209,10 +209,15 @@ function useGeneralSettingsPanelState(settings: Settings) {
         DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent.binaryPath ||
       settings.providers.claudeAgent.customModels.length > 0
     ),
+    opencode: Boolean(
+      settings.providers.opencode.binaryPath !==
+        DEFAULT_UNIFIED_SETTINGS.providers.opencode.binaryPath ||
+      settings.providers.opencode.customModels.length > 0
+    ),
   })
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
-  >({ codex: '', claudeAgent: '' })
+  >({ codex: '', claudeAgent: '', opencode: '' })
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
   >({})

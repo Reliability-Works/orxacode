@@ -5,6 +5,7 @@ import {
   collapseExpandedComposerCursor,
   detectComposerTrigger,
   expandCollapsedComposerCursor,
+  getSlashCommandsForProvider,
   isCollapsedCursorAdjacentToInlineToken,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
@@ -246,5 +247,61 @@ describe('parseStandaloneComposerSlashCommand', () => {
 
   it('ignores slash commands with extra message text', () => {
     expect(parseStandaloneComposerSlashCommand('/plan explain this')).toBeNull()
+  })
+})
+
+describe('getSlashCommandsForProvider', () => {
+  it('returns model, plan, default for claudeAgent', () => {
+    const cmds = getSlashCommandsForProvider('claudeAgent')
+    expect(cmds).toContain('model')
+    expect(cmds).toContain('plan')
+    expect(cmds).toContain('default')
+  })
+
+  it('returns model, plan, default for codex', () => {
+    const cmds = getSlashCommandsForProvider('codex')
+    expect(cmds).toContain('model')
+    expect(cmds).toContain('plan')
+    expect(cmds).toContain('default')
+  })
+
+  it('returns only model and default for opencode (no plan)', () => {
+    const cmds = getSlashCommandsForProvider('opencode')
+    expect(cmds).toContain('model')
+    expect(cmds).toContain('default')
+    expect(cmds).not.toContain('plan')
+  })
+})
+
+describe('detectComposerTrigger with opencode provider commands', () => {
+  it('does not trigger slash-command for /plan when opencode commands are active', () => {
+    const text = '/pl'
+    const allowedCommands = getSlashCommandsForProvider('opencode')
+    const trigger = detectComposerTrigger(text, text.length, allowedCommands)
+    expect(trigger).toBeNull()
+  })
+
+  it('triggers slash-command for /de (default) when opencode commands are active', () => {
+    const text = '/de'
+    const allowedCommands = getSlashCommandsForProvider('opencode')
+    const trigger = detectComposerTrigger(text, text.length, allowedCommands)
+    expect(trigger).toEqual({
+      kind: 'slash-command',
+      query: 'de',
+      rangeStart: 0,
+      rangeEnd: text.length,
+    })
+  })
+
+  it('triggers slash-model for /model when opencode commands are active', () => {
+    const text = '/model'
+    const allowedCommands = getSlashCommandsForProvider('opencode')
+    const trigger = detectComposerTrigger(text, text.length, allowedCommands)
+    expect(trigger).toEqual({
+      kind: 'slash-model',
+      query: '',
+      rangeStart: 0,
+      rangeEnd: text.length,
+    })
   })
 })

@@ -6,6 +6,7 @@ import {
   type ServerProvider,
   type ServerProviderModel,
 } from '@orxa-code/contracts'
+import { ProviderCardConfiguredProviders } from './ProviderCardAuthDetails'
 import { Button } from '../ui/button'
 import { Collapsible, CollapsibleContent } from '../ui/collapsible'
 import { Input } from '../ui/input'
@@ -184,6 +185,9 @@ function ProviderCardHeader({
             {card.summary.headline}
             {card.summary.detail ? ` - ${card.summary.detail}` : null}
           </p>
+          <ProviderCardConfiguredProviders
+            configuredProviders={card.liveProvider?.auth.configuredProviders}
+          />
         </div>
         <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
           <Button

@@ -128,6 +128,7 @@ function makeProviderRegistryEntry(provider: ProviderKind): ProviderRegistryEntr
 const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
   codex: makeProviderRegistryEntry('codex'),
   claudeAgent: makeProviderRegistryEntry('claudeAgent'),
+  opencode: makeProviderRegistryEntry('opencode'),
 }
 
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {

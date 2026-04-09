@@ -29,6 +29,8 @@ import {
   CLAUDE_SONNET_MODEL,
   CLAUDE_HAIKU_MODEL,
   CODEX_GPT54_MODEL,
+  OPENCODE_HAIKU_MODEL,
+  OPENCODE_SONNET_MODEL,
   assertSonnetEffortOptions,
   makeCleanupHandle,
 } from './chat.browser.fixtures'
@@ -170,6 +172,11 @@ function resetClaudeTraitsPickerState() {
     projectDraftThreadIdByProjectId: {},
     stickyModelSelectionByProvider: {},
   })
+}
+
+function resetComposerDraftStoreState() {
+  localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
+  resetClaudeTraitsPickerState()
 }
 
 async function openTraitsPickerMenu() {
@@ -392,16 +399,7 @@ async function withCodexPickerOpen(assertText: (text: string) => void): Promise<
 }
 
 describe('TraitsPicker (Codex)', () => {
-  afterEach(() => {
-    document.body.innerHTML = ''
-    localStorage.removeItem(COMPOSER_DRAFT_STORAGE_KEY)
-    useComposerDraftStore.setState({
-      draftsByThreadId: {},
-      draftThreadsByThreadId: {},
-      projectDraftThreadIdByProjectId: {},
-      stickyModelSelectionByProvider: {},
-    })
-  })
+  afterEach(resetComposerDraftStoreState)
 
   it('shows fast mode controls', async () => {
     await withCodexPickerOpen(text => {
@@ -443,6 +441,104 @@ describe('TraitsPicker (Codex)', () => {
     expect(useComposerDraftStore.getState().stickyModelSelectionByProvider.codex).toMatchObject({
       provider: 'codex',
       options: { fastMode: true },
+    })
+  })
+})
+
+// ── Reasoning capability gate tests ───────────────────────────────────
+
+async function mountReasoningGatePicker(input: {
+  provider: 'claudeAgent' | 'codex' | 'opencode'
+  models: ReadonlyArray<ServerProvider['models'][number]>
+  model: string
+}) {
+  const threadId = ThreadId.makeUnsafe(`thread-gate-${input.provider}-${input.model}`)
+  useComposerDraftStore.setState({
+    draftsByThreadId: {
+      [threadId]: {
+        prompt: '',
+        images: [],
+        nonPersistedImageIds: [],
+        persistedAttachments: [],
+        terminalContexts: [],
+        modelSelectionByProvider: {},
+        activeProvider: input.provider,
+        runtimeMode: null,
+        interactionMode: null,
+      },
+    },
+    draftThreadsByThreadId: {},
+    projectDraftThreadIdByProjectId: {},
+  })
+  const host = document.createElement('div')
+  document.body.append(host)
+  const screen = await render(
+    <TraitsPicker
+      provider={input.provider}
+      models={input.models}
+      threadId={threadId}
+      model={input.model}
+      prompt=""
+      onPromptChange={() => {}}
+    />,
+    { container: host }
+  )
+  return makeCleanupHandle(screen, host)
+}
+
+describe('TraitsPicker reasoning capability gate', () => {
+  afterEach(resetComposerDraftStoreState)
+
+  it('hides the effort selector for a claude model with supportsReasoning=false', async () => {
+    const claudeModel = {
+      ...CLAUDE_SONNET_MODEL,
+      supportsReasoning: false,
+    }
+    await using pickerHandle = await mountReasoningGatePicker({
+      provider: 'claudeAgent',
+      models: [claudeModel],
+      model: claudeModel.slug,
+    })
+    void pickerHandle
+    // Trigger label is empty when effort is gated off AND the model has no
+    // fast mode, thinking toggle, or context window options.
+    const button = document.querySelector('button')
+    expect(button?.textContent?.trim() ?? '').toBe('')
+  })
+
+  it('shows the effort selector for a codex model (supportsReasoning=true)', async () => {
+    await using pickerHandle = await mountReasoningGatePicker({
+      provider: 'codex',
+      models: [CODEX_GPT54_MODEL],
+      model: CODEX_GPT54_MODEL.slug,
+    })
+    void pickerHandle
+    // Default codex effort is 'high'; the trigger label surfaces it.
+    await vi.waitFor(() => {
+      expect(document.querySelector('button')?.textContent ?? '').toContain('High')
+    })
+  })
+
+  it('hides the effort selector for an opencode model with supportsReasoning=false', async () => {
+    await using pickerHandle = await mountReasoningGatePicker({
+      provider: 'opencode',
+      models: [OPENCODE_HAIKU_MODEL],
+      model: OPENCODE_HAIKU_MODEL.slug,
+    })
+    void pickerHandle
+    const button = document.querySelector('button')
+    expect(button?.textContent?.trim() ?? '').toBe('')
+  })
+
+  it('shows the effort selector for an opencode model with supportsReasoning=true', async () => {
+    await using pickerHandle = await mountReasoningGatePicker({
+      provider: 'opencode',
+      models: [OPENCODE_SONNET_MODEL],
+      model: OPENCODE_SONNET_MODEL.slug,
+    })
+    void pickerHandle
+    await vi.waitFor(() => {
+      expect(document.querySelector('button')?.textContent ?? '').toContain('High')
     })
   })
 })

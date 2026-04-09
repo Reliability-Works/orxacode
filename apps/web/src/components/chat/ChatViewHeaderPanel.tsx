@@ -4,18 +4,30 @@
  * Extracted from ChatView.tsx to satisfy max-lines and keep the root shell thin.
  */
 
+import { useMemo } from 'react'
 import { cn } from '~/lib/utils'
 import { isElectron } from '../../env'
 import { ChatHeader } from './ChatHeader'
 import { ProviderStatusBanner } from './ProviderStatusBanner'
 import { ThreadErrorBanner } from './ThreadErrorBanner'
 import { useChatViewCtx } from './ChatViewContext'
+import { useSidebar } from '../ui/sidebar.shared'
 
 export function ChatViewHeaderPanel() {
   const c = useChatViewCtx()
   const { td, store, cd, gitCwd, setThreadError } = c
-  const { activeThread, activeProject, activeProviderStatus, diffOpen } = td
+  const { activeThread, activeProject, activeProviderStatus } = td
   const { keybindings, availableEditors, terminalState } = store
+  const { state } = useSidebar()
+  const collapsed = state === 'collapsed'
+  const diffData = c.panelDiffQuery.data
+  const diffStats = useMemo(() => {
+    if (!diffData) return null
+    const files = [...diffData.staged, ...diffData.unstaged]
+    const additions = files.reduce((s, f) => s + f.additions, 0)
+    const deletions = files.reduce((s, f) => s + f.deletions, 0)
+    return { additions, deletions }
+  }, [diffData])
   if (!activeThread) return null
   const lastInvokedScriptId = activeProject
     ? (c.ls.lastInvokedScriptByProjectId[activeProject.id] ?? null)
@@ -25,7 +37,8 @@ export function ChatViewHeaderPanel() {
       <header
         className={cn(
           'border-b border-border px-3 sm:px-5',
-          isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3'
+          isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3',
+          collapsed && 'ps-[var(--sidebar-width)]'
         )}
       >
         <ChatHeader
@@ -41,9 +54,9 @@ export function ChatViewHeaderPanel() {
           terminalAvailable={activeProject !== undefined}
           terminalOpen={terminalState.terminalOpen}
           terminalToggleShortcutLabel={cd.terminalToggleShortcutLabel}
-          diffToggleShortcutLabel={cd.diffPanelShortcutLabel}
           gitCwd={gitCwd}
-          diffOpen={diffOpen}
+          gitSidebarOpen={c.ls.gitSidebarOpen}
+          diffStats={diffStats}
           onRunProjectScript={script => {
             void c.runProjectScript(script)
           }}
@@ -51,7 +64,7 @@ export function ChatViewHeaderPanel() {
           onUpdateProjectScript={c.updateProjectScript}
           onDeleteProjectScript={c.deleteProjectScript}
           onToggleTerminal={c.toggleTerminalVisibility}
-          onToggleDiff={c.onToggleDiff}
+          onToggleGitSidebar={c.toggleGitSidebar}
         />
       </header>
       <ProviderStatusBanner status={activeProviderStatus} />

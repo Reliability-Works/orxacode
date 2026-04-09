@@ -72,6 +72,10 @@ import {
   actionSyncPersistedAttachments,
   actionClearComposerContent,
 } from './composerDraftStore.actions.content'
+import {
+  actionSetOpencodeAgentId,
+  actionSetOpencodeVariant,
+} from './composerDraftStore.actions.opencode'
 
 export { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from './composerDraftStore.state'
 export type {
@@ -387,6 +391,8 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         actionSetModelOptions(set, threadId, modelOptions),
       setProviderModelOptions: (threadId, provider, nextProviderOptions, options) =>
         actionSetProviderModelOptions(set, threadId, provider, nextProviderOptions, options),
+      setOpencodeAgentId: (threadId, agentId) => actionSetOpencodeAgentId(set, threadId, agentId),
+      setOpencodeVariant: (threadId, variant) => actionSetOpencodeVariant(set, threadId, variant),
       setRuntimeMode: (threadId, runtimeMode) => actionSetRuntimeMode(set, threadId, runtimeMode),
       setInteractionMode: (threadId, interactionMode) =>
         actionSetInteractionMode(set, threadId, interactionMode),

@@ -33,6 +33,7 @@ function makeStandardCodexModel(slug: string, name: string): ServerProviderModel
     slug,
     name,
     isCustom: false,
+    supportsReasoning: true,
     capabilities: STANDARD_CODEX_CAPABILITIES,
   }
 }

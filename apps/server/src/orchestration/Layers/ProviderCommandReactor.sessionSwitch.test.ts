@@ -173,6 +173,69 @@ it('restarts claude sessions when claude effort changes', async () => {
   })
 })
 
+it('restarts opencode sessions when the opencode model selection changes', async () => {
+  const harness = await createHarness({
+    threadModelSelection: {
+      provider: 'opencode',
+      model: 'anthropic/claude-sonnet-4-5',
+    },
+  })
+  const now = new Date().toISOString()
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.turn.start',
+      commandId: CommandId.makeUnsafe('cmd-turn-start-opencode-model-1'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      message: {
+        messageId: asMessageId('user-message-opencode-model-1'),
+        role: 'user',
+        text: 'first opencode turn',
+        attachments: [],
+      },
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: 'approval-required',
+      createdAt: now,
+    })
+  )
+  await waitFor(() => harness.startSession.mock.calls.length === 1)
+  await waitFor(() => harness.sendTurn.mock.calls.length === 1)
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.turn.start',
+      commandId: CommandId.makeUnsafe('cmd-turn-start-opencode-model-2'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      message: {
+        messageId: asMessageId('user-message-opencode-model-2'),
+        role: 'user',
+        text: 'second opencode turn',
+        attachments: [],
+      },
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-haiku-4-5',
+      },
+      interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+      runtimeMode: 'approval-required',
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.startSession.mock.calls.length === 2)
+  await waitFor(() => harness.sendTurn.mock.calls.length === 2)
+  expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+    modelSelection: {
+      provider: 'opencode',
+      model: 'anthropic/claude-haiku-4-5',
+    },
+  })
+})
+
 it('restarts the provider session when runtime mode is updated on the thread', async () => {
   const harness = await createHarness()
   const now = new Date().toISOString()

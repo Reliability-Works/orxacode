@@ -10,6 +10,7 @@ import BranchToolbar from '../BranchToolbar'
 import PlanSidebar from '../PlanSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
 import { PullRequestThreadDialog } from '../PullRequestThreadDialog'
+import { GitSidebar } from '../git-sidebar/GitSidebar'
 import { ChatViewHeaderPanel } from './ChatViewHeaderPanel'
 import { ChatViewMessagesPane } from './ChatViewMessagesPane'
 import { ChatViewComposerBody } from './ChatViewComposerBody'
@@ -87,6 +88,19 @@ function ChatViewPlanSidebarBlock() {
   )
 }
 
+function ChatViewGitSidebarBlock() {
+  const c = useChatViewCtx()
+  const { gitCwd } = c
+  if (!c.ls.gitSidebarOpen || !gitCwd) return null
+  return (
+    <GitSidebar
+      cwd={gitCwd}
+      diffQueryResult={c.panelDiffQuery}
+      onClose={() => c.ls.setGitSidebarOpen(false)}
+    />
+  )
+}
+
 function ChatViewTerminalDrawerBlock() {
   const c = useChatViewCtx()
   const { store, gitCwd } = c
@@ -131,6 +145,7 @@ export function ChatViewInner() {
           <ChatViewPullRequestDialogBlock />
         </div>
         <ChatViewPlanSidebarBlock />
+        <ChatViewGitSidebarBlock />
       </div>
       <ChatViewTerminalDrawerBlock />
       <ChatViewImageOverlayCtx />

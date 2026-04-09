@@ -93,6 +93,40 @@ it.layer(makeDirectoryLayer(SqlitePersistenceMemory))(
 )
 
 it.layer(makeDirectoryLayer(SqlitePersistenceMemory))(
+  'ProviderSessionDirectoryLive opencode bindings',
+  it => {
+    it('round-trips an opencode provider binding through persistence', () =>
+      Effect.gen(function* () {
+        const directory = yield* ProviderSessionDirectory
+        const runtimeRepository = yield* ProviderSessionRuntimeRepository
+        const threadId = ThreadId.makeUnsafe('thread-opencode')
+
+        yield* runtimeRepository.upsert({
+          threadId,
+          providerName: 'opencode',
+          adapterKey: 'opencode',
+          runtimeMode: 'full-access',
+          status: 'running',
+          lastSeenAt: new Date().toISOString(),
+          resumeCursor: null,
+          runtimePayload: null,
+        })
+
+        const provider = yield* directory.getProvider(threadId)
+        assert.equal(provider, 'opencode')
+
+        const resolvedBinding = yield* directory.getBinding(threadId)
+        assert.equal(Option.isSome(resolvedBinding), true)
+        if (Option.isSome(resolvedBinding)) {
+          assert.equal(resolvedBinding.value.provider, 'opencode')
+          assert.equal(resolvedBinding.value.threadId, threadId)
+          assert.equal(resolvedBinding.value.adapterKey, 'opencode')
+        }
+      }))
+  }
+)
+
+it.layer(makeDirectoryLayer(SqlitePersistenceMemory))(
   'ProviderSessionDirectoryLive runtime payloads',
   it => {
     it('persists runtime fields and merges payload updates', () =>

@@ -17,6 +17,7 @@ import { ProviderSessionDirectoryLive } from './provider/Layers/ProviderSessionD
 import { ProviderSessionRuntimeRepositoryLive } from './persistence/Layers/ProviderSessionRuntime'
 import { makeCodexAdapterLive } from './provider/Layers/CodexAdapter'
 import { makeClaudeAdapterLive } from './provider/Layers/ClaudeAdapter'
+import { makeOpencodeAdapterLive } from './provider/Layers/OpencodeAdapter'
 import { ProviderAdapterRegistryLive } from './provider/Layers/ProviderAdapterRegistry'
 import { makeProviderServiceLive } from './provider/Layers/ProviderService'
 import { OrchestrationEngineLive } from './orchestration/Layers/OrchestrationEngine'
@@ -25,6 +26,9 @@ import { OrchestrationEventStoreLive } from './persistence/Layers/OrchestrationE
 import { OrchestrationCommandReceiptRepositoryLive } from './persistence/Layers/OrchestrationCommandReceipts'
 import { CheckpointDiffQueryLive } from './checkpointing/Layers/CheckpointDiffQuery'
 import { OrchestrationProjectionSnapshotQueryLive } from './orchestration/Layers/ProjectionSnapshotQuery'
+import { DashboardQueryLive } from './orchestration/Layers/DashboardQuery'
+import { ProviderUsageQueryLive } from './orchestration/Layers/ProviderUsageQuery'
+import { SkillsServiceLive } from './skills/Layers/SkillsService'
 import { CheckpointStoreLive } from './checkpointing/Layers/CheckpointStore'
 import { GitCoreLive } from './git/Layers/GitCore'
 import { GitHubCliLive } from './git/Layers/GitHubCli'
@@ -80,6 +84,9 @@ const OrchestrationProjectionPipelineLayerLive = OrchestrationProjectionPipeline
 
 const OrchestrationInfrastructureLayerLive = Layer.mergeAll(
   OrchestrationProjectionSnapshotQueryLive,
+  DashboardQueryLive,
+  ProviderUsageQueryLive,
+  SkillsServiceLive,
   OrchestrationEventInfrastructureLayerLive,
   OrchestrationProjectionPipelineLayerLive
 )
@@ -112,14 +119,19 @@ const ProviderLayerLive = Layer.unwrap(
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined
     )
+    const opencodeAdapterLayer = makeOpencodeAdapterLive()
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
+      // The websocket RPC handler for `provider.listAgents` reaches into the
+      // OpencodeAdapter directly, so we expose it upward via `provideMerge`
+      // alongside the registry instead of consuming it inline here.
+      Layer.provideMerge(opencodeAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer)
     )
     return makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined
-    ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer))
+    ).pipe(Layer.provideMerge(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer))
   })
 )
 

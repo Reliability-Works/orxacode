@@ -116,6 +116,23 @@ describe('ProviderRuntimeEvent user input payloads', () => {
   })
 })
 
+describe('ProviderRuntimeEvent opencode provider', () => {
+  it('decodes runtime events tagged with the opencode provider', () => {
+    const parsed = decodeRuntimeEvent({
+      type: 'turn.completed',
+      eventId: 'event-opencode-1',
+      provider: 'opencode',
+      createdAt: '2026-02-28T00:00:00.000Z',
+      threadId: 'thread-opencode-1',
+      turnId: 'turn-opencode-1',
+      payload: { state: 'completed' },
+    })
+
+    expect(parsed.provider).toBe('opencode')
+    expect(parsed.type).toBe('turn.completed')
+  })
+})
+
 describe('ProviderRuntimeEvent invalid payload rejection', () => {
   it('rejects legacy message.delta type', () => {
     expect(() =>

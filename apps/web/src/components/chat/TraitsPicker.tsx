@@ -1,21 +1,14 @@
-import {
-  type ClaudeModelOptions,
-  type CodexModelOptions,
-  type ProviderKind,
-  type ProviderModelOptions,
-  type ServerProviderModel,
-  type ThreadId,
-} from '@orxa-code/contracts'
-import {
-  applyClaudePromptEffortPrefix,
-  isClaudeUltrathinkPrompt,
-  trimOrNull,
-  getDefaultEffort,
-  getDefaultContextWindow,
-  hasContextWindowOption,
-  resolveEffort,
-} from '@orxa-code/shared/model'
+import { type ProviderKind, type ServerProviderModel, type ThreadId } from '@orxa-code/contracts'
+import { applyClaudePromptEffortPrefix, getDefaultEffort } from '@orxa-code/shared/model'
 import { memo, useCallback, useState } from 'react'
+import {
+  buildNextOptions,
+  getModelVariants,
+  getSelectedTraits,
+  getTraitsTriggerLabel,
+  type ProviderOptions,
+  type SelectedTraits,
+} from './TraitsPicker.logic'
 import type { VariantProps } from 'class-variance-authority'
 import { ChevronDownIcon } from 'lucide-react'
 import { Button } from '../ui/button'
@@ -29,11 +22,11 @@ import {
   MenuSeparator as MenuDivider,
   MenuTrigger,
 } from '../ui/menu'
-import { useComposerDraftStore } from '../../composerDraftStore'
-import { getProviderModelCapabilities } from '../../providerModels'
+import { useComposerDraftStore, useComposerThreadDraft } from '../../composerDraftStore'
+import { TraitsOpencodeAgentSection, TraitsOpencodeVariantSection } from './TraitsPicker.opencode'
+import { useOpencodePrimaryAgents } from './useOpencodePrimaryAgents'
 import { cn } from '~/lib/utils'
 
-type ProviderOptions = ProviderModelOptions[ProviderKind]
 type TraitsPersistence =
   | {
       threadId: ThreadId
@@ -45,99 +38,6 @@ type TraitsPersistence =
     }
 
 const ULTRATHINK_PROMPT_PREFIX = 'Ultrathink:\n'
-type SelectedTraits = ReturnType<typeof getSelectedTraits>
-
-function getRawEffort(
-  provider: ProviderKind,
-  modelOptions: ProviderOptions | null | undefined
-): string | null {
-  if (provider === 'codex') {
-    return trimOrNull((modelOptions as CodexModelOptions | undefined)?.reasoningEffort)
-  }
-  return trimOrNull((modelOptions as ClaudeModelOptions | undefined)?.effort)
-}
-
-function getRawContextWindow(
-  provider: ProviderKind,
-  modelOptions: ProviderOptions | null | undefined
-): string | null {
-  if (provider === 'claudeAgent') {
-    return trimOrNull((modelOptions as ClaudeModelOptions | undefined)?.contextWindow)
-  }
-  return null
-}
-
-function buildNextOptions(
-  provider: ProviderKind,
-  modelOptions: ProviderOptions | null | undefined,
-  patch: Record<string, unknown>
-): ProviderOptions {
-  if (provider === 'codex') {
-    return { ...(modelOptions as CodexModelOptions | undefined), ...patch } as CodexModelOptions
-  }
-  return { ...(modelOptions as ClaudeModelOptions | undefined), ...patch } as ClaudeModelOptions
-}
-
-function getSelectedTraits(
-  provider: ProviderKind,
-  models: ReadonlyArray<ServerProviderModel>,
-  model: string | null | undefined,
-  prompt: string,
-  modelOptions: ProviderOptions | null | undefined,
-  allowPromptInjectedEffort: boolean
-) {
-  const caps = getProviderModelCapabilities(models, model, provider)
-  const effortLevels = allowPromptInjectedEffort
-    ? caps.reasoningEffortLevels
-    : caps.reasoningEffortLevels.filter(
-        option => !caps.promptInjectedEffortLevels.includes(option.value)
-      )
-
-  // Resolve effort from options (provider-specific key)
-  const rawEffort = getRawEffort(provider, modelOptions)
-  const effort = resolveEffort(caps, rawEffort) ?? null
-
-  // Thinking toggle (only for models that support it)
-  const thinkingEnabled = caps.supportsThinkingToggle
-    ? ((modelOptions as ClaudeModelOptions | undefined)?.thinking ?? true)
-    : null
-
-  // Fast mode
-  const fastModeEnabled =
-    caps.supportsFastMode && (modelOptions as { fastMode?: boolean } | undefined)?.fastMode === true
-
-  // Context window
-  const contextWindowOptions = caps.contextWindowOptions
-  const rawContextWindow = getRawContextWindow(provider, modelOptions)
-  const defaultContextWindow = getDefaultContextWindow(caps)
-  const contextWindow =
-    rawContextWindow && hasContextWindowOption(caps, rawContextWindow)
-      ? rawContextWindow
-      : defaultContextWindow
-
-  // Prompt-controlled effort (e.g. ultrathink in prompt text)
-  const ultrathinkPromptControlled =
-    allowPromptInjectedEffort &&
-    caps.promptInjectedEffortLevels.length > 0 &&
-    isClaudeUltrathinkPrompt(prompt)
-
-  // Check if "ultrathink" appears in the body text (not just our prefix)
-  const ultrathinkInBodyText =
-    ultrathinkPromptControlled && isClaudeUltrathinkPrompt(prompt.replace(/^Ultrathink:\s*/i, ''))
-
-  return {
-    caps,
-    effort,
-    effortLevels,
-    thinkingEnabled,
-    fastModeEnabled,
-    contextWindowOptions,
-    contextWindow,
-    defaultContextWindow,
-    ultrathinkPromptControlled,
-    ultrathinkInBodyText,
-  }
-}
 
 export interface TraitsMenuContentProps {
   provider: ProviderKind
@@ -172,6 +72,9 @@ interface TraitsSectionProps {
   modelOptions?: ProviderOptions | null | undefined
   updateModelOptions: (nextOptions: ProviderOptions | undefined) => void
   traits: SelectedTraits
+  threadId?: ThreadId | undefined
+  modelVariants?: ReadonlyArray<string>
+  isOpencodePlanMode?: boolean
 }
 
 function TraitsEffortSection(props: TraitsSectionProps) {
@@ -329,11 +232,25 @@ function TraitsContextWindowSection(props: {
 }
 
 function TraitsMenuSections(props: TraitsSectionProps) {
-  const { provider, prompt, onPromptChange, modelOptions, updateModelOptions, traits } = props
+  const {
+    provider,
+    prompt,
+    onPromptChange,
+    modelOptions,
+    updateModelOptions,
+    traits,
+    threadId,
+    modelVariants,
+    isOpencodePlanMode,
+  } = props
+  const showOpencodeSections = provider === 'opencode' && threadId !== undefined
+  const variants = modelVariants ?? []
   if (
     traits.effort === null &&
     traits.thinkingEnabled === null &&
-    traits.contextWindowOptions.length <= 1
+    traits.contextWindowOptions.length <= 1 &&
+    !traits.caps.supportsFastMode &&
+    !showOpencodeSections
   ) {
     return null
   }
@@ -371,6 +288,16 @@ function TraitsMenuSections(props: TraitsSectionProps) {
         contextWindowOptions={traits.contextWindowOptions}
         defaultContextWindow={traits.defaultContextWindow}
       />
+      {showOpencodeSections && threadId ? (
+        <>
+          <TraitsOpencodeAgentSection
+            threadId={threadId}
+            modelVariants={variants}
+            disabled={isOpencodePlanMode ?? false}
+          />
+          <TraitsOpencodeVariantSection threadId={threadId} modelVariants={variants} />
+        </>
+      ) : null}
     </>
   )
 }
@@ -394,6 +321,10 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     modelOptions,
     allowPromptInjectedEffort
   )
+  const threadId =
+    'onModelOptionsChange' in persistence ? undefined : (persistence.threadId ?? undefined)
+  const modelVariants = getModelVariants(models, provider, model)
+  const isOpencodePlanMode = useIsOpencodePlanMode(provider, threadId)
   return (
     <TraitsMenuSections
       provider={provider}
@@ -402,33 +333,34 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
       modelOptions={modelOptions}
       updateModelOptions={updateModelOptions}
       traits={traits}
+      threadId={threadId}
+      modelVariants={modelVariants}
+      isOpencodePlanMode={isOpencodePlanMode}
     />
   )
 })
 
-function getTraitsTriggerLabel(traits: SelectedTraits) {
-  const effortLabel = traits.effort
-    ? (traits.effortLevels.find(option => option.value === traits.effort)?.label ?? traits.effort)
-    : null
-  const contextWindowLabel =
-    traits.contextWindowOptions.length > 1 && traits.contextWindow !== traits.defaultContextWindow
-      ? (traits.contextWindowOptions.find(option => option.value === traits.contextWindow)?.label ??
-        null)
-      : null
+function useIsOpencodePlanMode(provider: ProviderKind, threadId: ThreadId | undefined): boolean {
+  const fallbackThreadId = '' as ThreadId
+  const draft = useComposerThreadDraft(threadId ?? fallbackThreadId)
+  if (provider !== 'opencode' || !threadId) return false
+  return draft.interactionMode === 'plan'
+}
 
-  return [
-    traits.ultrathinkPromptControlled
-      ? 'Ultrathink'
-      : effortLabel
-        ? effortLabel
-        : traits.thinkingEnabled === null
-          ? null
-          : `Thinking ${traits.thinkingEnabled ? 'On' : 'Off'}`,
-    ...(traits.caps.supportsFastMode && traits.fastModeEnabled ? ['Fast'] : []),
-    ...(contextWindowLabel ? [contextWindowLabel] : []),
-  ]
-    .filter(Boolean)
-    .join(' · ')
+function useOpencodeAgentFallbackLabel(
+  provider: ProviderKind,
+  threadId: ThreadId | undefined,
+  isPlanMode: boolean
+): string | undefined {
+  const fallbackThreadId = '' as ThreadId
+  const draft = useComposerThreadDraft(threadId ?? fallbackThreadId)
+  const { agents } = useOpencodePrimaryAgents(provider === 'opencode' && !!threadId)
+  if (provider !== 'opencode' || !threadId) return undefined
+  if (isPlanMode) return 'Agent'
+  const selection = draft.modelSelectionByProvider?.opencode
+  const agentId = selection?.provider === 'opencode' && selection.agentId ? selection.agentId : null
+  if (!agentId) return undefined
+  return agents.find(a => a.id === agentId)?.name ?? undefined
 }
 
 function TraitsPickerTriggerContent(props: { isCodexStyle: boolean; triggerLabel: string }) {
@@ -471,7 +403,11 @@ export const TraitsPicker = memo(function TraitsPicker({
     modelOptions,
     allowPromptInjectedEffort
   )
-  const triggerLabel = getTraitsTriggerLabel(traits)
+  const triggerThreadId =
+    'onModelOptionsChange' in persistence ? undefined : (persistence.threadId ?? undefined)
+  const isPlanMode = useIsOpencodePlanMode(provider, triggerThreadId)
+  const opencodeFallback = useOpencodeAgentFallbackLabel(provider, triggerThreadId, isPlanMode)
+  const triggerLabel = getTraitsTriggerLabel(traits, provider, opencodeFallback)
   const isCodexStyle = provider === 'codex'
   const triggerButtonClassName = cn(
     isCodexStyle

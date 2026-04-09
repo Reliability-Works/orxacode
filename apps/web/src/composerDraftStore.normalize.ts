@@ -115,7 +115,7 @@ const VALID_CODEX_REASONING_EFFORTS = new Set<string>(['low', 'medium', 'high', 
 const VALID_CLAUDE_EFFORTS = new Set<string>(['low', 'medium', 'high', 'max', 'ultrathink'])
 
 export function normalizeProviderKind(value: unknown): ProviderKind | null {
-  return value === 'codex' || value === 'claudeAgent' ? value : null
+  return value === 'codex' || value === 'claudeAgent' || value === 'opencode' ? value : null
 }
 
 function resolveCodexReasoningEffort(
@@ -239,6 +239,7 @@ function extractModelSelectionOptions(
   modelOptions: ProviderModelOptions | null
 ): ModelSelection['options'] | undefined {
   if (provider === 'codex') return modelOptions?.codex
+  if (provider === 'opencode') return modelOptions?.opencode
   return modelOptions?.claudeAgent
 }
 
@@ -257,7 +258,7 @@ export function normalizeModelSelection(
   const legacyCodex = provider === 'codex' ? legacy?.legacyCodex : undefined
   const modelOptions = normalizeProviderModelOptions(optionsInput, provider, legacyCodex)
   const options = extractModelSelectionOptions(provider, modelOptions)
-  return { provider, model, ...(options ? { options } : {}) }
+  return { provider, model, ...(options ? { options } : {}) } as ModelSelection
 }
 
 // ── Legacy sync helpers ──────────────────────────────────────────────────
@@ -274,7 +275,7 @@ export function legacySyncModelSelectionOptions(
     provider: modelSelection.provider,
     model: modelSelection.model,
     ...(options ? { options } : {}),
-  }
+  } as ModelSelection
 }
 
 export function legacyMergeModelSelectionIntoProviderModelOptions(

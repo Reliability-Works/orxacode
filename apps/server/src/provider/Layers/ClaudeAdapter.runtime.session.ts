@@ -22,10 +22,13 @@ import {
   ProviderAdapterProcessError,
   ProviderAdapterSessionClosedError,
   ProviderAdapterSessionNotFoundError,
-  ProviderAdapterValidationError,
 } from '../Errors.ts'
 import type { ClaudeAdapterShape } from '../Services/ClaudeAdapter.ts'
 import type { ClaudeAdapterDeps } from './ClaudeAdapter.deps.ts'
+import {
+  emitProviderSessionExitedEvent,
+  ensureSessionStartProviderMatches,
+} from './ProviderAdapter.shared.ts'
 import {
   asCanonicalTurnId,
   asRuntimeRequestId,
@@ -348,18 +351,11 @@ export const stopSessionInternal = Effect.fn('stopSessionInternal')(function* (
   }
 
   if (options?.emitExitEvent !== false) {
-    const stamp = yield* deps.makeEventStamp()
-    yield* deps.offerRuntimeEvent({
-      type: 'session.exited',
-      eventId: stamp.eventId,
+    yield* emitProviderSessionExitedEvent(deps, {
       provider: PROVIDER,
-      createdAt: stamp.createdAt,
       threadId: context.session.threadId,
-      payload: {
-        reason: 'Session stopped',
-        exitKind: 'graceful',
-      },
-      providerRefs: {},
+      reason: 'Session stopped',
+      exitKind: 'graceful',
     })
   }
 
@@ -418,13 +414,11 @@ export const requireSession = (
 
 export const startSession = (deps: ClaudeAdapterDeps): ClaudeAdapterShape['startSession'] =>
   Effect.fn('startSession')(function* (input) {
-    if (input.provider !== undefined && input.provider !== PROVIDER) {
-      return yield* new ProviderAdapterValidationError({
-        provider: PROVIDER,
-        operation: 'startSession',
-        issue: `Expected provider '${PROVIDER}' but received '${input.provider}'.`,
-      })
-    }
+    yield* ensureSessionStartProviderMatches({
+      provider: input.provider,
+      expectedProvider: PROVIDER,
+      operation: 'startSession',
+    })
 
     const startedAt = yield* deps.nowIso
     const resumeState = readClaudeResumeState(input.resumeCursor)

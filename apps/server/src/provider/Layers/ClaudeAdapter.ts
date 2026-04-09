@@ -29,6 +29,10 @@ import { Effect, FileSystem, Layer, Queue, Stream } from 'effect'
 import { ServerConfig } from '../../config.ts'
 import { ServerSettingsService } from '../../serverSettings.ts'
 import { ClaudeAdapter, type ClaudeAdapterShape } from '../Services/ClaudeAdapter.ts'
+import {
+  assembleProviderAdapterShape,
+  buildAdapterCleanupFinalizer,
+} from './ProviderAdapter.shared.ts'
 import { makeClaudeAdapterDeps } from './ClaudeAdapter.deps.ts'
 import {
   hasSession,
@@ -86,34 +90,31 @@ const makeClaudeAdapter = Effect.fn('makeClaudeAdapter')(function* (
   })
 
   yield* Effect.addFinalizer(() =>
-    Effect.forEach(
+    buildAdapterCleanupFinalizer({
       sessions,
-      ([, context]) =>
-        stopSessionInternal(deps, context, {
-          emitExitEvent: false,
-        }),
-      { discard: true }
-    ).pipe(Effect.tap(() => Queue.shutdown(runtimeEventQueue)))
+      runtimeEventQueue,
+      stopSession: context => stopSessionInternal(deps, context, { emitExitEvent: false }),
+    })
   )
 
-  return {
+  return assembleProviderAdapterShape({
     provider: PROVIDER,
-    capabilities: {
-      sessionModelSwitch: 'in-session',
+    capabilities: { sessionModelSwitch: 'in-session' as const },
+    methods: {
+      startSession: startSession(deps),
+      sendTurn: sendTurn(deps),
+      interruptTurn: interruptTurn(deps),
+      readThread: readThread(deps),
+      rollbackThread: rollbackThread(deps),
+      respondToRequest: respondToRequest(deps),
+      respondToUserInput: respondToUserInput(deps),
+      stopSession: stopSession(deps),
+      listSessions: listSessions(deps),
+      hasSession: hasSession(deps),
+      stopAll: stopAll(deps),
+      streamEvents: Stream.fromQueue(runtimeEventQueue),
     },
-    startSession: startSession(deps),
-    sendTurn: sendTurn(deps),
-    interruptTurn: interruptTurn(deps),
-    readThread: readThread(deps),
-    rollbackThread: rollbackThread(deps),
-    respondToRequest: respondToRequest(deps),
-    respondToUserInput: respondToUserInput(deps),
-    stopSession: stopSession(deps),
-    listSessions: listSessions(deps),
-    hasSession: hasSession(deps),
-    stopAll: stopAll(deps),
-    streamEvents: Stream.fromQueue(runtimeEventQueue),
-  } satisfies ClaudeAdapterShape
+  }) satisfies ClaudeAdapterShape
 })
 
 export const ClaudeAdapterLive = Layer.effect(ClaudeAdapter, makeClaudeAdapter())

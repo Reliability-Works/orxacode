@@ -3,6 +3,70 @@ import { mutationOptions, queryOptions, type QueryClient } from '@tanstack/react
 import { ensureNativeApi } from '../nativeApi'
 import { getWsRpcClient } from '../wsRpcClient'
 
+const GIT_PANEL_STALE_TIME_MS = 10_000
+const GIT_PANEL_REFETCH_INTERVAL_MS = 30_000
+
+export const gitPanelQueryKeys = {
+  diff: (cwd: string | null) => ['git', 'panel', 'diff', cwd] as const,
+  log: (cwd: string | null) => ['git', 'panel', 'log', cwd] as const,
+  issues: (cwd: string | null) => ['git', 'panel', 'issues', cwd] as const,
+  pullRequests: (cwd: string | null) => ['git', 'panel', 'pull-requests', cwd] as const,
+}
+
+export function gitPanelDiffQueryOptions(cwd: string | null) {
+  return queryOptions({
+    queryKey: gitPanelQueryKeys.diff(cwd),
+    queryFn: () => {
+      if (!cwd) throw new Error('cwd required')
+      return getWsRpcClient().git.getDiff({ cwd })
+    },
+    enabled: cwd !== null,
+    staleTime: GIT_PANEL_STALE_TIME_MS,
+    refetchOnWindowFocus: 'always',
+    refetchInterval: GIT_PANEL_REFETCH_INTERVAL_MS,
+  })
+}
+
+export function gitPanelLogQueryOptions(cwd: string | null) {
+  return queryOptions({
+    queryKey: gitPanelQueryKeys.log(cwd),
+    queryFn: () => {
+      if (!cwd) throw new Error('cwd required')
+      return getWsRpcClient().git.getLog({ cwd, limit: 50 })
+    },
+    enabled: cwd !== null,
+    staleTime: GIT_PANEL_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    refetchInterval: GIT_PANEL_REFETCH_INTERVAL_MS,
+  })
+}
+
+export function gitPanelIssuesQueryOptions(cwd: string | null) {
+  return queryOptions({
+    queryKey: gitPanelQueryKeys.issues(cwd),
+    queryFn: () => {
+      if (!cwd) throw new Error('cwd required')
+      return getWsRpcClient().git.getIssues({ cwd, limit: 20 })
+    },
+    enabled: cwd !== null,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function gitPanelPullRequestsQueryOptions(cwd: string | null) {
+  return queryOptions({
+    queryKey: gitPanelQueryKeys.pullRequests(cwd),
+    queryFn: () => {
+      if (!cwd) throw new Error('cwd required')
+      return getWsRpcClient().git.getPullRequests({ cwd, limit: 20 })
+    },
+    enabled: cwd !== null,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  })
+}
+
 const GIT_STATUS_STALE_TIME_MS = 5_000
 const GIT_STATUS_REFETCH_INTERVAL_MS = 15_000
 const GIT_BRANCHES_STALE_TIME_MS = 15_000

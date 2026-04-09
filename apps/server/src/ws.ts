@@ -1,19 +1,6 @@
 import { Effect, Layer, Option, Queue, Ref, Schema, Stream } from 'effect'
 import {
   type ClientOrchestrationCommand,
-  type GitActionProgressEvent,
-  type GitCheckoutInput,
-  type GitCreateBranchInput,
-  type GitCreateWorktreeInput,
-  type GitInitInput,
-  type GitListBranchesInput,
-  type GitPreparePullRequestThreadInput,
-  type GitPullInput,
-  type GitPullRequestRefInput,
-  type GitRemoveWorktreeInput,
-  type GitRunStackedActionInput,
-  type GitStatusInput,
-  type GitManagerServiceError,
   type OrchestrationGetFullThreadDiffInput,
   OrchestrationDispatchCommandError,
   type OrchestrationGetTurnDiffInput,
@@ -28,6 +15,8 @@ import {
   ProjectSearchEntriesError,
   type ProjectWriteFileInput,
   ProjectWriteFileError,
+  type ProviderListAgentsInput,
+  type ProviderListAgentsResult,
   OrchestrationReplayEventsError,
   type ServerSettingsPatch,
   type ServerUpsertKeybindingInput,
@@ -47,13 +36,17 @@ import { RpcSerialization, RpcServer } from 'effect/unstable/rpc'
 
 import { CheckpointDiffQuery } from './checkpointing/Services/CheckpointDiffQuery'
 import { ServerConfig } from './config'
+import { DashboardQuery } from './orchestration/Services/DashboardQuery'
+import { ProviderUsageQuery } from './orchestration/Services/ProviderUsageQuery'
 import { GitCore } from './git/Services/GitCore'
+import { GitHubCli } from './git/Services/GitHubCli'
 import { GitManager } from './git/Services/GitManager'
 import { Keybindings } from './keybindings'
 import { Open, resolveAvailableEditors } from './open'
 import { normalizeDispatchCommand } from './orchestration/Normalizer'
 import { OrchestrationEngineService } from './orchestration/Services/OrchestrationEngine'
 import { ProjectionSnapshotQuery } from './orchestration/Services/ProjectionSnapshotQuery'
+import { OpencodeAdapter } from './provider/Services/OpencodeAdapter'
 import { ProviderRegistry } from './provider/Services/ProviderRegistry'
 import { ServerLifecycleEvents } from './serverLifecycleEvents'
 import { ServerRuntimeStartup } from './serverRuntimeStartup'
@@ -61,9 +54,16 @@ import { ServerSettingsService } from './serverSettings'
 import { TerminalManager } from './terminal/Services/Manager'
 import { WorkspaceEntries } from './workspace/Services/WorkspaceEntries'
 import { WorkspaceFileSystem } from './workspace/Services/WorkspaceFileSystem'
+import { SkillsService } from './skills/Services/SkillsService'
 import { WorkspacePathOutsideRootError } from './workspace/Services/WorkspacePaths'
+import { createDashboardMethods } from './ws.dashboard'
+import { createGitMethods } from './ws.git'
+import { createSkillsMethods } from './ws.skills'
 
 type WsRpcDependencies = {
+  readonly dashboardQuery: typeof DashboardQuery.Service
+  readonly providerUsageQuery: typeof ProviderUsageQuery.Service
+  readonly skillsService: typeof SkillsService.Service
   readonly projectionSnapshotQuery: typeof ProjectionSnapshotQuery.Service
   readonly orchestrationEngine: typeof OrchestrationEngineService.Service
   readonly checkpointDiffQuery: typeof CheckpointDiffQuery.Service
@@ -71,8 +71,10 @@ type WsRpcDependencies = {
   readonly open: typeof Open.Service
   readonly gitManager: typeof GitManager.Service
   readonly git: typeof GitCore.Service
+  readonly gitHubCli: typeof GitHubCli.Service
   readonly terminalManager: typeof TerminalManager.Service
   readonly providerRegistry: typeof ProviderRegistry.Service
+  readonly opencodeAdapter: typeof OpencodeAdapter.Service
   readonly config: typeof ServerConfig.Service
   readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
   readonly serverSettings: typeof ServerSettingsService.Service
@@ -306,17 +308,28 @@ const createServerMethods = ({
   keybindings,
   loadServerConfig,
   lifecycleEvents,
+  opencodeAdapter,
   providerRegistry,
   serverSettings,
 }: Pick<
   WsRpcDependencies,
-  'keybindings' | 'lifecycleEvents' | 'providerRegistry' | 'serverSettings'
+  'keybindings' | 'lifecycleEvents' | 'opencodeAdapter' | 'providerRegistry' | 'serverSettings'
 > & {
   readonly loadServerConfig: ReturnType<typeof createLoadServerConfig>
 }) => ({
   [WS_METHODS.serverGetConfig]: () => loadServerConfig,
   [WS_METHODS.serverRefreshProviders]: () =>
     providerRegistry.refresh().pipe(Effect.map(providers => ({ providers }))),
+  [WS_METHODS.providerListAgents]: (
+    input: ProviderListAgentsInput
+  ): Effect.Effect<ProviderListAgentsResult> => {
+    if (input.provider !== 'opencode') {
+      return Effect.succeed({ agents: [] satisfies ProviderListAgentsResult['agents'] })
+    }
+    return opencodeAdapter
+      .listPrimaryAgents()
+      .pipe(Effect.map(agents => ({ agents }) satisfies ProviderListAgentsResult))
+  },
   [WS_METHODS.serverUpsertKeybinding]: (rule: ServerUpsertKeybindingInput) =>
     Effect.gen(function* () {
       const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule)
@@ -364,37 +377,6 @@ const createProjectMethods = ({
   [WS_METHODS.shellOpenInEditor]: (input: OpenInEditorInput) => open.openInEditor(input),
 })
 
-const createGitMethods = ({ git, gitManager }: Pick<WsRpcDependencies, 'git' | 'gitManager'>) => ({
-  [WS_METHODS.gitStatus]: (input: GitStatusInput) => gitManager.status(input),
-  [WS_METHODS.gitPull]: (input: GitPullInput) => git.pullCurrentBranch(input.cwd),
-  [WS_METHODS.gitRunStackedAction]: (input: GitRunStackedActionInput) =>
-    Stream.callback<GitActionProgressEvent, GitManagerServiceError>(queue =>
-      gitManager
-        .runStackedAction(input, {
-          actionId: input.actionId,
-          progressReporter: {
-            publish: event => Queue.offer(queue, event).pipe(Effect.asVoid),
-          },
-        })
-        .pipe(
-          Effect.matchCauseEffect({
-            onFailure: cause => Queue.failCause(queue, cause),
-            onSuccess: () => Queue.end(queue).pipe(Effect.asVoid),
-          })
-        )
-    ),
-  [WS_METHODS.gitResolvePullRequest]: (input: GitPullRequestRefInput) =>
-    gitManager.resolvePullRequest(input),
-  [WS_METHODS.gitPreparePullRequestThread]: (input: GitPreparePullRequestThreadInput) =>
-    gitManager.preparePullRequestThread(input),
-  [WS_METHODS.gitListBranches]: (input: GitListBranchesInput) => git.listBranches(input),
-  [WS_METHODS.gitCreateWorktree]: (input: GitCreateWorktreeInput) => git.createWorktree(input),
-  [WS_METHODS.gitRemoveWorktree]: (input: GitRemoveWorktreeInput) => git.removeWorktree(input),
-  [WS_METHODS.gitCreateBranch]: (input: GitCreateBranchInput) => git.createBranch(input),
-  [WS_METHODS.gitCheckout]: (input: GitCheckoutInput) => Effect.scoped(git.checkoutBranch(input)),
-  [WS_METHODS.gitInit]: (input: GitInitInput) => git.initRepo(input),
-})
-
 const createTerminalMethods = ({
   terminalManager,
 }: Pick<WsRpcDependencies, 'terminalManager'>) => ({
@@ -416,6 +398,9 @@ const createTerminalMethods = ({
 const WsRpcLayer = WsRpcGroup.toLayer(
   Effect.gen(function* () {
     const dependencies: WsRpcDependencies = {
+      dashboardQuery: yield* DashboardQuery,
+      providerUsageQuery: yield* ProviderUsageQuery,
+      skillsService: yield* SkillsService,
       projectionSnapshotQuery: yield* ProjectionSnapshotQuery,
       orchestrationEngine: yield* OrchestrationEngineService,
       checkpointDiffQuery: yield* CheckpointDiffQuery,
@@ -423,8 +408,10 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       open: yield* Open,
       gitManager: yield* GitManager,
       git: yield* GitCore,
+      gitHubCli: yield* GitHubCli,
       terminalManager: yield* TerminalManager,
       providerRegistry: yield* ProviderRegistry,
+      opencodeAdapter: yield* OpencodeAdapter,
       config: yield* ServerConfig,
       lifecycleEvents: yield* ServerLifecycleEvents,
       serverSettings: yield* ServerSettingsService,
@@ -440,6 +427,8 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       ...createProjectMethods(dependencies),
       ...createGitMethods(dependencies),
       ...createTerminalMethods(dependencies),
+      ...createDashboardMethods(dependencies),
+      ...createSkillsMethods(dependencies),
     })
   })
 )

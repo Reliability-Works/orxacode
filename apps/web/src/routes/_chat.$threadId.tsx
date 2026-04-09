@@ -182,12 +182,14 @@ function ChatThreadInlineLayout(props: {
   return (
     <>
       <ChatThreadShell threadId={props.threadId} />
-      <DiffPanelInlineSidebar
-        diffOpen={props.diffOpen}
-        onCloseDiff={props.onCloseDiff}
-        onOpenDiff={props.onOpenDiff}
-        renderDiffContent={props.renderDiffContent}
-      />
+      {props.renderDiffContent ? (
+        <DiffPanelInlineSidebar
+          diffOpen={props.diffOpen}
+          onCloseDiff={props.onCloseDiff}
+          onOpenDiff={props.onOpenDiff}
+          renderDiffContent
+        />
+      ) : null}
     </>
   )
 }

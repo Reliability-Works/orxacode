@@ -4,8 +4,8 @@
  */
 
 import { useCallback } from 'react'
-import type { ThreadId } from '@orxa-code/contracts'
-import { detectComposerTrigger } from '../../composer-logic'
+import type { ProviderKind, ThreadId } from '@orxa-code/contracts'
+import { detectComposerTrigger, getSlashCommandsForProvider } from '../../composer-logic'
 import type { TerminalContextDraft } from '../../lib/terminalContext'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
@@ -49,11 +49,13 @@ export function usePromptChangeCallback(
     nextCursor: number,
     expandedCursor: number,
     cursorAdjacentToMention: boolean
-  ) => void
+  ) => void,
+  selectedProvider: ProviderKind
 ) {
   const { promptRef, setComposerCursor, setComposerTrigger } = ls
   const { setComposerDraftTerminalContexts } = store
   const { activePendingProgress, activePendingUserInput } = ad
+  const allowedCommands = getSlashCommandsForProvider(selectedProvider)
 
   return useCallback(
     (
@@ -84,12 +86,15 @@ export function usePromptChangeCallback(
       }
       setComposerCursor(nextCursor)
       setComposerTrigger(
-        cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor)
+        cursorAdjacentToMention
+          ? null
+          : detectComposerTrigger(nextPrompt, expandedCursor, allowedCommands)
       )
     },
     [
       activePendingProgress,
       activePendingUserInput,
+      allowedCommands,
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setComposerCursor,

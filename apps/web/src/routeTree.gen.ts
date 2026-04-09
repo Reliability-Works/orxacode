@@ -9,16 +9,28 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
 
+const SkillsRoute = SkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -48,13 +60,17 @@ const ChatThreadIdRoute = ChatThreadIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/dashboard': typeof DashboardRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
 }
 export interface FileRoutesByTo {
+  '/dashboard': typeof DashboardRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/skills': typeof SkillsRoute
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -63,7 +79,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/dashboard': typeof DashboardRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/skills': typeof SkillsRoute
   '/_chat/$threadId': typeof ChatThreadIdRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
@@ -73,13 +91,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/dashboard'
     | '/settings'
+    | '/skills'
     | '/$threadId'
     | '/settings/archived'
     | '/settings/general'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/dashboard'
     | '/settings'
+    | '/skills'
     | '/$threadId'
     | '/settings/archived'
     | '/settings/general'
@@ -87,7 +109,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/dashboard'
     | '/settings'
+    | '/skills'
     | '/_chat/$threadId'
     | '/settings/archived'
     | '/settings/general'
@@ -96,16 +120,32 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  DashboardRoute: typeof DashboardRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  SkillsRoute: typeof SkillsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/skills': {
+      id: '/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof SkillsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -174,7 +214,9 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  DashboardRoute: DashboardRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  SkillsRoute: SkillsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

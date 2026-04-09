@@ -11,7 +11,7 @@ import {
   type ServerProvider,
 } from '@orxa-code/contracts'
 import { useEffectiveComposerModelState } from '../../composerDraftStore'
-import { buildLocalDraftThread, threadHasStarted } from '../ChatView.logic'
+import { buildLocalDraftThread } from '../ChatView.logic'
 import { derivePhase } from '../../session-logic'
 import { getComposerProviderState } from './composerProviderRegistry'
 import { getProviderModels, resolveSelectableProvider } from '../../providerModels'
@@ -32,16 +32,18 @@ const FALLBACK_MODEL_SELECTION = {
 type StoreSelectors = ReturnType<typeof useChatViewStoreSelectors>
 type LocalState = ReturnType<typeof useChatViewLocalState>
 
-function pickLockedProvider(
+/** @internal exported for unit testing only */
+export function pickLockedProvider(
   thread: Thread | undefined,
   selectedByUser: ProviderKind | null,
   activeProject: { defaultModelSelection?: { provider?: ProviderKind } | null } | null | undefined
 ): ProviderKind | null {
-  if (!threadHasStarted(thread)) return null
+  // Sessions are always created with an explicit provider via the NewSessionModal,
+  // so the composer model picker is model-only — lock as soon as any provider is known.
   const sessionProv = thread?.session?.provider ?? null
-  const threadProv =
-    thread?.modelSelection.provider ?? activeProject?.defaultModelSelection?.provider ?? null
-  return sessionProv ?? threadProv ?? selectedByUser ?? null
+  const threadProv = thread?.modelSelection.provider ?? null
+  const projectProv = activeProject?.defaultModelSelection?.provider ?? null
+  return sessionProv ?? threadProv ?? projectProv ?? selectedByUser ?? null
 }
 
 function pickSelectedProvider(
@@ -60,9 +62,18 @@ function pickSelectedProvider(
 function buildSelectedModelSelection(
   provider: ProviderKind,
   model: string,
-  options: Record<string, unknown> | null | undefined
+  options: Record<string, unknown> | null | undefined,
+  opencodeExtras?: { agentId?: string; variant?: string } | null
 ): ModelSelection {
-  return { provider, model, ...(options ? { options } : {}) }
+  const base = { provider, model, ...(options ? { options } : {}) }
+  if (provider === 'opencode' && opencodeExtras) {
+    return {
+      ...base,
+      ...(opencodeExtras.agentId ? { agentId: opencodeExtras.agentId } : {}),
+      ...(opencodeExtras.variant ? { variant: opencodeExtras.variant } : {}),
+    } as ModelSelection
+  }
+  return base as ModelSelection
 }
 
 function deriveThreadModes(
@@ -78,10 +89,38 @@ function deriveThreadModes(
   }
 }
 
-function buildModelOptionsByProvider(statuses: ServerProvider[]) {
+type ProviderModelList = ReadonlyArray<ServerProvider['models'][number]>
+type ModelOptionsByProvider = Record<ProviderKind, ProviderModelList>
+
+function findProviderModels(statuses: ServerProvider[], kind: ProviderKind): ProviderModelList {
+  return statuses.find(p => p.provider === kind)?.models ?? []
+}
+
+function buildProviderEntry(statuses: ServerProvider[], kind: ProviderKind): ProviderModelList {
+  switch (kind) {
+    case 'codex':
+      return findProviderModels(statuses, 'codex')
+    case 'claudeAgent':
+      return findProviderModels(statuses, 'claudeAgent')
+    case 'opencode':
+      return findProviderModels(statuses, 'opencode')
+    default: {
+      // Exhaustive check — TypeScript narrows kind to never here.
+      // If a new ProviderKind is added without updating this switch,
+      // the assignment below fails at compile time.
+      const _exhaustive: never = kind
+      void _exhaustive
+      return []
+    }
+  }
+}
+
+/** @internal exported for unit testing only */
+export function buildModelOptionsByProvider(statuses: ServerProvider[]): ModelOptionsByProvider {
   return {
-    codex: statuses.find(p => p.provider === 'codex')?.models ?? [],
-    claudeAgent: statuses.find(p => p.provider === 'claudeAgent')?.models ?? [],
+    codex: buildProviderEntry(statuses, 'codex'),
+    claudeAgent: buildProviderEntry(statuses, 'claudeAgent'),
+    opencode: buildProviderEntry(statuses, 'opencode'),
   }
 }
 
@@ -131,6 +170,26 @@ function useProviderSelection(params: {
   }
 }
 
+function useOpencodeExtras(
+  selectedProvider: ProviderKind,
+  modelSelectionByProvider: Partial<Record<ProviderKind, ModelSelection>>,
+  isPlanMode: boolean
+): { agentId?: string; variant?: string } | null {
+  return useMemo(() => {
+    if (selectedProvider !== 'opencode') return null
+    const selection = modelSelectionByProvider.opencode
+    if (!selection || selection.provider !== 'opencode') return null
+    // In plan mode we deliberately drop agentId so the server's resolver
+    // falls back to the opencode `plan` primary agent. The user can still
+    // have an agent selected — plan mode is a transient override.
+    const agentId = isPlanMode ? undefined : selection.agentId
+    return {
+      ...(agentId ? { agentId } : {}),
+      ...(selection.variant ? { variant: selection.variant } : {}),
+    }
+  }, [isPlanMode, modelSelectionByProvider, selectedProvider])
+}
+
 function useProviderDerivedMemos(params: {
   providerStatuses: readonly ServerProvider[]
   selectedProvider: ProviderKind
@@ -138,6 +197,7 @@ function useProviderDerivedMemos(params: {
   selectedProviderModels: ReturnType<typeof getProviderModels>
   composerDraft: StoreSelectors['composerDraft']
   composerModelOptions: ReturnType<typeof useEffectiveComposerModelState>['modelOptions']
+  isOpencodePlanMode: boolean
 }) {
   const {
     providerStatuses,
@@ -146,6 +206,7 @@ function useProviderDerivedMemos(params: {
     selectedProviderModels,
     composerDraft,
     composerModelOptions,
+    isOpencodePlanMode,
   } = params
   const composerProviderState = useMemo(
     () =>
@@ -164,14 +225,20 @@ function useProviderDerivedMemos(params: {
       selectedProviderModels,
     ]
   )
+  const opencodeExtras = useOpencodeExtras(
+    selectedProvider,
+    composerDraft.modelSelectionByProvider,
+    isOpencodePlanMode
+  )
   const selectedModelSelection = useMemo(
     () =>
       buildSelectedModelSelection(
         selectedProvider,
         selectedModel,
-        composerProviderState.modelOptionsForDispatch
+        composerProviderState.modelOptionsForDispatch,
+        opencodeExtras
       ),
-    [composerProviderState.modelOptionsForDispatch, selectedModel, selectedProvider]
+    [composerProviderState.modelOptionsForDispatch, opencodeExtras, selectedModel, selectedProvider]
   )
   const modelOptionsByProvider = useMemo(
     () => buildModelOptionsByProvider([...providerStatuses]),
@@ -208,6 +275,8 @@ function useDerivedProviderAndModel(params: {
   settings: StoreSelectors['settings']
 }) {
   const selection = useProviderSelection(params)
+  const { interactionMode } = deriveThreadModes(params.composerDraft, params.activeThread)
+  const isOpencodePlanMode = selection.selectedProvider === 'opencode' && interactionMode === 'plan'
   const memos = useProviderDerivedMemos({
     providerStatuses: params.providerStatuses,
     selectedProvider: selection.selectedProvider,
@@ -215,6 +284,7 @@ function useDerivedProviderAndModel(params: {
     selectedProviderModels: selection.selectedProviderModels,
     composerDraft: params.composerDraft,
     composerModelOptions: selection.composerModelOptions,
+    isOpencodePlanMode,
   })
   return { ...selection, ...memos }
 }

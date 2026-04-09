@@ -6,13 +6,13 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import { DiffIcon, TerminalSquareIcon } from 'lucide-react'
+import { GitBranchIcon, TerminalSquareIcon } from 'lucide-react'
 import { Badge } from '../ui/badge'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import ProjectScriptsControl, { type NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
-import { SidebarTrigger } from '../ui/sidebar'
 import { OpenInPicker } from './OpenInPicker'
+import { cn } from '~/lib/utils'
 
 interface ProjectActionProps {
   activeThreadId: ThreadId
@@ -29,16 +29,21 @@ interface ProjectActionProps {
   onDeleteProjectScript: (scriptId: string) => Promise<void>
 }
 
+interface DiffStats {
+  additions: number
+  deletions: number
+}
+
 interface ChatHeaderProps extends ProjectActionProps {
   activeThreadTitle: string
   isGitRepo: boolean
   terminalAvailable: boolean
   terminalOpen: boolean
   terminalToggleShortcutLabel: string | null
-  diffToggleShortcutLabel: string | null
-  diffOpen: boolean
+  gitSidebarOpen: boolean
+  diffStats: DiffStats | null
   onToggleTerminal: () => void
-  onToggleDiff: () => void
+  onToggleGitSidebar: () => void
 }
 
 function ChatHeaderTitle(props: {
@@ -49,7 +54,6 @@ function ChatHeaderTitle(props: {
   const { activeThreadTitle, activeProjectName, isGitRepo } = props
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
-      <SidebarTrigger className="size-7 shrink-0 md:hidden" />
       <h2
         className="min-w-0 shrink truncate text-sm font-medium text-foreground"
         title={activeThreadTitle}
@@ -142,25 +146,35 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
   )
 }
 
+function GitSidebarBadge({ stats }: { stats: DiffStats | null }) {
+  if (!stats || (stats.additions === 0 && stats.deletions === 0)) return null
+  return (
+    <span className="pointer-events-none absolute -right-1 -top-1 flex items-center gap-px rounded-full bg-background px-0.5 font-mono text-[8px] leading-none">
+      {stats.additions > 0 && <span className="text-success">+{stats.additions}</span>}
+      {stats.deletions > 0 && <span className="text-destructive">-{stats.deletions}</span>}
+    </span>
+  )
+}
+
 function ChatHeaderToggleActions(props: {
   terminalOpen: boolean
   onToggleTerminal: () => void
   terminalAvailable: boolean
   terminalToggleLabel: string
-  diffOpen: boolean
-  onToggleDiff: () => void
+  gitSidebarOpen: boolean
+  onToggleGitSidebar: () => void
   isGitRepo: boolean
-  diffToggleLabel: string
+  diffStats: DiffStats | null
 }) {
   const {
     terminalOpen,
     onToggleTerminal,
     terminalAvailable,
     terminalToggleLabel,
-    diffOpen,
-    onToggleDiff,
+    gitSidebarOpen,
+    onToggleGitSidebar,
     isGitRepo,
-    diffToggleLabel,
+    diffStats,
   } = props
   return (
     <>
@@ -172,14 +186,27 @@ function ChatHeaderToggleActions(props: {
         icon={TerminalSquareIcon}
         tooltipLabel={terminalToggleLabel}
       />
-      <HeaderToggleControl
-        pressed={diffOpen}
-        onToggle={onToggleDiff}
-        disabled={!isGitRepo}
-        ariaLabel="Toggle diff panel"
-        icon={DiffIcon}
-        tooltipLabel={diffToggleLabel}
-      />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Toggle
+              className={cn('relative shrink-0', !isGitRepo && 'opacity-50')}
+              pressed={gitSidebarOpen}
+              onPressedChange={onToggleGitSidebar}
+              aria-label="Toggle git sidebar"
+              variant="outline"
+              size="xs"
+              disabled={!isGitRepo}
+            >
+              <GitBranchIcon className="size-3" />
+              <GitSidebarBadge stats={isGitRepo ? diffStats : null} />
+            </Toggle>
+          }
+        />
+        <TooltipPopup side="bottom">
+          {!isGitRepo ? 'Git unavailable — not a git repository' : 'Toggle git sidebar'}
+        </TooltipPopup>
+      </Tooltip>
     </>
   )
 }
@@ -188,11 +215,11 @@ interface ChatHeaderActionsProps extends ProjectActionProps {
   terminalAvailable: boolean
   terminalOpen: boolean
   terminalToggleLabel: string
-  diffOpen: boolean
-  diffToggleLabel: string
+  gitSidebarOpen: boolean
+  diffStats: DiffStats | null
   isGitRepo: boolean
   onToggleTerminal: () => void
-  onToggleDiff: () => void
+  onToggleGitSidebar: () => void
 }
 
 function ChatHeaderActions(props: ChatHeaderActionsProps) {
@@ -208,15 +235,15 @@ function ChatHeaderActions(props: ChatHeaderActionsProps) {
     terminalAvailable,
     terminalOpen,
     terminalToggleLabel,
-    diffOpen,
-    diffToggleLabel,
+    gitSidebarOpen,
+    diffStats,
     isGitRepo,
     onRunProjectScript,
     onAddProjectScript,
     onUpdateProjectScript,
     onDeleteProjectScript,
     onToggleTerminal,
-    onToggleDiff,
+    onToggleGitSidebar,
   } = props
 
   return (
@@ -240,10 +267,10 @@ function ChatHeaderActions(props: ChatHeaderActionsProps) {
         onToggleTerminal={onToggleTerminal}
         terminalAvailable={terminalAvailable}
         terminalToggleLabel={terminalToggleLabel}
-        diffOpen={diffOpen}
-        onToggleDiff={onToggleDiff}
+        gitSidebarOpen={gitSidebarOpen}
+        onToggleGitSidebar={onToggleGitSidebar}
         isGitRepo={isGitRepo}
-        diffToggleLabel={diffToggleLabel}
+        diffStats={diffStats}
       />
     </div>
   )
@@ -262,26 +289,21 @@ export const ChatHeader = memo(function ChatHeader({
   terminalAvailable,
   terminalOpen,
   terminalToggleShortcutLabel,
-  diffToggleShortcutLabel,
   gitCwd,
-  diffOpen,
+  gitSidebarOpen,
+  diffStats,
   onRunProjectScript,
   onAddProjectScript,
   onUpdateProjectScript,
   onDeleteProjectScript,
   onToggleTerminal,
-  onToggleDiff,
+  onToggleGitSidebar,
 }: ChatHeaderProps) {
   const terminalToggleLabel = !terminalAvailable
     ? 'Terminal is unavailable until this thread has an active project.'
     : terminalToggleShortcutLabel
       ? `Toggle terminal drawer (${terminalToggleShortcutLabel})`
       : 'Toggle terminal drawer'
-  const diffToggleLabel = !isGitRepo
-    ? 'Diff panel is unavailable because this project is not a git repository.'
-    : diffToggleShortcutLabel
-      ? `Toggle diff panel (${diffToggleShortcutLabel})`
-      : 'Toggle diff panel'
 
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
@@ -302,15 +324,15 @@ export const ChatHeader = memo(function ChatHeader({
         terminalAvailable={terminalAvailable}
         terminalOpen={terminalOpen}
         terminalToggleLabel={terminalToggleLabel}
-        diffOpen={diffOpen}
-        diffToggleLabel={diffToggleLabel}
+        gitSidebarOpen={gitSidebarOpen}
+        diffStats={diffStats}
         isGitRepo={isGitRepo}
         onRunProjectScript={onRunProjectScript}
         onAddProjectScript={onAddProjectScript}
         onUpdateProjectScript={onUpdateProjectScript}
         onDeleteProjectScript={onDeleteProjectScript}
         onToggleTerminal={onToggleTerminal}
-        onToggleDiff={onToggleDiff}
+        onToggleGitSidebar={onToggleGitSidebar}
       />
     </div>
   )

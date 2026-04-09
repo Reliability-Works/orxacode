@@ -1,10 +1,24 @@
 import {
+  type DashboardSnapshot,
   type GitActionProgressEvent,
+  type GitDiffResult,
+  type GitGetIssuesResult,
+  type GitGetLogResult,
+  type GitGetPullRequestsResult,
+  type GitRestorePathInput,
   type GitRunStackedActionInput,
   type GitRunStackedActionResult,
+  type GitStagePathInput,
+  type GitUnstagePathInput,
   type NativeApi,
   ORCHESTRATION_WS_METHODS,
+  type ProviderKind,
+  type ProviderUsageSnapshot,
   type ServerSettingsPatch,
+  type SkillListInput,
+  type SkillListResult,
+  type SkillRefreshResult,
+  type SkillRootsConfig,
   WS_METHODS,
 } from '@orxa-code/contracts'
 import { Effect, Stream } from 'effect'
@@ -77,6 +91,22 @@ export interface WsRpcClient {
     readonly init: RpcUnaryMethod<typeof WS_METHODS.gitInit>
     readonly resolvePullRequest: RpcUnaryMethod<typeof WS_METHODS.gitResolvePullRequest>
     readonly preparePullRequestThread: RpcUnaryMethod<typeof WS_METHODS.gitPreparePullRequestThread>
+    readonly getDiff: (input: { readonly cwd: string }) => Promise<GitDiffResult>
+    readonly getLog: (input: {
+      readonly cwd: string
+      readonly limit?: number
+    }) => Promise<GitGetLogResult>
+    readonly getIssues: (input: {
+      readonly cwd: string
+      readonly limit?: number
+    }) => Promise<GitGetIssuesResult>
+    readonly getPullRequests: (input: {
+      readonly cwd: string
+      readonly limit?: number
+    }) => Promise<GitGetPullRequestsResult>
+    readonly stagePath: (input: GitStagePathInput) => Promise<void>
+    readonly unstagePath: (input: GitUnstagePathInput) => Promise<void>
+    readonly restorePath: (input: GitRestorePathInput) => Promise<void>
   }
   readonly server: {
     readonly getConfig: RpcUnaryNoArgMethod<typeof WS_METHODS.serverGetConfig>
@@ -88,6 +118,24 @@ export interface WsRpcClient {
     ) => ReturnType<RpcUnaryMethod<typeof WS_METHODS.serverUpdateSettings>>
     readonly subscribeConfig: RpcStreamMethod<typeof WS_METHODS.subscribeServerConfig>
     readonly subscribeLifecycle: RpcStreamMethod<typeof WS_METHODS.subscribeServerLifecycle>
+  }
+  readonly provider: {
+    readonly listAgents: RpcUnaryMethod<typeof WS_METHODS.providerListAgents>
+  }
+  readonly skills: {
+    readonly list: (input: SkillListInput) => Promise<SkillListResult>
+    readonly refresh: (input: { readonly provider?: ProviderKind }) => Promise<SkillRefreshResult>
+    readonly getRoots: () => Promise<{ readonly roots: SkillRootsConfig }>
+    readonly setRoots: (input: {
+      readonly roots: SkillRootsConfig
+    }) => Promise<{ readonly roots: SkillRootsConfig }>
+  }
+  readonly dashboard: {
+    readonly getSnapshot: () => Promise<DashboardSnapshot>
+    readonly refresh: () => Promise<DashboardSnapshot>
+    readonly getProviderUsage: (input: {
+      readonly provider: ProviderKind
+    }) => Promise<ProviderUsageSnapshot>
   }
   readonly orchestration: {
     readonly getSnapshot: RpcUnaryNoArgMethod<typeof ORCHESTRATION_WS_METHODS.getSnapshot>
@@ -176,6 +224,14 @@ function createGitApi(transport: WsTransport): WsRpcClient['git'] {
       transport.request(client => client[WS_METHODS.gitResolvePullRequest](input)),
     preparePullRequestThread: input =>
       transport.request(client => client[WS_METHODS.gitPreparePullRequestThread](input)),
+    getDiff: input => transport.request(client => client[WS_METHODS.gitGetDiff](input)),
+    getLog: input => transport.request(client => client[WS_METHODS.gitGetLog](input)),
+    getIssues: input => transport.request(client => client[WS_METHODS.gitGetIssues](input)),
+    getPullRequests: input =>
+      transport.request(client => client[WS_METHODS.gitGetPullRequests](input)),
+    stagePath: input => transport.request(client => client[WS_METHODS.gitStagePath](input)),
+    unstagePath: input => transport.request(client => client[WS_METHODS.gitUnstagePath](input)),
+    restorePath: input => transport.request(client => client[WS_METHODS.gitRestorePath](input)),
   }
 }
 
@@ -193,6 +249,30 @@ function createServerApi(transport: WsTransport): WsRpcClient['server'] {
       transport.subscribe(client => client[WS_METHODS.subscribeServerConfig]({}), listener),
     subscribeLifecycle: listener =>
       transport.subscribe(client => client[WS_METHODS.subscribeServerLifecycle]({}), listener),
+  }
+}
+
+function createProviderApi(transport: WsTransport): WsRpcClient['provider'] {
+  return {
+    listAgents: input => transport.request(client => client[WS_METHODS.providerListAgents](input)),
+  }
+}
+
+function createSkillsApi(transport: WsTransport): WsRpcClient['skills'] {
+  return {
+    list: input => transport.request(client => client[WS_METHODS.skillsList](input)),
+    refresh: input => transport.request(client => client[WS_METHODS.skillsRefresh](input)),
+    getRoots: () => transport.request(client => client[WS_METHODS.skillsGetRoots]({})),
+    setRoots: input => transport.request(client => client[WS_METHODS.skillsSetRoots](input)),
+  }
+}
+
+function createDashboardApi(transport: WsTransport): WsRpcClient['dashboard'] {
+  return {
+    getSnapshot: () => transport.request(client => client[WS_METHODS.dashboardGetSnapshot]({})),
+    refresh: () => transport.request(client => client[WS_METHODS.dashboardRefresh]({})),
+    getProviderUsage: input =>
+      transport.request(client => client[WS_METHODS.dashboardGetProviderUsage](input)),
   }
 }
 
@@ -226,6 +306,9 @@ export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
     shell: createShellApi(transport),
     git: createGitApi(transport),
     server: createServerApi(transport),
+    provider: createProviderApi(transport),
+    skills: createSkillsApi(transport),
+    dashboard: createDashboardApi(transport),
     orchestration: createOrchestrationApi(transport),
   }
 }

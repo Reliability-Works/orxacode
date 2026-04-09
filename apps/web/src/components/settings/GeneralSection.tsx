@@ -359,7 +359,7 @@ function ModelRowControl({
                   provider: textGenProvider,
                   model: textGenModel ?? '',
                   ...(nextOptions ? { options: nextOptions } : {}),
-                },
+                } as import('@orxa-code/contracts').ModelSelection,
               },
               serverProviders
             ),

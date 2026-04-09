@@ -149,7 +149,7 @@ async function createLocalDraftThreadIfNeeded(
       ...(params.selectedModelSelection.options
         ? { options: params.selectedModelSelection.options }
         : {}),
-    },
+    } as import('@orxa-code/contracts').ModelSelection,
     runtimeMode: params.runtimeMode,
     interactionMode: params.interactionMode,
     branch: nextBranch,

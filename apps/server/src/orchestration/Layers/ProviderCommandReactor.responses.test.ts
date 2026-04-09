@@ -13,7 +13,7 @@ import {
 const setRunningSession = async (
   harness: Awaited<ReturnType<typeof createHarness>>,
   commandId: string,
-  providerName: 'codex' | 'claudeAgent',
+  providerName: 'codex' | 'claudeAgent' | 'opencode',
   now: string
 ) => {
   await Effect.runPromise(

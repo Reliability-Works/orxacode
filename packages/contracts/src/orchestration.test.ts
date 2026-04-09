@@ -217,6 +217,42 @@ it.effect('decodes thread.created runtime mode for historical events', () =>
   })
 )
 
+it.effect('accepts opencode model selection in thread.turn.start', () =>
+  Effect.gen(function* () {
+    const parsed = yield* decodeThreadTurnStartCommand({
+      type: 'thread.turn.start',
+      commandId: 'cmd-turn-opencode',
+      threadId: 'thread-1',
+      message: {
+        messageId: 'msg-opencode',
+        role: 'user',
+        text: 'hello',
+        attachments: [],
+      },
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+        options: {
+          reasoningEffort: 'medium',
+          fastMode: false,
+        },
+        agentId: 'build',
+        variant: 'reasoning',
+      },
+      createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    assert.strictEqual(parsed.modelSelection?.provider, 'opencode')
+    assert.strictEqual(parsed.modelSelection?.model, 'anthropic/claude-sonnet-4-5')
+    if (parsed.modelSelection?.provider !== 'opencode') {
+      throw new Error('Expected opencode modelSelection')
+    }
+    assert.strictEqual(parsed.modelSelection.options?.reasoningEffort, 'medium')
+    assert.strictEqual(parsed.modelSelection.options?.fastMode, false)
+    assert.strictEqual(parsed.modelSelection.agentId, 'build')
+    assert.strictEqual(parsed.modelSelection.variant, 'reasoning')
+  })
+)
+
 it.effect('decodes thread.meta-updated payloads with explicit provider', () =>
   Effect.gen(function* () {
     const parsed = yield* decodeThreadMetaUpdatedPayload({

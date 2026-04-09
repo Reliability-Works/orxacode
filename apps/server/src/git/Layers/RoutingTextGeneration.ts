@@ -4,8 +4,10 @@
  * request input.
  *
  * When `modelSelection.provider` is `"claudeAgent"` the request is forwarded to
- * the Claude layer; for any other value (including the default `undefined`) it
- * falls through to the Codex layer.
+ * the Claude layer; for any other value (including `"opencode"` and the
+ * default `undefined`) it falls through to the Codex layer. Opencode git
+ * text generation has no dedicated backend yet and intentionally shares the
+ * Codex implementation until a follow-up feature adds one.
  *
  * @module RoutingTextGeneration
  */

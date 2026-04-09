@@ -13,6 +13,7 @@ import {
   CLAUDE_HAIKU_MODEL,
   CLAUDE_SONNET_MODEL,
   CODEX_GPT54_MODEL,
+  OPENCODE_SONNET_MODEL,
   assertSonnetEffortOptions,
   makeCleanupHandle,
 } from './chat.browser.fixtures'
@@ -21,6 +22,7 @@ const COMPACT_MENU_THREAD_ID = ThreadId.makeUnsafe('thread-compact-menu')
 const PROVIDER_MODELS = {
   claudeAgent: [CLAUDE_OPUS_MODEL, CLAUDE_HAIKU_MODEL, CLAUDE_SONNET_MODEL],
   codex: [CODEX_GPT54_MODEL],
+  opencode: [OPENCODE_SONNET_MODEL],
 } as const
 
 function resetComposerDraftState() {

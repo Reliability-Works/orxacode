@@ -1,3 +1,5 @@
+'use no memo'
+
 import { type PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ThreadId } from '@orxa-code/contracts'

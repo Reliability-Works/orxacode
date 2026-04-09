@@ -4,11 +4,15 @@ import type {
   ServerProviderModel,
   ServerProviderState,
 } from '@orxa-code/contracts'
+import { Effect, Option, Result } from 'effect'
+
 import {
+  DEFAULT_TIMEOUT_MS,
   buildServerProvider,
   detailFromResult,
   extractAuthBoolean,
   isCommandMissingCause,
+  parseGenericCliVersion,
   type CommandResult,
 } from '../providerSnapshot'
 
@@ -262,6 +266,59 @@ export function buildProviderReadyProvider(
     },
   })
 }
+
+export type VersionProbeOutcome =
+  | { readonly kind: 'provider'; readonly provider: ServerProvider }
+  | { readonly kind: 'ok'; readonly parsedVersion: string | null }
+
+/**
+ * Run a provider's `--version` health-check command and translate the result
+ * (failure / timeout / non-zero exit / success) into a `VersionProbeOutcome`.
+ * Both Claude and Opencode use this so the version-probe ladder lives in one
+ * place and jscpd does not flag the duplication.
+ */
+export const runProviderVersionProbe = <CommandError, CommandRequirements>(input: {
+  readonly builder: ProviderStatusBuilder
+  readonly context: ProviderStatusContext
+  readonly runVersionCommand: Effect.Effect<CommandResult, CommandError, CommandRequirements>
+  readonly timeoutMs?: number
+}): Effect.Effect<VersionProbeOutcome, never, CommandRequirements> =>
+  Effect.gen(function* () {
+    const versionProbe = yield* input.runVersionCommand.pipe(
+      Effect.timeoutOption(input.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+      Effect.result
+    )
+    if (Result.isFailure(versionProbe)) {
+      return {
+        kind: 'provider',
+        provider: buildVersionProbeFailureProvider(
+          input.builder,
+          input.context,
+          versionProbe.failure
+        ),
+      } satisfies VersionProbeOutcome
+    }
+    if (Option.isNone(versionProbe.success)) {
+      return {
+        kind: 'provider',
+        provider: buildVersionTimeoutProvider(input.builder, input.context),
+      } satisfies VersionProbeOutcome
+    }
+    const version = versionProbe.success.value
+    const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`)
+    if (version.code !== 0) {
+      return {
+        kind: 'provider',
+        provider: buildVersionCommandFailureProvider(
+          input.builder,
+          input.context,
+          parsedVersion,
+          version
+        ),
+      } satisfies VersionProbeOutcome
+    }
+    return { kind: 'ok', parsedVersion } satisfies VersionProbeOutcome
+  })
 
 export function buildAuthProbeTimeoutProvider(
   builder: ProviderStatusBuilder,

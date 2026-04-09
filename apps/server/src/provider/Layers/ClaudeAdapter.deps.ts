@@ -11,15 +11,19 @@
  * @module ClaudeAdapter.deps
  */
 import type { Options as ClaudeQueryOptions, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import { EventId, type ProviderRuntimeEvent, type ThreadId } from '@orxa-code/contracts'
-import { DateTime, Effect, type FileSystem, Queue, Random } from 'effect'
+import { type ProviderRuntimeEvent, type ThreadId } from '@orxa-code/contracts'
+import { type FileSystem, Queue } from 'effect'
 
 import type { ServerConfigShape } from '../../config.ts'
 import type { ServerSettingsShape } from '../../serverSettings.ts'
 import type { ClaudeQueryRuntime, ClaudeSessionContext } from './ClaudeAdapter.types.ts'
 import type { EventNdjsonLogger } from './EventNdjsonLogger.ts'
+import {
+  makeProviderAdapterEventStamping,
+  type ProviderAdapterEventStamping,
+} from './ProviderAdapter.shared.ts'
 
-export interface ClaudeAdapterDeps {
+export interface ClaudeAdapterDeps extends ProviderAdapterEventStamping {
   readonly fileSystem: FileSystem.FileSystem
   readonly serverConfig: ServerConfigShape
   readonly serverSettingsService: ServerSettingsShape
@@ -30,13 +34,6 @@ export interface ClaudeAdapterDeps {
   }) => ClaudeQueryRuntime
   readonly sessions: Map<ThreadId, ClaudeSessionContext>
   readonly runtimeEventQueue: Queue.Queue<ProviderRuntimeEvent>
-  readonly nowIso: Effect.Effect<string>
-  readonly nextEventId: Effect.Effect<EventId>
-  readonly makeEventStamp: () => Effect.Effect<{
-    readonly eventId: EventId
-    readonly createdAt: string
-  }>
-  readonly offerRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<void>
 }
 
 export const makeClaudeAdapterDeps = (input: {
@@ -48,11 +45,7 @@ export const makeClaudeAdapterDeps = (input: {
   readonly sessions: Map<ThreadId, ClaudeSessionContext>
   readonly runtimeEventQueue: Queue.Queue<ProviderRuntimeEvent>
 }): ClaudeAdapterDeps => {
-  const nowIso = Effect.map(DateTime.now, DateTime.formatIso)
-  const nextEventId = Effect.map(Random.nextUUIDv4, id => EventId.makeUnsafe(id))
-  const makeEventStamp = () => Effect.all({ eventId: nextEventId, createdAt: nowIso })
-  const offerRuntimeEvent = (event: ProviderRuntimeEvent): Effect.Effect<void> =>
-    Queue.offer(input.runtimeEventQueue, event).pipe(Effect.asVoid)
+  const stamping = makeProviderAdapterEventStamping(input.runtimeEventQueue)
   return {
     fileSystem: input.fileSystem,
     serverConfig: input.serverConfig,
@@ -61,9 +54,6 @@ export const makeClaudeAdapterDeps = (input: {
     createQuery: input.createQuery,
     sessions: input.sessions,
     runtimeEventQueue: input.runtimeEventQueue,
-    nowIso,
-    nextEventId,
-    makeEventStamp,
-    offerRuntimeEvent,
+    ...stamping,
   }
 }

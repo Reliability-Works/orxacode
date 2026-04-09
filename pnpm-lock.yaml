@@ -259,6 +259,9 @@ importers:
       '@effect/platform-node':
         specifier: 4.0.0-beta.43
         version: 4.0.0-beta.43(effect@4.0.0-beta.43)(ioredis@5.10.1)
+      '@opencode-ai/sdk':
+        specifier: ^1.4.0
+        version: 1.4.0
       '@pierre/diffs':
         specifier: ^1.1.0-beta.16
         version: 1.1.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -1390,6 +1393,9 @@ packages:
 
   '@opencode-ai/sdk@1.2.10':
     resolution: {integrity: sha512-SyXcVqry2hitPVvQtvXOhqsWyFhSycG/+LTLYXrcq8AFmd9FR7dyBSDB3f5Ol6IPkYOegk8P2Eg2kKPNSNiKGw==}
+
+  '@opencode-ai/sdk@1.4.0':
+    resolution: {integrity: sha512-mfa3MzhqNM+Az4bgPDDXL3NdG+aYOHClXmT6/4qLxf2ulyfPpMNHqb9Dfmo4D8UfmrDsPuJHmbune73/nUQnuw==}
 
   '@oxc-parser/binding-android-arm-eabi@0.120.0':
     resolution: {integrity: sha512-WU3qtINx802wOl8RxAF1v0VvmC2O4D9M8Sv486nLeQ7iPHVmncYZrtBhB4SYyX+XZxj2PNnCcN+PW21jHgiOxg==}
@@ -6896,6 +6902,10 @@ snapshots:
   '@open-draft/until@2.1.0': {}
 
   '@opencode-ai/sdk@1.2.10': {}
+
+  '@opencode-ai/sdk@1.4.0':
+    dependencies:
+      cross-spawn: 7.0.6
 
   '@oxc-parser/binding-android-arm-eabi@0.120.0':
     optional: true

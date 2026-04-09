@@ -178,6 +178,7 @@ export function useChatViewRemainingCallbacks(args: {
   store: S
   ls: L
   ad: A
+  td: T
   callbacksCore: ReturnType<
     typeof import('./useChatViewController.callbacks').useChatViewCallbacksCore
   >
@@ -187,14 +188,15 @@ export function useChatViewRemainingCallbacks(args: {
   focusComposer: () => void
   addComposerImages: (files: File[]) => void
 }) {
-  const { threadId, store, ls, ad, callbacksCore, planSendActions, composerDraftCbs } = args
+  const { threadId, store, ls, ad, td, callbacksCore, planSendActions, composerDraftCbs } = args
   const onPromptChange = usePromptChangeCallback(
     threadId,
     ls,
     store,
     ad,
     args.setPrompt,
-    callbacksCore.onChangeActivePendingUserInputCustomAnswer
+    callbacksCore.onChangeActivePendingUserInputCustomAnswer,
+    td.selectedProvider
   )
   const resolveActiveComposerTrigger = useCallback(() => {
     const snapshot = callbacksCore.readComposerSnapshot()

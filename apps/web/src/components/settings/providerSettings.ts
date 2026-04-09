@@ -27,4 +27,10 @@ export const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     binaryPlaceholder: 'Claude binary path',
     binaryDescription: 'Path to the Claude binary',
   },
+  {
+    provider: 'opencode',
+    title: 'Opencode',
+    binaryPlaceholder: 'opencode',
+    binaryDescription: 'Path to the opencode binary (default: opencode)',
+  },
 ] as const

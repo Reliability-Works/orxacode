@@ -425,3 +425,38 @@ describe('getComposerProviderState Claude context windows', () => {
     expect(state.modelOptionsForDispatch).not.toHaveProperty('fastMode')
   })
 })
+
+describe('getComposerProviderState opencode', () => {
+  it('returns opencode defaults with no model options', () => {
+    const state = getComposerProviderState({
+      provider: 'opencode',
+      model: 'claude-sonnet-4-5',
+      models: [],
+      prompt: '',
+      modelOptions: undefined,
+    })
+
+    expect(state).toEqual({
+      provider: 'opencode',
+      promptEffort: null,
+      modelOptionsForDispatch: undefined,
+    })
+  })
+
+  it('returns opencode state confirming plan mode is not in model options (plan is toggle-driven)', () => {
+    // opencode uses the plan toggle (interactionMode), not a /plan slash command.
+    // Verify that getComposerProviderState for opencode does not produce any
+    // plan-mode model options — plan mode is driven externally by the composer toggle.
+    const state = getComposerProviderState({
+      provider: 'opencode',
+      model: 'claude-sonnet-4-5',
+      models: [],
+      prompt: '',
+      modelOptions: undefined,
+    })
+
+    expect(state.provider).toBe('opencode')
+    // modelOptionsForDispatch is undefined for opencode with no capabilities
+    expect(state.modelOptionsForDispatch).toBeUndefined()
+  })
+})

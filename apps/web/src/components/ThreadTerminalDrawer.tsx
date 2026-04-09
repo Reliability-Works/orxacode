@@ -1,3 +1,5 @@
+'use no memo'
+
 import { FitAddon } from '@xterm/addon-fit'
 import { Plus, SquareSplitHorizontal, Trash2 } from 'lucide-react'
 import { type ThreadId } from '@orxa-code/contracts'

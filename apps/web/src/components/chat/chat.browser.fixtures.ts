@@ -35,6 +35,7 @@ function makeClaudeFixtureModel(input: {
     slug: input.slug,
     name: input.name,
     isCustom: false,
+    supportsReasoning: true,
     capabilities: {
       reasoningEffortLevels,
       supportsFastMode: input.fastMode,
@@ -63,6 +64,7 @@ export const CLAUDE_HAIKU_MODEL: ServerProvider['models'][number] = {
   slug: 'claude-haiku-4-5',
   name: 'Claude Haiku 4.5',
   isCustom: false,
+  supportsReasoning: false,
   capabilities: {
     reasoningEffortLevels: [],
     supportsFastMode: false,
@@ -76,12 +78,45 @@ export const CODEX_GPT54_MODEL: ServerProvider['models'][number] = {
   slug: 'gpt-5.4',
   name: 'GPT-5.4',
   isCustom: false,
+  supportsReasoning: true,
   capabilities: {
     reasoningEffortLevels: [
       { value: 'xhigh', label: 'Extra High' },
       { value: 'high', label: 'High', isDefault: true },
     ],
     supportsFastMode: true,
+    supportsThinkingToggle: false,
+    contextWindowOptions: [],
+    promptInjectedEffortLevels: [],
+  },
+}
+
+export const OPENCODE_SONNET_MODEL: ServerProvider['models'][number] = {
+  slug: 'anthropic/claude-sonnet-4-5',
+  name: 'Claude Sonnet 4.5 (opencode)',
+  isCustom: false,
+  supportsReasoning: true,
+  capabilities: {
+    reasoningEffortLevels: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High', isDefault: true },
+    ],
+    supportsFastMode: false,
+    supportsThinkingToggle: false,
+    contextWindowOptions: [],
+    promptInjectedEffortLevels: [],
+  },
+}
+
+export const OPENCODE_HAIKU_MODEL: ServerProvider['models'][number] = {
+  slug: 'anthropic/claude-haiku-4-5',
+  name: 'Claude Haiku 4.5 (opencode)',
+  isCustom: false,
+  supportsReasoning: false,
+  capabilities: {
+    reasoningEffortLevels: [],
+    supportsFastMode: false,
     supportsThinkingToggle: false,
     contextWindowOptions: [],
     promptInjectedEffortLevels: [],

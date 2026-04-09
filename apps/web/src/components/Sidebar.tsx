@@ -13,6 +13,7 @@
  * - `SidebarBody.tsx`                        — presentational return surface
  */
 
+import { useState } from 'react'
 import {
   type SidebarProjectSortOrder,
   type SidebarThreadSortOrder,
@@ -20,6 +21,7 @@ import {
 import { useSidebarStoreBindings } from './sidebar/useSidebarStoreBindings'
 import { useSidebarWiring } from './sidebar/useSidebarWiring'
 import { SidebarBody } from './SidebarBody'
+import { NewSessionModal } from './session'
 
 // -- Re-exports for external consumers --
 
@@ -37,60 +39,71 @@ export type FullSidebarProjectSnapshot = import('../types').Project & {
 // ---------------------------------------------------------------------------
 
 export default function Sidebar() {
+  const [modalOpen, setModalOpen] = useState(false)
   const s = useSidebarStoreBindings()
-  const w = useSidebarWiring(s)
+  const sWithModal: typeof s = {
+    ...s,
+    handleNewThread: () => {
+      setModalOpen(true)
+      return Promise.resolve()
+    },
+  }
+  const w = useSidebarWiring(sWithModal)
 
   return (
-    <SidebarBody
-      isOnSettings={s.pathname.startsWith('/settings')}
-      pathname={s.pathname}
-      shouldShowProjectPathEntry={
-        w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately
-      }
-      showArm64IntelBuildWarning={w.desktopUpdate.showArm64IntelBuildWarning}
-      arm64IntelBuildWarningDescription={w.desktopUpdate.arm64IntelBuildWarningDescription}
-      desktopUpdateButtonAction={w.desktopUpdate.desktopUpdateButtonAction}
-      desktopUpdateButtonDisabled={w.desktopUpdate.desktopUpdateButtonDisabled}
-      onDesktopUpdateButtonClick={w.desktopUpdate.handleDesktopUpdateButtonClick}
-      projects={s.projects}
-      renderedProjects={w.renderedProjects}
-      isManualProjectSorting={w.isManualProjectSorting}
-      appSettings={{
-        sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
-        sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
-      }}
-      onUpdateProjectSortOrder={(sortOrder: string) => {
-        s.updateSettings({ sidebarProjectSortOrder: sortOrder as SidebarProjectSortOrder })
-      }}
-      onUpdateThreadSortOrder={(sortOrder: string) => {
-        s.updateSettings({ sidebarThreadSortOrder: sortOrder as SidebarThreadSortOrder })
-      }}
-      newCwd={w.projectActions.newCwd}
-      isPickingFolder={w.projectActions.isPickingFolder}
-      isAddingProject={w.projectActions.isAddingProject}
-      addProjectError={w.projectActions.addProjectError}
-      addProjectInputRef={w.projectActions.addProjectInputRef}
-      canAddProject={w.projectActions.canAddProject}
-      onNewCwdChange={w.projectActions.setNewCwd}
-      onAddProject={w.projectActions.handleAddProject}
-      onStartAddProject={w.projectActions.handleStartAddProject}
-      onPickFolder={w.projectActions.handlePickFolder}
-      onAddProjectKeyDown={(e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') w.projectActions.handleAddProject()
-        if (e.key === 'Escape') {
-          w.projectActions.setAddingProject(false)
-          w.projectActions.setAddProjectError(null)
+    <>
+      {modalOpen ? <NewSessionModal open onClose={() => setModalOpen(false)} /> : null}
+      <SidebarBody
+        isOnSettings={s.pathname.startsWith('/settings')}
+        pathname={s.pathname}
+        shouldShowProjectPathEntry={
+          w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately
         }
-      }}
-      onNavigateToSettings={() => void s.navigate({ to: '/settings' })}
-      getProjectItemProps={w.getProjectItemProps}
-      projectDnDSensors={w.projectActions.projectDnDSensors}
-      projectCollisionDetection={w.projectActions.projectCollisionDetection}
-      onProjectDragStart={w.projectActions.handleProjectDragStart}
-      onProjectDragEnd={w.projectActions.handleProjectDragEnd}
-      onProjectDragCancel={w.projectActions.handleProjectDragCancel}
-      attachProjectListAutoAnimateRef={w.projectActions.attachProjectListAutoAnimateRef}
-    />
+        showArm64IntelBuildWarning={w.desktopUpdate.showArm64IntelBuildWarning}
+        arm64IntelBuildWarningDescription={w.desktopUpdate.arm64IntelBuildWarningDescription}
+        desktopUpdateButtonAction={w.desktopUpdate.desktopUpdateButtonAction}
+        desktopUpdateButtonDisabled={w.desktopUpdate.desktopUpdateButtonDisabled}
+        onDesktopUpdateButtonClick={w.desktopUpdate.handleDesktopUpdateButtonClick}
+        projects={s.projects}
+        renderedProjects={w.renderedProjects}
+        isManualProjectSorting={w.isManualProjectSorting}
+        appSettings={{
+          sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
+          sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
+        }}
+        onUpdateProjectSortOrder={(sortOrder: string) => {
+          s.updateSettings({ sidebarProjectSortOrder: sortOrder as SidebarProjectSortOrder })
+        }}
+        onUpdateThreadSortOrder={(sortOrder: string) => {
+          s.updateSettings({ sidebarThreadSortOrder: sortOrder as SidebarThreadSortOrder })
+        }}
+        newCwd={w.projectActions.newCwd}
+        isPickingFolder={w.projectActions.isPickingFolder}
+        isAddingProject={w.projectActions.isAddingProject}
+        addProjectError={w.projectActions.addProjectError}
+        addProjectInputRef={w.projectActions.addProjectInputRef}
+        canAddProject={w.projectActions.canAddProject}
+        onNewCwdChange={w.projectActions.setNewCwd}
+        onAddProject={w.projectActions.handleAddProject}
+        onStartAddProject={w.projectActions.handleStartAddProject}
+        onPickFolder={w.projectActions.handlePickFolder}
+        onAddProjectKeyDown={(e: React.KeyboardEvent) => {
+          if (e.key === 'Enter') w.projectActions.handleAddProject()
+          if (e.key === 'Escape') {
+            w.projectActions.setAddingProject(false)
+            w.projectActions.setAddProjectError(null)
+          }
+        }}
+        onNavigateToSettings={() => void s.navigate({ to: '/settings' })}
+        getProjectItemProps={w.getProjectItemProps}
+        projectDnDSensors={w.projectActions.projectDnDSensors}
+        projectCollisionDetection={w.projectActions.projectCollisionDetection}
+        onProjectDragStart={w.projectActions.handleProjectDragStart}
+        onProjectDragEnd={w.projectActions.handleProjectDragEnd}
+        onProjectDragCancel={w.projectActions.handleProjectDragCancel}
+        attachProjectListAutoAnimateRef={w.projectActions.attachProjectListAutoAnimateRef}
+      />
+    </>
   )
 }
 

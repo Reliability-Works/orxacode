@@ -100,10 +100,15 @@ export function parseGenericCliVersion(output: string): string | null {
   return match?.[1] ?? null
 }
 
+export interface ProviderModelsCustomDefaults {
+  readonly supportsReasoning?: boolean
+}
+
 export function providerModelsFromSettings(
   builtInModels: ReadonlyArray<ServerProviderModel>,
   provider: ServerProvider['provider'],
-  customModels: ReadonlyArray<string>
+  customModels: ReadonlyArray<string>,
+  customDefaults?: ProviderModelsCustomDefaults
 ): ReadonlyArray<ServerProviderModel> {
   const resolvedBuiltInModels = [...builtInModels]
   const seen = new Set(resolvedBuiltInModels.map(model => model.slug))
@@ -120,6 +125,9 @@ export function providerModelsFromSettings(
       name: normalized,
       isCustom: true,
       capabilities: null,
+      ...(customDefaults?.supportsReasoning !== undefined
+        ? { supportsReasoning: customDefaults.supportsReasoning }
+        : {}),
     })
   }
 

@@ -23,6 +23,28 @@ import {
   RuntimeMode,
 } from './orchestration'
 
+export const OpencodeAgentSource = Schema.Literals(['config', 'data'])
+export type OpencodeAgentSource = typeof OpencodeAgentSource.Type
+
+export const OpencodeAgent = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  description: Schema.optional(Schema.String),
+  mode: Schema.Literal('primary'),
+  source: OpencodeAgentSource,
+})
+export type OpencodeAgent = typeof OpencodeAgent.Type
+
+export const ProviderListAgentsInput = Schema.Struct({
+  provider: ProviderKind,
+})
+export type ProviderListAgentsInput = typeof ProviderListAgentsInput.Type
+
+export const ProviderListAgentsResult = Schema.Struct({
+  agents: Schema.Array(OpencodeAgent),
+})
+export type ProviderListAgentsResult = typeof ProviderListAgentsResult.Type
+
 const ProviderSessionStatus = Schema.Literals(['connecting', 'ready', 'running', 'error', 'closed'])
 
 export const ProviderSession = Schema.Struct({

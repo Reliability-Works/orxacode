@@ -5,6 +5,7 @@
  * within the max-lines-per-function budget while preserving hook call order.
  */
 
+import * as Schema from 'effect/Schema'
 import { useState } from 'react'
 import type { ThreadId } from '@orxa-code/contracts'
 import type { ExpandedImagePreview } from './ExpandedImagePreview'
@@ -28,6 +29,12 @@ interface PendingPullRequestSetupRequest {
   scriptId: string
 }
 
+const CHAT_GIT_SIDEBAR_OPEN_KEY = 'orxa:chat-git-sidebar-open'
+
+function useGitSidebarOpenState() {
+  return useLocalStorage(CHAT_GIT_SIDEBAR_OPEN_KEY, false, Schema.Boolean)
+}
+
 export function useChatViewLocalState(prompt: string) {
   const refs = useChatViewLocalRefs(prompt)
   const pending = useChatViewPendingInputState()
@@ -40,6 +47,7 @@ export function useChatViewLocalState(prompt: string) {
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false)
+  const [gitSidebarOpen, setGitSidebarOpen] = useGitSidebarOpenState()
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
@@ -79,6 +87,8 @@ export function useChatViewLocalState(prompt: string) {
     setExpandedWorkGroups,
     planSidebarOpen,
     setPlanSidebarOpen,
+    gitSidebarOpen,
+    setGitSidebarOpen,
     nowTick,
     setNowTick,
     terminalFocusRequestId,

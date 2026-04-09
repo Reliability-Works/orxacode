@@ -23,7 +23,7 @@ function getSystemDark(): boolean {
 function getStored(): Theme {
   const raw = localStorage.getItem(STORAGE_KEY)
   if (raw === 'light' || raw === 'dark' || raw === 'system') return raw
-  return 'system'
+  return 'dark'
 }
 
 function applyTheme(theme: Theme, suppressTransitions = false) {

@@ -12,8 +12,16 @@ import type { ChatAttachment, ModelSelection } from '@orxa-code/contracts'
 
 import type { TextGenerationError } from '@orxa-code/contracts'
 
-/** Providers that support git text generation (commit messages, PR content, branch names). */
-export type TextGenerationProvider = 'codex' | 'claudeAgent'
+/**
+ * Providers that may appear in `modelSelection.provider` when requesting text
+ * generation (commit messages, PR content, branch names, thread titles).
+ *
+ * Note: `'opencode'` is accepted for shape compatibility with the widened
+ * `ProviderKind` union but the router currently falls back to the Codex
+ * backend for opencode selections — there is no dedicated Opencode git
+ * text-generation implementation yet.
+ */
+export type TextGenerationProvider = 'codex' | 'claudeAgent' | 'opencode'
 
 export interface CommitMessageGenerationInput {
   cwd: string

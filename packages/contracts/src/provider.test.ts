@@ -70,6 +70,24 @@ describe('ProviderSessionStartInput', () => {
   })
 })
 
+describe('ProviderSessionStartInput opencode', () => {
+  it('accepts opencode provider session start payloads', () => {
+    const parsed = decodeProviderSessionStartInput({
+      threadId: 'thread-1',
+      provider: 'opencode',
+      cwd: '/tmp/workspace',
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+      },
+      runtimeMode: 'full-access',
+    })
+    expect(parsed.provider).toBe('opencode')
+    expect(parsed.modelSelection?.provider).toBe('opencode')
+    expect(parsed.runtimeMode).toBe('full-access')
+  })
+})
+
 describe('ProviderSendTurnInput', () => {
   it('accepts codex modelSelection', () => {
     const parsed = decodeProviderSendTurnInput({
@@ -91,6 +109,28 @@ describe('ProviderSendTurnInput', () => {
     }
     expect(parsed.modelSelection.options?.reasoningEffort).toBe('xhigh')
     expect(parsed.modelSelection.options?.fastMode).toBe(true)
+  })
+
+  it('accepts opencode modelSelection with reasoning effort', () => {
+    const parsed = decodeProviderSendTurnInput({
+      threadId: 'thread-1',
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+        options: {
+          reasoningEffort: 'high',
+          fastMode: false,
+        },
+      },
+    })
+
+    expect(parsed.modelSelection?.provider).toBe('opencode')
+    if (parsed.modelSelection?.provider !== 'opencode') {
+      throw new Error('Expected opencode modelSelection')
+    }
+    expect(parsed.modelSelection.model).toBe('anthropic/claude-sonnet-4-5')
+    expect(parsed.modelSelection.options?.reasoningEffort).toBe('high')
+    expect(parsed.modelSelection.options?.fastMode).toBe(false)
   })
 
   it('accepts claude modelSelection including ultrathink', () => {

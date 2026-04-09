@@ -1,10 +1,10 @@
 import {
-  type ProviderKind,
+  ProviderKind,
   type ProviderSessionRuntimeStatus,
   type RuntimeMode,
   type ThreadId,
 } from '@orxa-code/contracts'
-import { Effect, Layer, Option } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 
 import {
   type ProviderSessionRuntime,
@@ -26,18 +26,20 @@ function toPersistenceError(operation: string) {
     })
 }
 
+const decodeProviderKindSchema = Schema.decodeUnknownEffect(ProviderKind)
+
 function decodeProviderKind(
   providerName: string,
   operation: string
 ): Effect.Effect<ProviderKind, ProviderSessionDirectoryPersistenceError> {
-  if (providerName === 'codex' || providerName === 'claudeAgent') {
-    return Effect.succeed(providerName)
-  }
-  return Effect.fail(
-    new ProviderSessionDirectoryPersistenceError({
-      operation,
-      detail: `Unknown persisted provider '${providerName}'.`,
-    })
+  return decodeProviderKindSchema(providerName).pipe(
+    Effect.mapError(
+      () =>
+        new ProviderSessionDirectoryPersistenceError({
+          operation,
+          detail: `Unknown persisted provider '${providerName}'.`,
+        })
+    )
   )
 }
 

@@ -13,13 +13,20 @@ import type {
   GitCreateBranchInput,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
+  GitGetDiffInput,
+  GitGetDiffResult,
+  GitGetLogInput,
+  GitGetLogResult,
   GitInitInput,
   GitListBranchesInput,
   GitListBranchesResult,
   GitPullResult,
   GitRemoveWorktreeInput,
+  GitRestorePathInput,
+  GitStagePathInput,
   GitStatusInput,
   GitStatusResult,
+  GitUnstagePathInput,
 } from '@orxa-code/contracts'
 
 import type { GitCommandError } from '@orxa-code/contracts'
@@ -293,6 +300,33 @@ export interface GitCoreShape {
    * List local branch names (short format).
    */
   readonly listLocalBranchNames: (cwd: string) => Effect.Effect<string[], GitCommandError>
+
+  // ── Git sidebar panel methods ───────────────────────────────────────
+
+  /**
+   * Get staged/unstaged/untracked diff for the sidebar diff view.
+   */
+  readonly getDiff: (input: GitGetDiffInput) => Effect.Effect<GitGetDiffResult, GitCommandError>
+
+  /**
+   * Get recent commit log entries.
+   */
+  readonly getLog: (input: GitGetLogInput) => Effect.Effect<GitGetLogResult, GitCommandError>
+
+  /**
+   * Stage a single path.
+   */
+  readonly stagePath: (input: GitStagePathInput) => Effect.Effect<void, GitCommandError>
+
+  /**
+   * Unstage a single path.
+   */
+  readonly unstagePath: (input: GitUnstagePathInput) => Effect.Effect<void, GitCommandError>
+
+  /**
+   * Restore (discard changes to) a path.
+   */
+  readonly restorePath: (input: GitRestorePathInput) => Effect.Effect<void, GitCommandError>
 }
 
 /**

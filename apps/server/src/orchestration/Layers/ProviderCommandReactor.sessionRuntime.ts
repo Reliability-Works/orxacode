@@ -305,8 +305,15 @@ function evaluateSessionRestartDecision(deps: ProviderCommandReactorSessionDeps)
       providerService: deps.providerService,
     })
     const previousModelSelection = deps.threadModelSelections.get(input.threadId)
+    // Providers whose sessions are pinned to a specific model must fully
+    // restart when the composer model selection changes. Claude agents and
+    // opencode servers both fall in this category — codex supports in-session
+    // model switches and is excluded.
+    const providerRequiresRestartOnModelSelectionChange =
+      input.context.currentProvider === 'claudeAgent' ||
+      input.context.currentProvider === 'opencode'
     const shouldRestartForModelSelectionChange =
-      input.context.currentProvider === 'claudeAgent' &&
+      providerRequiresRestartOnModelSelectionChange &&
       input.requestedModelSelection !== undefined &&
       !Equal.equals(previousModelSelection, input.requestedModelSelection)
     return {

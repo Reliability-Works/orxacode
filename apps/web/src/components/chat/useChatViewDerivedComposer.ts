@@ -14,7 +14,8 @@ import type { ComposerCommandItem } from './ComposerCommandMenu'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
-import type { ProjectEntry } from '@orxa-code/contracts'
+import { getSlashCommandsForProvider } from '../../composer-logic'
+import type { ProjectEntry, ProviderKind } from '@orxa-code/contracts'
 
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = []
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120
@@ -23,30 +24,33 @@ type StoreSelectors = ReturnType<typeof useChatViewStoreSelectors>
 type LocalState = ReturnType<typeof useChatViewLocalState>
 type ThreadDerived = ReturnType<typeof useChatViewDerivedThread>
 
-function buildSlashCommandItems() {
-  return [
-    {
-      id: 'slash:model',
-      type: 'slash-command' as const,
-      command: 'model',
-      label: '/model',
-      description: 'Switch response model for this thread',
-    },
-    {
-      id: 'slash:plan',
-      type: 'slash-command' as const,
-      command: 'plan',
-      label: '/plan',
-      description: 'Switch this thread into plan mode',
-    },
-    {
-      id: 'slash:default',
-      type: 'slash-command' as const,
-      command: 'default',
-      label: '/default',
-      description: 'Switch this thread back to normal chat mode',
-    },
-  ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: 'slash-command' }>>
+const ALL_SLASH_COMMAND_ITEMS = [
+  {
+    id: 'slash:model',
+    type: 'slash-command' as const,
+    command: 'model' as const,
+    label: '/model',
+    description: 'Switch response model for this thread',
+  },
+  {
+    id: 'slash:plan',
+    type: 'slash-command' as const,
+    command: 'plan' as const,
+    label: '/plan',
+    description: 'Switch this thread into plan mode',
+  },
+  {
+    id: 'slash:default',
+    type: 'slash-command' as const,
+    command: 'default' as const,
+    label: '/default',
+    description: 'Switch this thread back to normal chat mode',
+  },
+] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: 'slash-command' }>>
+
+function buildSlashCommandItems(provider: ProviderKind) {
+  const allowed = getSlashCommandsForProvider(provider)
+  return ALL_SLASH_COMMAND_ITEMS.filter(item => allowed.includes(item.command))
 }
 
 function useComposerPathAndQueries(
@@ -83,21 +87,57 @@ function useComposerPathAndQueries(
   }
 }
 
+type SearchableModelOption = {
+  provider: ProviderKind
+  providerLabel: string
+  slug: string
+  name: string
+  searchSlug: string
+  searchName: string
+  searchProvider: string
+}
+
+function buildModelCommandItems(
+  options: readonly SearchableModelOption[],
+  query: string
+): ComposerCommandItem[] {
+  return options
+    .filter(({ searchSlug, searchName, searchProvider }) => {
+      const q = query.trim().toLowerCase()
+      return !q || searchSlug.includes(q) || searchName.includes(q) || searchProvider.includes(q)
+    })
+    .map(({ provider, providerLabel, slug, name }) => ({
+      id: `model:${provider}:${slug}`,
+      type: 'model' as const,
+      provider,
+      model: slug,
+      label: name,
+      description: `${providerLabel} · ${slug}`,
+    }))
+}
+
+function buildPathCommandItems(entries: readonly ProjectEntry[]): ComposerCommandItem[] {
+  return entries.map(e => ({
+    id: `path:${e.kind}:${e.path}`,
+    type: 'path' as const,
+    path: e.path,
+    pathKind: e.kind,
+    label: basenameOfPath(e.path),
+    description: e.parentPath ?? '',
+  }))
+}
+
 function useComposerMenuItems(params: {
   composerTrigger: LocalState['composerTrigger']
   workspaceEntries: readonly ProjectEntry[]
   lockedProvider: ThreadDerived['lockedProvider']
+  selectedProvider: ProviderKind
   modelOptionsByProvider: ThreadDerived['modelOptionsByProvider']
   composerHighlightedItemId: string | null
 }) {
-  const {
-    composerTrigger,
-    workspaceEntries,
-    lockedProvider,
-    modelOptionsByProvider,
-    composerHighlightedItemId,
-  } = params
-  const searchableModelOptions = useMemo(
+  const { composerTrigger, workspaceEntries, lockedProvider, selectedProvider } = params
+  const { modelOptionsByProvider, composerHighlightedItemId } = params
+  const searchableModelOptions = useMemo<SearchableModelOption[]>(
     () =>
       AVAILABLE_PROVIDER_OPTIONS.filter(
         o => lockedProvider === null || o.value === lockedProvider
@@ -116,38 +156,17 @@ function useComposerMenuItems(params: {
   )
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return []
-    if (composerTrigger.kind === 'path') {
-      return workspaceEntries.map(e => ({
-        id: `path:${e.kind}:${e.path}`,
-        type: 'path' as const,
-        path: e.path,
-        pathKind: e.kind,
-        label: basenameOfPath(e.path),
-        description: e.parentPath ?? '',
-      }))
-    }
+    if (composerTrigger.kind === 'path') return buildPathCommandItems(workspaceEntries)
     if (composerTrigger.kind === 'slash-command') {
-      const items = buildSlashCommandItems()
+      const items = buildSlashCommandItems(selectedProvider)
       const query = composerTrigger.query.trim().toLowerCase()
       if (!query) return [...items]
       return items.filter(
         item => item.command.includes(query) || item.label.slice(1).includes(query)
       )
     }
-    return searchableModelOptions
-      .filter(({ searchSlug, searchName, searchProvider }) => {
-        const q = composerTrigger.query.trim().toLowerCase()
-        return !q || searchSlug.includes(q) || searchName.includes(q) || searchProvider.includes(q)
-      })
-      .map(({ provider, providerLabel, slug, name }) => ({
-        id: `model:${provider}:${slug}`,
-        type: 'model' as const,
-        provider,
-        model: slug,
-        label: name,
-        description: `${providerLabel} · ${slug}`,
-      }))
-  }, [composerTrigger, searchableModelOptions, workspaceEntries])
+    return buildModelCommandItems(searchableModelOptions, composerTrigger.query)
+  }, [composerTrigger, searchableModelOptions, selectedProvider, workspaceEntries])
   const composerMenuOpen = Boolean(composerTrigger)
   const activeComposerMenuItem = useMemo(
     () =>
@@ -205,7 +224,7 @@ export function useChatViewDerivedComposer(
 ) {
   const { keybindings, terminalState } = store
   const { composerTrigger, composerHighlightedItemId } = ls
-  const { lockedProvider, modelOptionsByProvider } = td
+  const { lockedProvider, selectedProvider, modelOptionsByProvider } = td
   const composerTriggerKind = composerTrigger?.kind ?? null
   const pathTriggerQuery = composerTrigger?.kind === 'path' ? composerTrigger.query : ''
   const pathAndQueries = useComposerPathAndQueries(gitCwd, composerTriggerKind, pathTriggerQuery)
@@ -213,6 +232,7 @@ export function useChatViewDerivedComposer(
     composerTrigger,
     workspaceEntries: pathAndQueries.workspaceEntries,
     lockedProvider,
+    selectedProvider,
     modelOptionsByProvider,
     composerHighlightedItemId,
   })

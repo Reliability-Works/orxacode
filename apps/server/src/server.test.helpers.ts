@@ -21,6 +21,7 @@ import {
   type CheckpointDiffQueryShape,
 } from './checkpointing/Services/CheckpointDiffQuery.ts'
 import { GitCore, type GitCoreShape } from './git/Services/GitCore.ts'
+import { GitHubCli, type GitHubCliShape } from './git/Services/GitHubCli.ts'
 import { GitManager, type GitManagerShape } from './git/Services/GitManager.ts'
 import { Keybindings, type KeybindingsShape } from './keybindings.ts'
 import { Open, type OpenShape } from './open.ts'
@@ -29,9 +30,20 @@ import {
   type OrchestrationEngineShape,
 } from './orchestration/Services/OrchestrationEngine.ts'
 import {
+  DashboardQuery,
+  type DashboardQueryShape,
+} from './orchestration/Services/DashboardQuery.ts'
+import {
+  ProviderUsageQuery,
+  type ProviderUsageQueryShape,
+} from './orchestration/Services/ProviderUsageQuery.ts'
+import { emptyProviderUsageSnapshot } from './orchestration/Layers/ProviderUsageQuery.ts'
+import { SkillsService, type SkillsServiceShape } from './skills/Services/SkillsService.ts'
+import {
   ProjectionSnapshotQuery,
   type ProjectionSnapshotQueryShape,
 } from './orchestration/Services/ProjectionSnapshotQuery.ts'
+import { OpencodeAdapter } from './provider/Services/OpencodeAdapter.ts'
 import {
   ProviderRegistry,
   type ProviderRegistryShape,
@@ -110,10 +122,14 @@ export interface TestServerLayerOverrides {
   readonly serverSettings?: Partial<ServerSettingsShape>
   readonly open?: Partial<OpenShape>
   readonly gitCore?: Partial<GitCoreShape>
+  readonly gitHubCli?: Partial<GitHubCliShape>
   readonly gitManager?: Partial<GitManagerShape>
   readonly terminalManager?: Partial<TerminalManagerShape>
   readonly orchestrationEngine?: Partial<OrchestrationEngineShape>
   readonly projectionSnapshotQuery?: Partial<ProjectionSnapshotQueryShape>
+  readonly dashboardQuery?: Partial<DashboardQueryShape>
+  readonly providerUsageQuery?: Partial<ProviderUsageQueryShape>
+  readonly skillsService?: Partial<SkillsServiceShape>
   readonly checkpointDiffQuery?: Partial<CheckpointDiffQueryShape>
   readonly serverLifecycleEvents?: Partial<ServerLifecycleEventsShape>
   readonly serverRuntimeStartup?: Partial<ServerRuntimeStartupShape>
@@ -145,38 +161,20 @@ const makeServerConfig = (
     } satisfies ServerConfigShape
   })
 
-const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
+const emptyDashboardSnapshot = () => ({
+  updatedAt: new Date(0).toISOString(),
+  projects: 0,
+  threadsTotal: 0,
+  threads7d: 0,
+  threads30d: 0,
+  recentSessions: [],
+  daySeries: [],
+})
+
+// emptyProviderUsageSnapshot imported from ProviderUsageQuery layer
+
+const makeOrchestrationMockLayers = (overrides?: TestServerLayerOverrides) =>
   Layer.mergeAll(
-    Layer.mock(Keybindings)({
-      streamChanges: Stream.empty,
-      ...overrides?.keybindings,
-    }),
-    Layer.mock(ProviderRegistry)({
-      getProviders: Effect.succeed([]),
-      refresh: () => Effect.succeed([]),
-      streamChanges: Stream.empty,
-      ...overrides?.providerRegistry,
-    }),
-    Layer.mock(ServerSettingsService)({
-      start: Effect.void,
-      ready: Effect.void,
-      getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
-      updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
-      streamChanges: Stream.empty,
-      ...overrides?.serverSettings,
-    }),
-    Layer.mock(Open)({
-      ...overrides?.open,
-    }),
-    Layer.mock(GitCore)({
-      ...overrides?.gitCore,
-    }),
-    Layer.mock(GitManager)({
-      ...overrides?.gitManager,
-    }),
-    Layer.mock(TerminalManager)({
-      ...overrides?.terminalManager,
-    }),
     Layer.mock(OrchestrationEngineService)({
       getReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
       readEvents: () => Stream.empty,
@@ -187,6 +185,24 @@ const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
     Layer.mock(ProjectionSnapshotQuery)({
       getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
       ...overrides?.projectionSnapshotQuery,
+    }),
+    Layer.mock(DashboardQuery)({
+      getSnapshot: () => Effect.succeed(emptyDashboardSnapshot()),
+      ...overrides?.dashboardQuery,
+    }),
+    Layer.mock(ProviderUsageQuery)({
+      getSnapshot: ({ provider }) => Effect.succeed(emptyProviderUsageSnapshot(provider)),
+      ...overrides?.providerUsageQuery,
+    }),
+    Layer.mock(SkillsService)({
+      list: () => Effect.succeed({ skills: [], updatedAt: new Date(0).toISOString() }),
+      refresh: () => Effect.succeed({ skills: [], updatedAt: new Date(0).toISOString() }),
+      getRoots: () =>
+        Effect.succeed({
+          roots: { codex: [], claudeAgent: [], opencode: [] },
+        }),
+      setRoots: ({ roots }) => Effect.succeed({ roots }),
+      ...overrides?.skillsService,
     }),
     Layer.mock(CheckpointDiffQuery)({
       getTurnDiff: () =>
@@ -216,7 +232,50 @@ const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
       markHttpListening: Effect.void,
       enqueueCommand: effect => effect,
       ...overrides?.serverRuntimeStartup,
+    }),
+    Layer.mock(OpencodeAdapter)({
+      provider: 'opencode',
+      capabilities: { sessionModelSwitch: 'in-session' },
+      listPrimaryAgents: () => Effect.succeed([]),
     })
+  )
+
+const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
+  Layer.mergeAll(
+    Layer.mock(Keybindings)({
+      streamChanges: Stream.empty,
+      ...overrides?.keybindings,
+    }),
+    Layer.mock(ProviderRegistry)({
+      getProviders: Effect.succeed([]),
+      refresh: () => Effect.succeed([]),
+      streamChanges: Stream.empty,
+      ...overrides?.providerRegistry,
+    }),
+    Layer.mock(ServerSettingsService)({
+      start: Effect.void,
+      ready: Effect.void,
+      getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
+      updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
+      streamChanges: Stream.empty,
+      ...overrides?.serverSettings,
+    }),
+    Layer.mock(Open)({
+      ...overrides?.open,
+    }),
+    Layer.mock(GitCore)({
+      ...overrides?.gitCore,
+    }),
+    Layer.mock(GitHubCli)({
+      ...overrides?.gitHubCli,
+    }),
+    Layer.mock(GitManager)({
+      ...overrides?.gitManager,
+    }),
+    Layer.mock(TerminalManager)({
+      ...overrides?.terminalManager,
+    }),
+    makeOrchestrationMockLayers(overrides)
   )
 
 export const buildAppUnderTest = (options?: {

@@ -56,6 +56,26 @@ export function getProviderModelCapabilities(
   return models.find(candidate => candidate.slug === slug)?.capabilities ?? EMPTY_CAPABILITIES
 }
 
+/**
+ * Whether a model explicitly advertises reasoning-effort support.
+ *
+ * The server populates `supportsReasoning` on every `ServerProviderModel`.
+ * Legacy snapshots that lack the field are treated as `false` so the
+ * composer never shows a reasoning selector for models it cannot confirm.
+ */
+export function modelSupportsReasoning(model: ServerProviderModel | undefined): boolean {
+  return model?.supportsReasoning === true
+}
+
+export function findProviderModel(
+  models: ReadonlyArray<ServerProviderModel>,
+  model: string | null | undefined,
+  provider: ProviderKind
+): ServerProviderModel | undefined {
+  const slug = normalizeModelSlug(model, provider)
+  return models.find(candidate => candidate.slug === slug)
+}
+
 export function getDefaultServerModel(
   providers: ReadonlyArray<ServerProvider>,
   provider: ProviderKind

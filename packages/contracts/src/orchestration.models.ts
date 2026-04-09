@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { ClaudeModelOptions, CodexModelOptions } from './model'
+import { ClaudeModelOptions, CodexModelOptions, OpencodeModelOptions } from './model'
 import {
   CheckpointRef,
   CommandId,
@@ -21,7 +21,7 @@ export const ORCHESTRATION_WS_METHODS = {
   replayEvents: 'orchestration.replayEvents',
 } as const
 
-export const ProviderKind = Schema.Literals(['codex', 'claudeAgent'])
+export const ProviderKind = Schema.Literals(['codex', 'claudeAgent', 'opencode'])
 export type ProviderKind = typeof ProviderKind.Type
 export const ProviderApprovalPolicy = Schema.Literals([
   'untrusted',
@@ -53,7 +53,20 @@ export const ClaudeModelSelection = Schema.Struct({
 })
 export type ClaudeModelSelection = typeof ClaudeModelSelection.Type
 
-export const ModelSelection = Schema.Union([CodexModelSelection, ClaudeModelSelection])
+export const OpencodeModelSelection = Schema.Struct({
+  provider: Schema.Literal('opencode'),
+  model: TrimmedNonEmptyString,
+  options: Schema.optionalKey(OpencodeModelOptions),
+  agentId: Schema.optional(TrimmedNonEmptyString),
+  variant: Schema.optional(TrimmedNonEmptyString),
+})
+export type OpencodeModelSelection = typeof OpencodeModelSelection.Type
+
+export const ModelSelection = Schema.Union([
+  CodexModelSelection,
+  ClaudeModelSelection,
+  OpencodeModelSelection,
+])
 export type ModelSelection = typeof ModelSelection.Type
 
 export const RuntimeMode = Schema.Literals(['approval-required', 'full-access'])

@@ -49,15 +49,13 @@ function isAvailableProviderOption(option: (typeof PROVIDER_OPTIONS)[number]): o
 const PROVIDER_ICON_BY_PROVIDER: Record<ProviderPickerKind, Icon> = {
   codex: OpenAI,
   claudeAgent: ClaudeAI,
+  opencode: OpenCodeIcon,
   cursor: CursorIcon,
 }
 
 export const AVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(isAvailableProviderOption)
 const UNAVAILABLE_PROVIDER_OPTIONS = PROVIDER_OPTIONS.filter(option => !option.available)
-const COMING_SOON_PROVIDER_OPTIONS = [
-  { id: 'opencode', label: 'OpenCode', icon: OpenCodeIcon },
-  { id: 'gemini', label: 'Gemini', icon: Gemini },
-] as const
+const COMING_SOON_PROVIDER_OPTIONS = [{ id: 'gemini', label: 'Gemini', icon: Gemini }] as const
 
 function providerIconClassName(
   provider: ProviderKind | ProviderPickerKind,
@@ -128,6 +126,16 @@ function ProviderModelsRadioGroup(props: {
   onValueChange: (provider: ProviderKind, value: string) => void
   onClose: () => void
 }) {
+  if (props.provider === 'opencode') {
+    return (
+      <OpencodeGroupedRadioGroups
+        value={props.value}
+        modelOptions={props.modelOptions}
+        onValueChange={props.onValueChange}
+        onClose={props.onClose}
+      />
+    )
+  }
   return (
     <MenuGroup>
       <MenuRadioGroup
@@ -145,6 +153,113 @@ function ProviderModelsRadioGroup(props: {
         ))}
       </MenuRadioGroup>
     </MenuGroup>
+  )
+}
+
+const OPENCODE_SUBPROVIDER_LABELS: Record<string, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  google: 'Google',
+  deepseek: 'DeepSeek',
+  moonshotai: 'Moonshot AI',
+  zai: 'Z.ai',
+  'zai-coding-plan': 'Z.ai Coding Plan',
+  xai: 'xAI',
+  mistral: 'Mistral',
+  groq: 'Groq',
+  meta: 'Meta',
+  minimax: 'MiniMax',
+}
+
+function stripOpencodeSubproviderPrefix(label: string): string {
+  const slashIdx = label.indexOf('/')
+  if (slashIdx <= 0) return label
+  return label.slice(slashIdx + 1)
+}
+
+function formatOpencodeSubprovider(id: string): string {
+  const known = OPENCODE_SUBPROVIDER_LABELS[id]
+  if (known) return known
+  return id.length > 0 ? id[0]!.toUpperCase() + id.slice(1) : id
+}
+
+interface OpencodeSubproviderGroup {
+  readonly providerId: string
+  readonly label: string
+  readonly options: ReadonlyArray<ProviderModelOption>
+}
+
+function groupOpencodeModelsBySubprovider(
+  modelOptions: ReadonlyArray<ProviderModelOption>
+): ReadonlyArray<OpencodeSubproviderGroup> {
+  const byProvider = new Map<string, Array<ProviderModelOption>>()
+  for (const option of modelOptions) {
+    const slashIdx = option.slug.indexOf('/')
+    const providerId = slashIdx > 0 ? option.slug.slice(0, slashIdx) : 'other'
+    const bucket = byProvider.get(providerId)
+    if (bucket) bucket.push(option)
+    else byProvider.set(providerId, [option])
+  }
+  return [...byProvider.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([providerId, options]) => ({
+      providerId,
+      label: formatOpencodeSubprovider(providerId),
+      options,
+    }))
+}
+
+function OpencodeGroupedRadioGroups(props: {
+  value: string
+  modelOptions: ReadonlyArray<ProviderModelOption>
+  onValueChange: (provider: ProviderKind, value: string) => void
+  onClose: () => void
+}) {
+  const groups = groupOpencodeModelsBySubprovider(props.modelOptions)
+  return (
+    <>
+      {groups.map((group, index) => (
+        <OpencodeSubproviderSection
+          key={group.providerId}
+          group={group}
+          value={props.value}
+          showDivider={index > 0}
+          onValueChange={props.onValueChange}
+          onClose={props.onClose}
+        />
+      ))}
+    </>
+  )
+}
+
+function OpencodeSubproviderSection(props: {
+  group: OpencodeSubproviderGroup
+  value: string
+  showDivider: boolean
+  onValueChange: (provider: ProviderKind, value: string) => void
+  onClose: () => void
+}) {
+  const { group, value, showDivider, onValueChange, onClose } = props
+  return (
+    <>
+      {showDivider ? <MenuDivider /> : null}
+      <MenuGroup>
+        <div className="px-2 pt-1.5 pb-1 font-medium text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
+          {group.label}
+        </div>
+        <MenuRadioGroup value={value} onValueChange={next => onValueChange('opencode', next)}>
+          {group.options.map(modelOption => (
+            <MenuRadioItem
+              key={`opencode:${modelOption.slug}`}
+              value={modelOption.slug}
+              onClick={onClose}
+            >
+              {modelOption.name}
+            </MenuRadioItem>
+          ))}
+        </MenuRadioGroup>
+      </MenuGroup>
+    </>
   )
 }
 
@@ -283,8 +398,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const activeProvider = props.lockedProvider ?? props.provider
   const selectedProviderOptions = props.modelOptionsByProvider[activeProvider]
-  const selectedModelLabel =
+  const rawSelectedLabel =
     selectedProviderOptions.find(option => option.slug === props.model)?.name ?? props.model
+  // Opencode model names may arrive in `{provider}/{model}` form — the
+  // closed trigger should only show the model, since the provider section
+  // is already visible inside the open menu.
+  const selectedModelLabel =
+    activeProvider === 'opencode'
+      ? stripOpencodeSubproviderPrefix(rawSelectedLabel)
+      : rawSelectedLabel
   const handleModelChange = (provider: ProviderKind, value: string) => {
     if (props.disabled) return
     if (!value) return

@@ -331,3 +331,135 @@ export const GitActionProgressEvent = Schema.Union([
   GitActionFailedEvent,
 ])
 export type GitActionProgressEvent = typeof GitActionProgressEvent.Type
+
+// ---------------------------------------------------------------------------
+// Diff / log / panel contracts (used by the right-side git sidebar)
+// ---------------------------------------------------------------------------
+
+/** One-character status code copied from `git status --porcelain`. */
+export const GitDiffFileStatus = Schema.Literals(['M', 'A', 'D', 'R', 'C', 'U', '?'])
+export type GitDiffFileStatus = typeof GitDiffFileStatus.Type
+
+/** Where a file is in the diff surface. */
+export const GitDiffSectionKind = Schema.Literals(['staged', 'unstaged', 'untracked'])
+export type GitDiffSectionKind = typeof GitDiffSectionKind.Type
+
+/** A single rendered line in a unified/split diff. */
+export const GitDiffLine = Schema.Struct({
+  type: Schema.Literals(['context', 'add', 'del']),
+  content: Schema.String,
+  oldLineNumber: Schema.optional(NonNegativeInt),
+  newLineNumber: Schema.optional(NonNegativeInt),
+})
+export type GitDiffLine = typeof GitDiffLine.Type
+
+/** A hunk inside a file's diff. */
+export const GitDiffHunk = Schema.Struct({
+  oldStart: NonNegativeInt,
+  oldLines: NonNegativeInt,
+  newStart: NonNegativeInt,
+  newLines: NonNegativeInt,
+  header: Schema.String,
+  lines: Schema.Array(GitDiffLine),
+})
+export type GitDiffHunk = typeof GitDiffHunk.Type
+
+/**
+ * A single changed file. `patch` preserves the raw unified diff for clients
+ * that render via `@pierre/diffs` without re-parsing; `hunks` is the parsed
+ * form for tree-building and inline list views.
+ */
+export const GitDiffFile = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  oldPath: Schema.optional(TrimmedNonEmptyStringSchema),
+  status: GitDiffFileStatus,
+  section: GitDiffSectionKind,
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+  isBinary: Schema.Boolean,
+  patch: Schema.String,
+  hunks: Schema.Array(GitDiffHunk),
+})
+export type GitDiffFile = typeof GitDiffFile.Type
+
+export const GitDiffResult = Schema.Struct({
+  staged: Schema.Array(GitDiffFile),
+  unstaged: Schema.Array(GitDiffFile),
+  untracked: Schema.Array(GitDiffFile),
+  totalAdditions: NonNegativeInt,
+  totalDeletions: NonNegativeInt,
+})
+export type GitDiffResult = typeof GitDiffResult.Type
+
+export const GitLogEntry = Schema.Struct({
+  hash: TrimmedNonEmptyStringSchema,
+  shortHash: TrimmedNonEmptyStringSchema,
+  author: TrimmedNonEmptyStringSchema,
+  email: Schema.String,
+  date: Schema.String,
+  subject: TrimmedNonEmptyStringSchema,
+  body: Schema.String,
+})
+export type GitLogEntry = typeof GitLogEntry.Type
+
+// RPC inputs for the panel surface
+
+export const GitGetDiffInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+})
+export type GitGetDiffInput = typeof GitGetDiffInput.Type
+
+export const GitGetDiffResult = GitDiffResult
+export type GitGetDiffResult = typeof GitGetDiffResult.Type
+
+export const GitGetLogInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  limit: Schema.optional(PositiveInt),
+})
+export type GitGetLogInput = typeof GitGetLogInput.Type
+
+export const GitGetLogResult = Schema.Struct({
+  entries: Schema.Array(GitLogEntry),
+})
+export type GitGetLogResult = typeof GitGetLogResult.Type
+
+export const GitGetIssuesInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  limit: Schema.optional(PositiveInt),
+})
+export type GitGetIssuesInput = typeof GitGetIssuesInput.Type
+
+export const GitGetIssuesResult = Schema.Struct({
+  text: Schema.String,
+})
+export type GitGetIssuesResult = typeof GitGetIssuesResult.Type
+
+export const GitGetPullRequestsInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  limit: Schema.optional(PositiveInt),
+})
+export type GitGetPullRequestsInput = typeof GitGetPullRequestsInput.Type
+
+export const GitGetPullRequestsResult = Schema.Struct({
+  text: Schema.String,
+})
+export type GitGetPullRequestsResult = typeof GitGetPullRequestsResult.Type
+
+export const GitStagePathInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+})
+export type GitStagePathInput = typeof GitStagePathInput.Type
+
+export const GitUnstagePathInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+})
+export type GitUnstagePathInput = typeof GitUnstagePathInput.Type
+
+export const GitRestorePathInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  path: TrimmedNonEmptyStringSchema,
+  staged: Schema.optional(Schema.Boolean),
+})
+export type GitRestorePathInput = typeof GitRestorePathInput.Type

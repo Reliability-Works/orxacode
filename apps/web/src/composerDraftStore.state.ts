@@ -105,6 +105,8 @@ export interface ComposerDraftStoreState {
       persistSticky?: boolean
     }
   ) => void
+  setOpencodeAgentId: (threadId: ThreadId, agentId: string | null) => void
+  setOpencodeVariant: (threadId: ThreadId, variant: string | null) => void
   setRuntimeMode: (threadId: ThreadId, runtimeMode: RuntimeMode | null | undefined) => void
   setInteractionMode: (
     threadId: ThreadId,

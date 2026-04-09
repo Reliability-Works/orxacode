@@ -11,7 +11,6 @@ import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
 import {
   DEFAULT_TIMEOUT_MS,
-  parseGenericCliVersion,
   providerModelsFromSettings,
   spawnAndCollect,
   type CommandResult,
@@ -32,12 +31,11 @@ import {
   buildAuthProbeTimeoutProvider,
   buildDisabledProvider,
   buildProviderReadyProvider,
-  buildVersionCommandFailureProvider,
-  buildVersionProbeFailureProvider,
-  buildVersionTimeoutProvider,
   parseProviderAuthStatusFromOutput,
+  runProviderVersionProbe,
   type ProviderStatusBuilder,
   type ProviderStatusContext,
+  type VersionProbeOutcome,
 } from './Provider.shared'
 
 const PROVIDER = 'claudeAgent' as const
@@ -67,52 +65,60 @@ const CLAUDE_STATUS_BUILDER: ProviderStatusBuilder = {
   authProbeTimeoutMessage:
     'Could not verify Claude authentication status. Timed out while running command.',
 }
+const CLAUDE_BASE_EFFORT_LEVELS: ModelCapabilities['reasoningEffortLevels'] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High', isDefault: true },
+]
+
+const CLAUDE_CONTEXT_WINDOW_OPTIONS: ModelCapabilities['contextWindowOptions'] = [
+  { value: '200k', label: '200k', isDefault: true },
+  { value: '1m', label: '1M' },
+]
+
+const CLAUDE_PROMPT_INJECTED_EFFORT_LEVELS: ModelCapabilities['promptInjectedEffortLevels'] = [
+  'ultrathink',
+]
+
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
     slug: 'claude-opus-4-6',
     name: 'Claude Opus 4.6',
     isCustom: false,
+    supportsReasoning: false,
     capabilities: {
       reasoningEffortLevels: [
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High', isDefault: true },
+        ...CLAUDE_BASE_EFFORT_LEVELS,
         { value: 'max', label: 'Max' },
         { value: 'ultrathink', label: 'Ultrathink' },
       ],
       supportsFastMode: true,
       supportsThinkingToggle: false,
-      contextWindowOptions: [
-        { value: '200k', label: '200k', isDefault: true },
-        { value: '1m', label: '1M' },
-      ],
-      promptInjectedEffortLevels: ['ultrathink'],
+      contextWindowOptions: CLAUDE_CONTEXT_WINDOW_OPTIONS,
+      promptInjectedEffortLevels: CLAUDE_PROMPT_INJECTED_EFFORT_LEVELS,
     } satisfies ModelCapabilities,
   },
   {
     slug: 'claude-sonnet-4-6',
     name: 'Claude Sonnet 4.6',
     isCustom: false,
+    supportsReasoning: false,
     capabilities: {
       reasoningEffortLevels: [
-        { value: 'low', label: 'Low' },
-        { value: 'medium', label: 'Medium' },
-        { value: 'high', label: 'High', isDefault: true },
+        ...CLAUDE_BASE_EFFORT_LEVELS,
         { value: 'ultrathink', label: 'Ultrathink' },
       ],
       supportsFastMode: false,
       supportsThinkingToggle: false,
-      contextWindowOptions: [
-        { value: '200k', label: '200k', isDefault: true },
-        { value: '1m', label: '1M' },
-      ],
-      promptInjectedEffortLevels: ['ultrathink'],
+      contextWindowOptions: CLAUDE_CONTEXT_WINDOW_OPTIONS,
+      promptInjectedEffortLevels: CLAUDE_PROMPT_INJECTED_EFFORT_LEVELS,
     } satisfies ModelCapabilities,
   },
   {
     slug: 'claude-haiku-4-5',
     name: 'Claude Haiku 4.5',
     isCustom: false,
+    supportsReasoning: false,
     capabilities: {
       reasoningEffortLevels: [],
       supportsFastMode: false,
@@ -178,56 +184,19 @@ function buildClaudeReadyProvider(input: {
   })
 }
 
-type VersionProbeResult =
-  | { readonly kind: 'provider'; readonly provider: ServerProvider }
-  | { readonly kind: 'ok'; readonly parsedVersion: string | null }
-
-const runClaudeVersionProbe = Effect.fn('runClaudeVersionProbe')(function* (
+const runClaudeVersionProbe = (
   context: ClaudeProviderStatusContext
-): Effect.fn.Return<
-  VersionProbeResult,
-  ServerSettingsError,
+): Effect.Effect<
+  VersionProbeOutcome,
+  never,
   ChildProcessSpawner.ChildProcessSpawner | ServerSettingsService
-> {
-  const versionProbe = yield* runClaudeCommand(['--version']).pipe(
-    Effect.timeoutOption(DEFAULT_TIMEOUT_MS),
-    Effect.result
-  )
-
-  if (Result.isFailure(versionProbe)) {
-    return {
-      kind: 'provider',
-      provider: buildVersionProbeFailureProvider(
-        CLAUDE_STATUS_BUILDER,
-        context,
-        versionProbe.failure
-      ),
-    }
-  }
-
-  if (Option.isNone(versionProbe.success)) {
-    return {
-      kind: 'provider',
-      provider: buildVersionTimeoutProvider(CLAUDE_STATUS_BUILDER, context),
-    }
-  }
-
-  const version = versionProbe.success.value
-  const parsedVersion = parseGenericCliVersion(`${version.stdout}\n${version.stderr}`)
-  if (version.code !== 0) {
-    return {
-      kind: 'provider',
-      provider: buildVersionCommandFailureProvider(
-        CLAUDE_STATUS_BUILDER,
-        context,
-        parsedVersion,
-        version
-      ),
-    }
-  }
-
-  return { kind: 'ok', parsedVersion }
-})
+> =>
+  runProviderVersionProbe({
+    builder: CLAUDE_STATUS_BUILDER,
+    context,
+    runVersionCommand: runClaudeCommand(['--version']),
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+  })
 
 type ClaudeCommandEffect = ReturnType<typeof runClaudeCommand>
 type ClaudeCommandError =
@@ -316,7 +285,9 @@ export const checkClaudeProviderStatus = Effect.fn('checkClaudeProviderStatus')(
   const context: ClaudeProviderStatusContext = {
     checkedAt: new Date().toISOString(),
     enabled: claudeSettings.enabled,
-    models: providerModelsFromSettings(BUILT_IN_MODELS, PROVIDER, claudeSettings.customModels),
+    models: providerModelsFromSettings(BUILT_IN_MODELS, PROVIDER, claudeSettings.customModels, {
+      supportsReasoning: false,
+    }),
   }
 
   if (!claudeSettings.enabled) {

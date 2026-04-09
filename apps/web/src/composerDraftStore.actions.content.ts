@@ -116,7 +116,7 @@ export function actionSetModelSelection(
           provider: normalized.provider,
           model: normalized.model,
           ...(current?.options ? { options: current.options } : {}),
-        }
+        } as ModelSelection
       }
     }
     const nextActiveProvider = normalized?.provider ?? base.activeProvider
@@ -146,7 +146,7 @@ export function actionSetModelOptions(
     if (!existing && normalizedOpts === null) return state
     const base = existing ?? createEmptyThreadDraft()
     const nextMap = { ...base.modelSelectionByProvider }
-    for (const provider of ['codex', 'claudeAgent'] as const) {
+    for (const provider of ['codex', 'claudeAgent', 'opencode'] as const) {
       if (!normalizedOpts || !(provider in normalizedOpts)) continue
       const opts = normalizedOpts[provider]
       const current = nextMap[provider]
@@ -155,7 +155,7 @@ export function actionSetModelOptions(
           provider,
           model: current?.model ?? DEFAULT_MODEL_BY_PROVIDER[provider],
           options: opts,
-        }
+        } as ModelSelection
       } else if (current?.options) {
         nextMap[provider] = stripModelSelectionOptions(current)
       }
@@ -190,7 +190,7 @@ export function actionSetProviderModelOptions(
         provider: normalizedProvider,
         model: currentForProvider?.model ?? DEFAULT_MODEL_BY_PROVIDER[normalizedProvider],
         options: providerOpts,
-      }
+      } as ModelSelection
     } else if (currentForProvider?.options) {
       nextMap[normalizedProvider] = stripModelSelectionOptions(currentForProvider)
     }
@@ -240,7 +240,7 @@ function buildNextStickyMap(
       ...stickyBase,
       provider: normalizedProvider,
       options: providerOpts,
-    }
+    } as ModelSelection
   } else if (stickyBase.options) {
     nextStickyMap[normalizedProvider] = stripModelSelectionOptions(stickyBase)
   }

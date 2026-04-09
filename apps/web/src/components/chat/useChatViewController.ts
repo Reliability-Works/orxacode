@@ -13,7 +13,7 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from '@orxa-code/contracts'
-import { gitBranchesQueryOptions } from '~/lib/gitReactQuery'
+import { gitBranchesQueryOptions, gitPanelDiffQueryOptions } from '~/lib/gitReactQuery'
 import { projectScriptCwd, projectScriptRuntimeEnv } from '../../projectScripts'
 import { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import { useChatViewLocalState } from './useChatViewLocalState'
@@ -87,8 +87,9 @@ function useChatViewControllerState(threadId: ThreadId) {
     : null
   const cd = useChatViewDerivedComposer(store, ls, td, gitCwd)
   const branchesQuery = useQuery(gitBranchesQueryOptions(gitCwd))
+  const panelDiffQuery = useQuery(gitPanelDiffQueryOptions(cd.isGitRepo ? gitCwd : null))
   const scroll = useChatScrollBehavior(deriveScrollInput(ad, td, p))
-  return { store, ls, td, ad, p, cd, gitCwd, branchesQuery, scroll }
+  return { store, ls, td, ad, p, cd, gitCwd, branchesQuery, panelDiffQuery, scroll }
 }
 
 function useChatViewControllerUtilsAndDispatch(
@@ -172,7 +173,10 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
     const turnKey = p.activePlan?.turnId ?? p.sidebarProposedPlan?.turnId ?? null
     if (turnKey) ls.setPlanSidebarDismissedForTurn(turnKey)
   }, [ls, p.activePlan, p.sidebarProposedPlan])
-  return { threadTerminalRuntimeEnv, closePlanSidebar }
+  const toggleGitSidebar = useCallback(() => {
+    ls.setGitSidebarOpen(v => !v)
+  }, [ls])
+  return { threadTerminalRuntimeEnv, closePlanSidebar, toggleGitSidebar }
 }
 
 function useChatViewControllerActions(
@@ -234,6 +238,7 @@ function useChatViewControllerActions(
     store,
     ls,
     ad,
+    td,
     callbacksCore,
     planSendActions,
     composerDraftCbs,
@@ -249,8 +254,9 @@ export function useChatViewController(threadId: ThreadId) {
   const utils = useChatViewControllerUtilsAndDispatch(threadId, state)
   const actions = useChatViewControllerActions(threadId, state, utils)
   useChatViewControllerEffectsWiring(state, utils.focusComposer, utils.handoffAttachmentPreviews)
-  const { threadTerminalRuntimeEnv, closePlanSidebar } = useThreadTerminalEnvAndCloseSidebar(state)
-  const { store, ls, td, ad, p, cd, gitCwd, branchesQuery, scroll } = state
+  const { threadTerminalRuntimeEnv, closePlanSidebar, toggleGitSidebar } =
+    useThreadTerminalEnvAndCloseSidebar(state)
+  const { store, ls, td, ad, p, cd, gitCwd, branchesQuery, panelDiffQuery, scroll } = state
   return {
     threadId,
     store,
@@ -263,6 +269,7 @@ export function useChatViewController(threadId: ThreadId) {
     ld: utils.ld,
     gitCwd,
     branchesQuery,
+    panelDiffQuery,
     threadTerminalRuntimeEnv,
     setThreadError: utils.setThreadError,
     focusComposer: utils.focusComposer,
@@ -277,5 +284,6 @@ export function useChatViewController(threadId: ThreadId) {
     addComposerImages: actions.addComposerImages,
     ...actions.remainingCbs,
     closePlanSidebar,
+    toggleGitSidebar,
   }
 }

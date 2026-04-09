@@ -92,7 +92,7 @@ export class ServerSettingsService extends ServiceMap.Service<
 const ServerSettingsJson = fromLenientJson(ServerSettings)
 const SETTINGS_CACHE_KEY = 'settings' as const
 
-const PROVIDER_ORDER: readonly ProviderKind[] = ['codex', 'claudeAgent']
+const PROVIDER_ORDER: readonly ProviderKind[] = ['codex', 'claudeAgent', 'opencode']
 type SettingsCache = Cache.Cache<typeof SETTINGS_CACHE_KEY, ServerSettings, ServerSettingsError>
 
 interface ServerSettingsRuntimeDeps {

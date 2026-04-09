@@ -6,10 +6,16 @@
  * + wiring).
  */
 
-import { PlusIcon, SettingsIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  LayoutDashboardIcon,
+  PlusIcon,
+  SettingsIcon,
+  TriangleAlertIcon,
+  ZapIcon,
+} from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
 import { type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import { isElectron } from '../env'
-import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from '../branding'
 import type { Project } from '../types'
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
 import {
@@ -21,11 +27,11 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarSeparator,
-  SidebarTrigger,
 } from './ui/sidebar'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { Tooltip, TooltipPopup, TooltipTrigger } from './ui/tooltip'
+import { cn } from '~/lib/utils'
 import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
 import { ProjectSortMenu } from './sidebar/SidebarHelpers'
 import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
@@ -251,36 +257,6 @@ function SidebarProjectGroup({
 }
 
 // ---------------------------------------------------------------------------
-// SidebarWordmark — brand mark + version tooltip
-// ---------------------------------------------------------------------------
-
-function SidebarWordmark() {
-  return (
-    <div className="flex items-center gap-2">
-      <SidebarTrigger className="shrink-0 md:hidden" />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <div className="flex min-w-0 flex-1 items-center gap-1 ml-1 cursor-pointer">
-              <AppBrandMark />
-              <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
-                {APP_BASE_NAME}
-              </span>
-              <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">
-                {APP_STAGE_LABEL}
-              </span>
-            </div>
-          }
-        />
-        <TooltipPopup side="bottom" sideOffset={2}>
-          Version {APP_VERSION}
-        </TooltipPopup>
-      </Tooltip>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // SidebarArm64Warning — ARM/Intel build alert
 // ---------------------------------------------------------------------------
 
@@ -317,7 +293,47 @@ function SidebarArm64Warning({
 // SidebarMainView — non-settings main project/thread content
 // ---------------------------------------------------------------------------
 
-type SidebarMainViewProps = Omit<SidebarBodyProps, 'isOnSettings' | 'pathname'>
+type SidebarMainViewProps = Omit<SidebarBodyProps, 'isOnSettings'>
+
+function SidebarTopNav({ pathname }: { pathname: string }) {
+  const navigate = useNavigate()
+  return (
+    <SidebarGroup className="px-2 pb-1 pt-2">
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className={cn(
+              'gap-2 px-2 py-1.5',
+              pathname === '/dashboard'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground/70 hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => void navigate({ to: '/dashboard' })}
+          >
+            <LayoutDashboardIcon className="size-3.5" />
+            <span className="text-xs">Dashboard</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className={cn(
+              'gap-2 px-2 py-1.5',
+              pathname === '/skills'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground/70 hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => void navigate({ to: '/skills' })}
+          >
+            <ZapIcon className="size-3.5" />
+            <span className="text-xs">Skills</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    </SidebarGroup>
+  )
+}
 
 function SidebarMainFooter({ onNavigateToSettings }: { onNavigateToSettings: () => void }) {
   return (
@@ -356,6 +372,7 @@ function buildAddFormProps(p: SidebarMainViewProps): AddProjectFormProps {
 
 function SidebarMainView(props: SidebarMainViewProps) {
   const {
+    pathname,
     shouldShowProjectPathEntry,
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
@@ -382,6 +399,8 @@ function SidebarMainView(props: SidebarMainViewProps) {
   return (
     <>
       <SidebarContent className="gap-0">
+        <SidebarTopNav pathname={pathname} />
+        <SidebarSeparator />
         {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
           <SidebarArm64Warning
             description={arm64IntelBuildWarningDescription}
@@ -422,16 +441,17 @@ function SidebarMainView(props: SidebarMainViewProps) {
 export function SidebarBody({ isOnSettings, pathname, ...rest }: SidebarBodyProps) {
   return (
     <>
-      {isElectron ? (
-        <SidebarHeader className="drag-region h-[52px] flex-row items-center gap-2 px-4 py-0 pl-[90px]">
-          <SidebarWordmark />
-        </SidebarHeader>
+      {/* Empty spacer that reserves room for the fixed AppTopLeftBar so
+          sidebar content never slides under the toggle + wordmark. */}
+      <SidebarHeader
+        aria-hidden="true"
+        className={isElectron ? 'drag-region h-[52px] p-0' : 'h-[52px] p-0'}
+      />
+      {isOnSettings ? (
+        <SettingsSidebarNav pathname={pathname} />
       ) : (
-        <SidebarHeader className="gap-3 px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-3">
-          <SidebarWordmark />
-        </SidebarHeader>
+        <SidebarMainView pathname={pathname} {...rest} />
       )}
-      {isOnSettings ? <SettingsSidebarNav pathname={pathname} /> : <SidebarMainView {...rest} />}
     </>
   )
 }

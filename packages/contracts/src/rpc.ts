@@ -2,6 +2,16 @@ import { Schema } from 'effect'
 import * as Rpc from 'effect/unstable/rpc/Rpc'
 import * as RpcGroup from 'effect/unstable/rpc/RpcGroup'
 
+import {
+  DashboardGetProviderUsageInput,
+  DashboardGetProviderUsageResult,
+  DashboardGetSnapshotInput,
+  DashboardGetSnapshotResult,
+  DashboardQueryError,
+  DashboardRefreshInput,
+  DashboardRefreshResult,
+  ProviderUsageUnavailableError,
+} from './dashboard'
 import { OpenError, OpenInEditorInput } from './editor'
 import {
   GitActionProgressEvent,
@@ -10,6 +20,15 @@ import {
   GitCreateBranchInput,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
+  GitGetDiffInput,
+  GitGetDiffResult,
+  GitGetIssuesInput,
+  GitGetIssuesResult,
+  GitGetLogInput,
+  GitGetLogResult,
+  GitGetPullRequestsInput,
+  GitGetPullRequestsResult,
+  GitHubCliError,
   GitInitInput,
   GitListBranchesInput,
   GitListBranchesResult,
@@ -21,10 +40,24 @@ import {
   GitPullResult,
   GitRemoveWorktreeInput,
   GitResolvePullRequestResult,
+  GitRestorePathInput,
   GitRunStackedActionInput,
+  GitStagePathInput,
   GitStatusInput,
   GitStatusResult,
+  GitUnstagePathInput,
 } from './git'
+import {
+  SkillGetRootsInput,
+  SkillGetRootsResult,
+  SkillListInput,
+  SkillListResult,
+  SkillRefreshInput,
+  SkillRefreshResult,
+  SkillSetRootsInput,
+  SkillSetRootsResult,
+  SkillsServiceError,
+} from './skills'
 import { KeybindingsConfigError } from './keybindings'
 import {
   ClientOrchestrationCommand,
@@ -60,6 +93,7 @@ import {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from './terminal'
+import { ProviderListAgentsInput, ProviderListAgentsResult } from './provider'
 import {
   ServerConfigStreamEvent,
   ServerConfig,
@@ -93,6 +127,24 @@ export const WS_METHODS = {
   gitInit: 'git.init',
   gitResolvePullRequest: 'git.resolvePullRequest',
   gitPreparePullRequestThread: 'git.preparePullRequestThread',
+  gitGetDiff: 'git.getDiff',
+  gitGetLog: 'git.getLog',
+  gitGetIssues: 'git.getIssues',
+  gitGetPullRequests: 'git.getPullRequests',
+  gitStagePath: 'git.stagePath',
+  gitUnstagePath: 'git.unstagePath',
+  gitRestorePath: 'git.restorePath',
+
+  // Dashboard methods
+  dashboardGetSnapshot: 'dashboard.getSnapshot',
+  dashboardRefresh: 'dashboard.refresh',
+  dashboardGetProviderUsage: 'dashboard.getProviderUsage',
+
+  // Skills methods
+  skillsList: 'skills.list',
+  skillsRefresh: 'skills.refresh',
+  skillsGetRoots: 'skills.getRoots',
+  skillsSetRoots: 'skills.setRoots',
 
   // Terminal methods
   terminalOpen: 'terminal.open',
@@ -108,6 +160,9 @@ export const WS_METHODS = {
   serverUpsertKeybinding: 'server.upsertKeybinding',
   serverGetSettings: 'server.getSettings',
   serverUpdateSettings: 'server.updateSettings',
+
+  // Provider methods
+  providerListAgents: 'provider.listAgents',
 
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: 'subscribeOrchestrationDomainEvents',
@@ -143,6 +198,11 @@ export const WsServerUpdateSettingsRpc = Rpc.make(WS_METHODS.serverUpdateSetting
   payload: Schema.Struct({ patch: ServerSettingsPatch }),
   success: ServerSettings,
   error: ServerSettingsError,
+})
+
+export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
+  payload: ProviderListAgentsInput,
+  success: ProviderListAgentsResult,
 })
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
@@ -223,6 +283,87 @@ export const WsGitCheckoutRpc = Rpc.make(WS_METHODS.gitCheckout, {
 export const WsGitInitRpc = Rpc.make(WS_METHODS.gitInit, {
   payload: GitInitInput,
   error: GitCommandError,
+})
+
+export const WsGitGetDiffRpc = Rpc.make(WS_METHODS.gitGetDiff, {
+  payload: GitGetDiffInput,
+  success: GitGetDiffResult,
+  error: GitCommandError,
+})
+
+export const WsGitGetLogRpc = Rpc.make(WS_METHODS.gitGetLog, {
+  payload: GitGetLogInput,
+  success: GitGetLogResult,
+  error: GitCommandError,
+})
+
+export const WsGitGetIssuesRpc = Rpc.make(WS_METHODS.gitGetIssues, {
+  payload: GitGetIssuesInput,
+  success: GitGetIssuesResult,
+  error: GitHubCliError,
+})
+
+export const WsGitGetPullRequestsRpc = Rpc.make(WS_METHODS.gitGetPullRequests, {
+  payload: GitGetPullRequestsInput,
+  success: GitGetPullRequestsResult,
+  error: GitHubCliError,
+})
+
+export const WsGitStagePathRpc = Rpc.make(WS_METHODS.gitStagePath, {
+  payload: GitStagePathInput,
+  error: GitCommandError,
+})
+
+export const WsGitUnstagePathRpc = Rpc.make(WS_METHODS.gitUnstagePath, {
+  payload: GitUnstagePathInput,
+  error: GitCommandError,
+})
+
+export const WsGitRestorePathRpc = Rpc.make(WS_METHODS.gitRestorePath, {
+  payload: GitRestorePathInput,
+  error: GitCommandError,
+})
+
+export const WsDashboardGetSnapshotRpc = Rpc.make(WS_METHODS.dashboardGetSnapshot, {
+  payload: DashboardGetSnapshotInput,
+  success: DashboardGetSnapshotResult,
+  error: DashboardQueryError,
+})
+
+export const WsDashboardRefreshRpc = Rpc.make(WS_METHODS.dashboardRefresh, {
+  payload: DashboardRefreshInput,
+  success: DashboardRefreshResult,
+  error: DashboardQueryError,
+})
+
+export const WsDashboardGetProviderUsageRpc = Rpc.make(WS_METHODS.dashboardGetProviderUsage, {
+  payload: DashboardGetProviderUsageInput,
+  success: DashboardGetProviderUsageResult,
+  error: ProviderUsageUnavailableError,
+})
+
+export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, {
+  payload: SkillListInput,
+  success: SkillListResult,
+  error: SkillsServiceError,
+})
+
+export const WsSkillsRefreshRpc = Rpc.make(WS_METHODS.skillsRefresh, {
+  payload: SkillRefreshInput,
+  success: SkillRefreshResult,
+  error: SkillsServiceError,
+})
+
+export const WsSkillsGetRootsRpc = Rpc.make(WS_METHODS.skillsGetRoots, {
+  payload: SkillGetRootsInput,
+  success: SkillGetRootsResult,
+  error: SkillsServiceError,
+})
+
+export const WsSkillsSetRootsRpc = Rpc.make(WS_METHODS.skillsSetRoots, {
+  payload: SkillSetRootsInput,
+  success: SkillSetRootsResult,
+  error: SkillsServiceError,
 })
 
 export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
@@ -327,6 +468,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerUpsertKeybindingRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
+  WsProviderListAgentsRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
@@ -341,6 +483,13 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitCreateBranchRpc,
   WsGitCheckoutRpc,
   WsGitInitRpc,
+  WsGitGetDiffRpc,
+  WsGitGetLogRpc,
+  WsGitGetIssuesRpc,
+  WsGitGetPullRequestsRpc,
+  WsGitStagePathRpc,
+  WsGitUnstagePathRpc,
+  WsGitRestorePathRpc,
   WsTerminalOpenRpc,
   WsTerminalWriteRpc,
   WsTerminalResizeRpc,
@@ -355,5 +504,12 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationDispatchCommandRpc,
   WsOrchestrationGetTurnDiffRpc,
   WsOrchestrationGetFullThreadDiffRpc,
-  WsOrchestrationReplayEventsRpc
+  WsOrchestrationReplayEventsRpc,
+  WsDashboardGetSnapshotRpc,
+  WsDashboardRefreshRpc,
+  WsDashboardGetProviderUsageRpc,
+  WsSkillsListRpc,
+  WsSkillsRefreshRpc,
+  WsSkillsGetRootsRpc,
+  WsSkillsSetRootsRpc
 )

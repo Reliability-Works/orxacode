@@ -7,6 +7,7 @@ import { createExecuteGit } from './GitCore.exec.ts'
 import type { GitCoreCommandDeps } from './GitCore.deps.ts'
 import { makeGitCoreInternals } from './GitCore.internals.ts'
 import { makeBranchMethods } from './GitCore.methods.branches.ts'
+import { makePanelMethods } from './GitCore.methods.panel.ts'
 import { makePushMethods } from './GitCore.methods.push.ts'
 import { makeShellMethods } from './GitCore.methods.shell.ts'
 import { makeStatusMethods } from './GitCore.methods.status.ts'
@@ -43,6 +44,7 @@ export const makeGitCore = Effect.fn('makeGitCore')(function* (options?: {
   const pushGroup = makePushMethods(internals)
   const branchGroup = makeBranchMethods(internals)
   const worktreeGroup = makeWorktreeMethods(internals)
+  const panelGroup = makePanelMethods(internals)
 
   return {
     execute,
@@ -69,6 +71,11 @@ export const makeGitCore = Effect.fn('makeGitCore')(function* (options?: {
     checkoutBranch: branchGroup.checkoutBranch,
     initRepo: shell.initRepo,
     listLocalBranchNames: shell.listLocalBranchNames,
+    getDiff: panelGroup.getDiff,
+    getLog: panelGroup.getLog,
+    stagePath: panelGroup.stagePath,
+    unstagePath: panelGroup.unstagePath,
+    restorePath: panelGroup.restorePath,
   } satisfies GitCoreShape
 })
 

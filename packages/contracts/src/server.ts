@@ -45,6 +45,7 @@ export const ServerProviderAuth = Schema.Struct({
   status: ServerProviderAuthStatus,
   type: Schema.optional(TrimmedNonEmptyString),
   label: Schema.optional(TrimmedNonEmptyString),
+  configuredProviders: Schema.optional(Schema.Array(Schema.String)),
 })
 export type ServerProviderAuth = typeof ServerProviderAuth.Type
 
@@ -53,6 +54,8 @@ export const ServerProviderModel = Schema.Struct({
   name: TrimmedNonEmptyString,
   isCustom: Schema.Boolean,
   capabilities: Schema.NullOr(ModelCapabilities),
+  supportsReasoning: Schema.optional(Schema.Boolean),
+  variants: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
 })
 export type ServerProviderModel = typeof ServerProviderModel.Type
 

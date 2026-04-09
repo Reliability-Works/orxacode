@@ -80,7 +80,14 @@ function loadCodexProviderStatusContext(codexSettings: CodexSettings): CodexProv
   return {
     checkedAt: new Date().toISOString(),
     enabled: codexSettings.enabled,
-    models: providerModelsFromSettings(BUILT_IN_CODEX_MODELS, PROVIDER, codexSettings.customModels),
+    models: providerModelsFromSettings(
+      BUILT_IN_CODEX_MODELS,
+      PROVIDER,
+      codexSettings.customModels,
+      {
+        supportsReasoning: true,
+      }
+    ),
   }
 }
 

@@ -1,6 +1,6 @@
 import { mergeProps } from '@base-ui/react/merge-props'
 import { useRender } from '@base-ui/react/use-render'
-import { PanelLeftCloseIcon, PanelLeftIcon } from 'lucide-react'
+import { PanelLeftCloseIcon, PanelLeftOpenIcon } from 'lucide-react'
 import * as React from 'react'
 import { cn } from '~/lib/utils'
 import { Button } from '~/components/ui/button'
@@ -36,6 +36,22 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from './sidebar.menu'
+
+function useSidebarToggleShortcut(toggleSidebar: () => void) {
+  React.useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key !== 'b' && event.key !== 'B') return
+      if (!(event.metaKey || event.ctrlKey)) return
+      if (event.altKey || event.shiftKey) return
+      event.preventDefault()
+      toggleSidebar()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [toggleSidebar])
+}
 
 function SidebarProvider({
   defaultOpen = true,
@@ -81,6 +97,8 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => {
     return isMobile ? setOpenMobile(open => !open) : setOpen(open => !open)
   }, [isMobile, setOpen])
+
+  useSidebarToggleShortcut(toggleSidebar)
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -185,7 +203,8 @@ function Sidebar({
 }
 
 function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar, openMobile } = useSidebar()
+  const { toggleSidebar, open, openMobile, isMobile } = useSidebar()
+  const isOpen = isMobile ? openMobile : open
 
   return (
     <Button
@@ -200,7 +219,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       variant="ghost"
       {...props}
     >
-      {openMobile ? <PanelLeftCloseIcon /> : <PanelLeftIcon />}
+      {isOpen ? <PanelLeftCloseIcon /> : <PanelLeftOpenIcon />}
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   )
