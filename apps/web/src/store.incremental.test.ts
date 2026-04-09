@@ -225,9 +225,9 @@ it('logs Opencode startup telemetry to the devtools console when the activity ar
     createdAt: '2026-02-27T00:00:02.000Z',
     message: 'First response token received after 3689ms.',
   })
-  expect(next.threads[0]?.activities.some(activity => activity.id === 'activity-opencode-startup')).toBe(
-    true
-  )
+  expect(
+    next.threads[0]?.activities.some(activity => activity.id === 'activity-opencode-startup')
+  ).toBe(true)
 })
 
 it('does not regress latestTurn when an older turn diff completes late', () => {

@@ -22,9 +22,10 @@ function summarizePathInput(pathLike: unknown): string | undefined {
   return asTrimmedString(pathLike)
 }
 
-function summarizeApplyPatchFiles(
-  filesValue: unknown
-): { readonly summary?: string; readonly changedFiles?: ReadonlyArray<string> } {
+function summarizeApplyPatchFiles(filesValue: unknown): {
+  readonly summary?: string
+  readonly changedFiles?: ReadonlyArray<string>
+} {
   if (!Array.isArray(filesValue)) {
     return {}
   }
@@ -59,7 +60,9 @@ function summarizeApplyPatchFiles(
   }
 }
 
-function metadataForPart(part: Extract<OpencodePart, { type: 'tool' }>): Record<string, unknown> | null {
+function metadataForPart(
+  part: Extract<OpencodePart, { type: 'tool' }>
+): Record<string, unknown> | null {
   return asRecord('metadata' in part.state ? part.state.metadata : undefined)
 }
 
@@ -67,7 +70,9 @@ function titleForState(part: Extract<OpencodePart, { type: 'tool' }>): string | 
   return asTrimmedString('title' in part.state ? part.state.title : undefined)
 }
 
-function inputForPart(part: Extract<OpencodePart, { type: 'tool' }>): Record<string, unknown> | null {
+function inputForPart(
+  part: Extract<OpencodePart, { type: 'tool' }>
+): Record<string, unknown> | null {
   return asRecord(part.state.input)
 }
 
@@ -79,7 +84,10 @@ function readToolDetail(input: Record<string, unknown> | null): string | undefin
   ])
 }
 
-function searchToolDetail(input: Record<string, unknown> | null, includeKey?: 'include'): string | undefined {
+function searchToolDetail(
+  input: Record<string, unknown> | null,
+  includeKey?: 'include'
+): string | undefined {
   return joinDetail([
     summarizePathInput(input?.path),
     asTrimmedString(input?.pattern) ? `pattern=${asTrimmedString(input?.pattern)}` : undefined,
@@ -106,7 +114,9 @@ type DetailResolver = (part: ToolPartSummary) => string | undefined
 const toolDetailResolvers: Partial<Record<ToolPartSummary['tool'], DetailResolver>> = {
   bash: part => {
     const input = inputForPart(part)
-    return asTrimmedString(input?.description) ?? asTrimmedString(input?.command) ?? titleForState(part)
+    return (
+      asTrimmedString(input?.description) ?? asTrimmedString(input?.command) ?? titleForState(part)
+    )
   },
   read: part => readToolDetail(inputForPart(part)),
   list: part => summarizePathInput(inputForPart(part)?.path),
@@ -117,7 +127,8 @@ const toolDetailResolvers: Partial<Record<ToolPartSummary['tool'], DetailResolve
   codesearch: part => asTrimmedString(inputForPart(part)?.query),
   edit: part => summarizePathInput(inputForPart(part)?.filePath),
   write: part => summarizePathInput(inputForPart(part)?.filePath),
-  apply_patch: part => summarizeApplyPatchFiles(metadataForPart(part)?.files).summary ?? titleForState(part),
+  apply_patch: part =>
+    summarizeApplyPatchFiles(metadataForPart(part)?.files).summary ?? titleForState(part),
   task: part => asTrimmedString(inputForPart(part)?.description) ?? titleForState(part),
   todowrite: part => countSummary(inputForPart(part), 'todos', 'todo'),
   question: part => countSummary(inputForPart(part), 'questions', 'question'),
@@ -197,7 +208,15 @@ export function toolDataForPart(part: ToolPartSummary): Record<string, unknown> 
   }
 
   const toolResult: Record<string, unknown> = {}
-  for (const key of ['files', 'filediff', 'diagnostics', 'loaded', 'matches', 'count', 'sessionId']) {
+  for (const key of [
+    'files',
+    'filediff',
+    'diagnostics',
+    'loaded',
+    'matches',
+    'count',
+    'sessionId',
+  ]) {
     if (metadata?.[key] !== undefined) {
       toolResult[key] = metadata[key]
     }

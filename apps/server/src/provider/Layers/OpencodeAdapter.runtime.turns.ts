@@ -241,13 +241,9 @@ export const sendTurn = (
       turnState.startupTrace.promptDispatchedAtMs,
       acceptedAtMs
     )}.`
-    yield* emitTaskProgressEvent(
-      deps,
-      context,
-      turnState.startupTrace.taskId,
-      acceptedSummary,
-      { summary: acceptedSummary }
-    )
+    yield* emitTaskProgressEvent(deps, context, turnState.startupTrace.taskId, acceptedSummary, {
+      summary: acceptedSummary,
+    })
 
     return {
       threadId: context.session.threadId,

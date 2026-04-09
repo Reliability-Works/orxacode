@@ -51,7 +51,11 @@ const markStartupMilestones = Effect.fn('opencode.markStartupMilestones')(functi
   const nowMs = Date.now()
   if (startupTrace.firstEventAtMs === undefined) {
     startupTrace.firstEventAtMs = nowMs
-    const summary = milestoneSummary('First runtime event received', startupTrace.promptDispatchedAtMs, nowMs)
+    const summary = milestoneSummary(
+      'First runtime event received',
+      startupTrace.promptDispatchedAtMs,
+      nowMs
+    )
     yield* emitTaskProgressEvent(deps, context, startupTrace.taskId, summary, {
       summary,
     })

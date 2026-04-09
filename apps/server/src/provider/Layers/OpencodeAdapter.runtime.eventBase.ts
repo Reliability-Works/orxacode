@@ -12,11 +12,7 @@
  *
  * @module OpencodeAdapter.runtime.eventBase
  */
-import {
-  type ProviderRuntimeEvent,
-  type RuntimeTaskId,
-  type ThreadId,
-} from '@orxa-code/contracts'
+import { type ProviderRuntimeEvent, type RuntimeTaskId, type ThreadId } from '@orxa-code/contracts'
 import { Effect } from 'effect'
 
 import {
