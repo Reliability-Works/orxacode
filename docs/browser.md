@@ -1,47 +1,36 @@
-# Browser Integration
+# Browser Sidebar
 
-Orxa Code includes an embedded Chromium browser in its own dedicated sidebar.
+The browser sidebar is attached to the active thread. You can keep the chat on the left and the embedded browser on the right while you inspect or change a page.
 
-## Features
+## What it supports
 
-- Multi-tab browsing with URL navigation controls
-- Persistent browser profile (`persist:orxa-browser`) — cookies and logins survive restarts
-- History list with clear history action
-- Back/forward/reload navigation
+- multiple tabs
+- back, forward, reload, and URL entry
+- a persistent browser profile
+- inspect mode for element annotations
+- prompt copying from saved annotations
 
-## Agent Browser Automation
+## Inspect mode
 
-When **Browser Mode** is enabled in the composer controls:
+Inspect mode is the part most people use first:
 
-1. The agent emits structured action envelopes:
+1. Open the browser sidebar from the thread header.
+2. Click `Inspect`.
+3. Click elements in the page.
+4. Add notes to the captured annotations.
+5. Click `Copy prompt` and send that prompt back into the thread.
 
-   ```xml
-   <orxa_browser_action>{"id":"action-id","action":"navigate","args":{"url":"https://example.com"}}</orxa_browser_action>
-   ```
+The copied prompt includes the page URL, element selectors, note text, and bounds when they are available.
 
-2. The app executes the action and returns a machine message:
+## Where it runs
 
-   ```
-   [ORXA_BROWSER_RESULT]{"id":"action-id","action":"navigate","ok":true,"data":{...}}
-   ```
+The browser runtime lives in the desktop process, not in the renderer. The renderer asks for browser actions through the desktop bridge, and the main process keeps the browser state in sync with the active thread UI.
 
-3. If browser mode is disabled or the human owns control, actions are blocked with a reason.
+## Related files
 
-## Supported Actions
-
-Navigation: `open_tab`, `close_tab`, `switch_tab`, `navigate`, `back`, `forward`, `reload`
-
-Interaction: `click`, `type`, `press`, `scroll`, `extract_text`, `screenshot`
-
-Waiting: `exists`, `visible`, `wait_for`, `wait_for_navigation`, `wait_for_idle`
-
-## Human/Agent Control
-
-- Agent controls by default when Browser Mode is enabled
-- **Take control** switches ownership to the human and pauses agent execution
-- **Hand back to agent** returns control for continued automation
-- The browser sidebar auto-focuses when agent browser actions begin
-
-## Jobs with Browser Mode
-
-Each scheduled job can independently enable browser mode. When enabled, the job run receives browser capability instructions. When disabled, no browser contract is injected.
+- `apps/web/src/components/browser-sidebar/`
+- `apps/web/src/components/chat/ChatHeader.tsx`
+- `apps/web/src/components/chat/ChatViewInner.tsx`
+- `apps/desktop/src/browserRuntime.ts`
+- `apps/desktop/src/main.ipc.ts`
+- `packages/contracts/src/ipc.ts`

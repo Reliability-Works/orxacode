@@ -1,72 +1,39 @@
 # Troubleshooting
 
-## OpenCode runtime connection failures
+## A provider card is disabled
 
-**Symptoms**: Runtime status stuck on disconnected or error. Session operations fail.
+Open the new-session picker or the Providers settings page and check the provider status message first.
 
-1. Open Settings > Server and press Refresh Diagnostics
-2. Verify profile host/port and credentials
-3. If using local runtime, press Repair Runtime and retry
-4. Restart the app to re-run bootstrap
+- Claude: confirm `claude --version` works in your shell
+- Codex: confirm `codex --version` works in your shell
+- Opencode: confirm your local Opencode install and authentication are healthy
 
-## Codex connection issues
+If the CLI works in your shell but not in the app, re-check the provider settings and restart Orxa Code.
 
-**Symptoms**: Codex sessions show "Connecting to Codex..." indefinitely or error.
+## The browser sidebar is blank
 
-1. Verify the Codex CLI is installed: `codex --version`
-2. Check Settings > Codex > General for the binary path
-3. Run `codex doctor` from terminal to check dependencies
-4. The app searches common install paths (nvm, Homebrew, Volta) — if installed elsewhere, set the explicit path in settings
-5. Check that no other process is already running `codex app-server`
+Try these in order:
 
-## Claude Code issues
+1. Close and reopen the browser sidebar from the thread header.
+2. Open a new browser tab.
+3. Reload the current tab.
+4. Restart the app if the embedded view still does not attach correctly.
 
-### Claude Code (Terminal) not launching
+## Inspect mode is not capturing annotations
 
-**Symptoms**: Claude terminal session shows a blank terminal or "not available" message.
+- Make sure the browser sidebar is open for the active thread.
+- Turn on `Inspect`.
+- Click inside the page content, not the browser controls.
+- If capture still fails, reload the page and try again.
 
-1. Verify Claude Code CLI is installed: `claude --version`
-2. The CLI must be in your PATH — Electron may not inherit shell PATH on macOS
-3. Try setting an explicit path in settings if auto-detection fails
-4. Check that Claude Code is authenticated
+## The files sidebar is empty
 
-### Claude Code (Chat) not starting
+The files sidebar needs a project-backed thread. If you opened a thread without a usable project cwd, the sidebar will not have anything to browse.
 
-**Symptoms**: Claude chat session fails immediately, stays disconnected, or shows auth/runtime errors.
+## Git data is missing
 
-1. Verify Claude Code CLI is installed: `claude --version`
-2. Check authentication status: `claude auth status`
-3. Restart the app after installing or authenticating Claude Code
-4. If Claude chat still fails, try Claude Code (Terminal) to confirm the local CLI itself is healthy
+The git sidebar only works when the active thread is attached to a git repository. Check the project cwd first, then confirm the repo is valid on disk.
 
-## Browser not rendering
+## Update actions are unavailable
 
-**Symptoms**: Browser pane appears blank or navigation doesn't work.
-
-1. Open the dedicated Browser sidebar and create or switch to a tab
-2. Resize the app window (refreshes browser bounds sync)
-3. If still blank, restart the app to rebuild WebContentsView attachments
-
-## Browser agent actions blocked
-
-**Symptoms**: Browser results come back with blocked reason.
-
-1. Enable Browser Mode in the composer controls
-2. Ensure ownership is set to agent (Hand back to agent if human owns control)
-3. For job runs, enable Browser Mode in the job editor
-
-## Sessions disappearing from sidebar
-
-Sessions without any messages are automatically cleaned up when you navigate away. This is by design. Send at least one message to persist a session.
-
-## Desktop notifications not appearing
-
-1. Check Settings > App for notification toggles
-2. Notifications only fire when the app window is not focused
-3. macOS: ensure Orxa Code has notification permission in System Settings > Notifications
-
-## Update checks not running
-
-1. Ensure this is a packaged build (dev mode skips updates)
-2. Enable auto-check in Settings > App
-3. Verify release channel (stable vs prerelease) matches published tags
+Update controls depend on a packaged desktop build. If you are running from `pnpm dev`, update checks and install actions will not behave like the release build.

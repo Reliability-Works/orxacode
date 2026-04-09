@@ -1,83 +1,83 @@
 # Architecture
 
-Orxa Code is an Electron app with strict process separation between main, preload, and renderer. It orchestrates OpenCode, Codex, Claude Code, and browser services behind a unified desktop shell.
+Orxa Code is split into four main layers:
 
-```
-User
-  |
-  v
-Renderer (React/Vite)
-  |  window.orxa bridge
-  v
-Preload (contextBridge + IPC facade)
-  |  ipcRenderer.invoke / subscribe
-  v
-Main Process (Electron)
-  |
-  +---> OpencodeService -----> OpenCode runtime/server
-  +---> CodexService ---------> Codex CLI app-server (JSON-RPC over stdio)
-  +---> ClaudeChatService ----> Claude Code SDK + Claude Code CLI
-  +---> Claude Terminal ------> Claude Code CLI (PTY)
-  +---> BrowserController ----> Embedded Chromium (WebContentsView)
-  +---> UsageStatsService ----> ~/.claude JSONL + codex usage cache
-  +---> AutoUpdater ----------> GitHub Releases
-  +---> Stores ---------------> Electron local storage
+```text
+Renderer (React UI)
+  -> Desktop bridge (preload + IPC)
+  -> Main process (Electron shell and native integrations)
+  -> Server process (providers, git, terminals, persistence)
+  -> Shared contracts (typed IPC and RPC payloads)
 ```
 
-## Process Boundaries
+## Main pieces
 
-- `apps/desktop/src/main.ts` — BrowserWindow lifecycle, desktop IPC handlers, backend process orchestration
-- `apps/desktop/src/preload.ts` — typed API surface exposed as `window.orxa` / `window.desktopBridge`
-- `apps/server/src/` — provider runtime orchestration (OpenCode/Codex/Claude), project state, terminal, persistence
-- `apps/web/src/` — React UI, no direct Node APIs
+### Renderer
 
-## IPC Contract
+`apps/web/src/` holds the app UI. That includes:
 
-Defined in `packages/contracts/src/ipc.ts`:
+- the chat workspace
+- the browser, files, and git sidebars
+- dashboard, skills, plugins, and settings routes
 
-- All renderer-main communication goes through typed channels
-- High-risk inputs are validated in main
-- Browser automation IPC is sender-validated and payload-validated per action
+The renderer never talks to Node APIs directly. It goes through typed contracts.
 
-## Event Flow
+### Desktop bridge
 
-All three providers emit events through a unified `orxa:events` IPC channel:
+`apps/desktop/src/preload.ts` exposes the safe API that the renderer uses for desktop-only features such as browser runtime actions, theme sync, dialogs, and update controls.
 
-- **OpenCode**: SDK server events (message updates, permissions, questions, todos, session status)
-- **Codex**: App-server notifications (item lifecycle, deltas, approvals, user input, plan updates, thread naming)
-- **Claude Code (Chat)**: structured turn, permission, question, task, and subagent notifications
-- **Claude Code (Terminal)**: terminal output and lifecycle events via PTY
+### Main process
 
-The renderer subscribes once and routes events to the appropriate session hook.
+`apps/desktop/src/` owns:
 
-## Provider Services
+- the Electron window lifecycle
+- native menus and dialogs
+- the embedded browser runtime
+- desktop update wiring
+- IPC handlers that forward work to the renderer-safe bridge or the server
 
-### OpenCode
+### Server process
 
-- Full SDK client with session/message/tool APIs
-- Real-time event streaming
-- Permission and question request/reply flow
-- Todo tracking from `todo.updated` events
+`apps/server/src/` owns most of the application logic:
 
-### Codex
+- provider orchestration for Claude, Codex, and Opencode
+- thread persistence and projections
+- git data and thread handoff support
+- thread-scoped terminals
+- skills and plugin discovery
 
-- Spawns `codex app-server` as child process
-- JSON-RPC 2.0 over stdin/stdout (newline-delimited JSON)
-- Initialize handshake, then model/list and collaborationMode/list
-- Handles: approvals, user input requests, streaming deltas, plan updates, thread naming
-- Module-level session persistence (survives component remounts)
+### Shared contracts
 
-### Claude Code (Chat)
+`packages/contracts/src/` defines the payloads and event shapes shared between the renderer, desktop process, and server.
 
-- Uses the Claude Code SDK with the local `claude` executable
-- Structured turn lifecycle with model options, permissions, and user-input requests
-- Background-agent / task tracking from explicit Claude task and thread events
-- Unified chat timeline projection in the renderer
-- Background session manager keeps inactive Claude chat sessions alive for dock updates
+## Data flow
 
-### Claude Code (Terminal)
+Most UI work follows the same path:
 
-- PTY terminal via OpenCode terminal API with `exec` shell replacement
-- Echo clearing: buffers output until CLI starts, then clears terminal
-- Multi-tab and split view support
-- Permission mode stored per workspace in localStorage
+1. The renderer sends a typed request.
+2. The request goes through preload and IPC or through the server RPC layer.
+3. The main or server process does the work.
+4. Events come back as normalized updates that the renderer can project into thread state.
+
+That is why different providers can share the same chat timeline, approvals, and sidebars even though their runtimes are different underneath.
+
+## Provider routing
+
+Current provider entry points are:
+
+- Claude
+- Codex
+- Opencode
+
+The new-session picker reflects the same set. If a provider is not ready locally, the card stays disabled instead of pretending the feature is available.
+
+## Files to start with
+
+- `apps/web/src/components/chat/`
+- `apps/web/src/components/browser-sidebar/`
+- `apps/web/src/components/files-sidebar/`
+- `apps/web/src/components/git-sidebar/`
+- `apps/desktop/src/main.ts`
+- `apps/desktop/src/preload.ts`
+- `apps/server/src/`
+- `packages/contracts/src/`

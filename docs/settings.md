@@ -1,58 +1,46 @@
-# Settings Reference
+# Settings
 
-Settings are organized into provider-specific sections.
+Settings are split into four main pages in the current app:
 
-## Orxa Code (App-level)
+- General
+- Providers
+- Advanced
+- About
 
-| Setting                      | Description                                 | Default |
-| ---------------------------- | ------------------------------------------- | ------- |
-| Auto-open terminal on create | Open terminal when creating PTY             | true    |
-| Confirm dangerous actions    | Show confirmation for reject buttons        | true    |
-| Auto check for updates       | Periodic update checks                      | true    |
-| Notify when agent waiting    | Desktop notification when agent needs input | true    |
-| Notify when agent finishes   | Desktop notification on task completion     | true    |
-| Enable collaboration modes   | Show collaboration mode selector for Codex  | true    |
-| Notify on subagent events    | Desktop notifications for subagent activity | true    |
-| Release channel              | stable or prerelease                        | stable  |
+There is also an archived threads view under settings.
 
-## Orxa Code (Preferences)
+## General
 
-| Setting   | Description                                           |
-| --------- | ----------------------------------------------------- |
-| Code font | Font used in diff viewer, file tree, and code preview |
+General settings cover the behavior you are likely to change often:
 
-## Orxa Code (Git)
+- theme
+- time format
+- diff line wrapping
+- assistant streaming
+- default thread mode (`local` or `worktree`)
+- archive and delete confirmations
+- default text generation model and traits
 
-| Setting                | Description                                                   |
-| ---------------------- | ------------------------------------------------------------- |
-| Commit guidance prompt | Instructions for commit message generation                    |
-| Git command agent      | Which provider handles git operations (opencode/claude/codex) |
+## Providers
 
-## OpenCode
+The Providers page is where you check the state of Claude, Codex, and Opencode on the current machine.
 
-| Section         | Settings                                        |
-| --------------- | ----------------------------------------------- |
-| Config Files    | Project and global config editor (JSON/JSONC)   |
-| Provider Models | Toggle model visibility, provider management    |
-| Agents          | OpenCode agent file editor                      |
-| Personalization | AGENTS.md editor                                |
-| Server          | Runtime diagnostics, repair, profile management |
+Provider cards expose the things that matter when setup drifts:
 
-## Codex
+- ready, warning, error, or disabled state
+- status message
+- last checked time
+- configured providers when that data exists
+- per-provider model lists and custom model entries
 
-| Section         | Settings                                                    |
-| --------------- | ----------------------------------------------------------- |
-| General         | Binary path, additional CLI arguments, doctor check, update |
-| Models          | Model selector, reasoning effort                            |
-| Access          | Access mode (on-request, full-access)                       |
-| Config          | Editable config.toml and AGENTS.md                          |
-| Personalization | Claude/Codex directory links                                |
+## Advanced
 
-## Claude Code
+Advanced settings surface app-level paths and lower-level configuration details. This is the place to look when you need to inspect where Orxa Code is reading from or writing to on disk.
 
-| Section         | Settings                                |
-| --------------- | --------------------------------------- |
-| Config          | Editable settings.json and CLAUDE.md    |
-| Personalization | Custom instructions                     |
-| Permissions     | Default permission mode                 |
-| Directories     | Allowed/blocked directory configuration |
+## About
+
+The About page shows the current app version, lets you check for updates, and lets you switch between stable and pre-release update channels.
+
+## Archived threads
+
+Archived threads can be reviewed and restored from the settings flow instead of being treated as deleted.

@@ -1,64 +1,46 @@
-# Chat UI
+# Chat Workspace
 
-Structured chat providers render through a shared set of React components. Today that means OpenCode, Codex, and Claude Code (Chat). Claude Code (Terminal) and Canvas use their own dedicated surfaces.
+The chat workspace is the main working surface in Orxa Code. A thread can show provider output, approvals, plan state, browser work, file browsing, git review, and terminal activity without switching to a different mode.
 
-## Message Components
+## Shared timeline
 
-| Component          | Purpose                                                     |
-| ------------------ | ----------------------------------------------------------- |
-| `TextPart`         | Markdown text with hover copy button                        |
-| `ToolCallCard`     | Collapsible card for tool invocations with status indicator |
-| `BashTool`         | Terminal-style command execution with ANSI stripping        |
-| `EditTool`         | File edit display with unified diff view                    |
-| `DiffBlock`        | Color-coded unified diff (additions green, deletions red)   |
-| `CommandOutput`    | Monospace terminal output block with exit code              |
-| `ContextToolGroup` | Grouped display for read/search/list operations             |
-| `ReasoningPart`    | Expandable reasoning/thinking block                         |
-| `ThinkingShimmer`  | Animated indicator while agent is processing                |
-| `MessageHeader`    | Role label, timestamp, agent/model/duration metadata        |
-| `CopyButton`       | Hover-visible clipboard copy with confirmation              |
-| `MessageTurn`      | Groups user + assistant messages as a turn                  |
+Claude, Codex, and Opencode threads all feed into the same general timeline layout. The renderer turns provider-specific events into a common thread view so the app can show:
 
-## Dock System
+- markdown replies
+- command output
+- file diffs
+- approvals and questions
+- plan state and follow-up actions
 
-Docks appear above the composer input and provide non-blocking interaction:
+## Thread header controls
 
-### TodoDock
+The thread header can open the sidebars that matter while you are working:
 
-Shows plan/todo progress with a collapsible step list. Progress counter (done/total), pulsing dot for in-progress items, strikethrough for completed. Used by both OpenCode (via `todo.updated` events) and Codex (via `turn/plan/updated`).
+- browser
+- files
+- git
+- provider handoff actions
 
-### QuestionDock
+The bottom of the workspace can also open a thread-scoped terminal drawer.
 
-Renders agent questions one at a time with single/multi-select options, custom text input, progress dots for multi-question flows, and submit/reject buttons.
+## Sidebars and drawer
 
-### PermissionDock
+### Browser
 
-Three-decision pattern: Allow once / Always allow / Reject. Shows file patterns for file operations and command preview for bash operations.
+Use it when the thread needs a live page, inspect mode, or annotations.
 
-### PlanReadyDock
+### Files
 
-Appears after a Codex plan turn completes. Two actions: "Implement this plan" (switches to default mode) or "Modify plan" (opens textarea for changes).
+Use it to browse the project tree and inspect or edit files in place.
 
-### QueuedMessagesDock
+### Git
 
-Shows messages typed while the agent is busy. Each item has Send Now / Edit / Remove actions. Messages auto-send when the agent finishes its turn.
+Use it to switch between diff, log, issues, and pull request views for the current repo.
 
-### BackgroundAgentsPanel
+### Terminal drawer
 
-Shows delegated work from providers that emit explicit background-agent or child-thread events. Currently used by Codex and Claude Code (Chat). The detail modal can render either the child transcript or the latest task/progress summary when a child transcript is not yet available.
+Use it to keep shell work tied to the same thread and working directory.
 
-## Message Queue
+## Why the workspace matters
 
-When the agent is busy processing:
-
-- The composer textarea stays editable
-- Pressing Enter queues the message instead of blocking
-- Queued messages appear in the QueuedMessagesDock
-- The stop button remains available to interrupt the current turn
-- A toast confirms "Message queued"
-
-Provider notes:
-
-- **OpenCode** — queued followups send when the active turn finishes
-- **Codex** — queued followups can steer the active turn when appropriate
-- **Claude Code (Chat)** — uses the shared composer, permissions/questions docks, plan toggle, and background-agent panel
+The app is easier to reason about when the thread, repo state, and supporting tools stay together. That is the core shape of the current product, and the README should describe it that way.

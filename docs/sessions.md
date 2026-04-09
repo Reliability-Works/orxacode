@@ -1,72 +1,40 @@
-# Session Types
+# Providers and Threads
 
-Orxa Code supports five session types, created from the `+` button in the sidebar or from the workspace landing screen.
+Orxa Code currently starts threads with three providers:
 
-## OpenCode
+- Claude
+- Codex
+- Opencode
 
-Full agent sessions powered by the OpenCode SDK and runtime server.
+The new-session picker shows those as the active provider cards. Cursor is visible as unavailable, and Gemini is marked as coming soon.
 
-- Rich tool use: file editing, bash execution, web search, code search
-- Structured message feed with tool cards, diffs, and command output
-- Agent/model selection with variant support
-- Memory integration for workspace-scoped context
-- Permission mode switching mid-session (ask-write / yolo)
-- Plan mode toggle for planning-first workflows
-- Browser automation when browser mode is enabled
+## Thread model
 
-**Requires**: OpenCode CLI installed (`npm install -g opencode-ai`)
+A thread belongs to a project and starts with a chosen provider. The provider affects the runtime behind the thread, but the workspace around it stays the same:
 
-## Codex
+- shared chat timeline
+- browser, files, and git sidebars
+- thread-scoped terminal drawer
+- settings-driven model selection and traits
 
-Agent sessions via the Codex CLI app-server using JSON-RPC over stdio.
+## Provider notes
 
-- Full agent execution — file editing, command execution, web search, and more
-- Plan mode with proposal/approval flow before implementation
-- Collaboration modes for multi-agent workflows
-- Subagent delegation with live output tracking
-- Model selector with reasoning effort control
-- Rich item types: command output, file diffs, reasoning blocks, context tools
-- Live streaming deltas for all operations
-- Thread name auto-updates from the app-server
+### Claude
 
-**Requires**: Codex CLI installed (`npm install -g @openai/codex`)
+Claude threads run through the local Claude Agent SDK and CLI integration.
 
-## Claude Code (Chat)
+### Codex
 
-Structured Claude sessions backed by the Claude Code SDK and CLI, rendered through Orxa Code's shared chat UI.
+Codex threads run through the Codex app-server JSON-RPC flow.
 
-- Shared message feed with tool cards, diffs, streaming indicators, and command output
-- Claude model selector plus Claude-specific traits
-- Plan mode support for planning-first workflows
-- Permission and question handling through the shared docks above the composer
-- Background agents / subagents surfaced in the existing background-agent dock and detail modal
-- Session persistence across navigation with the same unread/busy state model as Codex and OpenCode
+### Opencode
 
-**Requires**: Claude Code CLI installed (`curl -fsSL https://claude.ai/install.sh | bash`)
+Opencode threads use your local authenticated Opencode setup.
 
-## Claude Code (Terminal)
+## Handoff
 
-Terminal-based Claude sessions running the Claude Code CLI in a PTY.
+Threads can be handed off between providers when you want to continue the same work with a different runtime. Handoff is part of the chat workspace itself, not a separate session type.
 
-- Multi-tab terminal support (create multiple Claude instances)
-- Split view layout (horizontal or vertical)
-- Permission mode selection: Standard (ask before acting) or Full Access
-- Remembers permission choice per workspace
-- Session persistence across navigation
-- Live terminal output streaming
+## What changed from the older docs
 
-**Requires**: Claude Code CLI installed (`curl -fsSL https://claude.ai/install.sh | bash`)
-
-## Canvas
-
-Tiled workspace for non-linear, multi-tool workflows.
-
-- Drag-and-drop tile arrangement
-- Tile types: terminal, browser, file editor, markdown, API tester, dev server, image
-- Theme customization per canvas
-- Snap-to-grid layout
-- Persistent tile arrangement per session
-
-## Upstream References
-
-For provider-specific protocol and SDK behavior, use [Upstream references](upstream-references.md).
+The old docs treated the app like it had a larger session matrix with separate Claude terminal modes and canvas-style workspace types. That is no longer the right mental model for the current product surface, so this doc stays focused on the provider-backed thread workflow that the app actually exposes today.
