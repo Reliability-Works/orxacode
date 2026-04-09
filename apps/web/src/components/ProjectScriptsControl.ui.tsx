@@ -10,7 +10,7 @@ import {
   HammerIcon,
   ListChecksIcon,
   PlayIcon,
-  PlusIcon,
+  RocketIcon,
   SettingsIcon,
   WrenchIcon,
 } from 'lucide-react'
@@ -104,10 +104,8 @@ export function ProjectScriptsPrimaryControls({
   if (!primaryScript) {
     return (
       <Button size="xs" variant="outline" onClick={onOpenAddDialog} title="Add action">
-        <PlusIcon className="size-3.5" />
-        <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-          Add action
-        </span>
+        <RocketIcon className="size-3.5" />
+        <span className="sr-only">Add action</span>
       </Button>
     )
   }
@@ -144,7 +142,7 @@ export function ProjectScriptsPrimaryControls({
             />
           ))}
           <MenuItem className={dropdownItemClassName} onClick={onOpenAddDialog}>
-            <PlusIcon className="size-4" />
+            <RocketIcon className="size-4" />
             Add action
           </MenuItem>
         </MenuPopup>

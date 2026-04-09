@@ -126,7 +126,7 @@ function parsePatchText(text: string): Map<string, RawFilePatch> {
 
     const hunkLines = lines.slice(hunkStart)
     const hunks = isBinary ? [] : parseHunks(hunkLines)
-    const patch = hunkLines.join('\n')
+    const patch = block.trimEnd()
 
     let additions = 0
     let deletions = 0
@@ -153,7 +153,7 @@ interface PorcelainEntry {
 function parsePorcelain(text: string): PorcelainEntry[] {
   const entries: PorcelainEntry[] = []
   for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim()
+    const line = rawLine.trimEnd()
     if (line.length < 3) continue
     const xy = line.slice(0, 2)
     const rest = line.slice(3)
@@ -253,9 +253,9 @@ function buildDiffFiles(
 
 // ── Log parser ───────────────────────────────────────────────────────
 
-const NUL = String.fromCodePoint(0)
-const LOG_SEP = `${NUL}LOG_COMMIT_SEP${NUL}`
-const LOG_FORMAT = `${LOG_SEP}%H%n%h%n%an%n%ae%n%aI%n%s%n%b${LOG_SEP}END`
+const LOG_SEP = '<<<ORXA_LOG_COMMIT_SEP>>>'
+const LOG_END = '<<<ORXA_LOG_END>>>'
+const LOG_FORMAT = `${LOG_SEP}%H%n%h%n%an%n%ae%n%aI%n%s%n%b${LOG_SEP}${LOG_END}`
 
 function parseLogEntry(chunk: string): GitLogEntry | null {
   const parts = chunk.split('\n')
@@ -322,19 +322,25 @@ function buildGetLog(deps: GitCoreInternalDeps): GitCoreShape['getLog'] {
       const entries: GitLogEntry[] = []
       const chunks = text.split(LOG_SEP)
       for (const chunk of chunks) {
-        const withoutPrefix = chunk.startsWith(`LOG_COMMIT_SEP${NUL}`)
-          ? chunk.slice(`LOG_COMMIT_SEP${NUL}`.length)
-          : chunk
-        const trimmed = withoutPrefix.endsWith(`${NUL}END`)
-          ? withoutPrefix.slice(0, -`${NUL}END`.length).trim()
-          : withoutPrefix.trim()
-        if (!trimmed || trimmed === 'END') continue
+        const trimmed = chunk.endsWith(LOG_END)
+          ? chunk.slice(0, -LOG_END.length).trim()
+          : chunk.trim()
+        if (!trimmed || trimmed === LOG_END) continue
         const entry = parseLogEntry(trimmed)
         if (entry) entries.push(entry)
       }
 
       return { entries } satisfies GitGetLogResult
     })
+}
+
+function buildStageAll(deps: GitCoreInternalDeps): GitCoreShape['stageAll'] {
+  return input => deps.runGit('GitCore.stageAll', input.cwd, ['add', '-A'])
+}
+
+function buildRestoreAllUnstaged(deps: GitCoreInternalDeps): GitCoreShape['restoreAllUnstaged'] {
+  return input =>
+    deps.runGit('GitCore.restoreAllUnstaged', input.cwd, ['restore', '--worktree', '--', '.'], true)
 }
 
 function buildStagePath(deps: GitCoreInternalDeps): GitCoreShape['stagePath'] {
@@ -358,6 +364,8 @@ function buildRestorePath(deps: GitCoreInternalDeps): GitCoreShape['restorePath'
 export function makePanelMethods(deps: GitCoreInternalDeps): {
   getDiff: GitCoreShape['getDiff']
   getLog: GitCoreShape['getLog']
+  stageAll: GitCoreShape['stageAll']
+  restoreAllUnstaged: GitCoreShape['restoreAllUnstaged']
   stagePath: GitCoreShape['stagePath']
   unstagePath: GitCoreShape['unstagePath']
   restorePath: GitCoreShape['restorePath']
@@ -365,6 +373,8 @@ export function makePanelMethods(deps: GitCoreInternalDeps): {
   return {
     getDiff: buildGetDiff(deps),
     getLog: buildGetLog(deps),
+    stageAll: buildStageAll(deps),
+    restoreAllUnstaged: buildRestoreAllUnstaged(deps),
     stagePath: buildStagePath(deps),
     unstagePath: buildUnstagePath(deps),
     restorePath: buildRestorePath(deps),

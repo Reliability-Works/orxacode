@@ -1,3 +1,5 @@
+import { chmodSync } from 'node:fs'
+
 import * as NodeServices from '@effect/platform-node/NodeServices'
 import { assert, it } from '@effect/vitest'
 import { assertSuccess } from '@effect/vitest/utils'
@@ -10,12 +12,17 @@ import {
   resolveEditorLaunch,
 } from './open'
 
+function markExecutable(filePath: string): void {
+  chmodSync(filePath, 0o755)
+}
+
 it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
   it.effect('returns commands for command-based editors', () =>
     Effect.gen(function* () {
       const antigravityLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'antigravity' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(antigravityLaunch, {
         command: 'agy',
@@ -24,7 +31,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const cursorLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'cursor' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(cursorLaunch, {
         command: 'cursor',
@@ -33,7 +41,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const traeLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'trae' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(traeLaunch, {
         command: 'trae',
@@ -42,7 +51,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const vscodeLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'vscode' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodeLaunch, {
         command: 'code',
@@ -51,7 +61,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const vscodeInsidersLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'vscode-insiders' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodeInsidersLaunch, {
         command: 'code-insiders',
@@ -60,7 +71,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const vscodiumLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'vscodium' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodiumLaunch, {
         command: 'codium',
@@ -69,10 +81,67 @@ it.layer(NodeServices.layer)('resolveEditorLaunch command editors', it => {
 
       const zedLaunch = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace', editor: 'zed' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(zedLaunch, {
         command: 'zed',
+        args: ['/tmp/workspace'],
+      })
+    })
+  )
+})
+
+it.layer(NodeServices.layer)('resolveEditorLaunch macOS bundle fallback', it => {
+  it.effect('falls back to macOS app bundle commands for installed editors missing from PATH', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: 'orxa-open-home-' })
+      const applicationsDir = path.join(homeDir, 'Applications')
+      yield* fs.makeDirectory(path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin'), {
+        recursive: true,
+      })
+      yield* fs.makeDirectory(path.join(applicationsDir, 'Zed.app/Contents/MacOS'), {
+        recursive: true,
+      })
+      yield* fs.writeFileString(
+        path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin/cursor'),
+        '#!/bin/sh\n'
+      )
+      yield* Effect.sync(() =>
+        markExecutable(path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin/cursor'))
+      )
+      yield* fs.writeFileString(
+        path.join(applicationsDir, 'Zed.app/Contents/MacOS/cli'),
+        '#!/bin/sh\n'
+      )
+      yield* Effect.sync(() =>
+        markExecutable(path.join(applicationsDir, 'Zed.app/Contents/MacOS/cli'))
+      )
+      const env = {
+        HOME: homeDir,
+        PATH: '',
+        ORXA_EDITOR_APP_DIRS: applicationsDir,
+      } satisfies NodeJS.ProcessEnv
+
+      const cursorLaunch = yield* resolveEditorLaunch(
+        { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'cursor' },
+        'darwin',
+        env
+      )
+      assert.deepEqual(cursorLaunch, {
+        command: path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin/cursor'),
+        args: ['--goto', '/tmp/workspace/src/open.ts:71:5'],
+      })
+
+      const zedLaunch = yield* resolveEditorLaunch(
+        { cwd: '/tmp/workspace', editor: 'zed' },
+        'darwin',
+        env
+      )
+      assert.deepEqual(zedLaunch, {
+        command: path.join(applicationsDir, 'Zed.app/Contents/MacOS/cli'),
         args: ['/tmp/workspace'],
       })
     })
@@ -84,7 +153,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
     Effect.gen(function* () {
       const lineOnly = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/AGENTS.md:48', editor: 'cursor' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(lineOnly, {
         command: 'cursor',
@@ -93,7 +163,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const lineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'cursor' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(lineAndColumn, {
         command: 'cursor',
@@ -102,7 +173,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const traeLineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'trae' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(traeLineAndColumn, {
         command: 'trae',
@@ -111,7 +183,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const vscodeLineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'vscode' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodeLineAndColumn, {
         command: 'code',
@@ -120,7 +193,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const vscodeInsidersLineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'vscode-insiders' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodeInsidersLineAndColumn, {
         command: 'code-insiders',
@@ -129,7 +203,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const vscodiumLineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'vscodium' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(vscodiumLineAndColumn, {
         command: 'codium',
@@ -138,7 +213,8 @@ it.layer(NodeServices.layer)('resolveEditorLaunch goto support', it => {
 
       const zedLineAndColumn = yield* resolveEditorLaunch(
         { cwd: '/tmp/workspace/src/open.ts:71:5', editor: 'zed' },
-        'darwin'
+        'darwin',
+        { PATH: '', ORXA_EDITOR_APP_DIRS: '' }
       )
       assert.deepEqual(zedLineAndColumn, {
         command: 'zed',
@@ -287,6 +363,42 @@ it.layer(NodeServices.layer)('resolveAvailableEditors', it => {
         PATHEXT: '.COM;.EXE;.BAT;.CMD',
       })
       assert.deepEqual(editors, ['trae', 'vscode-insiders', 'vscodium', 'file-manager'])
+    })
+  )
+
+  it.effect('detects macOS app bundle editors when PATH shims are absent', () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const homeDir = yield* fs.makeTempDirectoryScoped({ prefix: 'orxa-editors-home-' })
+      const applicationsDir = path.join(homeDir, 'Applications')
+      yield* fs.makeDirectory(path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin'), {
+        recursive: true,
+      })
+      yield* fs.makeDirectory(path.join(applicationsDir, 'Zed.app/Contents/MacOS'), {
+        recursive: true,
+      })
+      yield* fs.writeFileString(
+        path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin/cursor'),
+        '#!/bin/sh\n'
+      )
+      yield* Effect.sync(() =>
+        markExecutable(path.join(applicationsDir, 'Cursor.app/Contents/Resources/app/bin/cursor'))
+      )
+      yield* fs.writeFileString(
+        path.join(applicationsDir, 'Zed.app/Contents/MacOS/cli'),
+        '#!/bin/sh\n'
+      )
+      yield* Effect.sync(() =>
+        markExecutable(path.join(applicationsDir, 'Zed.app/Contents/MacOS/cli'))
+      )
+
+      const editors = resolveAvailableEditors('darwin', {
+        HOME: homeDir,
+        PATH: '',
+        ORXA_EDITOR_APP_DIRS: applicationsDir,
+      })
+      assert.deepEqual(editors, ['cursor', 'zed'])
     })
   )
 })

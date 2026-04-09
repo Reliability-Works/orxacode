@@ -73,6 +73,46 @@ it.layer(TestLayer)('WorkspaceFileSystemLive writeFile', it => {
   })
 })
 
+it.layer(TestLayer)('WorkspaceFileSystemLive readFile', it => {
+  describe('readFile', () => {
+    it.effect('reads text files relative to the workspace root', () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem
+        const cwd = yield* makeTempDir
+        yield* writeTextFile(cwd, 'src/index.ts', 'export const x = 1\n')
+
+        const result = yield* workspaceFileSystem.readFile({
+          cwd,
+          relativePath: 'src/index.ts',
+        })
+
+        expect(result).toEqual({
+          relativePath: 'src/index.ts',
+          contents: 'export const x = 1\n',
+        })
+      })
+    )
+
+    it.effect('rejects reads outside the workspace root', () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem
+        const cwd = yield* makeTempDir
+
+        const error = yield* workspaceFileSystem
+          .readFile({
+            cwd,
+            relativePath: '../escape.ts',
+          })
+          .pipe(Effect.flip)
+
+        expect(error.message).toContain(
+          'Workspace file path must be relative to the project root: ../escape.ts'
+        )
+      })
+    )
+  })
+})
+
 it.layer(TestLayer)('WorkspaceFileSystemLive cache invalidation', it => {
   describe('writeFile', () => {
     it.effect('invalidates workspace entry search cache after writes', () =>

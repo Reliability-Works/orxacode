@@ -62,6 +62,22 @@ describe('buildModelOptionsByProvider', () => {
     expect(result.opencode).toEqual([])
     expect(result.claudeAgent).toEqual([])
   })
+
+  it('filters hidden opencode models from the composer picker options only', () => {
+    const statuses: ServerProvider[] = [
+      makeProvider('opencode', [
+        'anthropic/claude-sonnet-4-5',
+        'openai/gpt-5',
+        'google/gemini-2.5-pro',
+      ]),
+    ]
+    const result = buildModelOptionsByProvider(statuses, ['openai/gpt-5'])
+
+    expect(result.opencode.map(model => model.slug)).toEqual([
+      'anthropic/claude-sonnet-4-5',
+      'google/gemini-2.5-pro',
+    ])
+  })
 })
 
 describe('pickLockedProvider', () => {

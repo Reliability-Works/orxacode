@@ -37,7 +37,6 @@ import {
 } from './ChatView.browser.helpers'
 import {
   type ViewportSpec,
-  findButtonByText,
   setViewport,
   waitForElement,
   waitForLayout,
@@ -118,6 +117,7 @@ function resolveWsRpc(body: NormalizedWsRpcRequestBody): unknown {
       pr: null,
     }
   }
+  if (tag === WS_METHODS.projectsListEntries) return { entries: [], truncated: false }
   if (tag === WS_METHODS.projectsSearchEntries) return { entries: [], truncated: false }
   if (tag === WS_METHODS.shellOpenInEditor) return null
   if (tag === WS_METHODS.terminalOpen) {
@@ -356,10 +356,10 @@ export async function testSingleEditorOpen(options: {
   })
   try {
     await waitForServerConfigToApply()
-    const openButton = await waitForElement(
-      () => findButtonByText('Open'),
+    const openButton = (await waitForElement(
+      () => document.querySelector('button[aria-label="Open in preferred editor"]'),
       'Unable to find Open button.'
-    )
+    )) as HTMLButtonElement
     await vi.waitFor(() => {
       expect(openButton.disabled).toBe(false)
     })

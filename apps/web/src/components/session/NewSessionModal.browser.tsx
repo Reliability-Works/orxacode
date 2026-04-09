@@ -2,13 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import { DEFAULT_SERVER_SETTINGS } from '@orxa-code/contracts'
-import type { ProviderKind, ServerProvider } from '@orxa-code/contracts'
+import type { ProjectId, ProviderKind, ServerProvider } from '@orxa-code/contracts'
 import { setServerConfigSnapshot } from '~/rpc/serverState'
 import { NewSessionModal } from './NewSessionModal'
 
 // ── Hook mock ─────────────────────────────────────────────────────────
 
-const createMock = vi.fn<(input: { provider: ProviderKind; model: string }) => Promise<void>>()
+const createMock =
+  vi.fn<
+    (input: {
+      provider: ProviderKind
+      model: string
+      projectId?: ProjectId | null
+    }) => Promise<void>
+  >()
 
 vi.mock('./useNewSessionCreate', () => ({
   useNewSessionCreate: () => ({ create: createMock }),
@@ -58,13 +65,20 @@ function seedProviders(
   })
 }
 
-async function mountModal(open: boolean) {
+async function mountModal(open: boolean, projectId?: ProjectId | null) {
   const host = document.createElement('div')
   document.body.append(host)
   const onClose = vi.fn()
-  const screen = await render(<NewSessionModal open={open} onClose={onClose} />, {
-    container: host,
-  })
+  const screen = await render(
+    <NewSessionModal
+      open={open}
+      onClose={onClose}
+      {...(projectId !== undefined ? { projectId } : {})}
+    />,
+    {
+      container: host,
+    }
+  )
   return {
     onClose,
     screen,
@@ -244,6 +258,27 @@ async function testCreateErrorSurfacesInline() {
   }
 }
 
+async function testExplicitProjectIdIsForwardedToCreate() {
+  seedProviders('ready', 'ready', 'ready', { codexModels: [] })
+  createMock.mockResolvedValueOnce(undefined)
+  const mounted = await mountModal(true, 'project_orxacode' as ProjectId)
+  try {
+    await vi.waitFor(() => {
+      expect(document.body.textContent).toContain('Codex')
+    })
+    findProviderCard('Codex').click()
+    await vi.waitFor(() => {
+      expect(createMock).toHaveBeenCalledWith({
+        provider: 'codex',
+        model: 'gpt-5.4',
+        projectId: 'project_orxacode',
+      })
+    })
+  } finally {
+    await mounted.cleanup()
+  }
+}
+
 // ── Suite ──────────────────────────────────────────────────────────────
 
 describe('NewSessionModal', () => {
@@ -270,4 +305,8 @@ describe('NewSessionModal', () => {
   )
   it('does not render dialog content when open is false', testDialogHiddenWhenClosed)
   it('surfaces create errors inline without closing the dialog', testCreateErrorSurfacesInline)
+  it(
+    'forwards an explicit target project to session creation',
+    testExplicitProjectIdIsForwardedToCreate
+  )
 })

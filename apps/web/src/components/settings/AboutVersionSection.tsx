@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 import type React from 'react'
+import type { DesktopUpdateReleaseChannel } from '@orxa-code/contracts'
 import { APP_VERSION } from '../../branding'
 import {
   canCheckForUpdate,
@@ -10,12 +11,16 @@ import {
   resolveDesktopUpdateButtonAction,
 } from '../../components/desktopUpdate.logic'
 import {
+  setDesktopUpdatePreferencesQueryData,
   setDesktopUpdateStateQueryData,
+  useDesktopUpdatePreferences,
   useDesktopUpdateState,
 } from '../../lib/desktopUpdateReactQuery'
 import { Button } from '../ui/button'
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '../ui/select'
 import { toastManager } from '../ui/toastState'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
+import { SettingResetButton } from './settingsLayout'
 
 function AboutVersionTitle() {
   return (
@@ -29,7 +34,14 @@ function AboutVersionTitle() {
 interface SettingsRowMinimal {
   title: React.ReactNode
   description: string
+  status?: React.ReactNode
+  resetAction?: React.ReactNode
   control?: React.ReactNode
+}
+
+const UPDATE_CHANNEL_LABELS: Record<DesktopUpdateReleaseChannel, string> = {
+  stable: 'Stable',
+  prerelease: 'Pre-release',
 }
 
 function resolveUpdateButtonAction(
@@ -166,6 +178,66 @@ export function AboutVersionRow({
           />
           {buttonTooltip ? <TooltipPopup>{buttonTooltip}</TooltipPopup> : null}
         </Tooltip>
+      }
+    />
+  )
+}
+
+export function DesktopUpdateChannelRow({
+  SettingsRowComponent,
+}: {
+  SettingsRowComponent: React.ComponentType<SettingsRowMinimal>
+}) {
+  const queryClient = useQueryClient()
+  const preferencesQuery = useDesktopUpdatePreferences()
+  const preferences = preferencesQuery.data ?? null
+  const bridge = window.desktopBridge
+  const currentChannel = preferences?.releaseChannel ?? 'stable'
+
+  const handleValueChange = useCallback(
+    (value: DesktopUpdateReleaseChannel | null) => {
+      if (!bridge || (value !== 'stable' && value !== 'prerelease')) return
+      void bridge
+        .setUpdatePreferences({ releaseChannel: value })
+        .then(nextPreferences => {
+          setDesktopUpdatePreferencesQueryData(queryClient, nextPreferences)
+        })
+        .catch((error: unknown) => {
+          toastManager.add({
+            type: 'error',
+            title: 'Could not update release channel',
+            description:
+              error instanceof Error ? error.message : 'Saving update preferences failed.',
+          })
+        })
+    },
+    [bridge, queryClient]
+  )
+
+  return (
+    <SettingsRowComponent
+      title="Release channel"
+      description="Stable tracks production releases. Pre-release includes beta builds on the next update check."
+      resetAction={
+        currentChannel !== 'stable' ? (
+          <SettingResetButton label="release channel" onClick={() => handleValueChange('stable')} />
+        ) : null
+      }
+      status="Channel changes apply the next time you check for updates."
+      control={
+        <Select value={currentChannel} onValueChange={handleValueChange}>
+          <SelectTrigger className="w-full sm:w-40" aria-label="Desktop update release channel">
+            <SelectValue>{UPDATE_CHANNEL_LABELS[currentChannel]}</SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            <SelectItem hideIndicator value="stable">
+              {UPDATE_CHANNEL_LABELS.stable}
+            </SelectItem>
+            <SelectItem hideIndicator value="prerelease">
+              {UPDATE_CHANNEL_LABELS.prerelease}
+            </SelectItem>
+          </SelectPopup>
+        </Select>
       }
     />
   )

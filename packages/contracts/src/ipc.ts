@@ -17,8 +17,12 @@ import type {
   GitStatusResult,
 } from './git'
 import type {
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from './project'
@@ -69,11 +73,16 @@ export type DesktopUpdateStatus =
 
 export type DesktopRuntimeArch = 'arm64' | 'x64' | 'other'
 export type DesktopTheme = 'light' | 'dark' | 'system'
+export type DesktopUpdateReleaseChannel = 'stable' | 'prerelease'
 
 export interface DesktopRuntimeInfo {
   hostArch: DesktopRuntimeArch
   appArch: DesktopRuntimeArch
   runningUnderArm64Translation: boolean
+}
+
+export interface DesktopUpdatePreferences {
+  releaseChannel: DesktopUpdateReleaseChannel
 }
 
 export interface DesktopUpdateState {
@@ -115,9 +124,13 @@ export interface DesktopBridge {
   openExternal: (url: string) => Promise<boolean>
   onMenuAction: (listener: (action: string) => void) => () => void
   getUpdateState: () => Promise<DesktopUpdateState>
+  getUpdatePreferences: () => Promise<DesktopUpdatePreferences>
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>
   downloadUpdate: () => Promise<DesktopUpdateActionResult>
   installUpdate: () => Promise<DesktopUpdateActionResult>
+  setUpdatePreferences: (
+    input: Partial<DesktopUpdatePreferences>
+  ) => Promise<DesktopUpdatePreferences>
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void
 }
 
@@ -136,7 +149,9 @@ export interface NativeApi {
     onEvent: (callback: (event: TerminalEvent) => void) => () => void
   }
   projects: {
+    listEntries: (input: ProjectListEntriesInput) => Promise<ProjectListEntriesResult>
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>
   }
   shell: {

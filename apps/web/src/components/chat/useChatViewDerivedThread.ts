@@ -20,6 +20,7 @@ import { useProjectById } from '../../storeSelectors'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { Thread } from '../../types'
+import { filterHiddenOpencodeModels } from '../../opencodeModelGroups'
 
 const EMPTY_PROVIDERS: ServerProvider[] = []
 const DEFAULT_RUNTIME_MODE = 'full-access' as const
@@ -116,11 +117,17 @@ function buildProviderEntry(statuses: ServerProvider[], kind: ProviderKind): Pro
 }
 
 /** @internal exported for unit testing only */
-export function buildModelOptionsByProvider(statuses: ServerProvider[]): ModelOptionsByProvider {
+export function buildModelOptionsByProvider(
+  statuses: ServerProvider[],
+  opencodeHiddenModelSlugs: ReadonlyArray<string> = []
+): ModelOptionsByProvider {
   return {
     codex: buildProviderEntry(statuses, 'codex'),
     claudeAgent: buildProviderEntry(statuses, 'claudeAgent'),
-    opencode: buildProviderEntry(statuses, 'opencode'),
+    opencode: filterHiddenOpencodeModels(
+      buildProviderEntry(statuses, 'opencode'),
+      opencodeHiddenModelSlugs
+    ),
   }
 }
 
@@ -190,8 +197,58 @@ function useOpencodeExtras(
   }, [isPlanMode, modelSelectionByProvider, selectedProvider])
 }
 
+function useSelectedModelSelectionMemo(input: {
+  selectedProvider: ProviderKind
+  selectedModel: string
+  modelOptionsForDispatch: ReturnType<typeof getComposerProviderState>['modelOptionsForDispatch']
+  opencodeExtras: { agentId?: string; variant?: string } | null
+}) {
+  return useMemo(
+    () =>
+      buildSelectedModelSelection(
+        input.selectedProvider,
+        input.selectedModel,
+        input.modelOptionsForDispatch,
+        input.opencodeExtras
+      ),
+    [
+      input.modelOptionsForDispatch,
+      input.opencodeExtras,
+      input.selectedModel,
+      input.selectedProvider,
+    ]
+  )
+}
+
+function useProviderPickerDerived(input: {
+  providerStatuses: readonly ServerProvider[]
+  opencodeHiddenModelSlugs: ReadonlyArray<string>
+  selectedProvider: ProviderKind
+  selectedModel: string
+}) {
+  const modelOptionsByProvider = useMemo(
+    () => buildModelOptionsByProvider([...input.providerStatuses], input.opencodeHiddenModelSlugs),
+    [input.opencodeHiddenModelSlugs, input.providerStatuses]
+  )
+  const selectedModelForPickerWithCustomFallback = useMemo(
+    () =>
+      pickModelForPicker(
+        [...(modelOptionsByProvider[input.selectedProvider] ?? [])],
+        input.selectedModel,
+        input.selectedProvider
+      ),
+    [input.selectedModel, input.selectedProvider, modelOptionsByProvider]
+  )
+  const activeProviderStatus = useMemo(
+    () => input.providerStatuses.find(s => s.provider === input.selectedProvider) ?? null,
+    [input.providerStatuses, input.selectedProvider]
+  )
+  return { modelOptionsByProvider, selectedModelForPickerWithCustomFallback, activeProviderStatus }
+}
+
 function useProviderDerivedMemos(params: {
   providerStatuses: readonly ServerProvider[]
+  opencodeHiddenModelSlugs: ReadonlyArray<string>
   selectedProvider: ProviderKind
   selectedModel: string
   selectedProviderModels: ReturnType<typeof getProviderModels>
@@ -201,6 +258,7 @@ function useProviderDerivedMemos(params: {
 }) {
   const {
     providerStatuses,
+    opencodeHiddenModelSlugs,
     selectedProvider,
     selectedModel,
     selectedProviderModels,
@@ -230,33 +288,19 @@ function useProviderDerivedMemos(params: {
     composerDraft.modelSelectionByProvider,
     isOpencodePlanMode
   )
-  const selectedModelSelection = useMemo(
-    () =>
-      buildSelectedModelSelection(
-        selectedProvider,
-        selectedModel,
-        composerProviderState.modelOptionsForDispatch,
-        opencodeExtras
-      ),
-    [composerProviderState.modelOptionsForDispatch, opencodeExtras, selectedModel, selectedProvider]
-  )
-  const modelOptionsByProvider = useMemo(
-    () => buildModelOptionsByProvider([...providerStatuses]),
-    [providerStatuses]
-  )
-  const selectedModelForPickerWithCustomFallback = useMemo(
-    () =>
-      pickModelForPicker(
-        [...(modelOptionsByProvider[selectedProvider] ?? [])],
-        selectedModel,
-        selectedProvider
-      ),
-    [modelOptionsByProvider, selectedModel, selectedProvider]
-  )
-  const activeProviderStatus = useMemo(
-    () => providerStatuses.find(s => s.provider === selectedProvider) ?? null,
-    [providerStatuses, selectedProvider]
-  )
+  const selectedModelSelection = useSelectedModelSelectionMemo({
+    selectedProvider,
+    selectedModel,
+    modelOptionsForDispatch: composerProviderState.modelOptionsForDispatch,
+    opencodeExtras,
+  })
+  const { modelOptionsByProvider, selectedModelForPickerWithCustomFallback, activeProviderStatus } =
+    useProviderPickerDerived({
+      providerStatuses,
+      opencodeHiddenModelSlugs,
+      selectedProvider,
+      selectedModel,
+    })
   return {
     composerProviderState,
     selectedModelSelection,
@@ -279,6 +323,7 @@ function useDerivedProviderAndModel(params: {
   const isOpencodePlanMode = selection.selectedProvider === 'opencode' && interactionMode === 'plan'
   const memos = useProviderDerivedMemos({
     providerStatuses: params.providerStatuses,
+    opencodeHiddenModelSlugs: params.settings.providers.opencode.hiddenModelSlugs,
     selectedProvider: selection.selectedProvider,
     selectedModel: selection.selectedModel,
     selectedProviderModels: selection.selectedProviderModels,

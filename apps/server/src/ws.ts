@@ -11,6 +11,10 @@ import {
   OrchestrationGetSnapshotError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  type ProjectListEntriesInput,
+  ProjectListEntriesError,
+  type ProjectReadFileInput,
+  ProjectReadFileError,
   type ProjectSearchEntriesInput,
   ProjectSearchEntriesError,
   type ProjectWriteFileInput,
@@ -353,6 +357,15 @@ const createProjectMethods = ({
   workspaceEntries,
   workspaceFileSystem,
 }: Pick<WsRpcDependencies, 'open' | 'workspaceEntries' | 'workspaceFileSystem'>) => ({
+  [WS_METHODS.projectsListEntries]: (input: ProjectListEntriesInput) =>
+    workspaceEntries.list(input.cwd).pipe(
+      Effect.mapError(
+        cause =>
+          new ProjectListEntriesError({
+            message: `Failed to list workspace entries: ${cause.detail}`,
+          })
+      )
+    ),
   [WS_METHODS.projectsSearchEntries]: (input: ProjectSearchEntriesInput) =>
     workspaceEntries.search(input).pipe(
       Effect.mapError(
@@ -361,6 +374,21 @@ const createProjectMethods = ({
             message: `Failed to search workspace entries: ${cause.detail}`,
           })
       )
+    ),
+  [WS_METHODS.projectsReadFile]: (input: ProjectReadFileInput) =>
+    workspaceFileSystem.readFile(input).pipe(
+      Effect.mapError(cause => {
+        if (cause._tag === 'WorkspacePathOutsideRootError') {
+          return new ProjectReadFileError({
+            message: 'Workspace file path must stay within the project root.',
+            cause,
+          })
+        }
+        return new ProjectReadFileError({
+          message: cause.detail,
+          cause,
+        })
+      })
     ),
   [WS_METHODS.projectsWriteFile]: (input: ProjectWriteFileInput) =>
     workspaceFileSystem.writeFile(input).pipe(

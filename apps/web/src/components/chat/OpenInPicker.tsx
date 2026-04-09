@@ -63,11 +63,15 @@ const resolveOptions = (platform: string, availableEditors: ReadonlyArray<Editor
 function OpenInPrimaryButton(props: { disabled: boolean; Icon: Icon | null; onClick: () => void }) {
   const { disabled, Icon, onClick } = props
   return (
-    <Button size="xs" variant="outline" disabled={disabled} onClick={onClick}>
+    <Button
+      size="icon-xs"
+      variant="outline"
+      disabled={disabled}
+      onClick={onClick}
+      aria-label="Open in preferred editor"
+    >
       {Icon && <Icon aria-hidden="true" className="size-3.5" />}
-      <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
-        Open
-      </span>
+      <span className="sr-only">Open</span>
     </Button>
   )
 }
@@ -150,7 +154,9 @@ export const OpenInPicker = memo(function OpenInPicker({
       />
       <GroupSeparator className="hidden @3xl/header-actions:block" />
       <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
+        <MenuTrigger
+          render={<Button aria-label="Open in editor options" size="icon-xs" variant="outline" />}
+        >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
         <MenuPopup align="end">

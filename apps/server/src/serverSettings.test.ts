@@ -26,6 +26,13 @@ it.layer(NodeServices.layer)('server settings schema', it => {
       })
 
       assert.deepEqual(
+        decodePatch({ providers: { opencode: { hiddenModelSlugs: ['openai/gpt-5'] } } }),
+        {
+          providers: { opencode: { hiddenModelSlugs: ['openai/gpt-5'] } },
+        }
+      )
+
+      assert.deepEqual(
         decodePatch({
           textGenerationModelSelection: {
             options: {
@@ -94,6 +101,12 @@ it.layer(NodeServices.layer)('server settings deep merge behavior', it => {
         enabled: true,
         binaryPath: '/usr/local/bin/claude',
         customModels: ['claude-custom'],
+      })
+      assert.deepEqual(next.providers.opencode, {
+        enabled: true,
+        binaryPath: 'opencode',
+        customModels: [],
+        hiddenModelSlugs: [],
       })
       assert.deepEqual(next.textGenerationModelSelection, {
         provider: 'codex',
@@ -174,6 +187,12 @@ it.layer(NodeServices.layer)('server settings path normalization', it => {
         binaryPath: '/opt/homebrew/bin/claude',
         customModels: [],
       })
+      assert.deepEqual(next.providers.opencode, {
+        enabled: true,
+        binaryPath: 'opencode',
+        customModels: [],
+        hiddenModelSlugs: [],
+      })
     }).pipe(Effect.provide(makeServerSettingsLayer()))
   )
 
@@ -194,6 +213,28 @@ it.layer(NodeServices.layer)('server settings path normalization', it => {
 
       assert.equal(next.providers.codex.binaryPath, 'codex')
       assert.equal(next.providers.claudeAgent.binaryPath, 'claude')
+      assert.deepEqual(next.providers.opencode.hiddenModelSlugs, [])
+    }).pipe(Effect.provide(makeServerSettingsLayer()))
+  )
+})
+
+it.layer(NodeServices.layer)('server settings opencode model visibility', it => {
+  it.effect('persists hidden Opencode model slugs alongside other provider settings', () =>
+    Effect.gen(function* () {
+      const serverSettings = yield* ServerSettingsService
+
+      const next = yield* serverSettings.updateSettings({
+        providers: {
+          opencode: {
+            hiddenModelSlugs: ['openai/gpt-5', 'anthropic/claude-sonnet-4-5'],
+          },
+        },
+      })
+
+      assert.deepEqual(next.providers.opencode.hiddenModelSlugs, [
+        'openai/gpt-5',
+        'anthropic/claude-sonnet-4-5',
+      ])
     }).pipe(Effect.provide(makeServerSettingsLayer()))
   )
 })

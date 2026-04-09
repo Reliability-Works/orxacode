@@ -6,21 +6,16 @@
  * + wiring).
  */
 
-import {
-  LayoutDashboardIcon,
-  PlusIcon,
-  SettingsIcon,
-  TriangleAlertIcon,
-  ZapIcon,
-} from 'lucide-react'
+import { LayoutDashboardIcon, PlusIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
+import type React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
+import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../env'
 import type { Project } from '../types'
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
 import {
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
@@ -37,13 +32,13 @@ import { ProjectSortMenu } from './sidebar/SidebarHelpers'
 import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
 import { ProjectItem } from './sidebar/ProjectItem'
 import type { RenderedProjectData } from './sidebar/ProjectItem'
-import { SidebarUpdatePill } from './sidebar/SidebarUpdatePill'
 import {
   AddProjectForm,
   SidebarDndProjectList,
   SidebarStaticProjectList,
   type AddProjectFormProps,
 } from './SidebarProjectList'
+import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
 
 // ---------------------------------------------------------------------------
 // Sub-components still defined in Sidebar.tsx and re-exported
@@ -75,6 +70,7 @@ export interface SidebarBodyProps {
   // -- Desktop update --
   showArm64IntelBuildWarning: boolean
   arm64IntelBuildWarningDescription: string | null
+  desktopUpdateState: DesktopUpdateState | null
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   desktopUpdateButtonDisabled: boolean
   onDesktopUpdateButtonClick: () => void
@@ -335,26 +331,6 @@ function SidebarTopNav({ pathname }: { pathname: string }) {
   )
 }
 
-function SidebarMainFooter({ onNavigateToSettings }: { onNavigateToSettings: () => void }) {
-  return (
-    <SidebarFooter className="p-2">
-      <SidebarUpdatePill />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => void onNavigateToSettings()}
-          >
-            <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </SidebarFooter>
-  )
-}
-
 function buildAddFormProps(p: SidebarMainViewProps): AddProjectFormProps {
   return {
     isPickingFolder: p.isPickingFolder,
@@ -376,6 +352,7 @@ function SidebarMainView(props: SidebarMainViewProps) {
     shouldShowProjectPathEntry,
     showArm64IntelBuildWarning,
     arm64IntelBuildWarningDescription,
+    desktopUpdateState,
     desktopUpdateButtonAction,
     desktopUpdateButtonDisabled,
     onDesktopUpdateButtonClick,
@@ -429,7 +406,11 @@ function SidebarMainView(props: SidebarMainViewProps) {
         />
       </SidebarContent>
       <SidebarSeparator />
-      <SidebarMainFooter onNavigateToSettings={onNavigateToSettings} />
+      <SidebarMainFooter
+        desktopUpdateState={desktopUpdateState}
+        onNavigateToSettings={onNavigateToSettings}
+        onUpdateAction={onDesktopUpdateButtonClick}
+      />
     </>
   )
 }

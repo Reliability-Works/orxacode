@@ -39,9 +39,11 @@ import {
   GitPullRequestRefInput,
   GitPullResult,
   GitRemoveWorktreeInput,
+  GitRestoreAllUnstagedInput,
   GitResolvePullRequestResult,
   GitRestorePathInput,
   GitRunStackedActionInput,
+  GitStageAllInput,
   GitStagePathInput,
   GitStatusInput,
   GitStatusResult,
@@ -75,6 +77,12 @@ import {
   OrchestrationRpcSchemas,
 } from './orchestration'
 import {
+  ProjectListEntriesError,
+  ProjectListEntriesInput,
+  ProjectListEntriesResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -109,7 +117,9 @@ export const WS_METHODS = {
   projectsList: 'projects.list',
   projectsAdd: 'projects.add',
   projectsRemove: 'projects.remove',
+  projectsListEntries: 'projects.listEntries',
   projectsSearchEntries: 'projects.searchEntries',
+  projectsReadFile: 'projects.readFile',
   projectsWriteFile: 'projects.writeFile',
 
   // Shell methods
@@ -131,6 +141,8 @@ export const WS_METHODS = {
   gitGetLog: 'git.getLog',
   gitGetIssues: 'git.getIssues',
   gitGetPullRequests: 'git.getPullRequests',
+  gitStageAll: 'git.stageAll',
+  gitRestoreAllUnstaged: 'git.restoreAllUnstaged',
   gitStagePath: 'git.stagePath',
   gitUnstagePath: 'git.unstagePath',
   gitRestorePath: 'git.restorePath',
@@ -211,10 +223,22 @@ export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntr
   error: ProjectSearchEntriesError,
 })
 
+export const WsProjectsListEntriesRpc = Rpc.make(WS_METHODS.projectsListEntries, {
+  payload: ProjectListEntriesInput,
+  success: ProjectListEntriesResult,
+  error: ProjectListEntriesError,
+})
+
 export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   payload: ProjectWriteFileInput,
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
+})
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: ProjectReadFileError,
 })
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
@@ -307,6 +331,16 @@ export const WsGitGetPullRequestsRpc = Rpc.make(WS_METHODS.gitGetPullRequests, {
   payload: GitGetPullRequestsInput,
   success: GitGetPullRequestsResult,
   error: GitHubCliError,
+})
+
+export const WsGitStageAllRpc = Rpc.make(WS_METHODS.gitStageAll, {
+  payload: GitStageAllInput,
+  error: GitCommandError,
+})
+
+export const WsGitRestoreAllUnstagedRpc = Rpc.make(WS_METHODS.gitRestoreAllUnstaged, {
+  payload: GitRestoreAllUnstagedInput,
+  error: GitCommandError,
 })
 
 export const WsGitStagePathRpc = Rpc.make(WS_METHODS.gitStagePath, {
@@ -469,7 +503,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsProviderListAgentsRpc,
+  WsProjectsListEntriesRpc,
   WsProjectsSearchEntriesRpc,
+  WsProjectsReadFileRpc,
   WsProjectsWriteFileRpc,
   WsShellOpenInEditorRpc,
   WsGitStatusRpc,
@@ -487,6 +523,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitGetLogRpc,
   WsGitGetIssuesRpc,
   WsGitGetPullRequestsRpc,
+  WsGitStageAllRpc,
+  WsGitRestoreAllUnstagedRpc,
   WsGitStagePathRpc,
   WsGitUnstagePathRpc,
   WsGitRestorePathRpc,

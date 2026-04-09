@@ -429,8 +429,29 @@ export const GitGetIssuesInput = Schema.Struct({
 })
 export type GitGetIssuesInput = typeof GitGetIssuesInput.Type
 
+const GitHubActor = Schema.Struct({
+  login: Schema.String,
+})
+
+const GitHubLabel = Schema.Struct({
+  name: TrimmedNonEmptyStringSchema,
+  color: Schema.optional(Schema.String),
+})
+
+export const GitIssueEntry = Schema.Struct({
+  number: PositiveInt,
+  title: TrimmedNonEmptyStringSchema,
+  url: Schema.String,
+  state: Schema.String,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  author: Schema.optional(Schema.NullOr(GitHubActor)),
+  labels: Schema.optional(Schema.Array(GitHubLabel)),
+})
+export type GitIssueEntry = typeof GitIssueEntry.Type
+
 export const GitGetIssuesResult = Schema.Struct({
-  text: Schema.String,
+  entries: Schema.Array(GitIssueEntry),
 })
 export type GitGetIssuesResult = typeof GitGetIssuesResult.Type
 
@@ -440,10 +461,33 @@ export const GitGetPullRequestsInput = Schema.Struct({
 })
 export type GitGetPullRequestsInput = typeof GitGetPullRequestsInput.Type
 
+export const GitPullRequestListEntry = Schema.Struct({
+  number: PositiveInt,
+  title: TrimmedNonEmptyStringSchema,
+  url: Schema.String,
+  state: Schema.String,
+  isDraft: Schema.optional(Schema.Boolean),
+  updatedAt: Schema.String,
+  headRefName: TrimmedNonEmptyStringSchema,
+  baseRefName: TrimmedNonEmptyStringSchema,
+  author: Schema.optional(Schema.NullOr(GitHubActor)),
+})
+export type GitPullRequestListEntry = typeof GitPullRequestListEntry.Type
+
 export const GitGetPullRequestsResult = Schema.Struct({
-  text: Schema.String,
+  entries: Schema.Array(GitPullRequestListEntry),
 })
 export type GitGetPullRequestsResult = typeof GitGetPullRequestsResult.Type
+
+export const GitStageAllInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+})
+export type GitStageAllInput = typeof GitStageAllInput.Type
+
+export const GitRestoreAllUnstagedInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+})
+export type GitRestoreAllUnstagedInput = typeof GitRestoreAllUnstagedInput.Type
 
 export const GitStagePathInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,

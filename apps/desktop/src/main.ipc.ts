@@ -4,6 +4,7 @@ import type {
   ContextMenuItem,
   DesktopUpdateActionResult,
   DesktopUpdateCheckResult,
+  DesktopUpdatePreferences,
   DesktopUpdateState,
 } from '@orxa-code/contracts'
 
@@ -19,9 +20,11 @@ export interface IpcChannels {
   readonly contextMenu: string
   readonly openExternal: string
   readonly updateGetState: string
+  readonly updateGetPreferences: string
   readonly updateDownload: string
   readonly updateInstall: string
   readonly updateCheck: string
+  readonly updateSetPreferences: string
 }
 
 export interface IpcUpdaterAdapter {
@@ -38,6 +41,10 @@ export interface IpcHost {
   readonly mainWindow: () => BrowserWindow | null
   readonly isQuitting: () => boolean
   readonly updater: IpcUpdaterAdapter
+  readonly getUpdatePreferences: () => DesktopUpdatePreferences
+  readonly setUpdatePreferences: (
+    input: Partial<DesktopUpdatePreferences>
+  ) => DesktopUpdatePreferences
 }
 
 export async function pickFolderForDesktop(host: IpcHost): Promise<string | null> {
@@ -141,6 +148,9 @@ export function registerDesktopUpdateIpcHandlers(host: IpcHost): void {
     createUpdateActionResult(host, await host.updater.downloadAvailable())
   )
 
+  ipcMain.removeHandler(channels.updateGetPreferences)
+  ipcMain.handle(channels.updateGetPreferences, async () => host.getUpdatePreferences())
+
   ipcMain.removeHandler(channels.updateInstall)
   ipcMain.handle(channels.updateInstall, async () => {
     if (host.isQuitting()) {
@@ -155,6 +165,15 @@ export function registerDesktopUpdateIpcHandlers(host: IpcHost): void {
       ? createUpdateCheckResult(host, await host.updater.checkForUpdates('web-ui'))
       : createUpdateCheckResult(host, false)
   )
+
+  ipcMain.removeHandler(channels.updateSetPreferences)
+  ipcMain.handle(channels.updateSetPreferences, async (_event, rawInput: unknown) => {
+    const input =
+      rawInput && typeof rawInput === 'object'
+        ? (rawInput as Partial<DesktopUpdatePreferences>)
+        : {}
+    return host.setUpdatePreferences(input)
+  })
 }
 
 function registerCoreIpcHandlers(host: IpcHost): void {

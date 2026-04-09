@@ -9,7 +9,12 @@
 import { Schema, ServiceMap } from 'effect'
 import type { Effect } from 'effect'
 
-import type { ProjectWriteFileInput, ProjectWriteFileResult } from '@orxa-code/contracts'
+import type {
+  ProjectReadFileInput,
+  ProjectReadFileResult,
+  ProjectWriteFileInput,
+  ProjectWriteFileResult,
+} from '@orxa-code/contracts'
 import { WorkspacePathOutsideRootError } from './WorkspacePaths.ts'
 
 export class WorkspaceFileSystemError extends Schema.TaggedErrorClass<WorkspaceFileSystemError>()(
@@ -27,6 +32,19 @@ export class WorkspaceFileSystemError extends Schema.TaggedErrorClass<WorkspaceF
  * WorkspaceFileSystemShape - Service API for workspace-relative file operations.
  */
 export interface WorkspaceFileSystemShape {
+  /**
+   * Read a UTF-8 text file relative to the workspace root.
+   *
+   * Rejects paths that escape the workspace root and files that are too large
+   * for inline editing in the sidebar editor.
+   */
+  readonly readFile: (
+    input: ProjectReadFileInput
+  ) => Effect.Effect<
+    ProjectReadFileResult,
+    WorkspaceFileSystemError | WorkspacePathOutsideRootError
+  >
+
   /**
    * Write a file relative to the workspace root.
    *

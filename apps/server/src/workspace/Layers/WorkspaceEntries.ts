@@ -563,6 +563,11 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
   })
 
   return {
+    list: cwd =>
+      normalizeWorkspaceRoot(workspacePaths, cwd).pipe(
+        Effect.flatMap(normalizedCwd => Cache.get(workspaceIndexCache, normalizedCwd)),
+        Effect.map(index => ({ entries: index.entries, truncated: index.truncated }))
+      ),
     invalidate: cwd => invalidateWorkspaceEntries(workspacePaths, workspaceIndexCache, cwd),
     search: input => searchWorkspaceIndex(workspacePaths, workspaceIndexCache, input),
   } satisfies WorkspaceEntriesShape

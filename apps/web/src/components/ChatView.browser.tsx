@@ -242,7 +242,7 @@ async function runFilterVscodiumTest(): Promise<void> {
   try {
     await waitForServerConfigToApply()
     const menuButton = await waitForElement(
-      () => document.querySelector('button[aria-label="Copy options"]'),
+      () => document.querySelector('button[aria-label="Open in editor options"]'),
       'Unable to find Open picker button.'
     )
     ;(menuButton as HTMLButtonElement).click()

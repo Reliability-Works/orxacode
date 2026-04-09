@@ -7,6 +7,7 @@ import {
   type ServerProviderModel,
 } from '@orxa-code/contracts'
 import { ProviderCardConfiguredProviders } from './ProviderCardAuthDetails'
+import { OpencodeModelVisibilitySection } from './OpencodeModelVisibilitySection'
 import { Button } from '../ui/button'
 import { Collapsible, CollapsibleContent } from '../ui/collapsible'
 import { Input } from '../ui/input'
@@ -31,6 +32,7 @@ export interface ProviderCardData {
     readonly enabled: boolean
     readonly binaryPath: string
     readonly customModels: ReadonlyArray<string>
+    readonly hiddenModelSlugs?: ReadonlyArray<string>
   }
   statusStyle: { dot: string }
   summary: { headline: string; detail: string | null }
@@ -43,6 +45,10 @@ interface ProviderModelCallbacks {
   onCustomModelInputChange: (provider: ProviderKind, value: string) => void
   onCustomModelInputKeyDown: (provider: ProviderKind, key: string) => void
   onAddCustomModel: (provider: ProviderKind) => void
+  onHiddenModelSlugsChange: (
+    provider: ProviderKind,
+    hiddenModelSlugs: ReadonlyArray<string>
+  ) => void
   onRemoveCustomModel: (provider: ProviderKind, slug: string) => void
   onSetModelListRef: (provider: ProviderKind, el: HTMLDivElement | null) => void
 }
@@ -229,6 +235,7 @@ function ProviderCardBody({
   onCustomModelInputChange,
   onCustomModelInputKeyDown,
   onAddCustomModel,
+  onHiddenModelSlugsChange,
   onRemoveCustomModel,
   onSetModelListRef,
 }: ProviderCardBodyProps) {
@@ -279,6 +286,7 @@ function ProviderCardBody({
           onCustomModelInputChange={onCustomModelInputChange}
           onCustomModelInputKeyDown={onCustomModelInputKeyDown}
           onAddCustomModel={onAddCustomModel}
+          onHiddenModelSlugsChange={onHiddenModelSlugsChange}
           onRemoveCustomModel={onRemoveCustomModel}
           onSetModelListRef={onSetModelListRef}
         />
@@ -292,6 +300,7 @@ type ProviderModelListProps = Pick<
   | 'onCustomModelInputChange'
   | 'onCustomModelInputKeyDown'
   | 'onAddCustomModel'
+  | 'onHiddenModelSlugsChange'
   | 'onRemoveCustomModel'
   | 'onSetModelListRef'
 > & {
@@ -307,6 +316,7 @@ function ProviderModelList({
   onCustomModelInputChange,
   onCustomModelInputKeyDown,
   onAddCustomModel,
+  onHiddenModelSlugsChange,
   onRemoveCustomModel,
   onSetModelListRef,
 }: ProviderModelListProps) {
@@ -329,6 +339,15 @@ function ProviderModelList({
           />
         ))}
       </div>
+      {card.provider === 'opencode' ? (
+        <OpencodeModelVisibilitySection
+          models={card.models}
+          hiddenModelSlugs={card.providerConfig.hiddenModelSlugs ?? []}
+          onHiddenModelSlugsChange={hiddenModelSlugs =>
+            onHiddenModelSlugsChange(card.provider, hiddenModelSlugs)
+          }
+        />
+      ) : null}
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <Input
           id={`custom-model-${card.provider}`}
@@ -336,7 +355,11 @@ function ProviderModelList({
           onChange={event => onCustomModelInputChange(card.provider, event.target.value)}
           onKeyDown={event => onCustomModelInputKeyDown(card.provider, event.key)}
           placeholder={
-            card.provider === 'codex' ? 'gpt-6.7-codex-ultra-preview' : 'claude-sonnet-5-0'
+            card.provider === 'codex'
+              ? 'gpt-6.7-codex-ultra-preview'
+              : card.provider === 'opencode'
+                ? 'anthropic/claude-sonnet-4-5'
+                : 'claude-sonnet-5-0'
           }
           spellCheck={false}
         />
@@ -369,6 +392,7 @@ export function ProviderCard({
   onCustomModelInputChange,
   onCustomModelInputKeyDown,
   onAddCustomModel,
+  onHiddenModelSlugsChange,
   onRemoveCustomModel,
   onResetProvider,
   onSetModelListRef,
@@ -402,6 +426,7 @@ export function ProviderCard({
             onCustomModelInputChange={onCustomModelInputChange}
             onCustomModelInputKeyDown={onCustomModelInputKeyDown}
             onAddCustomModel={onAddCustomModel}
+            onHiddenModelSlugsChange={onHiddenModelSlugsChange}
             onRemoveCustomModel={onRemoveCustomModel}
             onSetModelListRef={onSetModelListRef}
           />

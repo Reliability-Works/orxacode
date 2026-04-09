@@ -41,6 +41,61 @@ it.effect('routes websocket rpc projects.searchEntries', () =>
   )
 )
 
+it.effect('routes websocket rpc projects.listEntries', () =>
+  provideServerTest(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: 'orxa-ws-project-list-' })
+      yield* fs.makeDirectory(path.join(workspaceDir, 'src'))
+      yield* fs.writeFileString(path.join(workspaceDir, 'src', 'index.ts'), 'export const x = 1;')
+
+      yield* buildAppUnderTest()
+
+      const wsUrl = yield* getWsServerUrl('/ws')
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, client =>
+          client[WS_METHODS.projectsListEntries]({
+            cwd: workspaceDir,
+          })
+        )
+      )
+
+      assert.isTrue(
+        response.entries.some(entry => entry.path === 'src' && entry.kind === 'directory')
+      )
+      assert.isTrue(
+        response.entries.some(entry => entry.path === 'src/index.ts' && entry.kind === 'file')
+      )
+      assert.equal(response.truncated, false)
+    })
+  )
+)
+
+it.effect('routes websocket rpc projects.listEntries errors', () =>
+  provideServerTest(
+    Effect.gen(function* () {
+      yield* buildAppUnderTest()
+
+      const wsUrl = yield* getWsServerUrl('/ws')
+      const result = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, client =>
+          client[WS_METHODS.projectsListEntries]({
+            cwd: '/definitely/not/a/real/workspace/path',
+          })
+        ).pipe(Effect.result)
+      )
+
+      assertTrue(result._tag === 'Failure')
+      assertTrue(result.failure._tag === 'ProjectListEntriesError')
+      assertInclude(
+        result.failure.message,
+        'Workspace root does not exist: /definitely/not/a/real/workspace/path'
+      )
+    })
+  )
+)
+
 it.effect('routes websocket rpc projects.searchEntries errors', () =>
   provideServerTest(
     Effect.gen(function* () {
@@ -90,6 +145,36 @@ it.effect('routes websocket rpc projects.writeFile', () =>
       assert.equal(response.relativePath, 'nested/created.txt')
       const persisted = yield* fs.readFileString(path.join(workspaceDir, 'nested', 'created.txt'))
       assert.equal(persisted, 'written-by-rpc')
+    })
+  )
+)
+
+it.effect('routes websocket rpc projects.readFile', () =>
+  provideServerTest(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: 'orxa-ws-project-read-' })
+      yield* fs.makeDirectory(path.join(workspaceDir, 'nested'), { recursive: true })
+      yield* fs.writeFileString(
+        path.join(workspaceDir, 'nested', 'opened.ts'),
+        'export const ok = true\n'
+      )
+
+      yield* buildAppUnderTest()
+
+      const wsUrl = yield* getWsServerUrl('/ws')
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, client =>
+          client[WS_METHODS.projectsReadFile]({
+            cwd: workspaceDir,
+            relativePath: 'nested/opened.ts',
+          })
+        )
+      )
+
+      assert.equal(response.relativePath, 'nested/opened.ts')
+      assert.equal(response.contents, 'export const ok = true\n')
     })
   )
 )

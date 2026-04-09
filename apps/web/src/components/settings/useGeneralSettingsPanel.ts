@@ -13,6 +13,7 @@ import {
   resolveAppModelSelectionState,
 } from '../../modelSelection'
 import { ensureNativeApi } from '../../nativeApi'
+import { normalizeOpencodeHiddenModelSlugs } from '../../opencodeModelGroups'
 import {
   useServerAvailableEditors,
   useServerKeybindingsConfigPath,
@@ -119,6 +120,13 @@ function useCustomModelActions(
           [provider]: {
             ...settings.providers[provider],
             customModels: settings.providers[provider].customModels.filter(m => m !== slug),
+            ...(provider === 'opencode'
+              ? {
+                  hiddenModelSlugs: settings.providers.opencode.hiddenModelSlugs.filter(
+                    modelSlug => modelSlug !== slug
+                  ),
+                }
+              : {}),
           },
         },
       })
@@ -128,6 +136,26 @@ function useCustomModelActions(
   )
 
   return { addCustomModel, removeCustomModel }
+}
+
+function useProviderModelVisibilityActions(settings: Settings, updateSettings: UpdateSettings) {
+  const handleHiddenModelSlugsChange = useCallback(
+    (provider: ProviderKind, hiddenModelSlugs: ReadonlyArray<string>) => {
+      if (provider !== 'opencode') return
+      updateSettings({
+        providers: {
+          ...settings.providers,
+          opencode: {
+            ...settings.providers.opencode,
+            hiddenModelSlugs: normalizeOpencodeHiddenModelSlugs([...hiddenModelSlugs]),
+          },
+        },
+      })
+    },
+    [settings, updateSettings]
+  )
+
+  return { handleHiddenModelSlugsChange }
 }
 
 function useProviderSettingsActions(
@@ -212,7 +240,8 @@ function useGeneralSettingsPanelState(settings: Settings) {
     opencode: Boolean(
       settings.providers.opencode.binaryPath !==
         DEFAULT_UNIFIED_SETTINGS.providers.opencode.binaryPath ||
-      settings.providers.opencode.customModels.length > 0
+      settings.providers.opencode.customModels.length > 0 ||
+      settings.providers.opencode.hiddenModelSlugs.length > 0
     ),
   })
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
@@ -338,6 +367,7 @@ export function useGeneralSettingsPanel() {
     updateSettings,
     derived.textGenProvider
   )
+  const providerModelVisibilityActions = useProviderModelVisibilityActions(settings, updateSettings)
   return {
     theme,
     setTheme,
@@ -363,6 +393,7 @@ export function useGeneralSettingsPanel() {
     openKeybindingsFile,
     addCustomModel,
     removeCustomModel,
+    handleHiddenModelSlugsChange: providerModelVisibilityActions.handleHiddenModelSlugsChange,
     handleToggleEnabled: providerActions.handleToggleEnabled,
     handleBinaryPathChange: providerActions.handleBinaryPathChange,
     handleCodexHomePathChange: providerActions.handleCodexHomePathChange,

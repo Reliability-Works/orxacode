@@ -10,7 +10,7 @@ import { spawn } from 'node:child_process'
 import { accessSync, constants, statSync } from 'node:fs'
 import { extname, join } from 'node:path'
 
-import { EDITORS, OpenError, type EditorId } from '@orxa-code/contracts'
+import { EDITORS, OpenError, type EditorDefinition, type EditorId } from '@orxa-code/contracts'
 import { ServiceMap, Effect, Layer } from 'effect'
 
 // ==============================
@@ -38,6 +38,88 @@ const LINE_COLUMN_SUFFIX_PATTERN = /:\d+(?::\d+)?$/
 
 function shouldUseGotoFlag(editor: (typeof EDITORS)[number], target: string): boolean {
   return editor.supportsGoto && LINE_COLUMN_SUFFIX_PATTERN.test(target)
+}
+
+function resolveDarwinApplicationRoots(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
+  const configured = env.ORXA_EDITOR_APP_DIRS
+  if (configured !== undefined) {
+    return configured
+      .split(resolvePathDelimiter('darwin'))
+      .map(entry => entry.trim())
+      .filter(entry => entry.length > 0)
+  }
+
+  const homeDir = env.HOME?.trim()
+  const homeApplicationsDir = homeDir ? join(homeDir, 'Applications') : null
+  return ['/Applications', ...(homeApplicationsDir ? [homeApplicationsDir] : [])]
+}
+
+function resolveDarwinEditorCommandCandidates(
+  editor: EditorDefinition,
+  env: NodeJS.ProcessEnv
+): ReadonlyArray<string> {
+  const applicationRoots = resolveDarwinApplicationRoots(env)
+  if (editor.id === 'cursor') {
+    return [
+      'cursor',
+      ...applicationRoots.map(root => join(root, 'Cursor.app/Contents/Resources/app/bin/cursor')),
+      ...applicationRoots.map(root => join(root, 'Cursor.app/Contents/MacOS/Cursor')),
+    ]
+  }
+  if (editor.id === 'zed') {
+    return [
+      'zed',
+      ...applicationRoots.map(root => join(root, 'Zed.app/Contents/MacOS/cli')),
+      ...applicationRoots.map(root => join(root, 'Zed.app/Contents/MacOS/zed')),
+    ]
+  }
+  if (editor.id === 'antigravity') {
+    return [
+      'agy',
+      'antigravity',
+      ...applicationRoots.map(root => join(root, 'Antigravity.app/Contents/MacOS/antigravity')),
+      ...applicationRoots.map(root => join(root, 'Antigravity.app/Contents/MacOS/Antigravity')),
+    ]
+  }
+  return editor.command ? [editor.command] : []
+}
+
+function resolveEditorCommandCandidates(
+  editor: EditorDefinition,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv
+): ReadonlyArray<string> {
+  if (editor.id === 'file-manager') {
+    return [fileManagerCommandForPlatform(platform)]
+  }
+  if (platform === 'darwin') {
+    return resolveDarwinEditorCommandCandidates(editor, env)
+  }
+  return editor.command ? [editor.command] : []
+}
+
+function findAvailableEditorCommand(
+  editor: EditorDefinition,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv
+): string | null {
+  const candidates = resolveEditorCommandCandidates(editor, platform, env)
+  for (const candidate of candidates) {
+    if (isCommandAvailable(candidate, { platform, env })) return candidate
+  }
+  return null
+}
+
+function resolveLaunchEditorCommand(
+  editor: EditorDefinition,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv
+): string | null {
+  return (
+    findAvailableEditorCommand(editor, platform, env) ??
+    resolveEditorCommandCandidates(editor, platform, env)[0] ??
+    null
+  )
 }
 
 function fileManagerCommandForPlatform(platform: NodeJS.Platform): string {
@@ -163,8 +245,7 @@ export function resolveAvailableEditors(
   const available: EditorId[] = []
 
   for (const editor of EDITORS) {
-    const command = editor.command ?? fileManagerCommandForPlatform(platform)
-    if (isCommandAvailable(command, { platform, env })) {
+    if (findAvailableEditorCommand(editor, platform, env)) {
       available.push(editor.id)
     }
   }
@@ -200,24 +281,31 @@ export class Open extends ServiceMap.Service<Open, OpenShape>()('orxacode/open')
 
 export const resolveEditorLaunch = Effect.fnUntraced(function* (
   input: OpenInEditorInput,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
 ): Effect.fn.Return<EditorLaunch, OpenError> {
   const editorDef = EDITORS.find(editor => editor.id === input.editor)
   if (!editorDef) {
     return yield* new OpenError({ message: `Unknown editor: ${input.editor}` })
   }
 
-  if (editorDef.command) {
+  const command = resolveLaunchEditorCommand(editorDef, platform, env)
+  if (command && editorDef.id !== 'file-manager') {
     return shouldUseGotoFlag(editorDef, input.cwd)
-      ? { command: editorDef.command, args: ['--goto', input.cwd] }
-      : { command: editorDef.command, args: [input.cwd] }
+      ? { command, args: ['--goto', input.cwd] }
+      : { command, args: [input.cwd] }
   }
 
   if (editorDef.id !== 'file-manager') {
     return yield* new OpenError({ message: `Unsupported editor: ${input.editor}` })
   }
 
-  return { command: fileManagerCommandForPlatform(platform), args: [input.cwd] }
+  return {
+    command:
+      resolveLaunchEditorCommand(editorDef, platform, env) ??
+      fileManagerCommandForPlatform(platform),
+    args: [input.cwd],
+  }
 })
 
 export const resolveBrowserLaunch = (

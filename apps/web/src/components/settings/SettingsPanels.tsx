@@ -16,7 +16,11 @@ import {
   getProviderSummary,
   getProviderVersionLabel,
 } from './providerCardLogic'
-import { AboutVersionRow, StaticAboutVersionRow } from './AboutVersionSection'
+import {
+  AboutVersionRow,
+  DesktopUpdateChannelRow,
+  StaticAboutVersionRow,
+} from './AboutVersionSection'
 import { GeneralSection } from './GeneralSection'
 import { SettingsSection, SettingsRow, SettingsPageContainer } from './settingsLayout'
 import { PROVIDER_SETTINGS } from './providerSettings'
@@ -72,6 +76,15 @@ interface ProvidersSectionProps {
   lastCheckedAt: string | null
 }
 
+function getLastCheckedAt(serverProviders: ReturnType<typeof useServerProviders>): string | null {
+  return serverProviders.length > 0
+    ? serverProviders.reduce(
+        (latest, p) => (p.checkedAt > latest ? p.checkedAt : latest),
+        serverProviders[0]!.checkedAt
+      )
+    : null
+}
+
 function ProvidersSectionBlock({ panel, providerCards, lastCheckedAt }: ProvidersSectionProps) {
   const {
     settings,
@@ -84,6 +97,7 @@ function ProvidersSectionBlock({ panel, providerCards, lastCheckedAt }: Provider
     modelListRefs,
     refreshProviders,
     addCustomModel,
+    handleHiddenModelSlugsChange,
     removeCustomModel,
     handleToggleEnabled,
     handleBinaryPathChange,
@@ -122,6 +136,7 @@ function ProvidersSectionBlock({ panel, providerCards, lastCheckedAt }: Provider
             if (key === 'Enter') addCustomModel(provider)
           }}
           onAddCustomModel={addCustomModel}
+          onHiddenModelSlugsChange={handleHiddenModelSlugsChange}
           onRemoveCustomModel={removeCustomModel}
           onResetProvider={handleResetProvider}
           onSetModelListRef={(provider, el) => {
@@ -133,57 +148,63 @@ function ProvidersSectionBlock({ panel, providerCards, lastCheckedAt }: Provider
   )
 }
 
-interface AdvancedAboutProps {
+interface AdvancedSettingsProps {
   keybindingsConfigPath: string | null
   openKeybindingsError: string | null
   isOpeningKeybindings: boolean
   openKeybindingsFile: () => void
 }
 
-function AdvancedAboutBlock({
+function AdvancedSettingsBlock({
   keybindingsConfigPath,
   openKeybindingsError,
   isOpeningKeybindings,
   openKeybindingsFile,
-}: AdvancedAboutProps) {
+}: AdvancedSettingsProps) {
   return (
-    <>
-      <SettingsSection title="Advanced">
-        <SettingsRow
-          title="Keybindings"
-          description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
-          status={
-            <>
-              <span className="block break-all font-mono text-[11px] text-foreground">
-                {keybindingsConfigPath ?? 'Resolving keybindings path...'}
-              </span>
-              {openKeybindingsError ? (
-                <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
-              ) : (
-                <span className="mt-1 block">Opens in your preferred editor.</span>
-              )}
-            </>
-          }
-          control={
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={!keybindingsConfigPath || isOpeningKeybindings}
-              onClick={openKeybindingsFile}
-            >
-              {isOpeningKeybindings ? 'Opening...' : 'Open file'}
-            </Button>
-          }
-        />
-      </SettingsSection>
-      <SettingsSection title="About">
-        {isElectron ? (
+    <SettingsSection title="Advanced">
+      <SettingsRow
+        title="Keybindings"
+        description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
+        status={
+          <>
+            <span className="block break-all font-mono text-[11px] text-foreground">
+              {keybindingsConfigPath ?? 'Resolving keybindings path...'}
+            </span>
+            {openKeybindingsError ? (
+              <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
+            ) : (
+              <span className="mt-1 block">Opens in your preferred editor.</span>
+            )}
+          </>
+        }
+        control={
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={!keybindingsConfigPath || isOpeningKeybindings}
+            onClick={openKeybindingsFile}
+          >
+            {isOpeningKeybindings ? 'Opening...' : 'Open file'}
+          </Button>
+        }
+      />
+    </SettingsSection>
+  )
+}
+
+function AboutSettingsBlock() {
+  return (
+    <SettingsSection title="About">
+      {isElectron ? (
+        <>
           <AboutVersionRow SettingsRowComponent={SettingsRow} />
-        ) : (
-          <StaticAboutVersionRow SettingsRowComponent={SettingsRow} />
-        )}
-      </SettingsSection>
-    </>
+          <DesktopUpdateChannelRow SettingsRowComponent={SettingsRow} />
+        </>
+      ) : (
+        <StaticAboutVersionRow SettingsRowComponent={SettingsRow} />
+      )}
+    </SettingsSection>
   )
 }
 
@@ -194,26 +215,13 @@ export function GeneralSettingsPanel() {
     setTheme,
     settings,
     updateSettings,
-    isOpeningKeybindings,
-    openKeybindingsError,
-    keybindingsConfigPath,
     serverProviders,
     textGenProvider,
     textGenModel,
     textGenModelOptions,
     gitModelOptionsByProvider,
     isGitWritingModelDirty,
-    openKeybindingsFile,
   } = panel
-
-  const providerCards = buildProviderCards(settings, serverProviders)
-  const lastCheckedAt =
-    serverProviders.length > 0
-      ? serverProviders.reduce(
-          (latest, p) => (p.checkedAt > latest ? p.checkedAt : latest),
-          serverProviders[0]!.checkedAt
-        )
-      : null
 
   return (
     <SettingsPageContainer>
@@ -229,17 +237,45 @@ export function GeneralSettingsPanel() {
         gitModelOptionsByProvider={gitModelOptionsByProvider}
         serverProviders={serverProviders}
       />
+    </SettingsPageContainer>
+  )
+}
+
+export function ProvidersSettingsPanel() {
+  const panel = useGeneralSettingsPanel()
+  const providerCards = buildProviderCards(panel.settings, panel.serverProviders)
+  const lastCheckedAt = getLastCheckedAt(panel.serverProviders)
+
+  return (
+    <SettingsPageContainer>
       <ProvidersSectionBlock
         panel={panel}
         providerCards={providerCards}
         lastCheckedAt={lastCheckedAt}
       />
-      <AdvancedAboutBlock
-        keybindingsConfigPath={keybindingsConfigPath ?? null}
-        openKeybindingsError={openKeybindingsError}
-        isOpeningKeybindings={isOpeningKeybindings}
-        openKeybindingsFile={openKeybindingsFile}
+    </SettingsPageContainer>
+  )
+}
+
+export function AdvancedSettingsPanel() {
+  const panel = useGeneralSettingsPanel()
+
+  return (
+    <SettingsPageContainer>
+      <AdvancedSettingsBlock
+        keybindingsConfigPath={panel.keybindingsConfigPath ?? null}
+        openKeybindingsError={panel.openKeybindingsError}
+        isOpeningKeybindings={panel.isOpeningKeybindings}
+        openKeybindingsFile={panel.openKeybindingsFile}
       />
+    </SettingsPageContainer>
+  )
+}
+
+export function AboutSettingsPanel() {
+  return (
+    <SettingsPageContainer>
+      <AboutSettingsBlock />
     </SettingsPageContainer>
   )
 }

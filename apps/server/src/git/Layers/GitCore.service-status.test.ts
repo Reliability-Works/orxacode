@@ -72,6 +72,63 @@ it.effect('reports status details and dirty state', () =>
   )
 )
 
+it.effect('supports stage-all and restore-all-unstaged through the service API', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+      yield* writeTextFile(path.join(tmp, 'README.md'), 'updated\n')
+
+      yield* core.stageAll({ cwd: tmp })
+      let details = yield* core.statusDetails(tmp)
+      expect(details.hasWorkingTreeChanges).toBe(true)
+      expect(details.workingTree.files).toHaveLength(1)
+
+      yield* core.unstagePath({ cwd: tmp, path: 'README.md' })
+      yield* core.restoreAllUnstaged({ cwd: tmp })
+      details = yield* core.statusDetails(tmp)
+      expect(details.hasWorkingTreeChanges).toBe(false)
+      expect(details.workingTree.files).toHaveLength(0)
+    })
+  )
+)
+
+it.effect('returns full patch blocks for sidebar diff rendering', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+      yield* writeTextFile(path.join(tmp, 'README.md'), 'updated\nwith more context\n')
+
+      const diff = yield* core.getDiff({ cwd: tmp })
+      const file = diff.unstaged.find(entry => entry.path === 'README.md')
+
+      expect(file).toBeDefined()
+      expect(file?.patch).toContain('diff --git a/README.md b/README.md')
+      expect(file?.patch).toContain('--- a/README.md')
+      expect(file?.patch).toContain('+++ b/README.md')
+      expect(file?.patch).toContain('@@')
+    })
+  )
+)
+
+it.effect('returns git log entries for repositories with commits', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+
+      const log = yield* core.getLog({ cwd: tmp, limit: 10 })
+
+      expect(log.entries.length).toBeGreaterThan(0)
+      expect(log.entries[0]?.subject).toBe('initial commit')
+    })
+  )
+)
+
 it.effect('computes ahead count against base branch when no upstream is configured', () =>
   withGitTestLayer(
     Effect.gen(function* () {

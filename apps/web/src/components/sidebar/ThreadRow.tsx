@@ -1,8 +1,9 @@
 import { ArchiveIcon, GitPullRequestIcon, TerminalIcon } from 'lucide-react'
 import type { MouseEvent } from 'react'
-import { ThreadId } from '@orxa-code/contracts'
+import { ThreadId, type ProviderKind } from '@orxa-code/contracts'
 import type { Thread } from '../../types'
 import { formatRelativeTimeLabel } from '../../timestampFormat'
+import { ProviderLogo } from '../session'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar'
 import type { ThreadStatusPill } from '../Sidebar.logic'
@@ -23,6 +24,7 @@ export type SidebarThreadSnapshot = Pick<
   | 'id'
   | 'interactionMode'
   | 'latestTurn'
+  | 'modelSelection'
   | 'projectId'
   | 'proposedPlans'
   | 'session'
@@ -36,6 +38,10 @@ export type SidebarThreadSnapshot = Pick<
 
 export type SidebarProjectSnapshot = Pick<Thread, 'id' | 'projectId'> & {
   expanded: boolean
+}
+
+function resolveThreadProvider(thread: SidebarThreadSnapshot): ProviderKind | null {
+  return thread.session?.provider ?? thread.modelSelection.provider ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -203,8 +209,14 @@ function ThreadRowTitleContent({
   rename: ThreadRowRenameState
   onOpenPrLink: ThreadRowProps['onOpenPrLink']
 }) {
+  const provider = resolveThreadProvider(thread)
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+      {provider ? (
+        <span className="inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
+          <ProviderLogo provider={provider} size={14} />
+        </span>
+      ) : null}
       {prStatus && (
         <Tooltip>
           <TooltipTrigger

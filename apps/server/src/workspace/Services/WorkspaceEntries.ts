@@ -9,7 +9,11 @@
 import { Schema, ServiceMap } from 'effect'
 import type { Effect } from 'effect'
 
-import type { ProjectSearchEntriesInput, ProjectSearchEntriesResult } from '@orxa-code/contracts'
+import type {
+  ProjectListEntriesResult,
+  ProjectSearchEntriesInput,
+  ProjectSearchEntriesResult,
+} from '@orxa-code/contracts'
 
 export class WorkspaceEntriesError extends Schema.TaggedErrorClass<WorkspaceEntriesError>()(
   'WorkspaceEntriesError',
@@ -26,6 +30,11 @@ export class WorkspaceEntriesError extends Schema.TaggedErrorClass<WorkspaceEntr
  * invalidation.
  */
 export interface WorkspaceEntriesShape {
+  /**
+   * List cached workspace entries for the provided workspace root.
+   */
+  readonly list: (cwd: string) => Effect.Effect<ProjectListEntriesResult, WorkspaceEntriesError>
+
   /**
    * Search indexed workspace entries for files and directories matching the
    * provided query.

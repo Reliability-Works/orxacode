@@ -1,237 +1,178 @@
-import type { GitDiffFile, GitDiffResult, GitDiffSectionKind } from '@orxa-code/contracts'
+import { PatchDiff } from '@pierre/diffs/react'
+import type { GitDiffFile, GitDiffResult } from '@orxa-code/contracts'
 import { useQueryClient } from '@tanstack/react-query'
-import { FilePlusIcon, MinusCircleIcon, RotateCcwIcon } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { AlignJustifyIcon, Columns2Icon, ListIcon, PlusIcon, RotateCcwIcon } from 'lucide-react'
+import { useState, type ComponentType, type ReactNode } from 'react'
 
+import { invalidateGitQueries } from '../../lib/gitReactQuery'
 import { getWsRpcClient } from '../../wsRpcClient'
-import { gitPanelQueryKeys } from '../../lib/gitReactQuery'
+import { useTheme } from '../../hooks/useTheme'
 import { Button } from '../ui/button'
 import { GitSidebarSkeleton } from './GitTextTab'
-import { cn } from '~/lib/utils'
+import { GitDiffListView, GitDiffTreePane } from './GitDiffFileSections'
 
-// ── File tree ────────────────────────────────────────────────────────
+type GitDiffViewMode = 'list' | 'unified' | 'split'
 
-const SECTION_LABELS: Record<GitDiffSectionKind, string> = {
-  staged: 'Staged',
-  unstaged: 'Unstaged',
-  untracked: 'Untracked',
-}
-
-function DiffStatBadge({ additions, deletions }: { additions: number; deletions: number }) {
-  if (additions === 0 && deletions === 0) return null
-  return (
-    <span className="ml-auto shrink-0 font-mono text-[10px]">
-      {additions > 0 && <span className="text-success">+{additions}</span>}
-      {additions > 0 && deletions > 0 && <span className="text-muted-foreground/60"> </span>}
-      {deletions > 0 && <span className="text-destructive">-{deletions}</span>}
-    </span>
-  )
-}
-
-function FileRow({
-  file,
-  selected,
-  onClick,
-}: {
-  file: GitDiffFile
-  selected: boolean
-  onClick: () => void
-}) {
-  const name = file.path.split('/').pop() ?? file.path
-  const dir = file.path.includes('/') ? file.path.slice(0, file.path.lastIndexOf('/') + 1) : ''
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors',
-        selected ? 'bg-accent text-foreground' : 'hover:bg-accent/50 text-muted-foreground'
-      )}
-    >
-      <span className="min-w-0 flex-1 truncate">
-        {dir && <span className="opacity-50">{dir}</span>}
-        <span className="font-medium text-foreground">{name}</span>
-      </span>
-      <DiffStatBadge additions={file.additions} deletions={file.deletions} />
-    </button>
-  )
-}
-
-function useFileActions(cwd: string, onRefresh: () => void) {
+function useGitDiffActions(cwd: string, onRefresh: () => void) {
   const queryClient = useQueryClient()
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: gitPanelQueryKeys.diff(cwd) })
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
+
+  const runAction = async (actionKey: string, run: () => Promise<void>) => {
+    setPendingAction(actionKey)
+    try {
+      await run()
+      await invalidateGitQueries(queryClient)
+      onRefresh()
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   return {
-    handleStage: async (path: string) => {
-      await getWsRpcClient().git.stagePath({ cwd, path })
-      await invalidate()
-      onRefresh()
-    },
-    handleUnstage: async (path: string) => {
-      await getWsRpcClient().git.unstagePath({ cwd, path })
-      await invalidate()
-      onRefresh()
-    },
-    handleRestore: async (path: string) => {
-      await getWsRpcClient().git.restorePath({ cwd, path })
-      await invalidate()
-      onRefresh()
-    },
+    pendingAction,
+    stageAll: () => runAction('stage-all', () => getWsRpcClient().git.stageAll({ cwd })),
+    restoreAllUnstaged: () =>
+      runAction('restore-all-unstaged', () => getWsRpcClient().git.restoreAllUnstaged({ cwd })),
+    stagePath: (path: string) =>
+      runAction(`stage:${path}`, () => getWsRpcClient().git.stagePath({ cwd, path })),
+    unstagePath: (path: string) =>
+      runAction(`unstage:${path}`, () => getWsRpcClient().git.unstagePath({ cwd, path })),
+    restorePath: (path: string) =>
+      runAction(`restore:${path}`, () => getWsRpcClient().git.restorePath({ cwd, path })),
   }
 }
 
-function FileActionButtons({
-  file,
-  cwd,
-  onRefresh,
-}: {
-  file: GitDiffFile
-  cwd: string
-  onRefresh: () => void
-}) {
-  const { handleStage, handleUnstage, handleRestore } = useFileActions(cwd, onRefresh)
-  return (
-    <div className="flex shrink-0 gap-0.5 pr-1 opacity-0 transition-opacity group-hover:opacity-100">
-      {file.section === 'unstaged' && (
-        <>
-          <Button
-            size="xs"
-            variant="ghost"
-            title="Stage"
-            className="h-5 w-5 p-0"
-            onClick={() => void handleStage(file.path)}
-          >
-            <FilePlusIcon className="size-3" />
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            title="Restore"
-            className="h-5 w-5 p-0 text-destructive hover:text-destructive"
-            onClick={() => void handleRestore(file.path)}
-          >
-            <RotateCcwIcon className="size-3" />
-          </Button>
-        </>
-      )}
-      {file.section === 'staged' && (
-        <Button
-          size="xs"
-          variant="ghost"
-          title="Unstage"
-          className="h-5 w-5 p-0"
-          onClick={() => void handleUnstage(file.path)}
-        >
-          <MinusCircleIcon className="size-3" />
-        </Button>
-      )}
-    </div>
-  )
-}
+function PatchModeDiffView(props: { file: GitDiffFile; mode: Exclude<GitDiffViewMode, 'list'> }) {
+  const { resolvedTheme } = useTheme()
 
-function SectionGroup({
-  label,
-  files,
-  selectedPath,
-  cwd,
-  onSelect,
-  onRefresh,
-}: {
-  label: string
-  files: ReadonlyArray<GitDiffFile>
-  selectedPath: string | null
-  cwd: string
-  onSelect: (file: GitDiffFile) => void
-  onRefresh: () => void
-}) {
-  if (files.length === 0) return null
-  return (
-    <div className="flex flex-col gap-0.5">
-      <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-        {label} ({files.length})
-      </p>
-      {files.map(file => (
-        <div key={file.path} className="group flex items-center gap-0.5">
-          <div className="min-w-0 flex-1">
-            <FileRow
-              file={file}
-              selected={selectedPath === file.path}
-              onClick={() => onSelect(file)}
-            />
-          </div>
-          <FileActionButtons file={file} cwd={cwd} onRefresh={onRefresh} />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── Inline diff renderer ─────────────────────────────────────────────
-
-function DiffLineRow({ type, content }: { type: 'context' | 'add' | 'del'; content: string }) {
-  return (
-    <div
-      className={cn(
-        'flex font-mono text-[11px] leading-5',
-        type === 'add' && 'bg-success/8 text-success-foreground',
-        type === 'del' && 'bg-destructive/8 text-destructive-foreground'
-      )}
-    >
-      <span
-        className={cn(
-          'w-4 shrink-0 select-none text-center',
-          type === 'add' && 'text-success',
-          type === 'del' && 'text-destructive',
-          type === 'context' && 'text-muted-foreground/40'
-        )}
-      >
-        {type === 'add' ? '+' : type === 'del' ? '-' : ' '}
-      </span>
-      <span className="min-w-0 flex-1 whitespace-pre-wrap break-all px-1">{content}</span>
-    </div>
-  )
-}
-
-function FileDiffView({ file }: { file: GitDiffFile }) {
-  if (file.isBinary) {
+  if (props.file.isBinary) {
     return (
       <div className="flex items-center justify-center p-6">
         <p className="text-xs text-muted-foreground">Binary file</p>
       </div>
     )
   }
-  if (file.section === 'untracked') {
+
+  if (props.file.section === 'untracked' || props.file.patch.trim().length === 0) {
     return (
       <div className="flex items-center justify-center p-6">
-        <p className="text-xs text-muted-foreground">Untracked — no diff available</p>
+        <p className="text-xs text-muted-foreground">No rendered diff available</p>
       </div>
     )
   }
-  if (file.hunks.length === 0) {
-    return (
-      <div className="flex items-center justify-center p-6">
-        <p className="text-xs text-muted-foreground">No changes</p>
-      </div>
-    )
-  }
+
   return (
-    <div className="flex flex-col divide-y divide-border/50">
-      {file.hunks.map((hunk, hi) => (
-        <div key={hi}>
-          <div className="bg-muted/30 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-            {hunk.header}
-          </div>
-          <div>
-            {hunk.lines.map((line, li) => (
-              <DiffLineRow key={li} type={line.type} content={line.content} />
-            ))}
-          </div>
-        </div>
-      ))}
+    <div className="overflow-x-auto">
+      <PatchDiff
+        patch={props.file.patch}
+        className="min-w-full"
+        disableWorkerPool={true}
+        options={{
+          diffStyle: props.mode,
+          disableFileHeader: true,
+          overflow: 'scroll',
+          expandUnchanged: false,
+          hunkSeparators: 'line-info-basic',
+          themeType: resolvedTheme,
+        }}
+      />
     </div>
   )
 }
 
-// ── Main tab ─────────────────────────────────────────────────────────
+function GitDiffModeButton(props: {
+  active: boolean
+  label: string
+  onClick: () => void
+  icon: ComponentType<{ className?: string }>
+}) {
+  const Icon = props.icon
+  return (
+    <Button
+      type="button"
+      size="xs"
+      variant={props.active ? 'secondary' : 'ghost'}
+      className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
+      onClick={props.onClick}
+    >
+      <Icon className="size-3" />
+      <span>{props.label}</span>
+    </Button>
+  )
+}
+
+function GitDiffControls(props: {
+  mode: GitDiffViewMode
+  setMode: (mode: GitDiffViewMode) => void
+  fileListOpen: boolean
+  showFileToggle: boolean
+  canStageAll: boolean
+  canRestoreAll: boolean
+  pendingAction: string | null
+  onToggleFileList: () => void
+  onStageAll: () => void
+  onRestoreAll: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex items-center gap-1">
+        <GitDiffModeButton
+          active={props.mode === 'list'}
+          label="List"
+          icon={ListIcon}
+          onClick={() => props.setMode('list')}
+        />
+        <GitDiffModeButton
+          active={props.mode === 'unified'}
+          label="Unified"
+          icon={AlignJustifyIcon}
+          onClick={() => props.setMode('unified')}
+        />
+        <GitDiffModeButton
+          active={props.mode === 'split'}
+          label="Split"
+          icon={Columns2Icon}
+          onClick={() => props.setMode('split')}
+        />
+      </div>
+      <div className="ms-auto flex items-center gap-1">
+        {props.showFileToggle ? (
+          <Button
+            type="button"
+            size="xs"
+            variant={props.fileListOpen ? 'secondary' : 'ghost'}
+            className="h-7 rounded-full px-2.5 text-[11px]"
+            onClick={props.onToggleFileList}
+          >
+            {props.fileListOpen ? 'Hide files' : 'Show files'}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
+          disabled={!props.canStageAll || props.pendingAction !== null}
+          onClick={props.onStageAll}
+        >
+          <PlusIcon className="size-3" />
+          <span>Stage all</span>
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="h-7 gap-1.5 rounded-full px-2.5 text-[11px] text-destructive hover:text-destructive"
+          disabled={!props.canRestoreAll || props.pendingAction !== null}
+          onClick={props.onRestoreAll}
+        >
+          <RotateCcwIcon className="size-3" />
+          <span>Revert all</span>
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 export interface GitDiffTabProps {
   cwd: string
@@ -240,14 +181,109 @@ export interface GitDiffTabProps {
   onRefresh: () => void
 }
 
+function GitDiffDetailPane(props: {
+  activeFile: GitDiffFile | null
+  mode: Exclude<GitDiffViewMode, 'list'>
+}) {
+  return (
+    <div className="min-w-0 flex-1 overflow-y-auto">
+      {props.activeFile ? (
+        <>
+          <div className="sticky top-0 z-10 border-b border-border bg-background px-3 py-1.5">
+            <p className="truncate font-mono text-xs font-medium text-foreground">
+              {props.activeFile.path}
+            </p>
+          </div>
+          <PatchModeDiffView file={props.activeFile} mode={props.mode} />
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+function GitDiffTabContent({
+  data,
+  actions,
+  mode,
+  setMode,
+  fileListOpen,
+  onToggleFileList,
+  selectedPath,
+  onSelectPath,
+}: {
+  data: GitDiffResult
+  actions: ReturnType<typeof useGitDiffActions>
+  mode: GitDiffViewMode
+  setMode: (mode: GitDiffViewMode) => void
+  fileListOpen: boolean
+  onToggleFileList: () => void
+  selectedPath: string | null
+  onSelectPath: (path: string) => void
+}) {
+  const allFiles = [...data.staged, ...data.unstaged, ...data.untracked]
+  const activeFile = allFiles.find(file => file.path === selectedPath) ?? allFiles[0] ?? null
+  const canStageAll = data.unstaged.length > 0 || data.untracked.length > 0
+  const canRestoreAll = data.unstaged.length > 0
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <GitDiffControls
+        mode={mode}
+        setMode={setMode}
+        fileListOpen={fileListOpen}
+        showFileToggle={mode !== 'list'}
+        canStageAll={canStageAll}
+        canRestoreAll={canRestoreAll}
+        pendingAction={actions.pendingAction}
+        onToggleFileList={onToggleFileList}
+        onStageAll={() => void actions.stageAll()}
+        onRestoreAll={() => void actions.restoreAllUnstaged()}
+      />
+      {mode === 'list' ? (
+        <GitDiffListView data={data} pendingAction={actions.pendingAction} actions={actions} />
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          {fileListOpen ? (
+            <GitDiffTreePane
+              data={data}
+              activePath={activeFile?.path ?? null}
+              pendingAction={actions.pendingAction}
+              onSelectPath={onSelectPath}
+              actions={actions}
+            />
+          ) : null}
+          <GitDiffDetailPane activeFile={activeFile} mode={mode} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function GitDiffTab({ cwd, data, isPending, onRefresh }: GitDiffTabProps): ReactNode {
-  const [selectedFile, setSelectedFile] = useState<GitDiffFile | null>(null)
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [mode, setMode] = useState<GitDiffViewMode>('unified')
+  const [fileListOpen, setFileListOpen] = useState(false)
+  const actions = useGitDiffActions(cwd, onRefresh)
+
+  const handleSetMode = (nextMode: GitDiffViewMode) => {
+    setMode(currentMode => {
+      if (currentMode === nextMode) return currentMode
+      if (nextMode === 'list') {
+        setFileListOpen(true)
+      } else if (currentMode === 'list') {
+        setFileListOpen(false)
+      }
+      return nextMode
+    })
+  }
 
   if (isPending) {
     return <GitSidebarSkeleton />
   }
 
-  if (!data) return null
+  if (!data) {
+    return null
+  }
 
   const allFiles = [...data.staged, ...data.unstaged, ...data.untracked]
 
@@ -259,53 +295,16 @@ export function GitDiffTab({ cwd, data, isPending, onRefresh }: GitDiffTabProps)
     )
   }
 
-  const activeFile =
-    selectedFile && allFiles.find(f => f.path === selectedFile.path)
-      ? selectedFile
-      : (allFiles[0] ?? null)
-
   return (
-    <div className="flex min-h-0 flex-1">
-      {/* File tree */}
-      <div className="w-48 shrink-0 overflow-y-auto border-r border-border p-2">
-        <SectionGroup
-          label={SECTION_LABELS.staged}
-          files={data.staged}
-          selectedPath={activeFile?.path ?? null}
-          cwd={cwd}
-          onSelect={setSelectedFile}
-          onRefresh={onRefresh}
-        />
-        <SectionGroup
-          label={SECTION_LABELS.unstaged}
-          files={data.unstaged}
-          selectedPath={activeFile?.path ?? null}
-          cwd={cwd}
-          onSelect={setSelectedFile}
-          onRefresh={onRefresh}
-        />
-        <SectionGroup
-          label={SECTION_LABELS.untracked}
-          files={data.untracked}
-          selectedPath={activeFile?.path ?? null}
-          cwd={cwd}
-          onSelect={setSelectedFile}
-          onRefresh={onRefresh}
-        />
-      </div>
-      {/* Diff view */}
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {activeFile ? (
-          <>
-            <div className="sticky top-0 border-b border-border bg-background px-3 py-1.5">
-              <p className="truncate font-mono text-xs font-medium text-foreground">
-                {activeFile.path}
-              </p>
-            </div>
-            <FileDiffView file={activeFile} />
-          </>
-        ) : null}
-      </div>
-    </div>
+    <GitDiffTabContent
+      data={data}
+      actions={actions}
+      mode={mode}
+      setMode={handleSetMode}
+      fileListOpen={fileListOpen}
+      onToggleFileList={() => setFileListOpen(open => !open)}
+      selectedPath={selectedPath}
+      onSelectPath={setSelectedPath}
+    />
   )
 }

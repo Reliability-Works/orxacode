@@ -29,15 +29,42 @@ interface PendingPullRequestSetupRequest {
   scriptId: string
 }
 
-const CHAT_GIT_SIDEBAR_OPEN_KEY = 'orxa:chat-git-sidebar-open'
+export const ChatAuxSidebarModeSchema = Schema.Literals(['none', 'git', 'files'])
+export type ChatAuxSidebarMode = typeof ChatAuxSidebarModeSchema.Type
 
-function useGitSidebarOpenState() {
-  return useLocalStorage(CHAT_GIT_SIDEBAR_OPEN_KEY, false, Schema.Boolean)
+const CHAT_AUX_SIDEBAR_MODE_KEY = 'orxa:chat-aux-sidebar-mode'
+const CHAT_AUX_SIDEBAR_WIDTH_KEY = 'orxa:chat-aux-sidebar-width'
+const DEFAULT_CHAT_AUX_SIDEBAR_WIDTH = 384
+
+function useChatAuxSidebarModeState() {
+  return useLocalStorage(
+    CHAT_AUX_SIDEBAR_MODE_KEY,
+    'none' as ChatAuxSidebarMode,
+    ChatAuxSidebarModeSchema
+  )
+}
+
+function useChatAuxSidebarWidthState() {
+  return useLocalStorage(CHAT_AUX_SIDEBAR_WIDTH_KEY, DEFAULT_CHAT_AUX_SIDEBAR_WIDTH, Schema.Finite)
+}
+
+function useChatAuxSidebarState() {
+  const [auxSidebarMode, setAuxSidebarMode] = useChatAuxSidebarModeState()
+  const [auxSidebarWidth, setAuxSidebarWidth] = useChatAuxSidebarWidthState()
+  return { auxSidebarMode, setAuxSidebarMode, auxSidebarWidth, setAuxSidebarWidth }
+}
+
+function useLastInvokedScriptState() {
+  return useLocalStorage(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY, {}, LastInvokedScriptByProjectSchema)
 }
 
 export function useChatViewLocalState(prompt: string) {
   const refs = useChatViewLocalRefs(prompt)
   const pending = useChatViewPendingInputState()
+  const { auxSidebarMode, setAuxSidebarMode, auxSidebarWidth, setAuxSidebarWidth } =
+    useChatAuxSidebarState()
+  const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] =
+    useLastInvokedScriptState()
   const [isDragOverComposer, setIsDragOverComposer] = useState(false)
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([])
@@ -47,7 +74,6 @@ export function useChatViewLocalState(prompt: string) {
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false)
-  const [gitSidebarOpen, setGitSidebarOpen] = useGitSidebarOpenState()
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
@@ -63,11 +89,6 @@ export function useChatViewLocalState(prompt: string) {
   )
   const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
     detectComposerTrigger(prompt, prompt.length)
-  )
-  const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] = useLocalStorage(
-    LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
-    {},
-    LastInvokedScriptByProjectSchema
   )
 
   return {
@@ -87,8 +108,10 @@ export function useChatViewLocalState(prompt: string) {
     setExpandedWorkGroups,
     planSidebarOpen,
     setPlanSidebarOpen,
-    gitSidebarOpen,
-    setGitSidebarOpen,
+    auxSidebarMode,
+    setAuxSidebarMode,
+    auxSidebarWidth,
+    setAuxSidebarWidth,
     nowTick,
     setNowTick,
     terminalFocusRequestId,

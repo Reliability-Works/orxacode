@@ -27,6 +27,7 @@ import {
 import { createBackendController, type BackendHost } from './main.backend'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
+import { createDesktopUpdatePreferencesStore } from './updatePreferences'
 
 syncShellEnvironment()
 
@@ -38,9 +39,11 @@ const OPEN_EXTERNAL_CHANNEL = 'desktop:open-external'
 const MENU_ACTION_CHANNEL = 'desktop:menu-action'
 const UPDATE_STATE_CHANNEL = 'desktop:update-state'
 const UPDATE_GET_STATE_CHANNEL = 'desktop:update-get-state'
+const UPDATE_GET_PREFERENCES_CHANNEL = 'desktop:update-get-preferences'
 const UPDATE_DOWNLOAD_CHANNEL = 'desktop:update-download'
 const UPDATE_INSTALL_CHANNEL = 'desktop:update-install'
 const UPDATE_CHECK_CHANNEL = 'desktop:update-check'
+const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
 const GET_WS_URL_CHANNEL = 'desktop:get-ws-url'
 const BASE_DIR = process.env.ORXA_HOME?.trim() || Path.join(OS.homedir(), '.orxa')
 const STATE_DIR = Path.join(BASE_DIR, 'userdata')
@@ -62,7 +65,6 @@ const APP_RUN_ID = Crypto.randomBytes(6).toString('hex')
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000
 const DESKTOP_UPDATE_CHANNEL = 'latest'
-const DESKTOP_UPDATE_ALLOW_PRERELEASE = false
 const AUTO_UPDATE_DISABLED_BY_ENV = process.env.ORXA_CODE_DISABLE_AUTO_UPDATE === '1'
 
 type LinuxDesktopNamedApp = Electron.App & {
@@ -83,11 +85,15 @@ const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
   processArch: process.arch,
   runningUnderArm64Translation: app.runningUnderARM64Translation === true,
 })
+const updatePreferencesStore = createDesktopUpdatePreferencesStore(
+  Path.join(STATE_DIR, 'update-preferences.json')
+)
+const initialUpdatePreferences = updatePreferencesStore.syncInstalledVersion(app.getVersion())
 
 const updaterController = createUpdaterController(
   {
     channel: DESKTOP_UPDATE_CHANNEL,
-    allowPrerelease: DESKTOP_UPDATE_ALLOW_PRERELEASE,
+    allowPrerelease: initialUpdatePreferences.releaseChannel === 'prerelease',
     startupDelayMs: AUTO_UPDATE_STARTUP_DELAY_MS,
     pollIntervalMs: AUTO_UPDATE_POLL_INTERVAL_MS,
     disabledByEnv: AUTO_UPDATE_DISABLED_BY_ENV,
@@ -432,9 +438,11 @@ const ipcChannels: IpcChannels = {
   contextMenu: CONTEXT_MENU_CHANNEL,
   openExternal: OPEN_EXTERNAL_CHANNEL,
   updateGetState: UPDATE_GET_STATE_CHANNEL,
+  updateGetPreferences: UPDATE_GET_PREFERENCES_CHANNEL,
   updateDownload: UPDATE_DOWNLOAD_CHANNEL,
   updateInstall: UPDATE_INSTALL_CHANNEL,
   updateCheck: UPDATE_CHECK_CHANNEL,
+  updateSetPreferences: UPDATE_SET_PREFERENCES_CHANNEL,
 }
 
 const ipcHost: IpcHost = {
@@ -443,6 +451,12 @@ const ipcHost: IpcHost = {
   mainWindow: () => mainWindow,
   isQuitting: () => isQuitting,
   updater: updaterController,
+  getUpdatePreferences: () => updatePreferencesStore.get(),
+  setUpdatePreferences: input => {
+    const next = updatePreferencesStore.set(input)
+    updaterController.setAllowPrerelease(next.releaseChannel === 'prerelease')
+    return next
+  },
 }
 
 function registerIpcHandlers(): void {

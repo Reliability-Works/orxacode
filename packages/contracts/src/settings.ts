@@ -76,6 +76,7 @@ export const OpencodeSettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   binaryPath: makeBinaryPathSetting('opencode'),
   customModels: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+  hiddenModelSlugs: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
 })
 export type OpencodeSettings = typeof OpencodeSettings.Type
 
@@ -177,6 +178,7 @@ const OpencodeSettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
   binaryPath: Schema.optionalKey(Schema.String),
   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+  hiddenModelSlugs: Schema.optionalKey(Schema.Array(Schema.String)),
 })
 
 export const ServerSettingsPatch = Schema.Struct({

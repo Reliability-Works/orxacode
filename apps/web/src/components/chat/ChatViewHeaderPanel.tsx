@@ -55,7 +55,7 @@ export function ChatViewHeaderPanel() {
           terminalOpen={terminalState.terminalOpen}
           terminalToggleShortcutLabel={cd.terminalToggleShortcutLabel}
           gitCwd={gitCwd}
-          gitSidebarOpen={c.ls.gitSidebarOpen}
+          auxSidebarMode={c.ls.auxSidebarMode}
           diffStats={diffStats}
           onRunProjectScript={script => {
             void c.runProjectScript(script)
@@ -65,6 +65,7 @@ export function ChatViewHeaderPanel() {
           onDeleteProjectScript={c.deleteProjectScript}
           onToggleTerminal={c.toggleTerminalVisibility}
           onToggleGitSidebar={c.toggleGitSidebar}
+          onToggleFilesSidebar={c.toggleFilesSidebar}
         />
       </header>
       <ProviderStatusBanner status={activeProviderStatus} />

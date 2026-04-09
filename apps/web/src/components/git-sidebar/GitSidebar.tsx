@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { GitBranchIcon, RefreshCwIcon, XIcon } from 'lucide-react'
+import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon, XIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
 import type { GitDiffResult } from '@orxa-code/contracts'
@@ -9,12 +9,13 @@ import {
   gitPanelPullRequestsQueryOptions,
 } from '../../lib/gitReactQuery'
 import { Button } from '../ui/button'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '../ui/menu'
 import { cn } from '~/lib/utils'
 import { GitDiffTab } from './GitDiffTab'
 import { GitLogTab } from './GitLogTab'
 import { GitTextTab } from './GitTextTab'
 
-type GitSidebarTab = 'diff' | 'log' | 'issues' | 'prs'
+export type GitSidebarTab = 'diff' | 'log' | 'issues' | 'prs'
 
 const TABS: Array<{ id: GitSidebarTab; label: string }> = [
   { id: 'diff', label: 'Diff' },
@@ -23,31 +24,34 @@ const TABS: Array<{ id: GitSidebarTab; label: string }> = [
   { id: 'prs', label: 'PRs' },
 ]
 
-function TabBar({
-  active,
-  onChange,
-}: {
-  active: GitSidebarTab
-  onChange: (tab: GitSidebarTab) => void
+function GitSidebarViewPicker(props: {
+  activeTab: GitSidebarTab
+  onTabChange: (tab: GitSidebarTab) => void
 }) {
+  const activeLabel = TABS.find(tab => tab.id === props.activeTab)?.label ?? 'Diff'
+
   return (
-    <div className="flex gap-0.5">
-      {TABS.map(tab => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          className={cn(
-            'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-            active === tab.id
-              ? 'bg-accent text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button
+            variant="outline"
+            size="xs"
+            className="h-7 rounded-full px-2.5 text-xs font-medium"
+          />
+        }
+      >
+        <span>{activeLabel}</span>
+        <ChevronDownIcon className="size-3 opacity-60" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="min-w-32">
+        {TABS.map(tab => (
+          <MenuItem key={tab.id} onClick={() => props.onTabChange(tab.id)}>
+            {tab.label}
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
   )
 }
 
@@ -58,15 +62,9 @@ function useGitSidebarQueries(cwd: string, activeTab: GitSidebarTab) {
   return { logQuery, issuesQuery, prsQuery }
 }
 
-function GitSidebarHeader({
-  activeTab,
-  onTabChange,
-  isRefreshing,
-  onRefresh,
-  onClose,
-}: {
+function GitSidebarHeader(props: {
   activeTab: GitSidebarTab
-  onTabChange: (t: GitSidebarTab) => void
+  onTabChange: (tab: GitSidebarTab) => void
   isRefreshing: boolean
   onRefresh: () => void
   onClose: () => void
@@ -74,22 +72,22 @@ function GitSidebarHeader({
   return (
     <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
       <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <TabBar active={activeTab} onChange={onTabChange} />
+      <GitSidebarViewPicker activeTab={props.activeTab} onTabChange={props.onTabChange} />
       <div className="ms-auto flex items-center gap-0.5">
         <Button
           size="xs"
           variant="ghost"
-          onClick={onRefresh}
-          disabled={isRefreshing}
+          onClick={props.onRefresh}
+          disabled={props.isRefreshing}
           aria-label="Refresh"
           className="h-6 w-6 p-0"
         >
-          <RefreshCwIcon className={cn('size-3', isRefreshing && 'animate-spin')} />
+          <RefreshCwIcon className={cn('size-3', props.isRefreshing && 'animate-spin')} />
         </Button>
         <Button
           size="xs"
           variant="ghost"
-          onClick={onClose}
+          onClick={props.onClose}
           aria-label="Close git sidebar"
           className="h-6 w-6 p-0"
         >
@@ -132,7 +130,7 @@ export function GitSidebar({ cwd, diffQueryResult, onClose }: GitSidebarProps): 
   }
 
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col border-l border-border bg-background">
+    <div className="flex h-full w-full min-w-0 shrink-0 flex-col border-l border-border bg-background">
       <GitSidebarHeader
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -149,13 +147,24 @@ export function GitSidebar({ cwd, diffQueryResult, onClose }: GitSidebarProps): 
             onRefresh={() => void diffQueryResult.refetch()}
           />
         )}
-        {activeTab === 'log' && <GitLogTab data={logQuery.data} isPending={logQuery.isPending} />}
+        {activeTab === 'log' && (
+          <GitLogTab
+            data={logQuery.data}
+            isPending={logQuery.isPending}
+            isError={logQuery.isError}
+            errorMessage={logQuery.error instanceof Error ? logQuery.error.message : undefined}
+          />
+        )}
         {activeTab === 'issues' && (
           <GitTextTab
             data={issuesQuery.data}
             isPending={issuesQuery.isPending}
             isError={issuesQuery.isError}
+            errorMessage={
+              issuesQuery.error instanceof Error ? issuesQuery.error.message : undefined
+            }
             emptyMessage="No open issues found."
+            variant="issues"
           />
         )}
         {activeTab === 'prs' && (
@@ -163,7 +172,9 @@ export function GitSidebar({ cwd, diffQueryResult, onClose }: GitSidebarProps): 
             data={prsQuery.data}
             isPending={prsQuery.isPending}
             isError={prsQuery.isError}
+            errorMessage={prsQuery.error instanceof Error ? prsQuery.error.message : undefined}
             emptyMessage="No open pull requests found."
+            variant="prs"
           />
         )}
       </div>

@@ -7,6 +7,7 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
 import { toastManager } from '../ui/toastState'
 import {
+  canCheckForUpdate,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
@@ -41,7 +42,7 @@ function execDesktopUpdateClick(opts: {
   const { desktopUpdateState, desktopUpdateButtonDisabled, desktopUpdateButtonAction } = opts
   const bridge = window.desktopBridge
   if (!bridge || !desktopUpdateState) return
-  if (desktopUpdateButtonDisabled || desktopUpdateButtonAction === 'none') return
+  if (desktopUpdateButtonDisabled) return
 
   if (desktopUpdateButtonAction === 'download') {
     void bridge
@@ -84,6 +85,27 @@ function execDesktopUpdateClick(opts: {
         toastManager.add({
           type: 'error',
           title: 'Could not install update',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+        })
+      )
+    return
+  }
+
+  if (canCheckForUpdate(desktopUpdateState)) {
+    void bridge
+      .checkForUpdate()
+      .then(result => {
+        if (result.checked) return
+        toastManager.add({
+          type: 'error',
+          title: 'Could not check for updates',
+          description: result.state.message ?? 'Automatic updates are not available in this build.',
+        })
+      })
+      .catch(error =>
+        toastManager.add({
+          type: 'error',
+          title: 'Could not check for updates',
           description: error instanceof Error ? error.message : 'An unexpected error occurred.',
         })
       )

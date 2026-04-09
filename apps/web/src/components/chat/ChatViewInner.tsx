@@ -7,6 +7,7 @@
 
 import { cn } from '~/lib/utils'
 import BranchToolbar from '../BranchToolbar'
+import { FilesSidebar } from '../files-sidebar/FilesSidebar'
 import PlanSidebar from '../PlanSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
 import { PullRequestThreadDialog } from '../PullRequestThreadDialog'
@@ -16,6 +17,7 @@ import { ChatViewMessagesPane } from './ChatViewMessagesPane'
 import { ChatViewComposerBody } from './ChatViewComposerBody'
 import { ChatViewImageOverlayCtx } from './ChatViewImageOverlayCtx'
 import { useChatViewCtx } from './ChatViewContext'
+import { useChatAuxSidebarResize } from './ChatViewAuxSidebar.resize'
 
 function ChatViewComposerForm() {
   const c = useChatViewCtx()
@@ -88,16 +90,51 @@ function ChatViewPlanSidebarBlock() {
   )
 }
 
-function ChatViewGitSidebarBlock() {
+function ChatViewAuxSidebarShell(props: { children: React.ReactNode }) {
+  const c = useChatViewCtx()
+  const resize = useChatAuxSidebarResize(c.ls.auxSidebarWidth, c.ls.setAuxSidebarWidth)
+
+  return (
+    <div
+      className="relative flex h-full shrink-0"
+      style={{ width: `${resize.sidebarWidth}px` }}
+      data-chat-aux-sidebar="true"
+    >
+      <div
+        className="absolute inset-y-0 left-0 z-20 flex w-2 -translate-x-1/2 cursor-col-resize items-center justify-center touch-none"
+        onPointerDown={resize.handleResizePointerDown}
+        onPointerMove={resize.handleResizePointerMove}
+        onPointerUp={resize.handleResizePointerEnd}
+        onPointerCancel={resize.handleResizePointerEnd}
+        aria-hidden="true"
+      >
+        <span className="h-full w-px bg-border/80 transition-colors hover:bg-border" />
+      </div>
+      <div className="min-w-0 flex-1">{props.children}</div>
+    </div>
+  )
+}
+
+function ChatViewAuxSidebarBlock() {
   const c = useChatViewCtx()
   const { gitCwd } = c
-  if (!c.ls.gitSidebarOpen || !gitCwd) return null
+  if (!gitCwd || c.ls.auxSidebarMode === 'none') return null
+  if (c.ls.auxSidebarMode === 'files') {
+    return (
+      <ChatViewAuxSidebarShell>
+        <FilesSidebar
+          cwd={gitCwd}
+          onClose={c.closeAuxSidebar}
+          onInsertPath={c.insertComposerPathReference}
+        />
+      </ChatViewAuxSidebarShell>
+    )
+  }
+  if (!c.cd.isGitRepo) return null
   return (
-    <GitSidebar
-      cwd={gitCwd}
-      diffQueryResult={c.panelDiffQuery}
-      onClose={() => c.ls.setGitSidebarOpen(false)}
-    />
+    <ChatViewAuxSidebarShell>
+      <GitSidebar cwd={gitCwd} diffQueryResult={c.panelDiffQuery} onClose={c.closeAuxSidebar} />
+    </ChatViewAuxSidebarShell>
   )
 }
 
@@ -145,7 +182,7 @@ export function ChatViewInner() {
           <ChatViewPullRequestDialogBlock />
         </div>
         <ChatViewPlanSidebarBlock />
-        <ChatViewGitSidebarBlock />
+        <ChatViewAuxSidebarBlock />
       </div>
       <ChatViewTerminalDrawerBlock />
       <ChatViewImageOverlayCtx />

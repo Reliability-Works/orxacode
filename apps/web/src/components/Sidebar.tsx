@@ -14,13 +14,14 @@
  */
 
 import { useState } from 'react'
+import type { ProjectId } from '@orxa-code/contracts'
 import {
   type SidebarProjectSortOrder,
   type SidebarThreadSortOrder,
 } from '@orxa-code/contracts/settings'
 import { useSidebarStoreBindings } from './sidebar/useSidebarStoreBindings'
 import { useSidebarWiring } from './sidebar/useSidebarWiring'
-import { SidebarBody } from './SidebarBody'
+import { SidebarBody, type SidebarBodyProps } from './SidebarBody'
 import { NewSessionModal } from './session'
 
 // -- Re-exports for external consumers --
@@ -34,75 +35,93 @@ export type FullSidebarProjectSnapshot = import('../types').Project & {
   expanded: boolean
 }
 
+function buildSidebarBodyProps(
+  s: ReturnType<typeof useSidebarStoreBindings>,
+  w: ReturnType<typeof useSidebarWiring>
+): SidebarBodyProps {
+  return {
+    isOnSettings: s.pathname.startsWith('/settings'),
+    pathname: s.pathname,
+    shouldShowProjectPathEntry:
+      w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately,
+    showArm64IntelBuildWarning: w.desktopUpdate.showArm64IntelBuildWarning,
+    arm64IntelBuildWarningDescription: w.desktopUpdate.arm64IntelBuildWarningDescription,
+    desktopUpdateState: w.desktopUpdate.desktopUpdateState,
+    desktopUpdateButtonAction: w.desktopUpdate.desktopUpdateButtonAction,
+    desktopUpdateButtonDisabled: w.desktopUpdate.desktopUpdateButtonDisabled,
+    onDesktopUpdateButtonClick: w.desktopUpdate.handleDesktopUpdateButtonClick,
+    projects: s.projects,
+    renderedProjects: w.renderedProjects,
+    isManualProjectSorting: w.isManualProjectSorting,
+    appSettings: {
+      sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
+      sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
+    },
+    onUpdateProjectSortOrder: (sortOrder: string) => {
+      s.updateSettings({ sidebarProjectSortOrder: sortOrder as SidebarProjectSortOrder })
+    },
+    onUpdateThreadSortOrder: (sortOrder: string) => {
+      s.updateSettings({ sidebarThreadSortOrder: sortOrder as SidebarThreadSortOrder })
+    },
+    newCwd: w.projectActions.newCwd,
+    isPickingFolder: w.projectActions.isPickingFolder,
+    isAddingProject: w.projectActions.isAddingProject,
+    addProjectError: w.projectActions.addProjectError,
+    addProjectInputRef: w.projectActions.addProjectInputRef,
+    canAddProject: w.projectActions.canAddProject,
+    onNewCwdChange: w.projectActions.setNewCwd,
+    onAddProject: w.projectActions.handleAddProject,
+    onStartAddProject: w.projectActions.handleStartAddProject,
+    onPickFolder: w.projectActions.handlePickFolder,
+    onAddProjectKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') w.projectActions.handleAddProject()
+      if (e.key === 'Escape') {
+        w.projectActions.setAddingProject(false)
+        w.projectActions.setAddProjectError(null)
+      }
+    },
+    onNavigateToSettings: () => void s.navigate({ to: '/settings' }),
+    getProjectItemProps: w.getProjectItemProps,
+    projectDnDSensors: w.projectActions.projectDnDSensors,
+    projectCollisionDetection: w.projectActions.projectCollisionDetection,
+    onProjectDragStart: w.projectActions.handleProjectDragStart,
+    onProjectDragEnd: w.projectActions.handleProjectDragEnd,
+    onProjectDragCancel: w.projectActions.handleProjectDragCancel,
+    attachProjectListAutoAnimateRef: w.projectActions.attachProjectListAutoAnimateRef,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Default export
 // ---------------------------------------------------------------------------
 
 export default function Sidebar() {
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalProjectId, setModalProjectId] = useState<ProjectId | null>(null)
   const s = useSidebarStoreBindings()
   const sWithModal: typeof s = {
     ...s,
-    handleNewThread: () => {
+    handleNewThread: projectId => {
+      setModalProjectId(projectId)
       setModalOpen(true)
       return Promise.resolve()
     },
   }
   const w = useSidebarWiring(sWithModal)
 
+  function handleCloseModal() {
+    setModalOpen(false)
+    setModalProjectId(null)
+  }
+
+  const bodyProps = buildSidebarBodyProps(s, w)
+
   return (
     <>
-      {modalOpen ? <NewSessionModal open onClose={() => setModalOpen(false)} /> : null}
-      <SidebarBody
-        isOnSettings={s.pathname.startsWith('/settings')}
-        pathname={s.pathname}
-        shouldShowProjectPathEntry={
-          w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately
-        }
-        showArm64IntelBuildWarning={w.desktopUpdate.showArm64IntelBuildWarning}
-        arm64IntelBuildWarningDescription={w.desktopUpdate.arm64IntelBuildWarningDescription}
-        desktopUpdateButtonAction={w.desktopUpdate.desktopUpdateButtonAction}
-        desktopUpdateButtonDisabled={w.desktopUpdate.desktopUpdateButtonDisabled}
-        onDesktopUpdateButtonClick={w.desktopUpdate.handleDesktopUpdateButtonClick}
-        projects={s.projects}
-        renderedProjects={w.renderedProjects}
-        isManualProjectSorting={w.isManualProjectSorting}
-        appSettings={{
-          sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
-          sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
-        }}
-        onUpdateProjectSortOrder={(sortOrder: string) => {
-          s.updateSettings({ sidebarProjectSortOrder: sortOrder as SidebarProjectSortOrder })
-        }}
-        onUpdateThreadSortOrder={(sortOrder: string) => {
-          s.updateSettings({ sidebarThreadSortOrder: sortOrder as SidebarThreadSortOrder })
-        }}
-        newCwd={w.projectActions.newCwd}
-        isPickingFolder={w.projectActions.isPickingFolder}
-        isAddingProject={w.projectActions.isAddingProject}
-        addProjectError={w.projectActions.addProjectError}
-        addProjectInputRef={w.projectActions.addProjectInputRef}
-        canAddProject={w.projectActions.canAddProject}
-        onNewCwdChange={w.projectActions.setNewCwd}
-        onAddProject={w.projectActions.handleAddProject}
-        onStartAddProject={w.projectActions.handleStartAddProject}
-        onPickFolder={w.projectActions.handlePickFolder}
-        onAddProjectKeyDown={(e: React.KeyboardEvent) => {
-          if (e.key === 'Enter') w.projectActions.handleAddProject()
-          if (e.key === 'Escape') {
-            w.projectActions.setAddingProject(false)
-            w.projectActions.setAddProjectError(null)
-          }
-        }}
-        onNavigateToSettings={() => void s.navigate({ to: '/settings' })}
-        getProjectItemProps={w.getProjectItemProps}
-        projectDnDSensors={w.projectActions.projectDnDSensors}
-        projectCollisionDetection={w.projectActions.projectCollisionDetection}
-        onProjectDragStart={w.projectActions.handleProjectDragStart}
-        onProjectDragEnd={w.projectActions.handleProjectDragEnd}
-        onProjectDragCancel={w.projectActions.handleProjectDragCancel}
-        attachProjectListAutoAnimateRef={w.projectActions.attachProjectListAutoAnimateRef}
-      />
+      {modalOpen ? (
+        <NewSessionModal open onClose={handleCloseModal} projectId={modalProjectId} />
+      ) : null}
+      <SidebarBody {...bodyProps} />
     </>
   )
 }

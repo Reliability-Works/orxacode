@@ -67,7 +67,9 @@ export interface WsRpcClient {
     readonly onEvent: RpcStreamMethod<typeof WS_METHODS.subscribeTerminalEvents>
   }
   readonly projects: {
+    readonly listEntries: RpcUnaryMethod<typeof WS_METHODS.projectsListEntries>
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>
+    readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>
   }
   readonly shell: {
@@ -104,6 +106,8 @@ export interface WsRpcClient {
       readonly cwd: string
       readonly limit?: number
     }) => Promise<GitGetPullRequestsResult>
+    readonly stageAll: (input: { readonly cwd: string }) => Promise<void>
+    readonly restoreAllUnstaged: (input: { readonly cwd: string }) => Promise<void>
     readonly stagePath: (input: GitStagePathInput) => Promise<void>
     readonly unstagePath: (input: GitUnstagePathInput) => Promise<void>
     readonly restorePath: (input: GitRestorePathInput) => Promise<void>
@@ -177,8 +181,11 @@ function createTerminalApi(transport: WsTransport): WsRpcClient['terminal'] {
 
 function createProjectsApi(transport: WsTransport): WsRpcClient['projects'] {
   return {
+    listEntries: input =>
+      transport.request(client => client[WS_METHODS.projectsListEntries](input)),
     searchEntries: input =>
       transport.request(client => client[WS_METHODS.projectsSearchEntries](input)),
+    readFile: input => transport.request(client => client[WS_METHODS.projectsReadFile](input)),
     writeFile: input => transport.request(client => client[WS_METHODS.projectsWriteFile](input)),
   }
 }
@@ -229,6 +236,9 @@ function createGitApi(transport: WsTransport): WsRpcClient['git'] {
     getIssues: input => transport.request(client => client[WS_METHODS.gitGetIssues](input)),
     getPullRequests: input =>
       transport.request(client => client[WS_METHODS.gitGetPullRequests](input)),
+    stageAll: input => transport.request(client => client[WS_METHODS.gitStageAll](input)),
+    restoreAllUnstaged: input =>
+      transport.request(client => client[WS_METHODS.gitRestoreAllUnstaged](input)),
     stagePath: input => transport.request(client => client[WS_METHODS.gitStagePath](input)),
     unstagePath: input => transport.request(client => client[WS_METHODS.gitUnstagePath](input)),
     restorePath: input => transport.request(client => client[WS_METHODS.gitRestorePath](input)),

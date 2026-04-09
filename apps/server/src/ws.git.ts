@@ -23,14 +23,19 @@ import {
   type GitPullInput,
   type GitPullRequestRefInput,
   type GitRemoveWorktreeInput,
+  type GitRestoreAllUnstagedInput,
   type GitRestorePathInput,
   type GitRunStackedActionInput,
+  type GitStageAllInput,
   type GitStagePathInput,
   type GitStatusInput,
   type GitUnstagePathInput,
+  GitGetIssuesResult,
+  GitGetPullRequestsResult,
+  GitHubCliError,
   WS_METHODS,
 } from '@orxa-code/contracts'
-import { Effect, Queue, Stream } from 'effect'
+import { Effect, Queue, Schema, Stream } from 'effect'
 
 import type { GitCore } from './git/Services/GitCore'
 import type { GitHubCli } from './git/Services/GitHubCli'
@@ -40,6 +45,71 @@ export interface GitMethodDependencies {
   readonly git: typeof GitCore.Service
   readonly gitHubCli: typeof GitHubCli.Service
   readonly gitManager: typeof GitManager.Service
+}
+
+function buildGitIssuesMethod(gitHubCli: GitMethodDependencies['gitHubCli']) {
+  return (input: GitGetIssuesInput) =>
+    gitHubCli
+      .execute({
+        cwd: input.cwd,
+        args: [
+          'issue',
+          'list',
+          '--limit',
+          String(input.limit ?? 20),
+          '--json',
+          'number,title,url,state,createdAt,updatedAt,author,labels',
+        ],
+      })
+      .pipe(
+        Effect.flatMap(result =>
+          Effect.try({
+            try: () =>
+              Schema.decodeUnknownSync(GitGetIssuesResult)({
+                entries: JSON.parse(result.stdout),
+              }),
+            catch: error =>
+              new GitHubCliError({
+                operation: 'execute',
+                detail: error instanceof Error ? error.message : 'Failed to decode issue list.',
+                cause: error,
+              }),
+          })
+        )
+      )
+}
+
+function buildGitPullRequestsMethod(gitHubCli: GitMethodDependencies['gitHubCli']) {
+  return (input: GitGetPullRequestsInput) =>
+    gitHubCli
+      .execute({
+        cwd: input.cwd,
+        args: [
+          'pr',
+          'list',
+          '--limit',
+          String(input.limit ?? 20),
+          '--json',
+          'number,title,url,state,isDraft,updatedAt,headRefName,baseRefName,author',
+        ],
+      })
+      .pipe(
+        Effect.flatMap(result =>
+          Effect.try({
+            try: () =>
+              Schema.decodeUnknownSync(GitGetPullRequestsResult)({
+                entries: JSON.parse(result.stdout),
+              }),
+            catch: error =>
+              new GitHubCliError({
+                operation: 'execute',
+                detail:
+                  error instanceof Error ? error.message : 'Failed to decode pull request list.',
+                cause: error,
+              }),
+          })
+        )
+      )
 }
 
 export const createGitMethods = ({ git, gitHubCli, gitManager }: GitMethodDependencies) => ({
@@ -73,15 +143,12 @@ export const createGitMethods = ({ git, gitHubCli, gitManager }: GitMethodDepend
   [WS_METHODS.gitInit]: (input: GitInitInput) => git.initRepo(input),
   [WS_METHODS.gitGetDiff]: (input: GitGetDiffInput) => git.getDiff(input),
   [WS_METHODS.gitGetLog]: (input: GitGetLogInput) => git.getLog(input),
+  [WS_METHODS.gitStageAll]: (input: GitStageAllInput) => git.stageAll(input),
+  [WS_METHODS.gitRestoreAllUnstaged]: (input: GitRestoreAllUnstagedInput) =>
+    git.restoreAllUnstaged(input),
   [WS_METHODS.gitStagePath]: (input: GitStagePathInput) => git.stagePath(input),
   [WS_METHODS.gitUnstagePath]: (input: GitUnstagePathInput) => git.unstagePath(input),
   [WS_METHODS.gitRestorePath]: (input: GitRestorePathInput) => git.restorePath(input),
-  [WS_METHODS.gitGetIssues]: (input: GitGetIssuesInput) =>
-    gitHubCli
-      .execute({ cwd: input.cwd, args: ['issue', 'list', '--limit', String(input.limit ?? 20)] })
-      .pipe(Effect.map(result => ({ text: result.stdout }))),
-  [WS_METHODS.gitGetPullRequests]: (input: GitGetPullRequestsInput) =>
-    gitHubCli
-      .execute({ cwd: input.cwd, args: ['pr', 'list', '--limit', String(input.limit ?? 20)] })
-      .pipe(Effect.map(result => ({ text: result.stdout }))),
+  [WS_METHODS.gitGetIssues]: buildGitIssuesMethod(gitHubCli),
+  [WS_METHODS.gitGetPullRequests]: buildGitPullRequestsMethod(gitHubCli),
 })

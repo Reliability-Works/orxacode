@@ -63,7 +63,7 @@ function createBaseServerConfig(): ServerConfig {
       providers: {
         codex: { enabled: true, binaryPath: '', homePath: '', customModels: [] },
         claudeAgent: { enabled: true, binaryPath: '', customModels: [] },
-        opencode: { enabled: true, binaryPath: '', customModels: [] },
+        opencode: { enabled: true, binaryPath: '', customModels: [], hiddenModelSlugs: [] },
       },
     },
   }
@@ -171,6 +171,9 @@ function resolveWsRpc(tag: string): unknown {
       behindCount: 0,
       pr: null,
     }
+  }
+  if (tag === WS_METHODS.projectsListEntries) {
+    return { entries: [], truncated: false }
   }
   if (tag === WS_METHODS.projectsSearchEntries) {
     return { entries: [], truncated: false }

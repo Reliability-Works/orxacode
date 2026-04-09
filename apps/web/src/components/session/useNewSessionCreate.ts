@@ -4,11 +4,13 @@ import { type ModelSelection, type ProviderKind, DEFAULT_RUNTIME_MODE } from '@o
 import { newCommandId, newThreadId } from '~/lib/utils'
 import { ensureNativeApi } from '~/nativeApi'
 import { useStore } from '~/store'
+import { useComposerDraftStore } from '~/composerDraftStore'
 
 interface CreateSessionInput {
   readonly provider: ProviderKind
   readonly model: string
   readonly agentId?: string | undefined
+  readonly projectId?: ReturnType<typeof useStore.getState>['projects'][0]['id'] | null
 }
 
 interface UseNewSessionCreateReturn {
@@ -46,26 +48,44 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
   const create = useCallback(
     async (input: CreateSessionInput): Promise<void> => {
       const api = ensureNativeApi()
-      const projectId = getDefaultProjectId()
+      const projectId = input.projectId ?? getDefaultProjectId()
       if (!projectId) throw new Error('No project available to create a session in.')
 
       const threadId = newThreadId()
       const modelSelection = buildModelSelection(input)
       const createdAt = new Date().toISOString()
+      const draftStore = useComposerDraftStore.getState()
 
-      await api.orchestration.dispatchCommand({
-        type: 'thread.create',
-        commandId: newCommandId(),
-        threadId,
-        projectId,
-        title: 'New session',
-        modelSelection,
-        runtimeMode: DEFAULT_RUNTIME_MODE,
-        interactionMode: 'default',
+      draftStore.setProjectDraftThreadId(projectId, threadId, {
         branch: null,
         worktreePath: null,
         createdAt,
+        envMode: 'local',
+        runtimeMode: DEFAULT_RUNTIME_MODE,
+        interactionMode: 'default',
       })
+      draftStore.applyStickyState(threadId)
+      draftStore.setModelSelection(threadId, modelSelection)
+
+      try {
+        await api.orchestration.dispatchCommand({
+          type: 'thread.create',
+          commandId: newCommandId(),
+          threadId,
+          projectId,
+          title: 'New session',
+          modelSelection,
+          runtimeMode: DEFAULT_RUNTIME_MODE,
+          interactionMode: 'default',
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        })
+      } catch (error) {
+        draftStore.clearDraftThread(threadId)
+        draftStore.clearProjectDraftThreadById(projectId, threadId)
+        throw error
+      }
 
       await navigate({ to: '/$threadId', params: { threadId } })
     },

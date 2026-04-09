@@ -24,8 +24,8 @@ describe('when: working tree has local changes', () => {
     const quick = resolveQuickAction(status({ hasWorkingTreeChanges: true }), false)
     assert.deepInclude(quick, {
       kind: 'run_action',
-      action: 'commit_push_pr',
-      label: 'Commit, push & PR',
+      action: 'commit',
+      label: 'Commit',
     })
   })
 
@@ -61,8 +61,8 @@ describe('when: working tree has local changes', () => {
     )
     assert.deepInclude(quick, {
       kind: 'run_action',
-      action: 'commit_push',
-      label: 'Commit & push',
+      action: 'commit',
+      label: 'Commit',
     })
   })
 
@@ -106,8 +106,8 @@ describe('when: on default branch without open PR', () => {
     )
     assert.deepInclude(quick, {
       kind: 'run_action',
-      action: 'commit_push',
-      label: 'Commit & push',
+      action: 'commit',
+      label: 'Commit',
       disabled: false,
     })
   })
@@ -132,8 +132,8 @@ describe('when: working tree has local changes and branch is behind upstream', (
     const quick = resolveQuickAction(status({ hasWorkingTreeChanges: true, behindCount: 1 }), false)
     assert.deepInclude(quick, {
       kind: 'run_action',
-      action: 'commit_push_pr',
-      label: 'Commit, push & PR',
+      action: 'commit',
+      label: 'Commit',
     })
   })
 

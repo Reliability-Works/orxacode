@@ -61,7 +61,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
               onClick={() => window.history.back()}
             >
               <ArrowLeftIcon className="size-4" />
-              <span>Back</span>
+              <span>Back to app</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -4,7 +4,7 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { defineConfig } from 'vite'
-import pkg from './package.json' with { type: 'json' }
+import rootPkg from '../../package.json' with { type: 'json' }
 
 const port = Number(process.env.PORT ?? 5733)
 const sourcemapEnv = process.env.ORXA_WEB_SOURCEMAP?.trim().toLowerCase()
@@ -43,7 +43,7 @@ export default defineConfig({
   define: {
     // In dev mode, tell the web app where the WebSocket server lives
     'import.meta.env.VITE_WS_URL': JSON.stringify(process.env.VITE_WS_URL ?? ''),
-    'import.meta.env.APP_VERSION': JSON.stringify(pkg.version),
+    'import.meta.env.APP_VERSION': JSON.stringify(rootPkg.version),
   },
   resolve: {
     alias: {

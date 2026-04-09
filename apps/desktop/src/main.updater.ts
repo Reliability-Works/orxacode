@@ -26,7 +26,7 @@ type DesktopUpdateErrorContext = DesktopUpdateState['errorContext']
 
 export interface UpdaterConfig {
   readonly channel: string
-  readonly allowPrerelease: boolean
+  allowPrerelease: boolean
   readonly startupDelayMs: number
   readonly pollIntervalMs: number
   readonly disabledByEnv: boolean
@@ -46,6 +46,7 @@ export interface UpdaterController {
   clearPollTimer(): void
   getState(): DesktopUpdateState
   setState(patch: Partial<DesktopUpdateState>): void
+  setAllowPrerelease(value: boolean): void
   checkForUpdates(reason: string): Promise<boolean>
   downloadAvailable(): Promise<{ accepted: boolean; completed: boolean }>
   installDownloaded(): Promise<{ accepted: boolean; completed: boolean }>
@@ -308,6 +309,12 @@ function applyAutoUpdaterDefaults(rt: UpdaterRuntime): void {
   }
 }
 
+function setAllowPrerelease(rt: UpdaterRuntime, value: boolean): void {
+  rt.config.allowPrerelease = value
+  if (!rt.configured) return
+  autoUpdater.allowPrerelease = value
+}
+
 function configure(rt: UpdaterRuntime): void {
   const enabled = shouldEnable(rt)
   setState(rt, {
@@ -351,6 +358,7 @@ export function createUpdaterController(
     clearPollTimer: () => clearPollTimer(rt),
     getState: () => rt.state,
     setState: patch => setState(rt, patch),
+    setAllowPrerelease: value => setAllowPrerelease(rt, value),
     checkForUpdates: reason => checkForUpdates(rt, reason),
     downloadAvailable: () => downloadAvailable(rt),
     installDownloaded: () => installDownloaded(rt),

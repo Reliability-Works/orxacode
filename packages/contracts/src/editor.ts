@@ -17,6 +17,8 @@ export const EDITORS = [
   { id: 'file-manager', label: 'File Manager', command: null, supportsGoto: false },
 ] as const
 
+export type EditorDefinition = (typeof EDITORS)[number]
+
 export const EditorId = Schema.Literals(EDITORS.map(e => e.id))
 export type EditorId = typeof EditorId.Type
 

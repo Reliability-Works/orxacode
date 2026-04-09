@@ -46,7 +46,9 @@ const rpcClientMock = {
     ),
   },
   projects: {
+    listEntries: vi.fn(),
     searchEntries: vi.fn(),
+    readFile: vi.fn(),
     writeFile: vi.fn(),
   },
   shell: {
@@ -125,6 +127,7 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     getUpdateState: async () => {
       throw new Error('getUpdateState not implemented in test')
     },
+    getUpdatePreferences: async () => ({ releaseChannel: 'stable' }),
     checkForUpdate: async () => {
       throw new Error('checkForUpdate not implemented in test')
     },
@@ -134,6 +137,7 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     installUpdate: async () => {
       throw new Error('installUpdate not implemented in test')
     },
+    setUpdatePreferences: async () => ({ releaseChannel: 'stable' }),
     onUpdateState: () => () => undefined,
     ...overrides,
   }

@@ -15,6 +15,7 @@ import {
 } from '@orxa-code/contracts'
 import { gitBranchesQueryOptions, gitPanelDiffQueryOptions } from '~/lib/gitReactQuery'
 import { projectScriptCwd, projectScriptRuntimeEnv } from '../../projectScripts'
+import { collapseExpandedComposerCursor } from '../../composer-logic'
 import { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import { useChatViewLocalState } from './useChatViewLocalState'
 import { useChatViewDerivedThread } from './useChatViewDerivedThread'
@@ -173,10 +174,16 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
     const turnKey = p.activePlan?.turnId ?? p.sidebarProposedPlan?.turnId ?? null
     if (turnKey) ls.setPlanSidebarDismissedForTurn(turnKey)
   }, [ls, p.activePlan, p.sidebarProposedPlan])
-  const toggleGitSidebar = useCallback(() => {
-    ls.setGitSidebarOpen(v => !v)
+  const toggleAuxSidebar = useCallback(
+    (mode: 'git' | 'files') => {
+      ls.setAuxSidebarMode(current => (current === mode ? 'none' : mode))
+    },
+    [ls]
+  )
+  const closeAuxSidebar = useCallback(() => {
+    ls.setAuxSidebarMode('none')
   }, [ls])
-  return { threadTerminalRuntimeEnv, closePlanSidebar, toggleGitSidebar }
+  return { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar }
 }
 
 function useChatViewControllerActions(
@@ -254,9 +261,21 @@ export function useChatViewController(threadId: ThreadId) {
   const utils = useChatViewControllerUtilsAndDispatch(threadId, state)
   const actions = useChatViewControllerActions(threadId, state, utils)
   useChatViewControllerEffectsWiring(state, utils.focusComposer, utils.handoffAttachmentPreviews)
-  const { threadTerminalRuntimeEnv, closePlanSidebar, toggleGitSidebar } =
+  const { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar } =
     useThreadTerminalEnvAndCloseSidebar(state)
   const { store, ls, td, ad, p, cd, gitCwd, branchesQuery, panelDiffQuery, scroll } = state
+  const insertComposerPathReference = useCallback(
+    (path: string) => {
+      const currentPrompt = ls.promptRef.current
+      const prefix = currentPrompt.length === 0 || /\s$/.test(currentPrompt) ? '' : ' '
+      const nextPrompt = `${currentPrompt}${prefix}@${path} `
+      utils.setPrompt(nextPrompt)
+      ls.setComposerCursor(collapseExpandedComposerCursor(nextPrompt, nextPrompt.length))
+      ls.setComposerTrigger(null)
+      utils.scheduleComposerFocus()
+    },
+    [ls, utils]
+  )
   return {
     threadId,
     store,
@@ -284,6 +303,9 @@ export function useChatViewController(threadId: ThreadId) {
     addComposerImages: actions.addComposerImages,
     ...actions.remainingCbs,
     closePlanSidebar,
-    toggleGitSidebar,
+    closeAuxSidebar,
+    toggleGitSidebar: () => toggleAuxSidebar('git'),
+    toggleFilesSidebar: () => toggleAuxSidebar('files'),
+    insertComposerPathReference,
   }
 }

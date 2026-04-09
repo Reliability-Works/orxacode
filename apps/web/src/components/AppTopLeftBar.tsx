@@ -9,7 +9,6 @@
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from '../branding'
 import { isElectron } from '../env'
 import { cn } from '~/lib/utils'
-import { AppBrandMark } from './SidebarBody'
 import { SidebarTrigger } from './ui/sidebar'
 export function AppTopLeftBar() {
   return (
@@ -25,8 +24,7 @@ export function AppTopLeftBar() {
         className="pointer-events-auto flex min-w-0 flex-1 items-center gap-1 cursor-default"
         title={`Version ${APP_VERSION}`}
       >
-        <AppBrandMark />
-        <span className="ms-1 truncate text-sm font-medium tracking-tight text-muted-foreground">
+        <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
           {APP_BASE_NAME}
         </span>
         <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em] text-muted-foreground/60">

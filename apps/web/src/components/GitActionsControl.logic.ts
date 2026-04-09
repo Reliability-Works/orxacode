@@ -116,19 +116,8 @@ function deriveGitActionState(
   }
 }
 
-function resolveDirtyTreeQuickAction(state: GitActionState): GitQuickAction {
-  if (!state.hasUpstream && !state.canPushWithoutUpstream) {
-    return { label: 'Commit', disabled: false, kind: 'run_action', action: 'commit' }
-  }
-  if (state.hasOpenPr || state.isDefaultBranch) {
-    return { label: 'Commit & push', disabled: false, kind: 'run_action', action: 'commit_push' }
-  }
-  return {
-    label: 'Commit, push & PR',
-    disabled: false,
-    kind: 'run_action',
-    action: 'commit_push_pr',
-  }
+function resolveDirtyTreeQuickAction(): GitQuickAction {
+  return { label: 'Commit', disabled: false, kind: 'run_action', action: 'commit' }
 }
 
 function resolveAheadQuickAction(state: GitActionState): GitQuickAction {
@@ -305,7 +294,7 @@ export function resolveQuickAction(
   }
 
   if (state.hasChanges) {
-    return resolveDirtyTreeQuickAction(state)
+    return resolveDirtyTreeQuickAction()
   }
 
   if (!state.hasUpstream) {

@@ -22,7 +22,9 @@ import type {
   GitListBranchesResult,
   GitPullResult,
   GitRemoveWorktreeInput,
+  GitRestoreAllUnstagedInput,
   GitRestorePathInput,
+  GitStageAllInput,
   GitStagePathInput,
   GitStatusInput,
   GitStatusResult,
@@ -312,6 +314,18 @@ export interface GitCoreShape {
    * Get recent commit log entries.
    */
   readonly getLog: (input: GitGetLogInput) => Effect.Effect<GitGetLogResult, GitCommandError>
+
+  /**
+   * Stage all working tree changes.
+   */
+  readonly stageAll: (input: GitStageAllInput) => Effect.Effect<void, GitCommandError>
+
+  /**
+   * Restore all unstaged working tree changes.
+   */
+  readonly restoreAllUnstaged: (
+    input: GitRestoreAllUnstagedInput
+  ) => Effect.Effect<void, GitCommandError>
 
   /**
    * Stage a single path.

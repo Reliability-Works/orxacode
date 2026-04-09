@@ -73,6 +73,8 @@ export const makeGitCore = Effect.fn('makeGitCore')(function* (options?: {
     listLocalBranchNames: shell.listLocalBranchNames,
     getDiff: panelGroup.getDiff,
     getLog: panelGroup.getLog,
+    stageAll: panelGroup.stageAll,
+    restoreAllUnstaged: panelGroup.restoreAllUnstaged,
     stagePath: panelGroup.stagePath,
     unstagePath: panelGroup.unstagePath,
     restorePath: panelGroup.restorePath,

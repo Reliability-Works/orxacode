@@ -66,6 +66,7 @@ export function toSidebarThreadSnapshot(
     projectId: thread.projectId,
     title: thread.title,
     interactionMode: thread.interactionMode,
+    modelSelection: thread.modelSelection,
     session: thread.session,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
