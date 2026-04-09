@@ -26,9 +26,9 @@ export function listInterruptibleSubagentRoutes(
         thread.parentLink?.relationKind === 'subagent' &&
         thread.parentLink.parentThreadId === input.parentThreadId &&
         thread.session?.status === 'running' &&
-        thread.session.activeTurnId !== null &&
         thread.session.providerThreadId !== null &&
-        thread.session.providerThreadId !== undefined
+        thread.session.providerThreadId !== undefined &&
+        (thread.session.activeTurnId !== null || thread.session.providerName === 'opencode')
     )
     .map(thread => ({
       thread,

@@ -54,6 +54,8 @@ function makeCtx(overrides?: Partial<OpencodeMapperContext>): OpencodeMapperCont
     threadId: THREAD_ID,
     turnId: TURN_ID,
     providerSessionId: FIXTURE_PROVIDER_SESSION_ID,
+    relatedSessionIds: new Set([FIXTURE_PROVIDER_SESSION_ID]),
+    childDelegationsBySessionId: new Map(),
     nextStamp: makeStamper(),
     ...overrides,
   }
@@ -72,7 +74,10 @@ describe('mapOpencodeEvent session lifecycle', () => {
   })
 
   it('drops session.created events for foreign sessions', () => {
-    const ctx = makeCtx({ providerSessionId: 'other-session' })
+    const ctx = makeCtx({
+      providerSessionId: 'other-session',
+      relatedSessionIds: new Set(['other-session']),
+    })
     expect(mapOpencodeEvent(fixtureSessionCreated, ctx)).toEqual([])
   })
 
@@ -202,10 +207,15 @@ describe('mapOpencodeEvent text and reasoning parts', () => {
 describe('mapOpencodeEvent tool lifecycle', () => {
   it('emits item.started for a running tool call', () => {
     const result = mapOpencodeEvent(fixtureToolPartUpdatedRunning, makeCtx())
-    expect(result).toHaveLength(1)
+    expect(result).toHaveLength(2)
     expect(result[0]).toMatchObject({
       type: 'item.started',
-      payload: { itemType: 'mcp_tool_call', status: 'inProgress', title: 'read' },
+      payload: { itemType: 'mcp_tool_call', status: 'inProgress', title: 'Read' },
+      providerRefs: { providerItemId: FIXTURE_TOOL_PART_ID },
+    })
+    expect(result[1]).toMatchObject({
+      type: 'item.updated',
+      payload: { itemType: 'mcp_tool_call', status: 'inProgress', title: 'Read' },
       providerRefs: { providerItemId: FIXTURE_TOOL_PART_ID },
     })
   })
@@ -215,7 +225,7 @@ describe('mapOpencodeEvent tool lifecycle', () => {
     expect(result).toHaveLength(1)
     expect(result[0]).toMatchObject({
       type: 'item.completed',
-      payload: { itemType: 'mcp_tool_call', status: 'completed', title: 'read' },
+      payload: { itemType: 'mcp_tool_call', status: 'completed', title: 'Read' },
     })
   })
 

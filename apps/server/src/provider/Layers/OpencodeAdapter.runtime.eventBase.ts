@@ -90,6 +90,8 @@ export const prepareMapperContext = Effect.fn('prepareMapperContext')(function* 
     threadId: context.session.threadId,
     turnId: context.turnState?.turnId,
     providerSessionId: context.providerSessionId,
+    relatedSessionIds: context.relatedSessionIds,
+    childDelegationsBySessionId: context.childDelegationsBySessionId,
     nextStamp: (): OpencodeEventStamp => {
       const stamp = stamps[cursor]
       if (stamp === undefined) {
@@ -195,13 +197,14 @@ function toErrorMessage(cause: unknown, fallback: string): string {
 
 export const abortOpencodeSessionIgnoring = (
   context: OpencodeSessionContext,
-  fallbackDetail: string
+  fallbackDetail: string,
+  sessionIdOverride?: string
 ): Effect.Effect<void> =>
   Effect.tryPromise({
     try: () =>
       abortOpencodeSession({
         client: context.runtime.client,
-        sessionId: context.providerSessionId,
+        sessionId: sessionIdOverride ?? context.providerSessionId,
       }),
     catch: cause =>
       new ProviderAdapterProcessError({

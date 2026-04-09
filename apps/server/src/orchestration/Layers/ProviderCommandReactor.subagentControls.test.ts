@@ -1,6 +1,7 @@
 import { CommandId, ProjectId, ThreadId } from '@orxa-code/contracts'
 import { Effect } from 'effect'
 import { expect, it } from 'vitest'
+import { opencodeChildTurnId } from '../../opencodeChildThreads.ts'
 
 import {
   asApprovalRequestId,
@@ -100,6 +101,61 @@ const createSubagentChildThread = async (
   )
 }
 
+const createOpencodeSubagentChildThread = async (
+  harness: Awaited<ReturnType<typeof createHarness>>,
+  now: string
+) => {
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.create',
+      commandId: CommandId.makeUnsafe('cmd-opencode-subagent-thread-create'),
+      threadId: ThreadId.makeUnsafe('opencode-child:thread-1:sess-child-1'),
+      projectId: ProjectId.makeUnsafe('project-1'),
+      title: 'Review task',
+      modelSelection: {
+        provider: 'opencode',
+        model: 'anthropic/claude-sonnet-4-5',
+        agentId: 'review',
+      },
+      runtimeMode: 'approval-required',
+      interactionMode: 'default',
+      branch: null,
+      worktreePath: null,
+      parentLink: {
+        parentThreadId: ThreadId.makeUnsafe('thread-1'),
+        relationKind: 'subagent',
+        parentTurnId: null,
+        provider: 'opencode',
+        providerTaskId: null,
+        providerChildThreadId: 'sess-child-1',
+        agentLabel: 'review',
+        createdAt: now,
+        completedAt: null,
+      },
+      createdAt: now,
+    })
+  )
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-opencode-subagent-thread-session-set'),
+      threadId: ThreadId.makeUnsafe('opencode-child:thread-1:sess-child-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('opencode-child:thread-1:sess-child-1'),
+        status: 'running',
+        providerName: 'opencode',
+        providerSessionId: 'sess-child-1',
+        providerThreadId: 'sess-child-1',
+        runtimeMode: 'approval-required',
+        activeTurnId: opencodeChildTurnId('sess-child-1'),
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+}
+
 it('marks subagent child sessions interrupted when the parent turn is interrupted', async () => {
   const harness = await createHarness()
   const now = new Date().toISOString()
@@ -165,6 +221,13 @@ it('routes subagent child turn interrupts through the parent provider session', 
     providerThreadId: 'child-provider-1',
   })
 
+  await waitFor(async () => {
+    const childThread = await findThreadById(harness, 'codex-child:thread-1:child-provider-1')
+    const parentThread = await findThread(harness)
+    return (
+      childThread?.session?.status === 'interrupted' && parentThread?.session?.status === 'running'
+    )
+  })
   const childThread = await findThreadById(harness, 'codex-child:thread-1:child-provider-1')
   expect(childThread?.session?.status).toBe('interrupted')
   const parentThread = await findThread(harness)
@@ -246,6 +309,11 @@ it('routes subagent child session stops through the parent provider session', as
     threadId: 'thread-1',
   })
 
+  await waitFor(async () => {
+    const parentThread = await findThread(harness)
+    const childThread = await findThreadById(harness, 'codex-child:thread-1:child-provider-1')
+    return parentThread?.session?.status === 'stopped' && childThread?.session?.status === 'stopped'
+  })
   const parentThread = await findThread(harness)
   const childThread = await findThreadById(harness, 'codex-child:thread-1:child-provider-1')
   expect(parentThread?.session?.status).toBe('stopped')
@@ -291,4 +359,58 @@ it('marks subagent child sessions stopped when the parent session stops', async 
   const childThread = await findThreadById(harness, 'codex-child:thread-1:child-provider-1')
   expect(childThread?.session?.status).toBe('stopped')
   expect(childThread?.session?.activeTurnId).toBeNull()
+})
+
+it('fans out parent interrupts to running Opencode child sessions', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-opencode-session-set'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('thread-1'),
+        status: 'running',
+        providerName: 'opencode',
+        providerSessionId: 'sess-root',
+        providerThreadId: 'sess-root',
+        runtimeMode: 'approval-required',
+        activeTurnId: asTurnId('turn-root'),
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+  await createOpencodeSubagentChildThread(harness, now)
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.turn.interrupt',
+      commandId: CommandId.makeUnsafe('cmd-opencode-parent-turn-interrupt'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      turnId: asTurnId('turn-root'),
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.interruptTurn.mock.calls.length === 2)
+  expect(harness.interruptTurn.mock.calls).toEqual([
+    [
+      {
+        threadId: 'thread-1',
+        providerThreadId: 'sess-root',
+        turnId: 'turn-root',
+      },
+    ],
+    [
+      {
+        threadId: 'thread-1',
+        providerThreadId: 'sess-child-1',
+        turnId: opencodeChildTurnId('sess-child-1'),
+      },
+    ],
+  ])
 })

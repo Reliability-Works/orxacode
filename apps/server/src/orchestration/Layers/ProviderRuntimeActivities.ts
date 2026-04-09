@@ -99,7 +99,7 @@ function formatAgentLabel(value: string | null): string | null {
 
 function extractSubagentLabel(payload: unknown): string | null {
   const data = asRecord(payload)
-  const item = asRecord(data?.item)
+  const item = asRecord(data?.item) ?? data
   return formatAgentLabel(
     asTrimmedString(item?.subagent_type) ??
       asTrimmedString(item?.subagentType) ??
@@ -386,25 +386,8 @@ function toolLifecycleActivities(
   maybeSequence: { sequence?: number }
 ): ReadonlyArray<OrchestrationThreadActivity> {
   switch (event.type) {
-    case 'item.updated': {
-      if (!isToolLifecycleItemType(event.payload.itemType)) {
-        return []
-      }
-      const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool updated'
-      return [
-        buildActivity(event, maybeSequence, {
-          tone: 'tool',
-          kind: 'tool.updated',
-          summary,
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.status ? { status: event.payload.status } : {}),
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-            ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-          },
-        }),
-      ]
-    }
+    case 'item.updated':
+      return toolUpdatedActivities(event, maybeSequence)
 
     case 'item.completed': {
       if (!isToolLifecycleItemType(event.payload.itemType)) {
@@ -446,6 +429,32 @@ function toolLifecycleActivities(
     default:
       return []
   }
+}
+
+function toolUpdatedActivities(
+  event: Extract<ProviderRuntimeEvent, { type: 'item.updated' }>,
+  maybeSequence: { sequence?: number }
+): ReadonlyArray<OrchestrationThreadActivity> {
+  if (!isToolLifecycleItemType(event.payload.itemType)) {
+    return []
+  }
+  if (event.payload.itemType === 'collab_agent_tool_call') {
+    return []
+  }
+  const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool updated'
+  return [
+    buildActivity(event, maybeSequence, {
+      tone: 'tool',
+      kind: 'tool.updated',
+      summary,
+      payload: {
+        itemType: event.payload.itemType,
+        ...(event.payload.status ? { status: event.payload.status } : {}),
+        ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
+        ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
+      },
+    }),
+  ]
 }
 
 export function runtimeEventToActivities(

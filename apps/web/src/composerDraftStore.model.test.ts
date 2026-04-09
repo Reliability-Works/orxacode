@@ -226,6 +226,35 @@ describe('composerDraftStore sticky composer settings', () => {
       activeProvider: 'claudeAgent',
     })
   })
+
+  it('persists sticky opencode agent changes for new drafts', () => {
+    const store = useComposerDraftStore.getState()
+    const sourceThreadId = ThreadId.makeUnsafe('thread-opencode-source')
+    const targetThreadId = ThreadId.makeUnsafe('thread-opencode-target')
+    store.setModelSelection(sourceThreadId, {
+      provider: 'opencode',
+      model: 'openai/gpt-5.4',
+      agentId: 'builder',
+    })
+    store.setOpencodeAgentId(sourceThreadId, 'explorer')
+    expect(useComposerDraftStore.getState().stickyModelSelectionByProvider.opencode).toEqual({
+      provider: 'opencode',
+      model: 'openai/gpt-5.4',
+      agentId: 'explorer',
+    })
+    expect(useComposerDraftStore.getState().stickyActiveProvider).toBe('opencode')
+    store.applyStickyState(targetThreadId)
+    expect(useComposerDraftStore.getState().draftsByThreadId[targetThreadId]).toMatchObject({
+      modelSelectionByProvider: {
+        opencode: {
+          provider: 'opencode',
+          model: 'openai/gpt-5.4',
+          agentId: 'explorer',
+        },
+      },
+      activeProvider: 'opencode',
+    })
+  })
 })
 
 describe('composerDraftStore provider-scoped option updates', () => {

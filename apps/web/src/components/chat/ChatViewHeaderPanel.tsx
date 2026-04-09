@@ -28,6 +28,21 @@ import { ThreadHandoffMenu } from './ThreadHandoffMenu'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
 
+function formatSubagentLabel(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return null
+  }
+  return trimmed
+    .split(/[\s_-]+/)
+    .filter(part => part.length > 0)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
 function HandoffMenuAction() {
   const c = useChatViewCtx()
   if (!c.td.activeThread) return null
@@ -123,12 +138,17 @@ function ChatHeaderSubagentBanner() {
   const parentThread = useThreadById(parentLink?.parentThreadId)
   if (!thread || !parentLink) return null
   const parentThreadTitle = parentThread?.title ?? 'Parent thread'
+  const subagentLabel = formatSubagentLabel(
+    parentLink.agentLabel ??
+      (thread.modelSelection.provider === 'opencode' ? thread.modelSelection.agentId : null)
+  )
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
       <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
         Subagent
       </Badge>
       <p className="truncate text-xs text-muted-foreground">
+        {subagentLabel ? `${subagentLabel} · ` : ''}
         {thread.modelSelection.provider} / {thread.modelSelection.model} from {parentThreadTitle}
       </p>
     </div>

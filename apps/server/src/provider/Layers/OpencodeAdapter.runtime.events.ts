@@ -26,6 +26,7 @@ import { Cause, Effect, Exit, type Fiber, Stream } from 'effect'
 
 import type { OpencodeAdapterDeps } from './OpencodeAdapter.deps.ts'
 import { mapOpencodeEvent } from './OpencodeAdapter.pure.ts'
+import { readOpencodeSubtaskDelegation } from '../../opencodeChildThreads.ts'
 import {
   emitMappedEvents,
   emitRuntimeErrorEvent,
@@ -34,6 +35,60 @@ import {
   readPartHintFromEvent,
 } from './OpencodeAdapter.runtime.eventBase.ts'
 import type { OpencodeEvent, OpencodeSessionContext } from './OpencodeAdapter.types.ts'
+
+function rememberChildSessionRelations(
+  context: OpencodeSessionContext,
+  event: OpencodeEvent
+): void {
+  if (event.type === 'message.part.updated') {
+    const delegation = readOpencodeSubtaskDelegation(event.properties)
+    if (delegation) {
+      context.pendingChildDelegations.push({
+        parentProviderSessionId: delegation.parentProviderSessionId,
+        agentLabel: delegation.agentLabel,
+        prompt: delegation.prompt,
+        description: delegation.description,
+        modelSelection: delegation.modelSelection,
+        command: delegation.command,
+      })
+    }
+    return
+  }
+
+  if (event.type === 'session.created') {
+    const session = event.properties.info
+    if (!session.parentID || !context.relatedSessionIds.has(session.parentID)) {
+      return
+    }
+    context.relatedSessionIds.add(session.id)
+    const delegationIndex = context.pendingChildDelegations.findIndex(
+      entry => entry.parentProviderSessionId === session.parentID
+    )
+    if (delegationIndex >= 0) {
+      const [delegation] = context.pendingChildDelegations.splice(delegationIndex, 1)
+      if (delegation) {
+        context.childDelegationsBySessionId.set(session.id, delegation)
+      }
+    }
+    return
+  }
+
+  if (event.type === 'session.updated') {
+    const info = event.properties.info
+    if (typeof info.id !== 'string') {
+      return
+    }
+    if (typeof info.parentID === 'string' && context.relatedSessionIds.has(info.parentID)) {
+      context.relatedSessionIds.add(info.id)
+    }
+    return
+  }
+
+  if (event.type === 'session.deleted') {
+    context.relatedSessionIds.delete(event.properties.sessionID)
+    context.childDelegationsBySessionId.delete(event.properties.sessionID)
+  }
+}
 
 function milestoneSummary(label: string, startedAtMs: number, nowMs: number): string {
   const elapsedMs = Math.max(0, nowMs - startedAtMs)
@@ -125,6 +180,7 @@ export const handleIncomingEvent = (
   cacheLookup: (event: OpencodeEvent) => ReturnType<typeof readPartHintFromEvent>
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
+    rememberChildSessionRelations(context, event)
     yield* markStartupMilestones(deps, context, event)
     const hint = cacheLookup(event)
     const mapperContext = yield* prepareMapperContext(deps, context)

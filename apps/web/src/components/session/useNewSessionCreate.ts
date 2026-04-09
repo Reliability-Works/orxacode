@@ -65,6 +65,7 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
         interactionMode: 'default',
       })
       draftStore.applyStickyState(threadId)
+      draftStore.setStickyModelSelection(modelSelection)
       draftStore.setModelSelection(threadId, modelSelection)
 
       try {

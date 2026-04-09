@@ -27,18 +27,18 @@ import {
 } from '@orxa-code/contracts'
 
 import type {
+  OpencodeChildDelegation,
   OpencodeEvent,
   OpencodeMessage,
-  OpencodePart,
   OpencodeSession,
 } from './OpencodeAdapter.types.ts'
-import {
-  toolDataForPart,
-  toolDetailForPart,
-  toolLifecycleItemTypeForTool,
-  toolTitleForPart,
-} from './OpencodeAdapter.toolSummary.ts'
 import { PROVIDER } from './OpencodeAdapter.types.ts'
+import { opencodeChildTurnId } from '../../opencodeChildThreads.ts'
+import {
+  mapMessagePartDelta,
+  mapMessagePartRemoved,
+  mapMessagePartUpdated,
+} from './OpencodeAdapter.parts.ts'
 
 export interface OpencodeEventStamp {
   readonly eventId: EventId
@@ -49,6 +49,8 @@ export interface OpencodeMapperContext {
   readonly threadId: ThreadId
   readonly turnId: TurnId | undefined
   readonly providerSessionId: string | undefined
+  readonly relatedSessionIds: ReadonlySet<string>
+  readonly childDelegationsBySessionId: ReadonlyMap<string, OpencodeChildDelegation>
   readonly nextStamp: () => OpencodeEventStamp
 }
 
@@ -61,22 +63,26 @@ interface BaseFields {
   readonly providerRefs?: { readonly providerItemId?: ProviderItemId }
 }
 
-function makeBase(ctx: OpencodeMapperContext, providerItemId?: string): BaseFields {
+function makeBaseForTurn(
+  ctx: OpencodeMapperContext,
+  turnId: TurnId | undefined,
+  providerItemId?: string
+): BaseFields {
   const stamp = ctx.nextStamp()
   return {
     eventId: stamp.eventId,
     provider: PROVIDER,
     threadId: ctx.threadId,
     createdAt: stamp.createdAt,
-    ...(ctx.turnId !== undefined ? { turnId: ctx.turnId } : {}),
+    ...(turnId !== undefined ? { turnId } : {}),
     ...(providerItemId
       ? { providerRefs: { providerItemId: ProviderItemId.makeUnsafe(providerItemId) } }
       : {}),
   }
 }
 
-function runtimeItemIdFromPartId(partId: string): RuntimeItemId {
-  return RuntimeItemId.makeUnsafe(`opencode-part-${partId}`)
+function makeBase(ctx: OpencodeMapperContext, providerItemId?: string): BaseFields {
+  return makeBaseForTurn(ctx, ctx.turnId, providerItemId)
 }
 
 function runtimeItemIdFromMessageId(messageId: string): RuntimeItemId {
@@ -84,8 +90,33 @@ function runtimeItemIdFromMessageId(messageId: string): RuntimeItemId {
 }
 
 function matchesThread(ctx: OpencodeMapperContext, sessionId: string | undefined): boolean {
+  if (sessionId && ctx.relatedSessionIds.has(sessionId)) {
+    return true
+  }
   if (!ctx.providerSessionId) return true
   return sessionId === ctx.providerSessionId
+}
+
+function turnIdForSession(
+  ctx: OpencodeMapperContext,
+  sessionId: string | undefined
+): TurnId | undefined {
+  if (!sessionId || sessionId === ctx.providerSessionId) {
+    return ctx.turnId
+  }
+  return ctx.relatedSessionIds.has(sessionId) ? opencodeChildTurnId(sessionId) : ctx.turnId
+}
+
+function opencodeRawEvent(event: OpencodeEvent): {
+  readonly source: 'opencode.sdk.event'
+  readonly messageType: string
+  readonly payload: unknown
+} {
+  return {
+    source: 'opencode.sdk.event',
+    messageType: event.type,
+    payload: event.properties,
+  }
 }
 
 export function mapSessionCreated(
@@ -93,12 +124,21 @@ export function mapSessionCreated(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   const session: OpencodeSession = event.properties.info
-  if (ctx.providerSessionId && session.id !== ctx.providerSessionId) return []
+  if (!matchesThread(ctx, session.id)) return []
+  const turnId = turnIdForSession(ctx, session.id)
+  const delegation = ctx.childDelegationsBySessionId.get(session.id)
   return [
     {
-      ...makeBase(ctx, session.id),
+      ...makeBaseForTurn(ctx, turnId, session.id),
       type: 'session.started',
       payload: { message: `opencode session ${session.id} created` },
+      raw: {
+        ...opencodeRawEvent(event),
+        payload: {
+          ...event.properties,
+          ...(delegation ? { delegation } : {}),
+        },
+      },
     },
   ]
 }
@@ -120,19 +160,22 @@ export function mapMessageUpdated(
 ): ReadonlyArray<ProviderRuntimeEvent> {
   const info = event.properties.info
   if (!matchesThread(ctx, info.sessionID)) return []
+  const turnId = turnIdForSession(ctx, info.sessionID)
   const events: Array<ProviderRuntimeEvent> = []
   if (info.role === 'assistant') {
     events.push({
-      ...makeBase(ctx, info.id),
+      ...makeBaseForTurn(ctx, turnId, info.id),
       itemId: runtimeItemIdFromMessageId(info.id),
       type: 'item.started',
       payload: { itemType: 'assistant_message', status: 'inProgress' },
+      raw: opencodeRawEvent(event),
     })
     if (typeof info.time.completed === 'number') {
       events.push({
-        ...makeBase(ctx, info.id),
+        ...makeBaseForTurn(ctx, turnId, info.id),
         type: 'thread.token-usage.updated',
         payload: { usage: extractUsageSnapshot(info) },
+        raw: opencodeRawEvent(event),
       })
     }
   }
@@ -144,205 +187,14 @@ export function mapMessageRemoved(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   if (!matchesThread(ctx, event.properties.sessionID)) return []
+  const turnId = turnIdForSession(ctx, event.properties.sessionID)
   return [
     {
-      ...makeBase(ctx, event.properties.messageID),
+      ...makeBaseForTurn(ctx, turnId, event.properties.messageID),
       itemId: runtimeItemIdFromMessageId(event.properties.messageID),
       type: 'item.updated',
       payload: { itemType: 'assistant_message', status: 'declined' },
-    },
-  ]
-}
-
-function canonicalPartItemType(
-  part: OpencodePart
-): 'assistant_message' | 'reasoning' | 'mcp_tool_call' | 'unknown' {
-  switch (part.type) {
-    case 'text':
-      return 'assistant_message'
-    case 'reasoning':
-      return 'reasoning'
-    case 'tool':
-      return 'mcp_tool_call'
-    default:
-      return 'unknown'
-  }
-}
-
-function toolPartEvents(
-  part: Extract<OpencodePart, { type: 'tool' }>,
-  ctx: OpencodeMapperContext
-): ReadonlyArray<ProviderRuntimeEvent> {
-  const itemId = runtimeItemIdFromPartId(part.id)
-  const itemType = toolLifecycleItemTypeForTool(part.tool)
-  const title = toolTitleForPart(part)
-  const detail = toolDetailForPart(part)
-  const data = toolDataForPart(part)
-  switch (part.state.status) {
-    case 'pending':
-    case 'running': {
-      const updateEvent = buildToolLifecycleUpdateEvent({
-        ctx,
-        partId: part.id,
-        itemId,
-        itemType,
-        title,
-        detail,
-        data,
-      })
-      return [
-        {
-          ...makeBase(ctx, part.id),
-          itemId,
-          type: 'item.started',
-          payload: {
-            itemType,
-            status: 'inProgress',
-            title,
-            ...(detail ? { detail } : {}),
-            ...(data ? { data } : {}),
-          },
-        },
-        ...(updateEvent ? [updateEvent] : []),
-      ]
-    }
-    case 'completed':
-      return [
-        {
-          ...makeBase(ctx, part.id),
-          itemId,
-          type: 'item.completed',
-          payload: {
-            itemType,
-            status: 'completed',
-            title,
-            ...(detail ? { detail } : {}),
-            ...(data ? { data } : {}),
-          },
-        },
-      ]
-    case 'error':
-      return [
-        {
-          ...makeBase(ctx, part.id),
-          itemId,
-          type: 'item.completed',
-          payload: {
-            itemType,
-            status: 'failed',
-            title,
-            detail: part.state.error.length > 0 ? part.state.error : detail,
-            ...(data ? { data } : {}),
-          },
-        },
-      ]
-    default:
-      return []
-  }
-}
-
-function buildToolLifecycleUpdateEvent(input: {
-  readonly ctx: OpencodeMapperContext
-  readonly partId: string
-  readonly itemId: RuntimeItemId
-  readonly itemType: ReturnType<typeof toolLifecycleItemTypeForTool>
-  readonly title: string
-  readonly detail: string | undefined
-  readonly data: Record<string, unknown> | undefined
-}): ProviderRuntimeEvent | null {
-  if (!input.detail && !input.data) {
-    return null
-  }
-  return {
-    ...makeBase(input.ctx, input.partId),
-    itemId: input.itemId,
-    type: 'item.updated',
-    payload: {
-      itemType: input.itemType,
-      status: 'inProgress',
-      title: input.title,
-      ...(input.detail ? { detail: input.detail } : {}),
-      ...(input.data ? { data: input.data } : {}),
-    },
-  }
-}
-
-function textOrReasoningPartEvents(
-  part: Extract<OpencodePart, { type: 'text' | 'reasoning' }>,
-  ctx: OpencodeMapperContext
-): ReadonlyArray<ProviderRuntimeEvent> {
-  const itemId = runtimeItemIdFromPartId(part.id)
-  const itemType = canonicalPartItemType(part)
-  const ended = part.time?.end !== undefined
-  return [
-    {
-      ...makeBase(ctx, part.id),
-      itemId,
-      type: ended ? 'item.completed' : 'item.updated',
-      payload: {
-        itemType,
-        status: ended ? 'completed' : 'inProgress',
-        ...(part.type === 'text' && part.text.length > 0 ? { detail: part.text } : {}),
-        ...(part.type === 'reasoning' && part.text.length > 0 ? { detail: part.text } : {}),
-      },
-    },
-  ]
-}
-
-export function mapMessagePartUpdated(
-  event: Extract<OpencodeEvent, { type: 'message.part.updated' }>,
-  ctx: OpencodeMapperContext
-): ReadonlyArray<ProviderRuntimeEvent> {
-  const part = event.properties.part
-  if (!matchesThread(ctx, part.sessionID)) return []
-  if (part.type === 'text' || part.type === 'reasoning') {
-    return textOrReasoningPartEvents(part, ctx)
-  }
-  if (part.type === 'tool') {
-    return toolPartEvents(part, ctx)
-  }
-  return []
-}
-
-function streamKindForField(
-  field: string,
-  partType: string | undefined
-): 'assistant_text' | 'reasoning_text' | 'unknown' {
-  if (field === 'text' && partType === 'reasoning') return 'reasoning_text'
-  if (field === 'text') return 'assistant_text'
-  return 'unknown'
-}
-
-export function mapMessagePartDelta(
-  event: Extract<OpencodeEvent, { type: 'message.part.delta' }>,
-  ctx: OpencodeMapperContext,
-  partHint?: { readonly partId: string; readonly partType: string }
-): ReadonlyArray<ProviderRuntimeEvent> {
-  if (!matchesThread(ctx, event.properties.sessionID)) return []
-  const partType = partHint?.partType
-  const streamKind = streamKindForField(event.properties.field, partType)
-  if (streamKind === 'unknown') return []
-  return [
-    {
-      ...makeBase(ctx, event.properties.partID),
-      itemId: runtimeItemIdFromPartId(event.properties.partID),
-      type: 'content.delta',
-      payload: { streamKind, delta: event.properties.delta },
-    },
-  ]
-}
-
-export function mapMessagePartRemoved(
-  event: Extract<OpencodeEvent, { type: 'message.part.removed' }>,
-  ctx: OpencodeMapperContext
-): ReadonlyArray<ProviderRuntimeEvent> {
-  if (!matchesThread(ctx, event.properties.sessionID)) return []
-  return [
-    {
-      ...makeBase(ctx, event.properties.partID),
-      itemId: runtimeItemIdFromPartId(event.properties.partID),
-      type: 'item.updated',
-      payload: { itemType: 'unknown', status: 'declined' },
+      raw: opencodeRawEvent(event),
     },
   ]
 }
@@ -352,12 +204,14 @@ export function mapSessionIdle(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   if (!matchesThread(ctx, event.properties.sessionID)) return []
-  if (ctx.turnId === undefined) return []
+  const turnId = turnIdForSession(ctx, event.properties.sessionID)
+  if (turnId === undefined) return []
   return [
     {
-      ...makeBase(ctx),
+      ...makeBaseForTurn(ctx, turnId),
       type: 'turn.completed',
       payload: { state: 'completed' },
+      raw: opencodeRawEvent(event),
     },
   ]
 }
@@ -379,19 +233,22 @@ export function mapSessionError(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   if (!matchesThread(ctx, event.properties.sessionID)) return []
+  const turnId = turnIdForSession(ctx, event.properties.sessionID)
   const described = describeAuthError(event.properties.error)
   const events: Array<ProviderRuntimeEvent> = [
     {
-      ...makeBase(ctx),
+      ...makeBaseForTurn(ctx, turnId),
       type: 'runtime.error',
       payload: { message: described.message, class: described.class },
+      raw: opencodeRawEvent(event),
     },
   ]
-  if (ctx.turnId !== undefined) {
+  if (turnId !== undefined) {
     events.push({
-      ...makeBase(ctx),
+      ...makeBaseForTurn(ctx, turnId),
       type: 'turn.completed',
       payload: { state: 'failed', errorMessage: described.message },
+      raw: opencodeRawEvent(event),
     })
   }
   return events

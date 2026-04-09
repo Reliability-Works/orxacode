@@ -7,7 +7,12 @@ import {
 } from '@orxa-code/contracts'
 import { Effect } from 'effect'
 import { readCodexChildThreadDescriptors } from '../../codexChildThreads.ts'
-
+import { readOpencodeChildThreadDescriptor } from '../../opencodeChildThreads.ts'
+import {
+  createOpencodeSubagentThread,
+  fillOpencodeDescriptorFromParentActivities,
+  syncOpencodeSubagentThread,
+} from './ProviderRuntimeIngestion.opencodeSubagents.ts'
 import {
   proposedPlanIdFromEvent,
   providerCommandId,
@@ -23,9 +28,7 @@ import {
   makeRuntimeEventDispatchers,
   shouldApplyThreadLifecycle,
 } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
-
 export type { ProcessRuntimeEventDeps } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
-
 function buildSubagentThreadTitle(agentLabel: string | null): string {
   const trimmed = agentLabel?.trim()
   if (!trimmed) {
@@ -37,7 +40,6 @@ function buildSubagentThreadTitle(agentLabel: string | null): string {
     .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(' ')
 }
-
 function buildSeedMessageText(
   descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number],
   event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>
@@ -50,7 +52,6 @@ function buildSeedMessageText(
   }
   return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
 }
-
 function isCodexCollabLifecycleEvent(
   event: ProviderRuntimeEvent
 ): event is Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }> {
@@ -60,7 +61,6 @@ function isCodexCollabLifecycleEvent(
     event.payload.itemType === 'collab_agent_tool_call'
   )
 }
-
 function buildSubagentParentLink(
   thread: ReadModelThread,
   descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number],
@@ -139,6 +139,45 @@ const createCodexSubagentThread = (deps: ProcessRuntimeEventDeps) =>
     })
   })
 
+function resolveThreadForProviderSessionId(
+  readModel: OrchestrationReadModel,
+  providerSessionId: string
+): ReadModelThread | undefined {
+  return readModel.threads.find(
+    entry =>
+      entry.session?.providerSessionId === providerSessionId ||
+      entry.parentLink?.providerChildThreadId === providerSessionId
+  )
+}
+
+function extractOpencodeEventSessionId(event: ProviderRuntimeEvent): string | null {
+  if (event.provider !== 'opencode' || event.raw?.source !== 'opencode.sdk.event') {
+    return null
+  }
+  const payload =
+    event.raw.payload && typeof event.raw.payload === 'object'
+      ? (event.raw.payload as Record<string, unknown>)
+      : null
+  if (!payload) {
+    return null
+  }
+  const info =
+    payload.info && typeof payload.info === 'object'
+      ? (payload.info as { id?: unknown })
+      : undefined
+  const sessionID =
+    typeof payload.sessionID === 'string'
+      ? payload.sessionID
+      : typeof info?.id === 'string'
+        ? info.id
+        : null
+  return sessionID
+}
+
+function isOpencodeSdkEvent(event: ProviderRuntimeEvent): boolean {
+  return event.provider === 'opencode' && event.raw?.source === 'opencode.sdk.event'
+}
+
 const ensureCodexChildThreadsForEvent = (deps: ProcessRuntimeEventDeps) => {
   const createSubagentThread = createCodexSubagentThread(deps)
   return Effect.fn('ensureCodexChildThreadsForEvent')(function* (
@@ -161,6 +200,150 @@ const ensureCodexChildThreadsForEvent = (deps: ProcessRuntimeEventDeps) => {
       yield* createSubagentThread(event, thread, descriptor)
     }
   })
+}
+
+function existingOpencodeChildThreadForSession(
+  readModel: OrchestrationReadModel,
+  providerSessionId: string | null
+): ReadModelThread | undefined {
+  if (!providerSessionId) {
+    return undefined
+  }
+  return readModel.threads.find(
+    entry =>
+      entry.parentLink?.relationKind === 'subagent' &&
+      (entry.parentLink.providerChildThreadId === providerSessionId ||
+        entry.session?.providerSessionId === providerSessionId)
+  )
+}
+
+function resolveThreadProjectRoot(
+  readModel: OrchestrationReadModel,
+  thread: ReadModelThread
+): string | null {
+  return (
+    thread.worktreePath ??
+    readModel.projects.find(project => project.id === thread.projectId)?.workspaceRoot ??
+    null
+  )
+}
+
+const syncExistingOpencodeChildThreadForEvent = (deps: ProcessRuntimeEventDeps) => {
+  const syncSubagentThread = syncOpencodeSubagentThread(deps)
+  return Effect.fn('syncExistingOpencodeChildThreadForEvent')(function* (
+    event: ProviderRuntimeEvent,
+    readModel: OrchestrationReadModel,
+    existingThreadBySession: ReadModelThread,
+    providerSessionId: string | null
+  ) {
+    if (!existingThreadBySession.parentLink?.parentThreadId) {
+      return
+    }
+    const parentThread = readModel.threads.find(
+      entry => entry.id === existingThreadBySession.parentLink?.parentThreadId
+    )
+    if (!parentThread) {
+      return
+    }
+    const projectRoot = resolveThreadProjectRoot(readModel, parentThread)
+    const resolvedDescriptor = fillOpencodeDescriptorFromParentActivities(parentThread, {
+      providerParentSessionId:
+        parentThread.session?.providerSessionId ??
+        existingThreadBySession.parentLink.providerChildThreadId ??
+        existingThreadBySession.session?.providerSessionId ??
+        providerSessionId ??
+        existingThreadBySession.id,
+      providerChildThreadId:
+        existingThreadBySession.parentLink.providerChildThreadId ??
+        existingThreadBySession.session?.providerSessionId ??
+        providerSessionId ??
+        '',
+      childThreadId: existingThreadBySession.id,
+      title: existingThreadBySession.title,
+      agentLabel: existingThreadBySession.parentLink.agentLabel ?? null,
+      prompt: null,
+      description: null,
+      modelSelection:
+        existingThreadBySession.modelSelection.provider === 'opencode'
+          ? existingThreadBySession.modelSelection
+          : null,
+    })
+    yield* syncSubagentThread(event, existingThreadBySession, resolvedDescriptor, projectRoot)
+  })
+}
+
+const ensureOpencodeChildThreadsForEvent = (deps: ProcessRuntimeEventDeps) => {
+  const createSubagentThread = createOpencodeSubagentThread(deps)
+  const syncSubagentThread = syncOpencodeSubagentThread(deps)
+  const syncExistingChildThread = syncExistingOpencodeChildThreadForEvent(deps)
+  return Effect.fn('ensureOpencodeChildThreadsForEvent')(function* (
+    event: ProviderRuntimeEvent,
+    thread: ReadModelThread,
+    readModel: OrchestrationReadModel
+  ) {
+    if (!isOpencodeSdkEvent(event)) {
+      return
+    }
+
+    const providerSessionId = extractOpencodeEventSessionId(event)
+    const existingThreadBySession = existingOpencodeChildThreadForSession(
+      readModel,
+      providerSessionId
+    )
+
+    if (
+      event.raw?.messageType !== 'session.created' &&
+      event.raw?.messageType !== 'session.updated'
+    ) {
+      if (!existingThreadBySession) {
+        return
+      }
+      yield* syncExistingChildThread(event, readModel, existingThreadBySession, providerSessionId)
+      return
+    }
+
+    const descriptor = readOpencodeChildThreadDescriptor(thread.id, event.raw?.payload)
+    if (!descriptor) {
+      return
+    }
+
+    const parentThread =
+      resolveThreadForProviderSessionId(readModel, descriptor.providerParentSessionId) ?? thread
+    const rawResolvedDescriptor = readOpencodeChildThreadDescriptor(
+      parentThread.id,
+      event.raw?.payload
+    )
+    if (!rawResolvedDescriptor) {
+      return
+    }
+    const resolvedDescriptor = fillOpencodeDescriptorFromParentActivities(
+      parentThread,
+      rawResolvedDescriptor
+    )
+    const projectRoot = resolveThreadProjectRoot(readModel, parentThread)
+    const existingThread = readModel.threads.find(
+      entry => entry.id === resolvedDescriptor.childThreadId
+    )
+    if (existingThread) {
+      yield* syncSubagentThread(event, existingThread, resolvedDescriptor, projectRoot)
+      return
+    }
+    yield* createSubagentThread(event, parentThread, resolvedDescriptor, projectRoot)
+  })
+}
+
+function resolveTargetThread(
+  readModel: OrchestrationReadModel,
+  event: ProviderRuntimeEvent
+): ReadModelThread | undefined {
+  const providerSessionId = extractOpencodeEventSessionId(event)
+  if (providerSessionId) {
+    const routedThread = resolveThreadForProviderSessionId(readModel, providerSessionId)
+    if (routedThread) {
+      return routedThread
+    }
+  }
+  return readModel.threads.find(entry => entry.id === event.threadId)
 }
 
 function buildLifecycleContext(
@@ -298,16 +481,22 @@ const runTerminalSteps = (deps: ProcessRuntimeEventDeps, dispatchers: RuntimeEve
 export const createProcessRuntimeEvent = (deps: ProcessRuntimeEventDeps) => {
   const dispatchers = makeRuntimeEventDispatchers(deps)
   const ensureCodexChildThreads = ensureCodexChildThreadsForEvent(deps)
+  const ensureOpencodeChildThreads = ensureOpencodeChildThreadsForEvent(deps)
   const lifecycleStep = runLifecycleStep(dispatchers)
   const assistantCompletionSteps = runAssistantCompletionSteps(dispatchers)
   const terminalSteps = runTerminalSteps(deps, dispatchers)
 
   return Effect.fn('processRuntimeEvent')(function* (event: ProviderRuntimeEvent) {
-    const readModel = yield* deps.orchestrationEngine.getReadModel()
-    const thread = readModel.threads.find(entry => entry.id === event.threadId)
-    if (!thread) return
+    const initialReadModel = yield* deps.orchestrationEngine.getReadModel()
+    const initialThread = initialReadModel.threads.find(entry => entry.id === event.threadId)
+    if (!initialThread) return
 
-    yield* ensureCodexChildThreads(event, thread, readModel)
+    yield* ensureCodexChildThreads(event, initialThread, initialReadModel)
+    yield* ensureOpencodeChildThreads(event, initialThread, initialReadModel)
+
+    const readModel = yield* deps.orchestrationEngine.getReadModel()
+    const thread = resolveTargetThread(readModel, event)
+    if (!thread) return
 
     const ctx = buildLifecycleContext(event, thread)
 

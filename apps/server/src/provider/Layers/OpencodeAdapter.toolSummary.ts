@@ -199,6 +199,10 @@ export function toolDataForPart(part: ToolPartSummary): Record<string, unknown> 
   const input = inputForPart(part)
   const metadata = metadataForPart(part)
   const result: Record<string, unknown> = {}
+  const taskItem = buildTaskToolData(part, input)
+  if (taskItem) {
+    result.item = taskItem
+  }
 
   if (input && Object.keys(input).length > 0) {
     result.input = part.state.input
@@ -231,4 +235,28 @@ export function toolDataForPart(part: ToolPartSummary): Record<string, unknown> 
   }
 
   return Object.keys(result).length > 0 ? result : undefined
+}
+
+function buildTaskToolData(
+  part: ToolPartSummary,
+  input: Record<string, unknown> | null
+): Record<string, unknown> | null {
+  if (part.tool !== 'task' || !input) {
+    return null
+  }
+  const agentLabel =
+    asTrimmedString(input.agent) ??
+    asTrimmedString(input.subagent_type) ??
+    asTrimmedString(input.subagentType) ??
+    asTrimmedString(input.agent_label)
+  const result = {
+    ...(agentLabel ? { agent_label: agentLabel } : {}),
+    ...(asTrimmedString(input.prompt) ? { prompt: asTrimmedString(input.prompt) } : {}),
+    ...(asTrimmedString(input.description)
+      ? { description: asTrimmedString(input.description) }
+      : {}),
+    ...(input.model !== undefined ? { model: input.model } : {}),
+    ...(asTrimmedString(input.command) ? { command: asTrimmedString(input.command) } : {}),
+  }
+  return Object.keys(result).length > 0 ? result : null
 }

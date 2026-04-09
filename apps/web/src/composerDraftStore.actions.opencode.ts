@@ -31,10 +31,18 @@ function updateOpencodeSelection(
     const nextSelection = updater(baseSelection)
     if (Equal.equals(current, nextSelection)) return state
     const nextMap = { ...base.modelSelectionByProvider, opencode: nextSelection }
-    return updateDraftByThreadId(state, threadId, {
+    const nextState = updateDraftByThreadId(state, threadId, {
       ...base,
       modelSelectionByProvider: nextMap,
     })
+    return {
+      ...nextState,
+      stickyModelSelectionByProvider: {
+        ...state.stickyModelSelectionByProvider,
+        opencode: nextSelection,
+      },
+      stickyActiveProvider: base.activeProvider ?? 'opencode',
+    }
   })
 }
 

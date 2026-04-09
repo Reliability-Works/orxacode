@@ -59,6 +59,15 @@ export interface OpencodeTurnStartupTrace {
   firstToolAtMs: number | undefined
 }
 
+export interface OpencodeChildDelegation {
+  readonly parentProviderSessionId: string
+  readonly agentLabel: string | null
+  readonly prompt: string | null
+  readonly description: string | null
+  readonly modelSelection: OpencodeModelSelection | null
+  readonly command: string | null
+}
+
 export interface OpencodeSessionContext {
   session: ProviderSession
   readonly runtime: OpencodeClientRuntime
@@ -69,6 +78,9 @@ export interface OpencodeSessionContext {
   eventStreamFiber: Fiber.Fiber<void, Error> | undefined
   turnState: OpencodeTurnState | undefined
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined
+  readonly relatedSessionIds: Set<string>
+  readonly childDelegationsBySessionId: Map<string, OpencodeChildDelegation>
+  readonly pendingChildDelegations: Array<OpencodeChildDelegation>
   stopped: boolean
 }
 

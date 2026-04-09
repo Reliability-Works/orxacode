@@ -159,6 +159,9 @@ function buildInitialContext(input: {
     eventStreamFiber: undefined,
     turnState: undefined,
     lastKnownTokenUsage: undefined,
+    relatedSessionIds: new Set([input.providerSessionId]),
+    childDelegationsBySessionId: new Map(),
+    pendingChildDelegations: [],
     stopped: false,
   }
 }
@@ -197,6 +200,9 @@ export const stopSessionInternal = Effect.fn('opencode.stopSessionInternal')(fun
   }
 
   getPartHintCache(context).clear()
+  context.relatedSessionIds.clear()
+  context.childDelegationsBySessionId.clear()
+  context.pendingChildDelegations.length = 0
 
   const updatedAt = yield* deps.nowIso
   context.session = {

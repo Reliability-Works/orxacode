@@ -249,4 +249,29 @@ describe('OpencodeAdapter.runtime.turns - interruptTurn', () => {
       })
     )
   })
+
+  it('aborts a delegated child session when a provider child thread id is supplied', async () => {
+    const fakeRuntime = createFakeOpencodeRuntime({ sessionId: 'sess-root-abort-child' })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const harness = yield* makeTestDeps({
+          createRuntime: makeFakeCreateRuntime(fakeRuntime),
+        })
+        yield* startSession(harness.deps)({
+          threadId: TEST_THREAD_ID,
+          runtimeMode: 'full-access',
+        })
+        yield* collectEvents(harness.runtimeEventQueue, 1)
+
+        yield* interruptTurn(harness.deps)(TEST_THREAD_ID, undefined, 'sess-child-abort-1')
+
+        expect(fakeRuntime.sessionAbortCalls).toContainEqual({
+          sessionID: 'sess-child-abort-1',
+        })
+
+        const context = harness.sessions.get(TEST_THREAD_ID)
+        if (context) yield* stopSessionInternal(harness.deps, context)
+      })
+    )
+  })
 })

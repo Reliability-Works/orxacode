@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { Effect } from 'effect'
+import type { ProviderRuntimeEvent } from '@orxa-code/contracts'
 
 import {
   FIXTURE_ASSISTANT_MESSAGE_ID,
@@ -37,6 +38,133 @@ import {
 } from './OpencodeAdapter.test.helpers.ts'
 
 const STREAMING_TIMEOUT_MS = 5_000
+
+function pushChildSessionFixtureEvents(
+  fakeRuntime: ReturnType<typeof createFakeOpencodeRuntime>
+): void {
+  fakeRuntime.pushEvent({
+    type: 'message.part.updated',
+    properties: {
+      sessionID: FIXTURE_PROVIDER_SESSION_ID,
+      time: 1,
+      part: {
+        id: 'part_subtask_child',
+        sessionID: FIXTURE_PROVIDER_SESSION_ID,
+        messageID: FIXTURE_ASSISTANT_MESSAGE_ID,
+        type: 'subtask',
+        prompt: 'Inspect the provider runtime.',
+        description: 'Audit the runtime.',
+        agent: 'review',
+        model: {
+          providerID: 'anthropic',
+          modelID: 'claude-sonnet-4-5',
+        },
+      },
+    },
+  })
+  fakeRuntime.pushEvent({
+    type: 'session.created',
+    properties: {
+      sessionID: 'sess_child_opencode_1',
+      info: {
+        id: 'sess_child_opencode_1',
+        slug: 'review-child',
+        projectID: 'proj_fixture',
+        directory: '/tmp/fixture/child',
+        parentID: FIXTURE_PROVIDER_SESSION_ID,
+        title: 'Review child',
+        version: '1.0.0',
+        time: { created: 2, updated: 2 },
+      },
+    },
+  })
+  fakeRuntime.pushEvent({
+    type: 'message.part.updated',
+    properties: {
+      sessionID: 'sess_child_opencode_1',
+      time: 3,
+      part: {
+        id: 'part_text_child',
+        sessionID: 'sess_child_opencode_1',
+        messageID: 'msg_child_1',
+        type: 'text',
+        text: 'Looking into it',
+        time: { start: 3 },
+      },
+    },
+  })
+}
+
+function pushChildSessionTaskToolFixtureEvents(
+  fakeRuntime: ReturnType<typeof createFakeOpencodeRuntime>
+): void {
+  fakeRuntime.pushEvent({
+    type: 'message.part.updated',
+    properties: {
+      sessionID: FIXTURE_PROVIDER_SESSION_ID,
+      time: 1,
+      part: {
+        id: 'part_task_child',
+        sessionID: FIXTURE_PROVIDER_SESSION_ID,
+        messageID: FIXTURE_ASSISTANT_MESSAGE_ID,
+        type: 'tool',
+        callID: 'call_task_child',
+        tool: 'task',
+        state: {
+          status: 'running',
+          input: {
+            prompt: 'Inspect the provider runtime.',
+            description: 'Audit the runtime.',
+            agent: 'explorer',
+          },
+          time: { start: 1 },
+        },
+      },
+    },
+  })
+  fakeRuntime.pushEvent({
+    type: 'session.created',
+    properties: {
+      sessionID: 'sess_child_opencode_task_1',
+      info: {
+        id: 'sess_child_opencode_task_1',
+        slug: 'explorer-child',
+        projectID: 'proj_fixture',
+        directory: '/tmp/fixture/child',
+        parentID: FIXTURE_PROVIDER_SESSION_ID,
+        title: 'Explorer child',
+        version: '1.0.0',
+        time: { created: 2, updated: 2 },
+      },
+    },
+  })
+}
+
+function expectChildSessionEvents(events: ReadonlyArray<ProviderRuntimeEvent>): void {
+  expect(
+    events.some(
+      event => event.type === 'item.started' && event.payload.itemType === 'collab_agent_tool_call'
+    )
+  ).toBe(true)
+  expect(
+    events.some(
+      event =>
+        event.type === 'session.started' &&
+        event.raw?.source === 'opencode.sdk.event' &&
+        event.raw.messageType === 'session.created' &&
+        (event.raw.payload as { info?: { id?: string } }).info?.id === 'sess_child_opencode_1'
+    )
+  ).toBe(true)
+  expect(
+    events.some(
+      event =>
+        event.type === 'item.updated' &&
+        event.raw?.source === 'opencode.sdk.event' &&
+        event.raw.messageType === 'message.part.updated' &&
+        (event.raw.payload as { sessionID?: string }).sessionID === 'sess_child_opencode_1'
+    )
+  ).toBe(true)
+}
 
 describe('OpencodeAdapter streaming integration - happy path', () => {
   it(
@@ -127,6 +255,61 @@ describe('OpencodeAdapter streaming integration - happy path', () => {
   )
 })
 
+describe('OpencodeAdapter streaming integration - child delegation metadata', () => {
+  it(
+    'carries task-tool delegation metadata into the child session.created raw payload',
+    async () => {
+      const fakeRuntime = createFakeOpencodeRuntime({
+        sessionId: FIXTURE_PROVIDER_SESSION_ID,
+      })
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const harness = yield* makeTestDeps({
+            createRuntime: makeFakeCreateRuntime(fakeRuntime),
+          })
+
+          yield* startSession(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            runtimeMode: 'full-access',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 1)
+
+          yield* sendTurn(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            input: 'delegate a task',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 1)
+
+          pushChildSessionTaskToolFixtureEvents(fakeRuntime)
+          for (let i = 0; i < 8; i += 1) {
+            yield* Effect.yieldNow
+          }
+
+          const events = yield* drainEvents(harness.runtimeEventQueue)
+          const childSessionCreated = events.find(
+            event =>
+              event.type === 'session.started' &&
+              event.raw?.source === 'opencode.sdk.event' &&
+              event.raw.messageType === 'session.created' &&
+              (event.raw.payload as { info?: { id?: string } }).info?.id ===
+                'sess_child_opencode_task_1'
+          )
+
+          expect(childSessionCreated).toBeDefined()
+          expect(childSessionCreated?.raw?.payload).toMatchObject({
+            delegation: {
+              agentLabel: 'explorer',
+              prompt: 'Inspect the provider runtime.',
+              description: 'Audit the runtime.',
+            },
+          })
+        })
+      )
+    },
+    STREAMING_TIMEOUT_MS
+  )
+})
+
 describe('OpencodeAdapter streaming integration - tool payloads', () => {
   it(
     'maps opencode tool metadata into rich lifecycle payloads for the existing work log UI',
@@ -180,6 +363,40 @@ describe('OpencodeAdapter streaming integration - tool payloads', () => {
               title: 'Read file',
             },
           })
+        })
+      )
+    },
+    STREAMING_TIMEOUT_MS
+  )
+})
+
+describe('OpencodeAdapter streaming integration - child sessions', () => {
+  it(
+    'tracks delegated child sessions and emits their events through the same runtime pump',
+    async () => {
+      const fakeRuntime = createFakeOpencodeRuntime({
+        sessionId: FIXTURE_PROVIDER_SESSION_ID,
+      })
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const harness = yield* makeTestDeps({
+            createRuntime: makeFakeCreateRuntime(fakeRuntime),
+          })
+
+          yield* startSession(harness.deps)({
+            threadId: TEST_THREAD_ID,
+            runtimeMode: 'full-access',
+          })
+          yield* collectEvents(harness.runtimeEventQueue, 1)
+
+          pushChildSessionFixtureEvents(fakeRuntime)
+
+          for (let i = 0; i < 8; i += 1) {
+            yield* Effect.yieldNow
+          }
+
+          const events = yield* drainEvents(harness.runtimeEventQueue)
+          expectChildSessionEvents(events)
         })
       )
     },

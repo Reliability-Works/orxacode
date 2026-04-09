@@ -258,8 +258,16 @@ export const interruptTurn = (
   turnId?: TurnId,
   providerThreadId?: string
 ) => Effect.Effect<void, ProviderAdapterError>) =>
-  Effect.fn('opencode.interruptTurn')(function* (threadId) {
+  Effect.fn('opencode.interruptTurn')(function* (threadId, _turnId, providerThreadId) {
     const context = yield* requireOpencodeSession(deps, threadId)
+    if (providerThreadId && providerThreadId !== context.providerSessionId) {
+      yield* abortOpencodeSessionIgnoring(
+        context,
+        'Failed to abort delegated opencode session.',
+        providerThreadId
+      )
+      return
+    }
     if (!context.turnState) return
     yield* abortInflightTurn(deps, context, 'Interrupted by user request.')
   })

@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { listOpencodePrimaryAgents } from './opencodeAgents'
+import { findDiscoveredOpencodeAgentById, listOpencodePrimaryAgents } from './opencodeAgents'
 
 interface InMemoryFs {
   readonly [absolutePath: string]: ReadonlyArray<{
@@ -31,12 +31,9 @@ function makeFs(input: InMemoryFs) {
     return entries.map(entry => entry.name)
   }
   const readFileText = async (path: string): Promise<string> => {
-    for (const dirEntries of Object.values(input)) {
+    for (const [dirPath, dirEntries] of Object.entries(input)) {
       for (const entry of dirEntries) {
-        const candidatePath = path.endsWith(entry.name) ? entry.name : entry.name
-        // We accept any path ending with the entry name (the implementation
-        // joins dir + name, so the lookup matches by suffix here for brevity).
-        if (path.endsWith(`/${candidatePath}`) || path.endsWith(candidatePath)) {
+        if (path === `${dirPath}/${entry.name}`) {
           return entry.content
         }
       }
@@ -62,6 +59,7 @@ body
 const SUBAGENT_MD = `---
 description: Helper.
 mode: subagent
+model: fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo
 ---
 
 body
@@ -71,6 +69,21 @@ const PRIMARY_JSON = JSON.stringify({
   mode: 'primary',
   name: 'Json Primary',
   description: 'A JSON-defined primary agent.',
+})
+
+const CONFIG_JSON = JSON.stringify({
+  agent: {
+    builder: {
+      mode: 'primary',
+      model: 'openai/gpt-5.4',
+      description: 'Build things',
+    },
+    explorer: {
+      mode: 'subagent',
+      model: 'fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo',
+      description: 'Explore the codebase',
+    },
+  },
 })
 
 const MALFORMED_MD = `not frontmatter at all`
@@ -165,5 +178,95 @@ describe('listOpencodePrimaryAgents edge cases', () => {
     })
     expect(agents.map(agent => agent.id)).toEqual(['archived'])
     expect(agents[0]?.source).toBe('data')
+  })
+
+  it('can resolve subagent definitions by id with model metadata', async () => {
+    const { readDir, readFileText } = makeFs({
+      '/cfg': [{ name: 'explorer.md', content: SUBAGENT_MD }],
+    })
+    const agent = await findDiscoveredOpencodeAgentById('explorer', {
+      configDir: '/cfg',
+      dataDir: '/data',
+      readDir,
+      readFileText,
+    })
+    expect(agent).toMatchObject({
+      id: 'explorer',
+      mode: 'subagent',
+      model: 'fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo',
+      source: 'config',
+    })
+  })
+})
+
+describe('opencode agent config discovery', () => {
+  it('discovers agents from opencode.json', async () => {
+    const { readDir, readFileText } = makeFs({
+      '/cfg': [{ name: 'review.md', content: PRIMARY_MD }],
+      '/config-root': [{ name: 'opencode.json', content: CONFIG_JSON }],
+    })
+    const builder = await findDiscoveredOpencodeAgentById('builder', {
+      configDir: '/cfg',
+      configFilePath: '/config-root/opencode.json',
+      dataDir: '/data',
+      readDir,
+      readFileText,
+    })
+    const explorer = await findDiscoveredOpencodeAgentById('explorer', {
+      configDir: '/cfg',
+      configFilePath: '/config-root/opencode.json',
+      dataDir: '/data',
+      readDir,
+      readFileText,
+    })
+    expect(builder).toMatchObject({
+      id: 'builder',
+      mode: 'primary',
+      model: 'openai/gpt-5.4',
+    })
+    expect(explorer).toMatchObject({
+      id: 'explorer',
+      mode: 'subagent',
+      model: 'fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo',
+    })
+  })
+
+  it('lets project-local config override global agent definitions', async () => {
+    const globalConfig = JSON.stringify({
+      agent: {
+        explorer: {
+          mode: 'subagent',
+          model: 'openai/gpt-5.4',
+          description: 'Global explorer',
+        },
+      },
+    })
+    const projectConfig = JSON.stringify({
+      agent: {
+        explorer: {
+          mode: 'subagent',
+          model: 'fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo',
+          description: 'Project explorer',
+        },
+      },
+    })
+    const { readDir, readFileText } = makeFs({
+      '/config-root': [{ name: 'opencode.json', content: globalConfig }],
+      '/project': [{ name: 'opencode.json', content: projectConfig }],
+      '/project/.opencode/agents': [{ name: 'helper.md', content: SUBAGENT_MD }],
+    })
+    const agent = await findDiscoveredOpencodeAgentById('explorer', {
+      configDir: '/cfg',
+      configFilePath: '/config-root/opencode.json',
+      dataDir: '/data',
+      projectRoot: '/project',
+      readDir,
+      readFileText,
+    })
+    expect(agent).toMatchObject({
+      id: 'explorer',
+      model: 'fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo',
+      description: 'Project explorer',
+    })
   })
 })
