@@ -1,532 +1,347 @@
-# Orxa Code Foundation Hardening Spec
+# Orxa Code Subagent Threads Spec
 
 ## Status
 
-- [x] Approved as the active execution spec
-- [ ] Foundation hardening complete
-- [ ] Repo is at or below agreed lint and duplication thresholds
-- [ ] Feature porting from legacy snapshot unblocked
+- [x] Product direction agreed
+- [x] Primary UX agreed: sidebar-first child threads
+- [x] Child thread view agreed: normal chat pane, read-only, no composer
+- [ ] Shared thread-link data model implemented
+- [ ] Codex subagent threads shipped and manually validated
+- [ ] OpenCode subagent threads shipped and manually validated
+- [ ] Claude subagent threads shipped and manually validated
+- [ ] Optional active-subagents drawer evaluated after all three providers work
 
 ## Purpose
 
-This spec defines the required hardening work for the imported foundation before any Orxa-specific feature porting begins.
+This spec defines how Orxa Code should surface delegated subagents as first-class child threads.
 
-The repo already has a working imported baseline:
+The goal is not to add another transient progress panel.
 
-- desktop launches
-- web renders
-- server runs
-- Claude and Codex chat work
+The goal is:
 
-That is not enough to begin feature porting.
+- delegated work is visible
+- delegated prompts are inspectable
+- delegated output is readable as a normal thread
+- delegated threads can be archived when finished
+- the same core model works for Codex, OpenCode, and Claude
 
-The imported baseline still has:
+## Hard Decisions
 
-- source-of-truth ambiguity
-- stale checked-in runtime artifacts
-- maintainability hotspots
-- advisory-only lint thresholds
-- duplication allowance
-
-The next phase is to make the repo trustworthy and enforceable first.
-
-## Hard Rule
-
-No Orxa feature porting from `/Users/callumspencer/Repos/macapp/orxacode-legacy-main-snapshot` starts until the foundation hardening exit criteria in this spec are met.
-
-This is a hard blocker, not a preference.
-
-## Current Repo Truth
-
-### Current lint thresholds from repo config
-
-From [eslint.config.js](/Users/callumspencer/Repos/macapp/orxacode/eslint.config.js):
-
-- `complexity <= 20`
-- `max-lines <= 500`
-- `max-lines-per-function <= 75`
-
-Current gaps:
-
-- these rules are `warn`, not `error`
-- they only apply to `**/*.{ts,tsx}`
-- `.js` / `.jsx` files are a blind spot
-
-### Current duplication threshold from repo config
-
-From [.jscpd.json](/Users/callumspencer/Repos/macapp/orxacode/.jscpd.json):
-
-- current duplication threshold: `5`
-- reporters: `console`, `html`
-- ignores: `node_modules`, `dist`, `dist-electron`, `coverage`, test files, and `test/`
-
-Current gap:
-
-- duplication is not yet treated as zero-tolerance
-
-## Target Foundation Gate
-
-The imported foundation is only considered ready for Orxa feature porting when all of the following are true:
-
-- [x] No stale checked-in runtime twins can shadow the intended TypeScript source of truth
-- [x] Active runtime paths are stable and unambiguous across desktop, web, and server
-- [ ] All foundation code is at or below:
-  - `complexity <= 20`
-  - `max-lines <= 500`
-  - `max-lines-per-function <= 75`
-- [x] These limits apply to the full active source surface, including `.js` / `.jsx` where relevant
-- [ ] These limits are enforced as blocking failures, not warnings
-- [ ] Duplication is reduced to the agreed target of `0` for the foundation work surface
-- [x] `pnpm lint`
-- [x] `pnpm typecheck`
-- [x] `pnpm test`
-- [x] `pnpm build`
-- [x] `pnpm dev`
-- [x] `pnpm smoke:artifact`
+- Use the left sidebar as the primary navigation surface for subagents.
+- Represent subagents as child threads under the parent thread.
+- Open child threads in the normal chat pane.
+- Hide the composer in child-thread view.
+- Keep parent-thread summaries for delegated work, but do not rely on summary rows as the only surface.
+- Roll out providers in this order:
+  1. Codex
+  2. OpenCode
+  3. Claude
+- Do not begin the next provider until the current provider passes its manual validation prompt and exit criteria.
 
 ## Non-Goals
 
-- No Orxa feature porting in this phase
-- No legacy behavior reintroduction unless required to restore baseline correctness
-- No broad redesign of product behavior
-- No repo-governance rollback away from Orxa authority
+- No composer-top subagent drawer in the first pass
+- No mixed “some providers use child threads, some use task rows only” end state
+- No dual UI model where subagents are first-class in one place and transient in another
+- No write-capable child-thread composer in the first pass
+
+## Target UX
+
+## Sidebar
+
+- Parent threads can show expandable child-thread groups.
+- Child threads render indented beneath the parent thread.
+- Child rows show:
+  - title
+  - provider
+  - model
+  - agent/subagent label where available
+  - running/completed/error status
+  - archive action when allowed
+- Running child threads auto-expand beneath the parent.
+- Completed child threads remain available but collapsed by default after first read.
 
-## Guardrails
+## Child Thread View
 
-- [ ] Preserve Orxa repo authority:
-  - `pnpm`
-  - Node
-  - Orxa lint
-  - Orxa CI
-  - Orxa hooks
-  - Orxa release ownership
-- [ ] Preserve imported foundation behavior unless a change is required for correctness, identity, runtime health, or maintainability
-- [ ] Prefer hard cutover over dual-path compatibility
-- [ ] Do not leave dead fallback paths behind
+When a child thread is opened, use the normal chat pane shell with a read-only child-thread mode:
 
-## Execution Phases
+- show timeline/messages/tool output/approvals exactly like a normal thread
+- hide composer entirely
+- show header metadata:
+  - child title
+  - parent title
+  - provider
+  - model
+  - agent/subagent name
+  - current state
+  - “Open parent” action
+- render the delegated prompt as the first user message in the child thread
 
-## Phase 0: Foundation Freeze
+## Archive Behavior
 
-Objective:
-Lock the order of work and prevent premature feature drift.
+- Child threads use the existing thread archive lifecycle.
+- Archived child threads leave the live sidebar tree and move to the normal archive surface.
+- Parent threads remain visible even if all children are archived.
 
-### Requirements
+## Shared Architecture
 
-- [x] This spec is accepted as the current plan of record
-- [x] Feature porting is explicitly blocked until this spec is complete
-- [x] Validation commands are treated as part of done criteria, not optional follow-up
+## Principle
 
-### Hard blockers
+A subagent is a thread relation, not a special activity row.
 
-- Any request to port legacy features before the foundation gate is met
-- Any new dual-path runtime introduced to “move faster”
+## Required Shared Model
 
-## Phase 1: Source-of-Truth Cleanup
+Add a generalized thread-link model instead of adding more one-off provider-specific fields.
 
-Objective:
-Remove ambiguity about which files define runtime behavior.
+Minimum relation shape:
 
-### Sub-phase 1A: Runtime artifact audit
+- `parentThreadId`
+- `childThreadId`
+- `relationKind`
+- `parentTurnId`
+- `provider`
+- `providerTaskId`
+- `providerChildThreadId`
+- `agentLabel`
+- `createdAt`
+- `completedAt`
+- `archivedAt`
 
-- [x] Inventory all checked-in `.js`, `.jsx`, and `.d.ts` files shadowing active `.ts` / `.tsx` sources in:
-  - `apps/web/src`
-  - `apps/desktop/src`
-  - `apps/server/src`
-  - `packages/contracts/src`
-  - `packages/shared/src`
-- [x] Classify each as one of:
-  - required runtime shim
-  - generated artifact that must be removed
-  - wrapper entrypoint that must delegate to TS source
+Initial `relationKind` values:
 
-### Sub-phase 1B: Hard cutover
+- `subagent`
+- `plan_implementation`
+- `handoff`
 
-- [x] Remove or convert stale runtime twins so active code paths cannot silently bypass TS sources
-- [x] Ensure dev, build, test, and smoke paths all resolve through the same source-of-truth rules
-- [x] Remove dead references to obsolete generated files where safe
+## Required Shared Behavior
 
-### Sub-phase 1C: Validation
+- A child thread must be a first-class orchestration thread.
+- A child thread must be linkable back to a parent thread and parent turn.
+- A child thread must support normal archive/unarchive.
+- A child thread must be readable even after the parent turn completes.
+- Parent timelines may keep compact delegated-work summaries, but child-thread data must not depend on those summaries for correctness.
 
-- [x] `pnpm dev` still boots cleanly
-- [x] desktop renderer uses intended sources
-- [x] web renderer uses intended sources
-- [x] no stale user-visible branding survives due to shadow files
+## Shared UI Work
 
-### Hard blockers
+- Extend sidebar render logic to support parent -> child thread trees.
+- Extend thread routing/state so the active thread can be a child thread.
+- Add child-thread read-only mode to the chat view.
+- Add parent breadcrumb/open-parent affordance in the header.
 
-- Any source file pair where editing the TS file does not change runtime behavior
-- Any runtime path still depending on stale generated JS content
+## Shared Validation Rules
 
-## Phase 2: Runtime and Identity Hardening
+Every provider phase must satisfy all of the following before moving on:
 
-Objective:
-Make the imported baseline clean, deterministic, and Orxa-owned at runtime.
+- child thread appears under the correct parent thread
+- child thread opens in the main chat pane
+- child thread hides the composer
+- delegated prompt is visible as the first user message
+- streamed output is visible in the child thread
+- parent thread still shows compact delegated progress
+- child thread can be archived after completion
+- archive/unarchive behaves like any other thread
+- no regression to normal non-subagent threads
+- targeted tests pass
+- `pnpm typecheck` passes
+- `pnpm lint` passes
 
-### Sub-phase 2A: Identity completeness
+## Phase 1: Codex
 
-- [x] Remove remaining user-visible `T3`, `T3 Code`, `t3code`, and wrong stage-label leaks from runtime surfaces
-- [x] Verify desktop shell, sidebar, window title, dock/task switcher label, icons, and web title match Orxa identity
-- [x] Ensure stage label is consistently `Beta`
+## Why First
 
-### Sub-phase 2B: Dev/runtime correctness
+Codex already has the strongest signal in the current Orxa implementation:
 
-- [x] `pnpm dev` launches and stays up
-- [x] desktop main process stays stable
-- [x] web renderer connects cleanly
-- [x] server runtime dependencies are complete
-- [x] shutdown path is clean enough that reruns do not require manual cleanup
+- child collaboration conversations are detected
+- child provider thread ids are linked back to the parent turn
+- child lifecycle notifications are currently suppressed instead of surfaced
 
-### Sub-phase 2C: Packaging baseline
+That makes Codex the best first provider to prove the model.
 
-- [x] `pnpm build`
-- [x] `pnpm smoke:artifact`
-- [x] desktop packaging identity remains Orxa-owned
+## Codex Scope
 
-### Hard blockers
+- stop flattening child collaboration work into parent-only visibility
+- materialize Codex child conversations as child threads
+- persist parent/child linkage in the shared thread-link model
+- route child output into the child thread timeline
+- keep parent progress summaries
 
-- Any crash on normal local dev launch
-- Any user-visible stale branding
-- Any watcher-only “it starts” claim without a stable working app window
+## Codex Implementation Notes
 
-## Phase 3: Maintainability Burn-Down
+- create child thread records when collaboration child thread ids are discovered
+- use the collaboration tool input to create the first child-thread user message
+- preserve existing approval routing, but attach approvals to the child thread where appropriate
+- ensure parent-thread status does not get replaced by child lifecycle events
 
-Objective:
-Bring the imported foundation under the repo’s maintainability constraints before new features land.
+## Codex Manual Validation Prompt
 
-### Priority rule set
+Use a Codex thread in this repo and send:
 
-- [x] File length at or below `500`
-- [x] Function length at or below `75`
-- [x] Cyclomatic complexity at or below `20`
-- [x] Duplication reduced to `0` for the agreed foundation scope
+```text
+Investigate how provider-backed sessions and sidebar thread rendering work in this repo.
+Delegate this work in parallel.
+Use one collaborator to inspect apps/server/src/provider and apps/server/src/orchestration.
+Use another collaborator to inspect apps/web/src/components/sidebar and apps/web/src/components/chat.
+Return a concise summary with the key files each collaborator read.
+Do not make any changes.
+```
 
-### Sub-phase 3A: Active-path hotspots first
+## Codex Validation Expectations
 
-These files should be treated as the first burn-down wave because they define or strongly influence active runtime behavior:
+- at least two child threads appear beneath the parent thread
+- each child thread title is understandable from its delegated task
+- opening a child thread shows the delegated prompt
+- child thread output contains its own reasoning/tool/message history
+- completed child threads remain inspectable after the parent finishes
 
-- [x] [apps/web/src/components/Sidebar.tsx](/Users/callumspencer/Repos/macapp/orxacode/apps/web/src/components/Sidebar.tsx)
-- [x] [apps/web/src/components/ChatView.tsx](/Users/callumspencer/Repos/macapp/orxacode/apps/web/src/components/ChatView.tsx)
-- [x] [apps/web/src/composerDraftStore.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/web/src/composerDraftStore.ts)
-- [x] [apps/web/src/components/GitActionsControl.tsx](/Users/callumspencer/Repos/macapp/orxacode/apps/web/src/components/GitActionsControl.tsx)
-- [x] [apps/web/src/components/settings/SettingsPanels.tsx](/Users/callumspencer/Repos/macapp/orxacode/apps/web/src/components/settings/SettingsPanels.tsx)
-- [x] [apps/desktop/src/main.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/desktop/src/main.ts)
-- [x] [apps/server/src/provider/Layers/CodexAdapter.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/provider/Layers/CodexAdapter.ts)
-- [x] [apps/server/src/provider/Layers/ClaudeAdapter.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/provider/Layers/ClaudeAdapter.ts)
-- [x] [apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.ts)
-- [x] [apps/server/src/orchestration/Layers/ProjectionPipeline.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/orchestration/Layers/ProjectionPipeline.ts)
-- [x] [apps/server/src/git/Layers/GitManager.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/git/Layers/GitManager.ts)
-- [x] [apps/server/src/git/Layers/GitCore.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/git/Layers/GitCore.ts)
-- [x] [apps/server/src/terminal/Layers/Manager.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/terminal/Layers/Manager.ts)
-- [x] [apps/server/src/orchestration/decider.ts](/Users/callumspencer/Repos/macapp/orxacode/apps/server/src/orchestration/decider.ts)
+## Codex Exit Gate
 
-### Sub-phase 3B: Refactor rules
+- [ ] shared thread-link model supports Codex child threads
+- [ ] Codex child threads render in sidebar
+- [ ] Codex child thread view is read-only and composerless
+- [ ] Codex validation prompt passes manually
 
-- [x] Preserve behavior exactly unless fixing a verified bug
-- [x] Prefer extraction over suppression
-- [x] Do not add lint disables to “get green”
-- [x] Remove duplication instead of tolerating it
-- [x] Keep abstractions purposeful and minimal
+## Phase 2: OpenCode
 
-### Sub-phase 3C: Per-slice validation
+## Why Second
 
-For each burn-down slice:
+OpenCode upstream already supports subagents as child sessions and has explicit parent/child navigation semantics in its own UX.
 
-- [x] targeted eslint on touched files
-- [x] targeted typecheck on touched paths where practical
-- [x] full `pnpm lint`
-- [x] full `pnpm typecheck`
-- [x] rerun affected runtime or smoke paths if the slice touches active runtime code
+Once Codex proves the Orxa data model and sidebar UX, OpenCode should slot into the same model cleanly.
 
-### Hard blockers
+## OpenCode Scope
 
-- Any hotspot still above thresholds at the end of the phase
-- Any warning-count reduction that relies on suppressions instead of real extraction
-- Any runtime regression introduced during cleanup
-
-## Phase 4: Rule Enforcement Cutover
-
-Objective:
-Make the standards real and blocking.
-
-### Sub-phase 4A: ESLint enforcement
-
-- [x] Move maintainability rules from `warn` to blocking failures
-- [x] Extend coverage beyond `ts` / `tsx` where active `.js` / `.jsx` still exist
-- [x] Ensure CI fails on threshold breaches
-
-### Sub-phase 4B: Duplication enforcement
-
-- [x] Tighten duplication target from current `5` to `0`
-- [x] Ensure `jscpd` scope reflects the intended source surface
-- [x] Ensure CI fails on duplication regression
-
-### Sub-phase 4C: Drift prevention
-
-- [x] New code cannot reintroduce shadow-source ambiguity
-- [x] New code cannot exceed file/function/complexity thresholds
-- [x] New duplication is blocked immediately
-
-### Hard blockers
-
-- Thresholds still advisory-only
-- CI still allows maintainability regressions
-
-## Phase 5: Pre-Port Validation Gate
-
-Objective:
-Confirm the repo is stable enough to receive Orxa-specific features.
-
-### Required pass list
-
-- [x] `pnpm lint`
-- [x] `pnpm typecheck`
-- [x] `pnpm test`
-- [x] `pnpm build`
-- [x] `pnpm smoke:artifact`
-- [x] `pnpm dev` launches successfully and remains usable
-- [x] Claude chat works
-- [x] Codex chat works
-- [x] identity is correct in runtime UI
-- [x] no known maintainability threshold breaches remain in the imported foundation (Phase 4A cutover promoted `complexity ≤ 20`, `max-lines ≤ 500`, `max-lines-per-function ≤ 75` from warn → error in `eslint.config.js`; `pnpm lint` reports 0 errors, only 2 documented `react-hooks/incompatible-library` warnings against TanStack Virtual's `useVirtualizer` which is hardcoded in `eslint-plugin-react-hooks@7.0.1` and accepted as upstream-only)
-- [x] no accepted duplication remains in foundation source (`.jscpd.json` threshold tightened `5 → 0`; final `pnpm duplication` reports 0 clones across 705 files / 113,288 total lines)
-
-### Exit condition
-
-When every checkbox in Phases 1 through 5 is complete, legacy feature porting may begin - do not do this automatically, advise the user when this can be done.
-
-## Feature Porting Unlock Rule
-
-Feature porting is unlocked only when all of the following are true:
-
-- [ ] Phases 1 through 5 complete
-- [ ] Current runtime is stable
-- [ ] Current identity is clean
-- [ ] Current maintainability thresholds are enforced and passing
-- [ ] Duplication is at target
-
-Until then:
-
-- [ ] Do not port from `/Users/callumspencer/Repos/macapp/orxacode-legacy-main-snapshot`
-
-## Suggested Execution Order
-
-1. Source-of-truth cleanup
-2. Runtime and identity hardening
-3. Active-path hotspot refactors
-4. Remaining hotspot refactors
-5. Enforce lint and duplication gates
-6. Full validation pass
-7. Begin feature porting
-
-## Progress Log
-
-- [x] Root monorepo cutover completed
-- [x] Workspace naming moved to `@orxa-code/*`
-- [x] Root dev orchestration repaired
-- [x] Electron dev launch crash fixed
-- [x] Server opener dependency failure fixed
-- [x] Runtime branding leak root cause identified as stale shadow JS runtime paths
-- [x] Live sidebar branding corrected to Orxa branding
-- [x] Inventory + classification completed for shadow `.js` / `.d.ts` twins across `apps/web/src`, `apps/desktop/src`, `apps/server/src`, `packages/contracts/src`, and `packages/shared/src`
-- [x] Removed stale checked-in `.js` / `.d.ts` twins from `packages/contracts/src`, `packages/shared/src`, `apps/desktop/src`, `apps/desktop/tsdown.config.*`, and `apps/web/vite.config.*`
-- [x] Removed remaining stale checked-in `.js` / `.d.ts` twins from `apps/web/src`, leaving only explicit JS wrappers that delegate to TS/TSX sources
-- [x] Post-cleanup validation passed: `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm smoke:artifact`
-- [x] Source-of-truth cleanup complete across full repo
-- [x] Runtime baseline revalidated: `pnpm dev` stays up with desktop main process, web renderer, and server runtime connected
-- [x] Refactored `apps/server/src/orchestration/decider.ts` into smaller command modules; targeted eslint, `pnpm typecheck`, and `pnpm exec vitest run apps/server/src/orchestration/decider.projectScripts.test.ts` passed
-- [x] Cut runtime-visible temporary worktree and cross-repo PR branch prefixes from `t3code` to `orxa`; targeted eslint, `pnpm typecheck`, and focused git/orchestration tests passed
-- [x] Wired mac packaging entitlements into `electron-builder.yml`; fresh packaged artifact rebuild and `pnpm smoke:artifact` now pass again with `Orxa Code (Beta).app`
-- [x] Verified `apps/server/src/provider/Layers/CodexAdapter.ts` and `apps/server/src/orchestration/Layers/ProjectionPipeline.ts` are now under maintainability thresholds; targeted eslint plus existing full `pnpm lint` / `pnpm typecheck` validation pass
-- [x] Refactored `apps/server/src/git/Layers/GitManager.ts` into smaller Git layer helpers; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, and full `pnpm typecheck` passed
-- [x] Reduced `apps/server/src/orchestration/Layers/ProjectionPipelineProjectorsProjectsThreads.ts` below maintainability thresholds; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, and full `pnpm typecheck` passed
-- [x] Reduced `apps/server/src/orchestration/Layers/ProviderRuntimeActivities.ts` below maintainability thresholds; targeted eslint and `pnpm --filter @orxa-code/server typecheck` passed
-- [x] Root `pnpm lint` was a false green because the package script glob form did not lint the repo surface; cut over `package.json` to `eslint apps packages scripts --ext .ts,.tsx,.js,.jsx,.mjs,.cjs`, and at that point the honest run failed with 74 errors and 485 warnings
-- [x] Cleared the remaining hard lint errors across the current server/web foundation slice; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 485 warnings
-- [x] Reduced the next active-path warning slice in `apps/web/src/components/GitActionsControl.logic.ts`; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, `pnpm exec vitest run apps/web/src/components/GitActionsControl.logic.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 482 warnings
-- [x] Reduced an additional active-path warning in `apps/web/src/components/GitActionsControl.tsx` by extracting the menu disabled-reason helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 481 warnings
-- [x] Reduced another active-path warning in `apps/web/src/components/GitActionsControl.tsx` by extracting git action progress/setup helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, `pnpm exec vitest run apps/web/src/components/GitActionsControl.logic.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 480 warnings
-- [x] Reduced the next nearby web warning slice in `apps/web/src/components/chat/TraitsPicker.tsx` by extracting traits menu sections and trigger helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 478 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/CompactComposerControlsMenu.browser.tsx` by extracting fixture/setup helpers and per-test assertion helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 476 warnings
-- [x] Reduced an adjacent browser-test warning in `apps/web/src/components/chat/TraitsPicker.browser.tsx` by extracting reset/open/assert helpers and per-case harness functions; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 475 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ChangedFilesTree.tsx` by extracting directory/file row helpers and shared stat rendering; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 473 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ChatHeader.tsx` by extracting title, project-action, and toggle-action helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 472 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ContextWindowMeter.tsx` by extracting trigger-button and detail-popup helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 471 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx` by extracting card header, option-row, and keyboard-shortcut helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 470 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/PlanSidebar.tsx` by extracting header action menu, content, and plan action hooks; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 469 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/KeybindingsToast.browser.tsx` by extracting suite lifecycle and scenario helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 468 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ProposedPlanCard.tsx` by extracting action menu, markdown body, save dialog, and workspace-save state helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 467 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ProviderModelPicker.tsx` by extracting trigger, provider status, and submenu radio-group helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 466 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/sidebar/SidebarUpdatePill.tsx` by extracting update action runners, button content, and dismiss-button helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 464 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/Icons.tsx` by extracting the large Visual Studio Code and Gemini SVG fragments into reusable static helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 462 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/ProviderModelPicker.browser.tsx` by extracting scenario helpers and shared spark-fixture builders; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 460 warnings; focused browser `vitest` remains blocked by a pre-existing mixed-version warning and `Error: Port 63315 is already in use`
-- [x] Reduced another nearby web warning slice in `apps/web/src/hooks/useHandleNewThread.ts` by extracting draft-context patching and stored/reused/new thread flows into focused helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 459 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/orchestrationRecovery.ts` by extracting the recovery coordinator transitions into top-level helpers and a coordinator builder; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 458 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/uiStateStore.ts` by extracting project cwd mapping refresh and project order derivation helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 457 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/routes/_chat.tsx` by extracting global new-thread shortcut actions out of the keydown handler; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 456 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/keybindings.ts` by extracting mac/default terminal navigation command resolution helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 455 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/lib/contextWindow.ts` by extracting context-window usage parsing and snapshot construction helpers; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 454 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/nativeApi.ts` by hard-renaming the test reset helper to satisfy naming convention rules and updating the browser test call sites; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 453 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/rpc/client.ts` by hard-renaming the atom client test reset helper to satisfy naming convention rules and updating the local test call site; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 452 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsNativeApi.ts` by hard-renaming the ws native API test reset helper to satisfy naming convention rules and updating the native API reset call site; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 451 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsRpcClient.ts` by hard-renaming the ws RPC client test reset helper to satisfy naming convention rules and updating the dependent ws native API surfaces and test mock; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 450 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsNativeApi.ts` by extracting dialogs, shell, context menu, server, and orchestration section builders so the factory becomes a thin composition layer; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 449 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsRpcClient.ts` by extracting terminal, projects, shell, git, server, and orchestration section builders so the client factory becomes a thin composition layer; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 448 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/historyBootstrap.test.ts` by extracting reusable transcript fixtures and message builders so the bootstrap test stays under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/historyBootstrap.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 447 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/orchestrationRecovery.test.ts` by extracting a shared bootstrapped-coordinator helper so the recovery test suite stays under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/orchestrationRecovery.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 446 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/pendingUserInput.test.ts` by extracting shared question fixtures so the pending-user-input progress suite stays under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/pendingUserInput.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 445 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/uiStateStore.test.ts` by splitting the oversized pure-function coverage block into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/uiStateStore.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 444 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/timelineHeight.test.ts` by splitting the oversized height-estimation coverage block into focused scenario groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/timelineHeight.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 443 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/lib/providerReactQuery.test.ts` by extracting checkpoint-diff option helpers and splitting provider-call, invalid-range, and retry coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/lib/providerReactQuery.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 442 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/lib/turnDiffTree.test.ts` by splitting nested-tree, stat-handling, path-normalization, compaction, and whitespace coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/lib/turnDiffTree.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 441 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/lib/terminalContext.test.ts` by splitting label/block, extraction/display-state, preview/placeholder, and filtering/materialization coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/lib/terminalContext.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 440 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/terminalStateStore.test.ts` by removing the oversized outer wrapper and splitting default, splitting, grouping, activity, and closing coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/terminalStateStore.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 439 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/threadSelectionStore.test.ts` by removing the oversized outer wrapper and splitting toggle, anchor, range, fallback, edge-case, clear, remove, and selection-state coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/threadSelectionStore.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 437 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/rpc/client.test.ts` by removing the oversized outer wrapper and splitting unary-run and atom-query coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/rpc/client.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 436 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/rpc/serverState.test.ts` by flattening the oversized suite and extracting config-summary/provider-status helpers for snapshot, lifecycle, and config-update coverage; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/rpc/serverState.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 434 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsNativeApi.test.ts` by flattening the oversized suite into focused server, event, orchestration/project, settings, and context-menu groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/wsNativeApi.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 433 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/wsTransport.test.ts` by flattening the oversized suite and extracting request/chunk/exit helpers so connection, unary, subscription, finite-stream, and disposal coverage stay under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/wsTransport.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 431 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/keybindings.test.ts` by moving shared fixtures into a helper module and cutting terminal-shortcut/label coverage into a dedicated test file so the original suite drops below both file-length and function-length limits; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/keybindings.test.ts src/keybindings.terminal-shortcuts.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 428 warnings
-- [x] Reduced another nearby web warning slice in `apps/web/src/components/chat/composerProviderRegistry.test.tsx` by splitting codex, Claude effort, explicit-option, and context-window coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/chat/composerProviderRegistry.test.tsx`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 427 warnings
-- [x] Reduced another nearby desktop foundation warning slice in `apps/desktop/src/syncShellEnvironment.test.ts` by splitting darwin, linux, and unsupported-platform coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/desktop exec vitest run src/syncShellEnvironment.test.ts`, `pnpm --filter @orxa-code/desktop typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 426 warnings
-- [x] Reduced another nearby desktop foundation warning slice in `apps/desktop/src/updateMachine.test.ts` by splitting check, failure, reset, and progress coverage into focused describe groups; targeted eslint, focused `pnpm --filter @orxa-code/desktop exec vitest run src/updateMachine.test.ts`, `pnpm --filter @orxa-code/desktop typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 425 warnings
-- [x] Reduced another nearby server foundation warning slice in `apps/server/src/checkpointing/Layers/CheckpointDiffQuery.test.ts` and `apps/server/src/open.test.ts` by extracting checkpoint diff test helpers and splitting the editor-launch layer wrapper into focused groups; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/checkpointing/Layers/CheckpointDiffQuery.test.ts src/open.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 422 warnings
-- [x] Reduced another nearby server foundation warning slice in `apps/server/src/cli-config.test.ts`, `apps/server/src/persistence/Layers/ProjectionRepositories.test.ts`, `apps/server/src/persistence/Layers/OrchestrationEventStore.test.ts`, and `apps/server/src/workspace/Layers/WorkspaceFileSystem.test.ts` by splitting oversized layer wrappers into focused suites while preserving the existing shared helpers and fixtures; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/cli-config.test.ts src/persistence/Layers/ProjectionRepositories.test.ts src/persistence/Layers/OrchestrationEventStore.test.ts src/workspace/Layers/WorkspaceFileSystem.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 418 warnings
-- [x] Reduced another nearby server foundation warning slice in `apps/server/src/provider/Layers/EventNdjsonLogger.test.ts`, `apps/server/src/git/Layers/GitHubCli.test.ts`, and `apps/server/src/persistence/Layers/ProjectionThreadMessages.test.ts` by splitting single oversized layer/describe wrappers into focused suites without changing assertions or shared mocks; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/EventNdjsonLogger.test.ts src/git/Layers/GitHubCli.test.ts src/persistence/Layers/ProjectionThreadMessages.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 415 warnings
-- [x] Reduced another nearby server foundation warning slice in `apps/server/src/serverSettings.test.ts` and `apps/server/src/provider/Layers/ProviderSessionDirectory.test.ts` by splitting the remaining oversized layer wrappers into focused suites while preserving the shared layer factories and assertions; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/serverSettings.test.ts src/provider/Layers/ProviderSessionDirectory.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 413 warnings
-- [x] Reduced another nearby server foundation warning slice in `apps/server/src/provider/Layers/ProviderSessionDirectory.ts` and `apps/server/src/persistence/Layers/ProjectionThreadMessages.ts` by extracting binding/runtime-row and SQL-schema builders so the repository factories stay below the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderSessionDirectory.test.ts src/persistence/Layers/ProjectionThreadMessages.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 411 warnings
-- [x] Reduced another nearby server persistence warning slice in `apps/server/src/persistence/Layers/ProjectionState.ts`, `apps/server/src/persistence/Layers/ProjectionThreadProposedPlans.ts`, and `apps/server/src/persistence/Layers/ProjectionThreadSessions.ts` by extracting SQL-schema builder helpers so each repository layer factory becomes a thin wiring function; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 408 warnings
-- [x] Reduced another nearby server persistence warning slice in `apps/server/src/persistence/Layers/ProjectionProjects.ts`, `apps/server/src/persistence/Layers/ProjectionThreadActivities.ts`, `apps/server/src/persistence/Layers/ProjectionThreads.ts`, and `apps/server/src/persistence/Layers/ProviderSessionRuntime.ts` by extracting shared SQL-schema and row-decode helpers so each repository layer factory drops under the function-length threshold; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 404 warnings
-- [x] Reduced another nearby server persistence warning slice in `apps/server/src/persistence/Layers/ProjectionPendingApprovals.ts` and `apps/server/src/persistence/Layers/ProjectionCheckpoints.ts` by extracting inline SQL-schema and checkpoint-upsert helpers so both repository layer factories fall below the function-length threshold; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 402 warnings
-- [x] Reduced another nearby server warning slice in `apps/server/src/workspace/Layers/WorkspaceEntries.test.ts` by splitting the oversized layer/describe wrappers into focused search-basics, ignore-handling, and concurrency groups; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/workspace/Layers/WorkspaceEntries.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 400 warnings
-- [x] Reduced another nearby server persistence warning slice in `apps/server/src/persistence/Layers/OrchestrationEventStore.ts` by extracting inline SQL builders, decode helpers, and paged read helpers so the repository factory drops under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/persistence/Layers/OrchestrationEventStore.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 399 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/serverRuntimeStartup.ts` by extracting startup sequencing and ready/failure publishing helpers so the runtime startup factory drops under the function-length threshold; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/serverRuntimeStartup.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 398 warnings
-- [x] Reduced another nearby server telemetry warning slice in `apps/server/src/telemetry/Layers/AnalyticsService.ts` by extracting buffered-event enqueue, batch payload, send, and flush helpers so the live analytics factory becomes a thin composition layer; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/telemetry/Layers/AnalyticsService.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 397 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/serverSettings.ts` by extracting settings-file read/write, watcher bootstrap, startup, and update helpers so the live settings factory becomes a thin composition layer; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/serverSettings.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 396 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/workspace/Layers/WorkspaceEntries.ts` by extracting git probing, directory-read, filesystem-index, cache invalidation, and search helpers so the live workspace entries layer becomes a thin composition layer; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/workspace/Layers/WorkspaceEntries.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 395 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/processRunner.ts` by extracting mutable process state, timer/finalization, output append, lifecycle listener, and stdin helpers so `runProcess` becomes a thin orchestration wrapper; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/processRunner.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 393 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/cli.ts` by extracting bootstrap/env precedence, mode/port/base-dir derivation, config assembly, and handler execution helpers so the CLI config resolver and command handler become thin orchestration wrappers; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/cli-config.test.ts src/cli.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 391 warnings
-- [x] Reduced another nearby server checkpoint warning slice in `apps/server/src/checkpointing/Layers/CheckpointDiffQuery.ts` by extracting empty-result validation, thread-context guards, checkpoint-ref resolution, checkpoint existence checks, and final diff construction so the layer becomes a thin orchestration wrapper; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/checkpointing/Layers/CheckpointDiffQuery.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 389 warnings
-- [x] Reduced another nearby server checkpoint warning slice in `apps/server/src/checkpointing/Layers/CheckpointStore.ts` by extracting commit resolution, temp-index capture flow, restore target resolution, diff commit resolution, and service method assembly helpers so the layer becomes a thin orchestration wrapper; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/checkpointing/Layers/CheckpointStore.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 387 warnings
-- [x] Reduced another nearby server git helper warning slice in `apps/server/src/git/Layers/GitHubCli.ts` by extracting the `gh` execute helper plus PR/repository/default-branch/checkout command builders so the GitHub CLI layer becomes a thin service assembly wrapper; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitHubCli.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 386 warnings
-- [x] Reduced another nearby shared foundation warning slice in `packages/shared/src/KeyedCoalescingWorker.ts` by extracting worker state transitions, queue-item acquisition, failure cleanup, loop execution, and public method builders so the keyed coalescing worker constructor becomes a thin orchestration wrapper; targeted eslint, focused `pnpm --filter @orxa-code/shared exec vitest run src/KeyedCoalescingWorker.test.ts`, `pnpm --filter @orxa-code/shared typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 384 warnings
-- [x] Reduced another nearby web terminal-state warning slice in `apps/web/src/terminalStateStore.ts` by extracting pure terminal-state normalization and transition helpers into `apps/web/src/terminalStateStore.logic.ts`, which brings the Zustand store file under both the file-length and function-length thresholds; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/terminalStateStore.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 382 warnings
-- [x] Reduced another nearby contracts test warning slice in `packages/contracts/src/providerRuntime.test.ts` by splitting the oversized runtime-event suite into focused plan, user-input, invalid-payload, and token-usage describe groups; targeted eslint, focused `pnpm --filter @orxa-code/contracts exec vitest run src/providerRuntime.test.ts`, `pnpm --filter @orxa-code/contracts typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 381 warnings
-- [x] Reduced another nearby contracts schema warning slice in `packages/contracts/src/providerRuntime.ts` by hard-cutting the oversized runtime schema file into `providerRuntime.shared.ts`, `providerRuntime.payloads.ts`, and `providerRuntime.events.ts` while keeping `providerRuntime.ts` as the public re-export façade; targeted eslint, focused `pnpm --filter @orxa-code/contracts exec vitest run src/providerRuntime.test.ts`, `pnpm --filter @orxa-code/contracts typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 380 warnings
-- [x] Reduced the last remaining contracts file-length warning in `packages/contracts/src/orchestration.ts` by hard-cutting the oversized orchestration schema surface into `orchestration.models.ts`, `orchestration.commands.ts`, `orchestration.payloads.ts`, and `orchestration.events.ts` while keeping `orchestration.ts` as the public re-export façade; targeted eslint, focused `pnpm --filter @orxa-code/contracts exec vitest run src/orchestration.test.ts`, `pnpm --filter @orxa-code/contracts typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 379 warnings
-- [x] Reduced another nearby server orchestration warning slice in `apps/server/src/orchestration/Normalizer.ts` by extracting workspace-root normalization plus image-attachment persistence and turn-start normalization helpers so `normalizeDispatchCommand` becomes a thin dispatcher; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 377 warnings
-- [x] Reduced another nearby server orchestration test warning slice in `apps/server/src/orchestration/commandInvariants.test.ts` by flattening the oversized outer suite into focused top-level tests; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/commandInvariants.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 376 warnings
-- [x] Reduced another active-path server orchestration warning slice in `apps/server/src/orchestration/Layers/OrchestrationEngine.ts` by extracting receipt resolution, transaction commit, publish/reconcile, and accessor helpers so the live engine layer drops under the function-length threshold without changing dispatch or recovery behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/OrchestrationEngine.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 374 warnings
-- [x] Reduced another nearby server orchestration warning slice in `apps/server/src/orchestration/Layers/ProjectionPipelineProjectorsTurns.ts` by extracting session-set turn row builders and timestamp/state resolution helpers so the turn projector drops under the complexity threshold without changing projection behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 373 warnings
-- [x] Reduced another active-path server orchestration test warning slice by hard-cutting `apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts` into `apps/server/src/orchestration/Layers/OrchestrationEngine.test.helpers.ts`, `apps/server/src/orchestration/Layers/OrchestrationEngine.basic.test.ts`, and `apps/server/src/orchestration/Layers/OrchestrationEngine.failures.test.ts`, keeping the full bootstrap, ordering, rollback, reconciliation, and invariant coverage while removing the oversized monolithic suite; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/OrchestrationEngine.basic.test.ts src/orchestration/Layers/OrchestrationEngine.failures.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 367 warnings
-- [x] Reduced another nearby server persistence warning slice in `apps/server/src/persistence/Layers/ProjectionTurns.ts` by extracting the inline query builders plus pending-turn, lookup, and cleanup repository method groups so the live projection-turn repository becomes a thin assembly wrapper; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 366 warnings
-- [x] Reduced another nearby server persistence migration warning slice in `apps/server/src/persistence/Migrations/005_Projections.ts` by extracting the projection table/index DDL into batched statement lists plus a shared runner helper so the migration effect drops under the function-length threshold without changing schema behavior; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 365 warnings
-- [x] Reduced another nearby server persistence runtime warning slice in `apps/server/src/persistence/NodeSqliteClient.ts` by extracting statement-prepare, execution, connection, and transaction-acquirer helpers so the sqlite client factory becomes a thin orchestration wrapper while preserving native `node:sqlite` behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/persistence/NodeSqliteClient.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 363 warnings
-- [x] Reduced another nearby server persistence migration warning slice in `apps/server/src/persistence/Migrations/016_CanonicalizeModelSelections.ts` by extracting the schema-change and event-backfill SQL into batched statement lists plus a shared runner helper so the migration effect drops under the function-length threshold without changing canonicalization behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/persistence/Migrations/016_CanonicalizeModelSelections.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 362 warnings
-- [x] Reduced another nearby server persistence migration-test warning slice in `apps/server/src/persistence/Migrations/016_CanonicalizeModelSelections.test.ts` by extracting the legacy seed and canonicalized assertion phases into focused helper effects and static event payload fixtures so the migration test drops under the function-length threshold without changing coverage; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/persistence/Migrations/016_CanonicalizeModelSelections.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 359 warnings
-- [x] Reduced another nearby server runtime warning slice across `apps/server/src/keybindings.ts`, `apps/server/src/keybindings.logic.ts`, and `apps/server/src/keybindings.runtime.ts` by hard-cutting the parse/compile/schema logic and config I/O into companion modules, then extracting the startup default-sync flow into focused helpers so the live keybindings service drops the file-length warning and keeps only one remaining runtime generator warning; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/keybindings.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 357 warnings
-- [x] Reduced another nearby server runtime warning slice across `apps/server/src/keybindings.ts`, `apps/server/src/keybindings.logic.ts`, `apps/server/src/keybindings.runtime.ts`, and `apps/server/src/keybindings.test.ts` by splitting the remaining keybindings service assembly and oversized test wrapper into focused helper modules and layer groups so the local keybindings surface is clean; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/keybindings.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 355 warnings
-- [x] Reduced another nearby server runtime warning slice in `apps/server/src/ws.ts` by extracting orchestration, server, project, git, and terminal RPC method groups plus the subscription stream builders so the WebSocket RPC layer becomes a thin composition wrapper without changing route behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/server.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 354 warnings
-- [x] Reduced another nearby server git-runtime warning slice in `apps/server/src/git/Layers/ClaudeTextGeneration.ts` by extracting the Claude CLI execution pipeline, structured-output decoding, and per-operation generator builders so the live Claude text-generation layer becomes a thin composition wrapper without changing git text-generation behavior; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/ClaudeTextGeneration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 352 warnings
-- [x] Reduced another nearby server git-test warning slice in `apps/server/src/git/Layers/ClaudeTextGeneration.test.ts` by extracting fake-Claude environment save/apply/restore helpers and turning the monolithic layer callback into small per-scenario effect builders so the focused Claude text-generation tests stay under maintainability thresholds without changing coverage; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/ClaudeTextGeneration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 350 warnings
-- [x] Reduced another nearby server git-runtime warning slice in `apps/server/src/git/Layers/CodexTextGeneration.ts` by extracting the Codex CLI command execution pipeline, cleanup handling, structured-output readback, attachment materialization, and per-operation generator builders so the live Codex text-generation layer becomes a thin composition wrapper; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/CodexTextGeneration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 349 warnings
-- [x] Reduced another nearby server git-test warning slice across `apps/server/src/git/Layers/CodexTextGeneration.test.ts` and `apps/server/src/git/Layers/CodexTextGeneration.test.helpers.ts` by hard-cutting the fake Codex binary/env setup into a helper module and replacing the monolithic layer callback with focused per-scenario effect builders so the Codex text-generation tests stay under maintainability thresholds without changing coverage; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/CodexTextGeneration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 345 warnings
-- [x] Reduced another nearby server git-runtime warning slice across `apps/server/src/git/Layers/CodexTextGeneration.ts` and `apps/server/src/git/Layers/CodexTextGeneration.shared.ts` by hard-cutting the generic stream/cleanup helpers into a companion module so the live Codex text-generation layer drops below the file-length threshold while preserving the focused Codex generation flow; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/CodexTextGeneration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 344 warnings
-- [x] Reduced another nearby web logic-test warning slice in `apps/web/src/components/BranchToolbar.logic.test.ts` by splitting the oversized remote-branch dedupe coverage into focused origin-ref and non-origin-ref describe blocks so the logic test drops under the function-length threshold without changing branch-selection coverage; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/BranchToolbar.logic.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 343 warnings
-- [x] Reduced another nearby web thread-action warning slice in `apps/web/src/hooks/useThreadActions.ts` by extracting the archive, unarchive, delete-context, terminal/session shutdown, fallback-navigation, and orphaned-worktree cleanup flows into focused helpers so the hook and delete action both drop under the function-length and complexity thresholds without changing thread action behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 340 warnings
-- [x] Reduced another nearby web thread-route warning slice in `apps/web/src/routes/_chat.$threadId.tsx` by extracting the inline diff-sidebar width guard plus shared inline/sheet layout helpers so the route view and inline sidebar both drop under the function-length threshold without changing thread-route or diff-panel behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 338 warnings
-- [x] Reduced another nearby server provider-runtime warning slice in `apps/server/src/provider/Layers/CodexRuntimeEventUtils.ts` by replacing the complex token-usage object-spread assembly with a mutable local snapshot builder plus focused field-assignment helper so `normalizeCodexTokenUsage` drops under the complexity threshold without changing Codex token-usage normalization; targeted eslint, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/CodexAdapter.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 337 warnings
-- [x] Reduced another nearby web timeline-test warning slice across `apps/web/src/components/chat/MessagesTimeline.logic.test.ts` and `apps/web/src/components/chat/MessagesTimeline.test.tsx` by splitting the oversized duration-start suite into focused describe blocks and extracting a shared static-render helper for the component assertions so both MessagesTimeline tests drop under the function-length threshold without changing coverage; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/chat/MessagesTimeline.logic.test.ts src/components/chat/MessagesTimeline.test.tsx`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 335 warnings
-- [x] Reduced another nearby web project-scripts warning slice across `apps/web/src/components/ProjectScriptsControl.tsx`, `apps/web/src/components/ProjectScriptsControl.ui.tsx`, and `apps/web/src/components/ProjectScriptsControl.dialog.tsx` by hard-cutting the menu and dialog surfaces into companion modules and splitting the draft/action helpers so the project-scripts control drops below the file-length and function-length thresholds without changing action-run, edit, or delete behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 333 warnings
-- [x] Reduced another nearby web branch-toolbar warning slice in `apps/web/src/components/BranchToolbar.tsx` by extracting the derived branch/project state, checkout-update action builder, running-session stop helper, and env-mode control so the toolbar drops below the function-length and complexity thresholds without changing branch selection or worktree-mode behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 331 warnings
-- [x] Reduced another nearby web timeline warning slice across `apps/web/src/components/chat/MessagesTimeline.tsx`, `apps/web/src/components/chat/MessagesTimeline.model.ts`, `apps/web/src/components/chat/MessagesTimeline.rows.tsx`, `apps/web/src/components/chat/MessagesTimeline.user.tsx`, and `apps/web/src/components/chat/MessagesTimeline.virtualizer.ts` by hard-cutting the timeline model, row rendering, user-message rendering, and virtualization setup into companion modules so the main MessagesTimeline view drops below the function-length threshold and the slice goes net-positive despite the remaining TanStack Virtual compiler warning; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/chat/MessagesTimeline.logic.test.ts src/components/chat/MessagesTimeline.test.tsx`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 328 warnings
-- [x] Reduced another nearby web timeline warning slice across `apps/web/src/components/chat/MessagesTimeline.rows.tsx` and `apps/web/src/components/chat/MessagesTimeline.work.tsx` by peeling the work-entry icon/preview helpers into a dedicated companion module so the extracted rows file drops below the file-length threshold while preserving all MessagesTimeline rendering behavior; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/chat/MessagesTimeline.logic.test.ts src/components/chat/MessagesTimeline.test.tsx`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 327 warnings
-- [x] Reduced another nearby web pull-request dialog warning slice across `apps/web/src/components/PullRequestThreadDialog.tsx`, `apps/web/src/components/PullRequestThreadDialog.logic.ts`, and `apps/web/src/components/PullRequestThreadDialog.body.tsx` by hard-cutting the dialog state hooks, pull-request resolution/prepare logic, and rendered body into companion modules so the main pull-request checkout dialog drops below the file-length and function-length thresholds without changing PR resolution or checkout behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 325 warnings
-- [x] Reduced another nearby web chat-view logic-test warning slice in `apps/web/src/components/ChatView.logic.test.ts` by extracting a shared baseline local-dispatch fixture and splitting the oversized `waitForStartedServerThread` and `hasServerAcknowledgedLocalDispatch` coverage into focused describe groups so the test file drops four function-length warnings without changing coverage; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/components/ChatView.logic.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 323 warnings
-- [x] Reduced another nearby web session-logic test warning slice by hard-cutting the monolithic `apps/web/src/session-logic.test.ts` into `apps/web/src/session-logic.test.helpers.ts`, `apps/web/src/session-logic.approvals.test.ts`, `apps/web/src/session-logic.plans.test.ts`, `apps/web/src/session-logic.worklog.test.ts`, and `apps/web/src/session-logic.state.test.ts`, keeping the full 39-test coverage while removing the file-length and oversized-suite warnings from the old single file; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/session-logic.approvals.test.ts src/session-logic.plans.test.ts src/session-logic.worklog.test.ts src/session-logic.state.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 317 warnings
-- [x] Reduced another nearby web root-route warning slice across `apps/web/src/routes/__root.tsx` and `apps/web/src/routes/__root.eventRouter.ts` by hard-cutting the welcome handler, keybindings-config update handler, and orchestration/terminal sync effect into a companion route helper so `EventRouter` drops below the function-length threshold without changing bootstrap, recovery, or terminal activity behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 315 warnings
-- [x] Reduced another nearby web session-logic source warning slice across `apps/web/src/session-logic.ts` and `apps/web/src/session-logic.activity.ts` by hard-cutting the work-log, timeline, checkpoint-count, and activity-ordering logic into a companion module while simplifying pending-approval payload parsing so the main session-logic file drops below the file-length threshold and clears its remaining complexity hit; targeted eslint, focused `pnpm --filter @orxa-code/web exec vitest run src/session-logic.approvals.test.ts src/session-logic.plans.test.ts src/session-logic.worklog.test.ts src/session-logic.state.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 313 warnings
-- [x] Reduced another nearby web composer-action warning slice in `apps/web/src/components/chat/ComposerPrimaryActions.tsx` by extracting the pending-question, running, plan-follow-up, and default-send render paths into focused helpers so the component drops below the function-length and complexity thresholds without changing composer action behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 311 warnings
-- [x] Reduced another nearby web toast-surface warning slice in `apps/web/src/components/ui/toast.tsx` by extracting the shared toast body rendering plus the viewport/anchored toast item mapping into focused helpers so `Toasts`, its list mapper, and `AnchoredToasts` all drop under the function-length threshold without changing toast manager, auto-dismiss, or anchored tooltip behavior; targeted eslint, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 308 warnings
-- [x] Reduced another nearby web sidebar-shell warning slice by hard-cutting `apps/web/src/components/ui/sidebar.tsx` into `apps/web/src/components/ui/sidebar.shared.ts`, `apps/web/src/components/ui/sidebar.rail.tsx`, and `apps/web/src/components/ui/sidebar.menu.tsx`, moving the shared context/types, rail logic, and menu-family components out of the main shell so `sidebar.tsx` drops below the file-length threshold and the main `Sidebar` function warning is cleared; targeted eslint on the split surface now leaves only the follow-on `SidebarRail` warning, while `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` pass with 0 errors and 306 warnings
-- [x] Reduced the follow-on `SidebarRail` warning in `apps/web/src/components/ui/sidebar.rail.tsx` by removing render-time ref factory wiring, extracting the resize lifecycle into a focused hook, and keeping the split sidebar surface under targeted validation so the full repo now passes honest root lint with 0 errors and 305 warnings; targeted eslint on `apps/web/src/components/ui/sidebar.tsx`, `apps/web/src/components/ui/sidebar.shared.ts`, `apps/web/src/components/ui/sidebar.rail.tsx`, and `apps/web/src/components/ui/sidebar.menu.tsx`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` all pass
-- [x] Reduced another nearby web composer warning slice by hard-cutting `apps/web/src/components/ComposerPromptEditor.tsx` into `ComposerPromptEditor.nodes.ts`, `ComposerPromptEditor.selection.ts`, `ComposerPromptEditor.plugins.tsx`, and `ComposerPromptEditor.logic.ts`, moving Lexical node definitions, selection math, plugin wiring, and controlled-editor state management out of the main façade so the editor surface drops below both file-length and function-length thresholds without changing composer prompt behavior; targeted eslint on the `ComposerPromptEditor*` surface, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 303 warnings
-- [x] Reduced another nearby server provider warning slice in `apps/server/src/provider/codexAppServer.ts` by extracting the Codex app-server probe env, write path, abort handling, JSON-RPC line parsing, and response handling so `probeCodexAccount` becomes a thin orchestration wrapper without changing Codex account probe behavior; targeted eslint, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 301 warnings
-- [x] Reduced another nearby server provider warning slice in `apps/server/src/provider/Layers/ClaudeProvider.ts` by moving Claude auth/subscription metadata extraction and SDK capability probing into `apps/server/src/provider/Layers/ClaudeProvider.metadata.ts`, then extracting focused provider-build branches so `checkClaudeProviderStatus` drops below the function-length threshold and the live provider layer drops below the file-length threshold without changing Claude provider status behavior; targeted eslint on both Claude provider files, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderRegistry.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 299 warnings
-- [x] Reduced another nearby server provider warning slice in `apps/server/src/provider/Layers/CodexProvider.ts` by moving Codex config/account-probe helpers into `apps/server/src/provider/Layers/CodexProvider.metadata.ts`, moving the managed live layer into `apps/server/src/provider/Layers/CodexProvider.live.ts`, and extracting focused provider-build branches so `checkCodexProviderStatus` drops below the function-length threshold and the main provider file drops below the file-length threshold without changing Codex provider status behavior; targeted eslint on the three Codex provider files, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderRegistry.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 297 warnings
-- [x] Reduced another nearby server provider test warning slice by hard-cutting `apps/server/src/provider/Layers/CodexAdapter.test.ts` into `apps/server/src/provider/Layers/CodexAdapter.test.helpers.ts`, `apps/server/src/provider/Layers/CodexAdapter.validation.test.ts`, `apps/server/src/provider/Layers/CodexAdapter.lifecycle.events.test.ts`, and `apps/server/src/provider/Layers/CodexAdapter.lifecycle.codexEvents.test.ts`, then splitting the lifecycle assertions into focused suites so the old monolithic test file is removed without changing Codex adapter event-mapping or validation coverage; targeted eslint on the four replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/CodexAdapter.validation.test.ts src/provider/Layers/CodexAdapter.lifecycle.events.test.ts src/provider/Layers/CodexAdapter.lifecycle.codexEvents.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 293 warnings
-- [x] Reduced another nearby server provider test warning slice by hard-cutting `apps/server/src/provider/Layers/ProviderService.test.ts` into `apps/server/src/provider/Layers/ProviderService.test.helpers.ts`, `apps/server/src/provider/Layers/ProviderService.disabled-provider.test.ts`, `apps/server/src/provider/Layers/ProviderService.persistence.test.ts`, `apps/server/src/provider/Layers/ProviderService.routing.test.ts`, `apps/server/src/provider/Layers/ProviderService.fanout.test.ts`, and `apps/server/src/provider/Layers/ProviderService.validation.test.ts`, then splitting the oversized routing/fanout/persistence wrappers into focused suites so the old monolithic test file is removed without changing provider-service routing, persistence, fanout, or validation coverage; targeted eslint on the `ProviderService*.ts` test surface, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderService.disabled-provider.test.ts src/provider/Layers/ProviderService.persistence.test.ts src/provider/Layers/ProviderService.routing.test.ts src/provider/Layers/ProviderService.fanout.test.ts src/provider/Layers/ProviderService.validation.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 285 warnings
-- [x] Reduced another nearby server provider source warning slice by hard-cutting `apps/server/src/provider/Layers/ProviderService.ts` into `apps/server/src/provider/Layers/ProviderService.shared.ts`, `apps/server/src/provider/Layers/ProviderService.operations.ts`, and `apps/server/src/provider/Layers/ProviderService.runtime.ts`, moving validation/runtime session helpers, provider operation builders, and runtime event fanout out of the live entrypoint so `ProviderService.ts` becomes a thin wiring layer without changing provider-service routing or event behavior; targeted eslint on the four provider-service source files, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderService.disabled-provider.test.ts src/provider/Layers/ProviderService.persistence.test.ts src/provider/Layers/ProviderService.routing.test.ts src/provider/Layers/ProviderService.fanout.test.ts src/provider/Layers/ProviderService.validation.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 283 warnings
-- [x] Reduced another nearby server provider-registry test warning slice by hard-cutting the provider-registry test surface into `apps/server/src/provider/Layers/ProviderRegistry.test.helpers.ts`, `apps/server/src/provider/Layers/ProviderRegistry.codex-status.test.ts`, `apps/server/src/provider/Layers/ProviderRegistry.codex-config.test.ts`, `apps/server/src/provider/Layers/ProviderRegistry.live.test.ts`, and `apps/server/src/provider/Layers/ProviderRegistry.claude.test.ts`, then restoring the current provider-service layer composition and focused suites so the split validates against the live Codex and Claude provider semantics without changing provider-registry coverage; targeted eslint on the five replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ProviderRegistry.codex-status.test.ts src/provider/Layers/ProviderRegistry.codex-config.test.ts src/provider/Layers/ProviderRegistry.live.test.ts src/provider/Layers/ProviderRegistry.claude.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 278 warnings
-- [x] Reduced another nearby server provider-adapter test warning slice by hard-cutting shared Claude adapter harness/constants into `apps/server/src/provider/Layers/ClaudeAdapter.test.helpers.ts`, moving approval flow coverage into `apps/server/src/provider/Layers/ClaudeAdapter.approvals.test.ts`, and moving user-input plus native-observability coverage into `apps/server/src/provider/Layers/ClaudeAdapter.user-input.test.ts`, so the old `apps/server/src/provider/Layers/ClaudeAdapter.test.ts` monolith loses the oversized approval/user-input wrappers without changing Claude adapter behavior or coverage; targeted eslint on the split `ClaudeAdapter*.ts` test surface, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 273 warnings
-- [x] Reduced another nearby server provider-adapter test warning slice by hard-cutting Claude adapter stream-mapping coverage out of `apps/server/src/provider/Layers/ClaudeAdapter.test.ts` into `apps/server/src/provider/Layers/ClaudeAdapter.streaming.test.ts` plus `apps/server/src/provider/Layers/ClaudeAdapter.streaming.fixtures.ts`, moving the canonical runtime-message and tool-stream fixtures into a companion module so the extracted streaming tests validate cleanly without reintroducing new file-length warnings; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.test.helpers.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.approvals.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.user-input.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.streaming.test.ts`, and `apps/server/src/provider/Layers/ClaudeAdapter.streaming.fixtures.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 264 warnings
-- [x] Reduced another nearby server provider-adapter test warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.test.ts` by removing the giant outer `describe("ClaudeAdapterLive", ...)` wrapper after the earlier hard cutovers, leaving the focused top-level tests and companion files in place so the remaining monolith drops one more maintainability warning without changing Claude adapter coverage or execution order; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.test.helpers.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.approvals.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.user-input.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.streaming.test.ts`, and `apps/server/src/provider/Layers/ClaudeAdapter.streaming.fixtures.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 263 warnings
-- [x] Reduced another nearby server provider-adapter test warning slice by hard-cutting the remaining Claude adapter session/config coverage out of `apps/server/src/provider/Layers/ClaudeAdapter.test.ts` into `apps/server/src/provider/Layers/ClaudeAdapter.config.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.session-state.test.ts`, and `apps/server/src/provider/Layers/ClaudeAdapter.session-controls.test.ts`, leaving the stop-session concurrency case in the root test file and restoring the required `ServerConfig` layer import so the split suite validates cleanly without changing Claude adapter behavior or coverage; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.test.helpers.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.approvals.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.user-input.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.streaming.fixtures.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.config.test.ts`, `apps/server/src/provider/Layers/ClaudeAdapter.session-state.test.ts`, and `apps/server/src/provider/Layers/ClaudeAdapter.session-controls.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 262 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by extracting the repeated user tool-result event emission, synthetic assistant-turn bootstrap, and send-turn setup flows into focused local helpers so `handleUserMessage`, `handleAssistantMessage`, and `sendTurn` all drop below the function-length threshold without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 259 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by extracting the Claude system-message event base and subtype handlers plus the AskUserQuestion/approval request helper flow so `handleSystemMessage`, `handleAskUserQuestion`, and `canUseTool` lose another warning cluster without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 255 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by extracting assistant text-block fallback/completion emission plus turn-finalization helpers for usage snapshots, tool completion, turn completion, and post-turn session cleanup so `completeAssistantTextBlock` and `completeTurn` drop out of the warning set without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 252 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by splitting `handleStreamEvent` into focused helpers for text/thinking deltas, input-json tool deltas, and block start/stop handling so the stream-event branch drops out of the warning set without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 250 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by hard-cutting the `startSession` setup into outer adapter-scope helpers for prompt stream creation, permission/user-input tooling, runtime-config loading, query runtime creation, session/context assembly, startup event emission, and stream-fiber attachment so the `startSession` length warning drops without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 249 warnings
-- [x] Reduced another active-path server provider warning slice in `apps/server/src/provider/Layers/ClaudeAdapter.ts` by extracting model-runtime derivation and query-options assembly out of `loadSessionRuntimeConfig` so that remaining setup path drops its complexity hit without changing Claude adapter runtime behavior; targeted eslint on `apps/server/src/provider/Layers/ClaudeAdapter.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 248 warnings
-- [x] Reduced another foundation warning slice by removing the dead `/* eslint-disable */` header from the checked-in MSW runtime artifacts at `apps/server/dist/client/mockServiceWorker.js`, `apps/web/dist/mockServiceWorker.js`, and `apps/web/public/mockServiceWorker.js`, clearing the unused-directive warnings without changing mock-service-worker runtime behavior; targeted eslint on those three files, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 245 warnings
-- [x] Reduced another nearby server orchestration warning slice by hard-cutting `apps/server/src/orchestration/projector.ts` into `apps/server/src/orchestration/projector.shared.ts`, `apps/server/src/orchestration/projector.projectEvents.ts`, and `apps/server/src/orchestration/projector.threadEvents.ts`, leaving `projectEvent` as a thin router over project and thread projection handlers while preserving the existing projector behavior; targeted eslint on those four projector files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/projector.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 243 warnings
-- [x] Reduced another nearby server terminal-test warning slice by hard-cutting `apps/server/src/terminal/Layers/Manager.test.ts` into `apps/server/src/terminal/Layers/Manager.test.helpers.ts`, `apps/server/src/terminal/Layers/Manager.basic.test.ts`, `apps/server/src/terminal/Layers/Manager.history.test.ts`, and `apps/server/src/terminal/Layers/Manager.runtime.test.ts`, preserving the PTY lifecycle, transcript, environment, callback, and shutdown coverage while clearing the old monolithic suite warnings; targeted eslint on those four new test files, focused `pnpm --filter @orxa-code/server exec vitest run src/terminal/Layers/Manager.basic.test.ts src/terminal/Layers/Manager.history.test.ts src/terminal/Layers/Manager.runtime.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 241 warnings
-- [x] Reduced another nearby server orchestration test warning slice by hard-cutting `apps/server/src/orchestration/projector.test.ts` into `apps/server/src/orchestration/projector.test.helpers.ts`, `apps/server/src/orchestration/projector.basic.test.ts`, `apps/server/src/orchestration/projector.turns.test.ts`, `apps/server/src/orchestration/projector.revert.fixtures.ts`, `apps/server/src/orchestration/projector.revert.pruning.test.ts`, `apps/server/src/orchestration/projector.revert.removed-turns.test.ts`, and `apps/server/src/orchestration/projector.retention.test.ts`, preserving the projector coverage while removing the old monolithic suite and inline revert fixture blocks; targeted eslint on those seven projector test files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/projector.basic.test.ts src/orchestration/projector.turns.test.ts src/orchestration/projector.revert.pruning.test.ts src/orchestration/projector.revert.removed-turns.test.ts src/orchestration/projector.retention.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 235 warnings
-- [x] Reduced another nearby server orchestration decider-test warning slice by hard-cutting `apps/server/src/orchestration/decider.projectScripts.test.ts` into `apps/server/src/orchestration/decider.projectScripts.test.helpers.ts`, `apps/server/src/orchestration/decider.projectScripts.basic.test.ts`, `apps/server/src/orchestration/decider.projectScripts.turns.test.ts`, and `apps/server/src/orchestration/decider.projectScripts.modes.test.ts`, preserving the project-script, turn-start, and mode-change coverage while removing the old monolithic suite; targeted eslint on those four decider test files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/decider.projectScripts.basic.test.ts src/orchestration/decider.projectScripts.turns.test.ts src/orchestration/decider.projectScripts.modes.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 231 warnings
-- [x] Reduced another nearby server checkpoint-reactor test warning slice by hard-cutting `apps/server/src/orchestration/Layers/CheckpointReactor.test.ts` into `apps/server/src/orchestration/Layers/CheckpointReactor.test.helpers.ts`, `apps/server/src/orchestration/Layers/CheckpointReactor.capture.test.ts`, `apps/server/src/orchestration/Layers/CheckpointReactor.runtime.test.ts`, and `apps/server/src/orchestration/Layers/CheckpointReactor.revert.test.ts`, preserving the baseline capture, runtime fallback, and revert coverage while removing the monolithic suite and oversized harness helper from the original file; targeted eslint on those four replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/CheckpointReactor.capture.test.ts src/orchestration/Layers/CheckpointReactor.runtime.test.ts src/orchestration/Layers/CheckpointReactor.revert.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 227 warnings
-- [x] Reduced another nearby server projection-snapshot test warning slice by hard-cutting `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.test.ts` into `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.test.helpers.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.hydration.fixtures.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.fixtures.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.fixtures.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.hydration.test.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.test.ts`, and `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.test.ts`, preserving the snapshot hydration, targeted query, and checkpoint-context coverage while removing the monolithic suite; targeted eslint on those seven replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionSnapshotQuery.hydration.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 219 warnings
-- [x] Reduced another nearby server codex-manager test warning slice by hard-cutting `apps/server/src/codexAppServerManager.test.ts` into `apps/server/src/codexAppServerManager.test.helpers.ts`, `apps/server/src/codexAppServerManager.pure.test.ts`, `apps/server/src/codexAppServerManager.startSession.test.ts`, `apps/server/src/codexAppServerManager.sendTurn.test.ts`, `apps/server/src/codexAppServerManager.threadControl.test.ts`, `apps/server/src/codexAppServerManager.userInput.test.ts`, and `apps/server/src/codexAppServerManager.collabRouting.test.ts`, preserving the pure utility, session-start, send-turn, thread rollback, pending-user-input, and collab child-routing coverage while removing the monolithic suite; targeted eslint on those seven replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/codexAppServerManager.pure.test.ts src/codexAppServerManager.startSession.test.ts src/codexAppServerManager.sendTurn.test.ts src/codexAppServerManager.threadControl.test.ts src/codexAppServerManager.userInput.test.ts src/codexAppServerManager.collabRouting.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 213 warnings
-- [x] Reduced another nearby server router-seam test warning slice by hard-cutting `apps/server/src/server.test.ts` into `apps/server/src/server.test.helpers.ts`, `apps/server/src/server.http.test.ts`, `apps/server/src/server.attachments.test.ts`, `apps/server/src/server.config.test.ts`, `apps/server/src/server.projectsShell.test.ts`, `apps/server/src/server.git.test.ts`, `apps/server/src/server.orchestration.test.ts`, and `apps/server/src/server.terminal.test.ts`, preserving the HTTP/static, attachment, websocket config, project/shell, git, orchestration, and terminal coverage while removing the monolithic suite; targeted eslint on those eight replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/server.http.test.ts src/server.attachments.test.ts src/server.config.test.ts src/server.projectsShell.test.ts src/server.git.test.ts src/server.orchestration.test.ts src/server.terminal.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 202 warnings
-- [x] Reduced another nearby server provider-command-reactor test warning slice by hard-cutting `apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts` into `apps/server/src/orchestration/Layers/ProviderCommandReactor.test.helpers.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.turnStart.test.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.sessionSwitch.test.ts`, and `apps/server/src/orchestration/Layers/ProviderCommandReactor.responses.test.ts`, preserving the turn-start, provider-session reuse and restart, interrupt, approval-response, user-input-response, and session-stop coverage while removing the monolithic suite; targeted eslint on those four replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProviderCommandReactor.turnStart.test.ts src/orchestration/Layers/ProviderCommandReactor.sessionSwitch.test.ts src/orchestration/Layers/ProviderCommandReactor.responses.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 196 warnings
-- [x] Reduced another nearby server provider-command-reactor runtime warning slice by hard-cutting `apps/server/src/orchestration/Layers/ProviderCommandReactor.ts` into `apps/server/src/orchestration/Layers/ProviderCommandReactor.sessionRuntime.ts`, `apps/server/src/orchestration/Layers/ProviderCommandReactor.firstTurn.ts`, and `apps/server/src/orchestration/Layers/ProviderCommandReactor.eventHandlers.ts`, preserving provider-session bootstrap, first-turn branch/title generation, runtime-mode restart handling, interrupt/approval/user-input routing, and session-stop behavior while removing the remaining main-layer warning cluster; targeted eslint on those four runtime files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProviderCommandReactor.turnStart.test.ts src/orchestration/Layers/ProviderCommandReactor.sessionSwitch.test.ts src/orchestration/Layers/ProviderCommandReactor.responses.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 192 warnings
-- [x] Reduced another nearby desktop-shell warning slice in `apps/desktop/src/main.ts` by extracting the auto-updater feed/error/event/timer wiring and the desktop update IPC registration into focused local helpers so `configureAutoUpdater` and `registerIpcHandlers` drop out of the warning set without changing desktop update or IPC behavior; targeted eslint on `apps/desktop/src/main.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 190 warnings
-- [x] Reduced another nearby server checkpoint-reactor runtime warning slice by hard-cutting `apps/server/src/orchestration/Layers/CheckpointReactor.ts` into `apps/server/src/orchestration/Layers/CheckpointReactor.shared.ts`, `apps/server/src/orchestration/Layers/CheckpointReactor.baseline.ts`, `apps/server/src/orchestration/Layers/CheckpointReactor.capture.ts`, and `apps/server/src/orchestration/Layers/CheckpointReactor.revert.ts`, then tightening the reactor wrapper helper signatures so the split keeps exact Effect context typing while preserving checkpoint baseline capture, turn-diff capture, revert routing, and runtime-event handling without changing checkpoint behavior; targeted eslint on those five runtime files, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/CheckpointReactor.capture.test.ts src/orchestration/Layers/CheckpointReactor.runtime.test.ts src/orchestration/Layers/CheckpointReactor.revert.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 186 warnings
-- [x] Reduced another nearby web store test warning slice by hard-cutting `apps/web/src/store.test.ts` into `apps/web/src/store.test.helpers.ts`, `apps/web/src/store.readModel.test.ts`, `apps/web/src/store.incremental.test.ts`, and `apps/web/src/store.revert.test.ts`, moving the shared state/read-model/event factories into a helper module and splitting read-model sync, incremental event handling, and revert behavior into focused suites so the old monolithic store test file is removed without changing store coverage; targeted eslint on those four replacement files, focused `pnpm --filter @orxa-code/web exec vitest run src/store.readModel.test.ts src/store.incremental.test.ts src/store.revert.test.ts`, `pnpm --filter @orxa-code/web typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 182 warnings
-- [x] Reduced another nearby server orchestration integration-harness warning slice by hard-cutting `apps/server/integration/OrchestrationEngineHarness.integration.ts` into the root harness file plus `apps/server/integration/OrchestrationEngineHarness.integration.helpers.ts`, moving the polling/waiter utilities and scoped dispose flow into a companion helper and extracting the bootstrap/layer/service-load wiring into focused local helpers so the oversized harness factory drops out of the warning set without changing the runtime graph or integration behavior; targeted eslint on those two harness files, focused `pnpm --filter @orxa-code/server exec vitest run integration/orchestrationEngine.integration.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 180 warnings
-- [x] Reduced another nearby server integration adapter warning slice by hard-cutting `apps/server/integration/TestProviderAdapter.integration.ts` into `apps/server/integration/TestProviderAdapter.integration.ts`, `apps/server/integration/TestProviderAdapter.integration.helpers.ts`, `apps/server/integration/TestProviderAdapter.integration.controls.ts`, and `apps/server/integration/TestProviderAdapter.integration.normalization.ts`, moving the fixture-event normalization, session control handlers, and send-turn orchestration into focused companions so the old monolithic test-provider adapter harness drops its file-length and oversized helper warnings without changing adapter behavior; targeted eslint on those four integration adapter files, focused `pnpm --filter @orxa-code/server exec vitest run integration/orchestrationEngine.integration.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 174 warnings
-- [x] Reduced another nearby server orchestration integration-test warning slice by hard-cutting the first two oversized scenarios out of `apps/server/integration/orchestrationEngine.integration.test.ts` into `apps/server/integration/orchestrationEngine.integration.helpers.ts`, `apps/server/integration/orchestrationEngine.singleTurn.integration.test.ts`, and `apps/server/integration/orchestrationEngine.realCodex.integration.test.ts`, moving the shared constants and dispatch helpers into a companion module so the single-turn persistence and real-Codex runtime-mode-switch coverage validate in focused files without changing the integration behavior; targeted eslint on those four integration test files, focused `pnpm --filter @orxa-code/server exec vitest run integration/orchestrationEngine.singleTurn.integration.test.ts integration/orchestrationEngine.realCodex.integration.test.ts integration/orchestrationEngine.integration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 170 warnings
-- [x] Reduced the follow-on server orchestration integration warning slice by hard-cutting the remaining Claude session-recovery and Claude checkpoint-revert scenarios out of `apps/server/integration/orchestrationEngine.integration.test.ts` into `apps/server/integration/orchestrationEngine.claude.integration.helpers.ts`, `apps/server/integration/orchestrationEngine.claudeRecovery.integration.test.ts`, and `apps/server/integration/orchestrationEngine.claudeRevert.integration.test.ts`, moving the repeated Claude turn-event and README-mutation setup into shared helpers so the root integration suite drops below the file-length threshold without changing orchestration integration behavior; targeted eslint on the nine orchestration integration files, focused `pnpm --filter @orxa-code/server exec vitest run integration/orchestrationEngine.singleTurn.integration.test.ts integration/orchestrationEngine.realCodex.integration.test.ts integration/orchestrationEngine.multiTurn.integration.test.ts integration/orchestrationEngine.approvals.integration.test.ts integration/orchestrationEngine.claudeRecovery.integration.test.ts integration/orchestrationEngine.claudeRevert.integration.test.ts integration/orchestrationEngine.integration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 163 warnings
-- [x] Reduced the remaining server orchestration checkpoint integration warning slice by hard-cutting the codex checkpoint-revert scenario out of `apps/server/integration/orchestrationEngine.integration.test.ts` into `apps/server/integration/orchestrationEngine.revert.integration.test.ts`, adding `apps/server/integration/orchestrationEngine.checkpoint.integration.helpers.ts`, and collapsing both the revert and multi-turn tests onto a shared README-edit queue-and-start helper so the remaining checkpoint integration suites drop under the function-length threshold without changing checkpoint projection, diff, or git-ref behavior; targeted eslint on the eleven orchestration integration files, focused `pnpm --filter @orxa-code/server exec vitest run integration/orchestrationEngine.singleTurn.integration.test.ts integration/orchestrationEngine.realCodex.integration.test.ts integration/orchestrationEngine.multiTurn.integration.test.ts integration/orchestrationEngine.approvals.integration.test.ts integration/orchestrationEngine.revert.integration.test.ts integration/orchestrationEngine.claudeRecovery.integration.test.ts integration/orchestrationEngine.claudeRevert.integration.test.ts integration/orchestrationEngine.integration.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 157 warnings
-- [x] Reduced the live codex app-server manager warning slice in `apps/server/src/codexAppServerManager.ts` by extracting session bootstrap, optional account metadata reads, thread-open resume/start orchestration, turn-start param building, and notification-state transitions into focused manager helpers so `startSession`, `sendTurn`, and `handleServerNotification` drop out of the warning set without changing Codex app-server behavior; targeted eslint on `apps/server/src/codexAppServerManager.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/codexAppServerManager.pure.test.ts src/codexAppServerManager.startSession.test.ts src/codexAppServerManager.sendTurn.test.ts src/codexAppServerManager.threadControl.test.ts src/codexAppServerManager.userInput.test.ts src/codexAppServerManager.collabRouting.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 152 warnings
-- [x] Reduced the live orchestration snapshot-query warning slice by hard-cutting the checkpoint-context loader into `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.ts` and the snapshot row loading/assembly path into `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.snapshot.ts`, leaving `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` as a thinner SQL/query wiring layer so the checkpoint-context and snapshot assembly wrappers drop out of the warning set without changing read-model hydration or targeted snapshot-query behavior; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.ts`, and `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.snapshot.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionSnapshotQuery.hydration.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 150 warnings
-- [x] Reduced the nearby GitCore test warning cluster by hard-cutting `apps/server/src/git/Layers/GitCore.test.ts` into `apps/server/src/git/Layers/GitCore.test.helpers.ts`, `apps/server/src/git/Layers/GitCore.shell-init.test.ts`, `apps/server/src/git/Layers/GitCore.listBranches.test.ts`, `apps/server/src/git/Layers/GitCore.checkout.test.ts`, `apps/server/src/git/Layers/GitCore.branching.test.ts`, `apps/server/src/git/Layers/GitCore.flows.test.ts`, `apps/server/src/git/Layers/GitCore.service-status.test.ts`, `apps/server/src/git/Layers/GitCore.service-commit.test.ts`, and `apps/server/src/git/Layers/GitCore.service-push.test.ts`, replacing the giant outer `it.layer(...)/describe(...)` wrappers with top-level layer-provided tests so the monolithic wrapper warnings disappear without changing GitCore coverage; targeted eslint on the nine replacement files, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitCore.shell-init.test.ts src/git/Layers/GitCore.listBranches.test.ts src/git/Layers/GitCore.checkout.test.ts src/git/Layers/GitCore.branching.test.ts src/git/Layers/GitCore.flows.test.ts src/git/Layers/GitCore.service-status.test.ts src/git/Layers/GitCore.service-commit.test.ts src/git/Layers/GitCore.service-push.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 143 warnings
-- [x] Reduced the follow-on live orchestration snapshot-query warning slice by hard-cutting the raw SQL-schema factories into `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.queries.ts`, collapsing `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` onto imported query factories, and extracting a focused snapshot-loader builder so the main snapshot-query layer drops from three remaining maintainability warnings to one without changing read-model hydration, checkpoint-context lookup, or targeted snapshot-query behavior; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.queries.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.ts`, and `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.snapshot.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionSnapshotQuery.hydration.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 141 warnings
-- [x] Reduced the last nearby snapshot-query warning in `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts` by splitting the remaining oversized snapshot-loader builder into focused primary and auxiliary loader helpers so the local snapshot-query surface is fully clean without changing snapshot hydration, checkpoint-context loading, or row-query behavior; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.queries.ts`, `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.ts`, and `apps/server/src/orchestration/Layers/ProjectionSnapshotQuery.snapshot.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionSnapshotQuery.hydration.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.targetedQueries.test.ts src/orchestration/Layers/ProjectionSnapshotQuery.checkpointContext.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 140 warnings
-- [x] Reduced the GitManager test-layer warning cluster by hard-cutting `apps/server/src/git/Layers/GitManager.test.ts` into `apps/server/src/git/Layers/GitManager.test.helpers.ts`, `apps/server/src/git/Layers/GitManager.test.fakeGh.ts`, `apps/server/src/git/Layers/GitManager.status.test.ts`, `apps/server/src/git/Layers/GitManager.stackedActions.test.ts`, `apps/server/src/git/Layers/GitManager.stackedActions.more.test.ts`, `apps/server/src/git/Layers/GitManager.pullRequests.test.ts`, `apps/server/src/git/Layers/GitManager.pullRequestThreads.test.ts`, and `apps/server/src/git/Layers/GitManager.pullRequestThreads.more.test.ts`, preserving status/stacked-action/PR-resolution/thread-prep coverage while replacing oversized suite wrappers with focused layer-provided suites; targeted eslint on those eight GitManager test/helper files plus the fake-gh helper module, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitManager.status.test.ts src/git/Layers/GitManager.stackedActions.test.ts src/git/Layers/GitManager.stackedActions.more.test.ts src/git/Layers/GitManager.pullRequests.test.ts src/git/Layers/GitManager.pullRequestThreads.test.ts src/git/Layers/GitManager.pullRequestThreads.more.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 135 warnings
-- [x] Reduced the next nearby ProjectionPipeline test warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting two oversized inline `it.effect` programs into focused generator helpers (`bootstrapProjectionRowsProgram` and `passThroughEmptyAttachmentsProgram`) and wiring thin effect wrappers, preserving projection bootstrap and explicit-empty-attachments behavior while removing four wrapper-level warning points from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 131 warnings
-- [x] Reduced the follow-on ProjectionPipeline test warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the oversized attachment-overwrite scenario into `overwriteAttachmentReferencesProgram` plus a thin effect wrapper, preserving attachment-overwrite projection behavior while removing two additional wrapper-level warning points from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 129 warnings
-- [x] Reduced the next ProjectionPipeline test warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the rollback attachment-projection scenario into `rollbackAttachmentProjectionProgram` plus a thin effect wrapper, preserving rollback trigger behavior and attachment cleanup assertions while removing two more wrapper-level warning points from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 127 warnings
-- [x] Reduced the next ProjectionPipeline attachment-cleanup warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the thread-revert and thread-delete attachment cleanup scenarios into `removeUnreferencedRevertedAttachmentsProgram` and `removeThreadAttachmentDirectoryOnDeleteProgram` with thin effect wrappers, preserving attachment-file cleanup assertions while removing four additional wrapper-level warning points from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 123 warnings
-- [x] Reduced the next ProjectionPipeline projector-resume warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the oversized projector-resume bootstrap/replay scenario into `resumeFromProjectorLastAppliedSequenceProgram` plus a thin effect wrapper, preserving sequence-resume and replay-idempotency assertions while removing another wrapper-level warning pair from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 122 warnings
-- [x] Reduced the next ProjectionPipeline assistant-message warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the oversized empty-completion accumulation scenario into `keepAssistantTextOnEmptyCompletionProgram` plus a thin effect wrapper, preserving assistant text accumulation and stream-finalization assertions while removing another wrapper-level warning pair from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 121 warnings
-- [x] Reduced the next ProjectionPipeline restart-metadata warning slice in `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts` by extracting the oversized restart restore scenario into `restorePendingTurnStartMetadataAfterRestartProgram` plus a thin top-level effect wrapper (and fixing the top-level helper initialization order to avoid TDZ at module load), preserving pending turn-start metadata restoration across persistence-backed pipeline restart while removing another wrapper-level warning point from the slice; targeted eslint on `apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/orchestration/Layers/ProjectionPipeline.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint -- --format unix` now pass with 0 errors and 120 warnings
-- [x] Reduced the next active-path GitCore warning slice in `apps/server/src/git/Layers/GitCore.ts` by extracting porcelain-status parsing and working-tree stat aggregation into focused helpers plus extracting no-local-delta push skip resolution into a dedicated helper, so `statusDetails` and `pushCurrentBranch` both drop out of the warning set without changing status or push behavior; targeted `pnpm exec eslint apps/server/src/git/Layers/GitCore.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitCore.service-status.test.ts src/git/Layers/GitCore.service-push.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 117 warnings
-- [x] Reduced the follow-on active-path GitCore warning slice in `apps/server/src/git/Layers/GitCore.ts` by extracting the inlined git command runner out of the `execute` closure into a focused helper, preserving spawn/trace2/output/timeout behavior while removing another oversized function warning from the file; targeted `pnpm exec eslint apps/server/src/git/Layers/GitCore.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitCore.service-status.test.ts src/git/Layers/GitCore.service-push.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 116 warnings
-- [x] Reduced the third active-path GitCore warning slice in `apps/server/src/git/Layers/GitCore.ts` by extracting trace2 line handling and trace-delta file-tail processing into focused helpers, preserving hook-start/hook-finish telemetry semantics while removing the oversized `createTrace2Monitor` warning from the file; targeted `pnpm exec eslint apps/server/src/git/Layers/GitCore.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitCore.service-status.test.ts src/git/Layers/GitCore.service-push.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 115 warnings
-- [x] Reduced the fourth active-path GitCore warning slice in `apps/server/src/git/Layers/GitCore.ts` by extracting branch-list local/remote parsing, branch recency sorting, worktree map parsing, and branch lookup warning orchestration into focused helpers, so `listBranches` drops out of the warning set without changing branch listing behavior; targeted `pnpm exec eslint apps/server/src/git/Layers/GitCore.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/git/Layers/GitCore.listBranches.test.ts src/git/Layers/GitCore.service-status.test.ts src/git/Layers/GitCore.service-push.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 114 warnings
-- [x] Reduced the next active-path terminal warning slice in `apps/server/src/terminal/Layers/Manager.ts` by extracting CSI/string-control sequence parsing plus ESC/C1 control-sequence handling into focused helpers, so `sanitizeTerminalHistoryChunk` drops out of both max-lines and complexity warnings without changing history sanitization behavior; targeted `pnpm exec eslint apps/server/src/terminal/Layers/Manager.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/terminal/Layers/Manager.basic.test.ts src/terminal/Layers/Manager.history.test.ts src/terminal/Layers/Manager.runtime.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 112 warnings
-- [x] Reduced the follow-on active-path terminal warning slice in `apps/server/src/terminal/Layers/Manager.ts` by extracting the `open` create/reuse flows into focused helpers (`createTerminalSessionState`, `openNewSession`, `openExistingSession`, `resetSessionHistory`), preserving open/reopen/runtime-env behavior while removing two oversized open-path warnings; targeted `pnpm exec eslint apps/server/src/terminal/Layers/Manager.ts`, focused `pnpm --filter @orxa-code/server exec vitest run src/terminal/Layers/Manager.basic.test.ts src/terminal/Layers/Manager.history.test.ts src/terminal/Layers/Manager.runtime.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` now pass with 0 errors and 110 warnings
-- [x] Re-verified identity completeness and runtime branding surfaces with static runtime-source checks (`rg` + direct source inspection) across `apps/web/src/branding.ts`, `apps/web/src/components/Sidebar.tsx`, `apps/web/index.html`, `apps/desktop/src/main.ts`, and packaging metadata; user-visible product/stage strings are now consistently `Orxa Code (Beta)` with no `T3`/`T3 Code`/`t3code` leaks on those runtime surfaces
-- [x] Re-verified clean shutdown/rerun behavior via two back-to-back timed `pnpm dev` cycles, each booting desktop/web/server successfully (`VITE` ready + server listening) without stale-process port collisions (`EADDRINUSE`) or manual cleanup requirements; full `pnpm typecheck` and full `pnpm lint` also passed in the same run set (lint with existing non-blocking warning backlog)
-- [x] Re-verified Claude and Codex chat adapter runtime paths with focused server provider suites: `pnpm --filter @orxa-code/server exec vitest run src/provider/Layers/ClaudeAdapter.test.ts src/provider/Layers/ClaudeAdapter.config.test.ts src/provider/Layers/ClaudeAdapter.streaming.test.ts src/provider/Layers/ClaudeAdapter.approvals.test.ts src/provider/Layers/ClaudeAdapter.session-controls.test.ts src/provider/Layers/ClaudeAdapter.session-state.test.ts src/provider/Layers/ClaudeAdapter.user-input.test.ts src/provider/Layers/CodexAdapter.validation.test.ts src/provider/Layers/CodexAdapter.lifecycle.events.test.ts src/provider/Layers/CodexAdapter.lifecycle.codexEvents.test.ts` (10 files, 66 tests passed)
-- [x] Reduced the next active-path terminal warning slice in `apps/server/src/terminal/Layers/Manager.ts` by extracting drain-action derivation (`nextDrainProcessEventAction`), drain output/exit emitters, and start-session state-transition helpers (`markSessionAsStarting`, `setSessionRunning`, `handleStartFailure`) so `drainProcessEvents` drops out of the warning set without changing terminal runtime semantics; fixed a discovered regression by preserving `pendingHistoryControlSequence` on idle queue drains, then validated with targeted `pnpm exec eslint apps/server/src/terminal/Layers/Manager.ts` (warnings `4 -> 3`), focused `pnpm --filter @orxa-code/server exec vitest run src/terminal/Layers/Manager.history.test.ts src/terminal/Layers/Manager.basic.test.ts src/terminal/Layers/Manager.runtime.test.ts`, `pnpm --filter @orxa-code/server typecheck`, full `pnpm typecheck`, and honest root `pnpm lint` (repo warnings `110 -> 109`, 0 errors)
-- [x] Reduced the follow-on active-path terminal warning slice in `apps/server/src/terminal/Layers/Manager.ts` by hoisting `startSession` helper definitions out of the function body (`markSessionAsStarting`, `bindSessionProcessHandlers`, `setSessionRunning`, `handleStartFailure`) so `startSession` drops out of the warning set without changing terminal lifecycle behavior; validated with targeted `pnpm exec eslint apps/server/src/terminal/Layers/Manager.ts` (warnings `3 -> 2`), focused `pnpm --filter @orxa-code/server exec vitest run src/terminal/Layers/Manager.basic.test.ts src/terminal/Layers/Manager.history.test.ts src/terminal/Layers/Manager.runtime.test.ts`, full `pnpm typecheck`, and honest root `pnpm lint` (repo warnings `109 -> 108`, 0 errors)
-- [x] Extended maintainability threshold coverage to active `.js` / `.jsx` sources by adding a dedicated JS lint block in `eslint.config.js` (`apps/**/src/**/*.{js,jsx,mjs,cjs}` + `packages/**/src/**/*.{js,jsx,mjs,cjs}`), preserving TS rules and fixing flat-config ignore globs (`**/dist/**`, `**/dist-electron/**`, `**/coverage/**`, `**/node_modules/**`) after an initial failed lint run that incorrectly included built artifacts; final validation passed with `pnpm lint` (0 errors, 108 warnings) and `pnpm typecheck`
-- [x] Added duplication enforcement plumbing by scoping jscpd to active source surfaces (`.jscpd.json` pattern `**/src/**/*.{ts,tsx,js,jsx,mjs,cjs,json,css,html}`), adding a root `pnpm duplication` script (`pnpm exec jscpd --config .jscpd.json apps packages`), and wiring CI to run it as a blocking step; validated with `pnpm duplication` (passes at 1.68% total duplication under threshold 5), full `pnpm lint` (0 errors, 108 warnings), and full `pnpm typecheck`
-- [x] Maintainability burn-down complete — Phase 3 hotspots (Sidebar, ChatView, composerDraftStore, GitActionsControl, SettingsPanels, desktop main, CodexAdapter, ClaudeAdapter, ProviderRuntimeIngestion, ProjectionPipeline, GitManager, GitCore, terminal Manager, decider) plus remaining warning/error surface reduced via extraction-only refactors across parallel worker slices; the 121-warning + 38-error baseline is now 2 warnings (both upstream `react-hooks/incompatible-library` on TanStack Virtual `useVirtualizer` hardcoded in `eslint-plugin-react-hooks@7.0.1`) and 0 errors
-- [x] Blocking lint and duplication enforcement enabled — Phase 4A promoted `complexity ≤ 20`, `max-lines ≤ 500`, `max-lines-per-function ≤ 75` from `warn` to `error` in `eslint.config.js` (both TS/TSX and JS/JSX blocks); Phase 4B tightened `.jscpd.json` `threshold` from `5` to `0`
-- [x] Closed final 153 → 0 duplication clones via parallel dedupe slices plus cross-boundary wiring: `apps/web/src/store.helpers.ts` now imports `retainThreadMessageIdsAfterRevert` + `compareActivitiesBySequenceThenCreatedAt` from `@orxa-code/shared/projectionRevert`, and `apps/web/src/store.orchestrationEvents.ts` now imports `projectCreatedToCoreFields`, `threadCreatedToCoreFields`, and `threadMetaUpdatedToPatch` from `@orxa-code/shared/projectionEventPayloads`; widened `RevertMessageLike.turnId` to optional to accept the client `ChatMessage` shape
-- [x] Extracted `apps/server/src/codexAppServerManager.test.helpers.ts` harness helpers (`DEFAULT_BASE_SESSION`, `DEFAULT_ACCOUNT`, `makeBaseSession`, `makeBaseAccount`, `spyRequireSession`, `spySendRequest`, `spyUpdateSession`, `spyEmitEvent`, `spyWriteMessage`) so the four harness factories become thin compositions, eliminating the final 4 self-clones
-- [x] Phase 5 validation gate: `pnpm lint` 0 errors / 2 upstream-only warnings; `pnpm typecheck` clean across all 5 workspaces; `pnpm test` 1,346 passed across contracts (61), shared (46), desktop (31), web (600), server (608); `pnpm build` succeeded (web + server bundles produced); `pnpm smoke:artifact` passed against packaged `Orxa Code (Beta).app`; `pnpm duplication` reports 0 clones
-- [ ] Foundation ready for feature porting — **awaiting user sign-off** per hard-stop instruction (no automatic unlock)
-
-## Definition of Done
-
-This spec is done only when:
-
-- every hard requirement above is complete
-- every hard blocker is cleared
-- the repo is under the declared thresholds
-- the thresholds are enforced as blockers
-- the runtime remains healthy
-- feature porting is explicitly unblocked by evidence, not optimism
+- detect or create child-session linkage from OpenCode session semantics
+- materialize OpenCode child sessions as child threads
+- capture delegated prompt into the child thread
+- render child-session output as child-thread timeline content
+
+## OpenCode Implementation Notes
+
+- use upstream child-session semantics as the source of truth
+- reuse the shared thread-link model rather than introducing OpenCode-only child-session storage
+- keep built-in OpenCode subagents and custom subagents compatible
+
+## OpenCode Manual Validation Prompt
+
+Use an OpenCode thread in this repo and send:
+
+```text
+Investigate how thread archiving and thread rendering flow from orchestration to the sidebar in this repo.
+Delegate the work to subagents in parallel.
+Use one subagent to inspect apps/server/src/orchestration and persistence layers.
+Use one subagent to inspect apps/web/src/components/sidebar and session logic.
+Return a concise summary with the key files each subagent read.
+Do not make any changes.
+```
+
+## OpenCode Validation Expectations
+
+- child sessions surface as child threads in the sidebar
+- opening a child thread shows the delegated prompt and child output
+- parent/child navigation works naturally through the sidebar tree
+- archiving a completed OpenCode child thread behaves like any other thread
+
+## OpenCode Exit Gate
+
+- [ ] OpenCode child sessions map into shared thread-link model
+- [ ] OpenCode child threads render in sidebar
+- [ ] OpenCode child thread view is read-only and composerless
+- [ ] OpenCode validation prompt passes manually
+
+## Phase 3: Claude
+
+## Why Third
+
+Claude clearly supports subagents, but the current Orxa integration is less thread-native than Codex:
+
+- Task/Agent tool invocation is already recognized
+- task lifecycle is already captured
+- subagent context is detectable
+- but child-thread materialization is not yet present
+
+Claude should reuse the proven shared model after Codex and OpenCode.
+
+## Claude Scope
+
+- create child-thread candidates from Agent/Task tool invocation
+- correlate Claude subagent execution to child threads
+- capture delegated prompt as first user message
+- persist and render child output in the child thread
+
+## Claude Implementation Notes
+
+- prefer SDK stream correlation first
+- if needed, enrich finished child threads from transcript data after completion
+- keep the compatibility story for legacy `Task` and newer `Agent` naming
+
+## Claude Manual Validation Prompt
+
+Use a Claude thread in this repo and send:
+
+```text
+Review how provider runtime events become visible in the chat UI in this repo.
+Delegate the work to parallel subagents.
+Use one subagent to inspect apps/server/src/provider and apps/server/src/orchestration.
+Use another subagent to inspect apps/web/src/session-logic and apps/web/src/components/chat.
+Return a concise summary with the key files each subagent read.
+Do not make any changes.
+```
+
+## Claude Validation Expectations
+
+- Claude subagents appear as child threads
+- opening a child thread shows the exact delegated prompt
+- child thread output is readable without transcript spelunking
+- parent thread still shows useful delegated progress summaries
+
+## Claude Exit Gate
+
+- [ ] Claude subagents map into shared thread-link model
+- [ ] Claude child threads render in sidebar
+- [ ] Claude child thread view is read-only and composerless
+- [ ] Claude validation prompt passes manually
+
+## Phase 4: Optional Active Subagents Drawer
+
+Only consider this after all three providers pass.
+
+Possible scope:
+
+- compact live drawer above composer
+- active child threads only
+- click-through into real child threads
+- no separate transcript model
+
+This is optional polish, not part of the core provider rollout.
+
+## Required Test and Verification Discipline
+
+For each provider phase:
+
+- add targeted tests for new thread-link mapping/projection behavior
+- add targeted tests for sidebar child-thread rendering
+- add targeted tests for child-thread read-only chat mode
+- run affected targeted tests
+- run `pnpm typecheck`
+- run `pnpm lint`
+
+## Stop Conditions
+
+Stop the current phase and do not continue to the next provider if any of the following are true:
+
+- child thread exists but delegated prompt is missing
+- child output only appears in the parent and not in the child thread
+- child thread can send new prompts
+- archive behavior differs from normal thread lifecycle
+- provider-specific implementation starts bypassing the shared thread-link model
+
+## Completion Condition
+
+This spec is complete only when:
+
+- Codex, OpenCode, and Claude subagents all surface as child threads
+- child threads open in the standard chat pane in read-only mode
+- delegated prompts are visible
+- child output is readable
+- child threads can be archived
+- manual validation prompts pass for all three providers

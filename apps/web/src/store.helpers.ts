@@ -237,6 +237,7 @@ export function mapThread(thread: OrchestrationThread): Thread {
     branch: thread.branch,
     worktreePath: thread.worktreePath,
     handoff: thread.handoff,
+    parentLink: thread.parentLink,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map(activity => ({ ...activity })),
   }

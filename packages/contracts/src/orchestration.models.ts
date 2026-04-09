@@ -293,6 +293,28 @@ export const OrchestrationThreadHandoff = Schema.Struct({
 })
 export type OrchestrationThreadHandoff = typeof OrchestrationThreadHandoff.Type
 
+export const OrchestrationThreadRelationKind = Schema.Literals([
+  'subagent',
+  'plan_implementation',
+  'handoff',
+])
+export type OrchestrationThreadRelationKind = typeof OrchestrationThreadRelationKind.Type
+
+export const OrchestrationThreadParentLink = Schema.Struct({
+  parentThreadId: ThreadId,
+  relationKind: OrchestrationThreadRelationKind,
+  parentTurnId: Schema.NullOr(TurnId).pipe(Schema.withDecodingDefault(() => null)),
+  provider: Schema.NullOr(ProviderKind).pipe(Schema.withDecodingDefault(() => null)),
+  providerTaskId: Schema.NullOr(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(() => null)),
+  providerChildThreadId: Schema.NullOr(TrimmedNonEmptyString).pipe(
+    Schema.withDecodingDefault(() => null)
+  ),
+  agentLabel: Schema.NullOr(TrimmedNonEmptyString).pipe(Schema.withDecodingDefault(() => null)),
+  createdAt: IsoDateTime,
+  completedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(() => null)),
+})
+export type OrchestrationThreadParentLink = typeof OrchestrationThreadParentLink.Type
+
 export const threadCoreFields = {
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
@@ -304,6 +326,9 @@ export const threadCoreFields = {
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   handoff: Schema.NullOr(OrchestrationThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
+  parentLink: Schema.NullOr(OrchestrationThreadParentLink).pipe(
+    Schema.withDecodingDefault(() => null)
+  ),
 } as const
 
 export const OrchestrationThread = Schema.Struct({

@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import type { OrchestrationReadModel, ThreadId } from '@orxa-code/contracts'
 
 import {
   requireProject,
@@ -9,6 +10,33 @@ import {
 } from './commandInvariants.ts'
 import { nowIso } from './deciderShared.ts'
 import { createThreadEvent, type ThreadCommandInput } from './deciderThreadShared.ts'
+
+function listDescendantSubagentThreadIds(
+  readModel: OrchestrationReadModel,
+  parentThreadId: ThreadId
+): ThreadId[] {
+  const childIdsByParentId = new Map<ThreadId, ThreadId[]>()
+  for (const thread of readModel.threads) {
+    if (thread.parentLink?.relationKind !== 'subagent') {
+      continue
+    }
+    const childIds = childIdsByParentId.get(thread.parentLink.parentThreadId) ?? []
+    childIds.push(thread.id)
+    childIdsByParentId.set(thread.parentLink.parentThreadId, childIds)
+  }
+
+  const descendantIds: ThreadId[] = []
+  const queue = [...(childIdsByParentId.get(parentThreadId) ?? [])]
+  while (queue.length > 0) {
+    const nextChildId = queue.shift()
+    if (!nextChildId) {
+      continue
+    }
+    descendantIds.push(nextChildId)
+    queue.push(...(childIdsByParentId.get(nextChildId) ?? []))
+  }
+  return descendantIds
+}
 
 export function decideThreadCreateCommand({
   command,
@@ -38,6 +66,7 @@ export function decideThreadCreateCommand({
         branch: command.branch,
         worktreePath: command.worktreePath,
         handoff: command.handoff ?? null,
+        parentLink: command.parentLink ?? null,
         createdAt: command.createdAt,
         updatedAt: command.createdAt,
       },
@@ -70,15 +99,24 @@ export function decideThreadArchiveCommand({
   return Effect.gen(function* () {
     yield* requireThreadNotArchived({ readModel, command, threadId: command.threadId })
     const occurredAt = nowIso()
-    return createThreadEvent(command, {
-      type: 'thread.archived',
-      occurredAt,
-      payload: {
-        threadId: command.threadId,
-        archivedAt: occurredAt,
-        updatedAt: occurredAt,
-      },
-    })
+    const archivedThreadIds = [
+      command.threadId,
+      ...listDescendantSubagentThreadIds(readModel, command.threadId).filter(threadId => {
+        const thread = readModel.threads.find(candidate => candidate.id === threadId)
+        return thread?.archivedAt === null
+      }),
+    ]
+    return archivedThreadIds.map(threadId =>
+      createThreadEvent(command, {
+        type: 'thread.archived',
+        occurredAt,
+        payload: {
+          threadId,
+          archivedAt: occurredAt,
+          updatedAt: occurredAt,
+        },
+      })
+    )
   })
 }
 

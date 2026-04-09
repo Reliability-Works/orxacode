@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 
 import { createCollabNotificationHarness } from './codexAppServerManager.test.helpers'
 
-it('rewrites child notification turn ids onto the parent turn', () => {
+it('routes child notifications onto a deterministic child thread id', () => {
   const { manager, context, emitEvent } = createCollabNotificationHarness()
 
   ;(
@@ -38,13 +38,14 @@ it('rewrites child notification turn ids onto the parent turn', () => {
   expect(emitEvent).toHaveBeenLastCalledWith(
     expect.objectContaining({
       method: 'item/agentMessage/delta',
-      turnId: 'turn_parent',
+      threadId: 'codex-child:thread_1:child_provider_1',
+      turnId: 'turn_child_1',
       itemId: 'msg_child_1',
     })
   )
 })
 
-it('suppresses child lifecycle notifications so they cannot replace the parent turn', () => {
+it('emits child lifecycle notifications without mutating the parent session state', () => {
   const { manager, context, emitEvent, updateSession } = createCollabNotificationHarness()
 
   ;(
@@ -88,11 +89,24 @@ it('suppresses child lifecycle notifications so they cannot replace the parent t
     },
   })
 
-  expect(emitEvent).not.toHaveBeenCalled()
+  expect(emitEvent).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({
+      method: 'turn/started',
+      threadId: 'codex-child:thread_1:child_provider_1',
+    })
+  )
+  expect(emitEvent).toHaveBeenNthCalledWith(
+    2,
+    expect.objectContaining({
+      method: 'turn/completed',
+      threadId: 'codex-child:thread_1:child_provider_1',
+    })
+  )
   expect(updateSession).not.toHaveBeenCalled()
 })
 
-it('rewrites child approval requests onto the parent turn', () => {
+it('routes child approval requests onto the child thread', () => {
   const { manager, context, emitEvent } = createCollabNotificationHarness()
 
   ;(
@@ -129,14 +143,16 @@ it('rewrites child approval requests onto the parent turn', () => {
 
   expect(Array.from(context.pendingApprovals.values())[0]).toEqual(
     expect.objectContaining({
-      turnId: 'turn_parent',
+      threadId: 'codex-child:thread_1:child_provider_1',
+      turnId: 'turn_child_1',
       itemId: 'call_child_1',
     })
   )
   expect(emitEvent).toHaveBeenCalledWith(
     expect.objectContaining({
       method: 'item/commandExecution/requestApproval',
-      turnId: 'turn_parent',
+      threadId: 'codex-child:thread_1:child_provider_1',
+      turnId: 'turn_child_1',
       itemId: 'call_child_1',
     })
   )

@@ -42,6 +42,7 @@ export function createMakeThread(defaults: MakeThreadDefaults) {
       branch: null,
       worktreePath: null,
       handoff: null,
+      parentLink: null,
       ...overrides,
     }
   }

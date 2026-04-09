@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { ThreadHandoffMenu } from './ThreadHandoffMenu'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
+import { useThreadById } from '../../storeSelectors'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()
@@ -46,12 +47,7 @@ function ChatHeaderSplitActions() {
   if (!split || !split.splitOpen) {
     if (!split) return null
     return (
-      <Button
-        size="xs"
-        variant="outline"
-        onClick={split.toggleSplit}
-        aria-label="Open split view"
-      >
+      <Button size="xs" variant="outline" onClick={split.toggleSplit} aria-label="Open split view">
         <Columns2Icon className="size-3.5" />
       </Button>
     )
@@ -120,6 +116,25 @@ function ChatHeaderHandoffBanner() {
   )
 }
 
+function ChatHeaderSubagentBanner() {
+  const c = useChatViewCtx()
+  const thread = c.td.activeThread
+  const parentLink = thread?.parentLink
+  const parentThread = useThreadById(parentLink?.parentThreadId)
+  if (!thread || !parentLink) return null
+  const parentThreadTitle = parentThread?.title ?? 'Parent thread'
+  return (
+    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
+      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+        Subagent
+      </Badge>
+      <p className="truncate text-xs text-muted-foreground">
+        {thread.modelSelection.provider} / {thread.modelSelection.model} from {parentThreadTitle}
+      </p>
+    </div>
+  )
+}
+
 export function ChatViewHeaderPanel() {
   const c = useChatViewCtx()
   const { td, store, cd, gitCwd, setThreadError } = c
@@ -176,6 +191,7 @@ export function ChatViewHeaderPanel() {
           }
         />
       </header>
+      <ChatHeaderSubagentBanner />
       <ChatHeaderHandoffBanner />
       <ProviderStatusBanner status={activeProviderStatus} />
       <ThreadErrorBanner

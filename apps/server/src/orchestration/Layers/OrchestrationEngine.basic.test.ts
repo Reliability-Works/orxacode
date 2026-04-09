@@ -72,6 +72,7 @@ it('bootstraps the in-memory read model from persisted projections', async () =>
         branch: null,
         worktreePath: null,
         handoff: null,
+        parentLink: null,
         latestTurn: null,
         createdAt: '2026-03-03T00:00:02.000Z',
         updatedAt: '2026-03-03T00:00:03.000Z',
@@ -114,6 +115,85 @@ async function createBootstrapSystem(
       getThreadCheckpointContext: () => Effect.succeed(Option.none()),
     },
   })
+}
+
+async function createSubagentArchiveScenario(
+  system: Awaited<ReturnType<typeof createOrchestrationSystem>>,
+  createdAt: string
+) {
+  await system.run(
+    system.engine.dispatch(
+      createProjectCommand('project-subagent-archive', 'Project Subagent Archive', createdAt)
+    )
+  )
+  await system.run(
+    system.engine.dispatch(
+      createThreadCommand({
+        commandId: 'cmd-thread-parent-create',
+        threadId: 'thread-parent',
+        projectId: 'project-subagent-archive',
+        title: 'Parent',
+        createdAt,
+        runtimeMode: 'full-access',
+      })
+    )
+  )
+  await system.run(
+    system.engine.dispatch(
+      createThreadCommand({
+        commandId: 'cmd-thread-child-create',
+        threadId: 'thread-child',
+        projectId: 'project-subagent-archive',
+        title: 'Child',
+        createdAt,
+        runtimeMode: 'full-access',
+        parentLink: {
+          parentThreadId: ThreadId.makeUnsafe('thread-parent'),
+          relationKind: 'subagent',
+          parentTurnId: null,
+          provider: 'codex',
+          providerTaskId: null,
+          providerChildThreadId: 'provider-child-1',
+          agentLabel: 'code-reviewer',
+          createdAt,
+          completedAt: null,
+        },
+      })
+    )
+  )
+  await system.run(
+    system.engine.dispatch(
+      createThreadCommand({
+        commandId: 'cmd-thread-grandchild-create',
+        threadId: 'thread-grandchild',
+        projectId: 'project-subagent-archive',
+        title: 'Grandchild',
+        createdAt,
+        runtimeMode: 'full-access',
+        parentLink: {
+          parentThreadId: ThreadId.makeUnsafe('thread-child'),
+          relationKind: 'subagent',
+          parentTurnId: null,
+          provider: 'codex',
+          providerTaskId: null,
+          providerChildThreadId: 'provider-child-2',
+          agentLabel: 'researcher',
+          createdAt,
+          completedAt: null,
+        },
+      })
+    )
+  )
+}
+
+async function assertArchivedThreadIds(
+  system: Awaited<ReturnType<typeof createOrchestrationSystem>>,
+  threadIds: string[]
+) {
+  const readModel = await system.run(system.engine.getReadModel())
+  for (const threadId of threadIds) {
+    expect(readModel.threads.find(thread => thread.id === threadId)?.archivedAt).not.toBeNull()
+  }
 }
 
 it('returns deterministic read models for repeated reads', async () => {
@@ -197,6 +277,25 @@ it('archives and unarchives threads through orchestration commands', async () =>
       thread => thread.id === 'thread-archive'
     )?.archivedAt
   ).toBeNull()
+
+  await system.dispose()
+})
+
+it('archives descendant subagent threads when the parent thread is archived', async () => {
+  const createdAt = new Date().toISOString()
+  const system = await createOrchestrationSystem()
+
+  await createSubagentArchiveScenario(system, createdAt)
+
+  await system.run(
+    system.engine.dispatch({
+      type: 'thread.archive',
+      commandId: CommandId.makeUnsafe('cmd-thread-parent-archive'),
+      threadId: ThreadId.makeUnsafe('thread-parent'),
+    })
+  )
+
+  await assertArchivedThreadIds(system, ['thread-parent', 'thread-child', 'thread-grandchild'])
 
   await system.dispose()
 })

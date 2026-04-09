@@ -205,6 +205,7 @@ function buildTestThread(
     branch: 'main',
     worktreePath: null,
     handoff: null,
+    parentLink: null,
     latestTurn: null,
     createdAt: BROWSER_TEST_NOW_ISO,
     updatedAt: BROWSER_TEST_NOW_ISO,

@@ -2,6 +2,7 @@ import { ApprovalRequestId, ThreadId } from '@orxa-code/contracts'
 import { vi } from 'vitest'
 
 import { CodexAppServerManager } from './codexAppServerManager'
+import type { CodexChildRoute } from './codexChildThreads'
 
 export const asThreadId = (value: string): ThreadId => ThreadId.makeUnsafe(value)
 
@@ -15,6 +16,7 @@ interface BaseSession {
   runtimeMode: string
   model: string
   resumeCursor: { threadId: string }
+  activeTurnId?: string
   createdAt: string
   updatedAt: string
 }
@@ -142,7 +144,7 @@ export function createCollabNotificationHarness() {
     pending: new Map(),
     pendingApprovals: new Map(),
     pendingUserInputs: new Map(),
-    collabReceiverTurns: new Map<string, string>(),
+    collabReceiverTurns: new Map<string, CodexChildRoute>(),
     nextRequestId: 1,
     stopping: false,
   }

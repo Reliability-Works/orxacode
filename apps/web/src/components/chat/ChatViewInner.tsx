@@ -24,6 +24,7 @@ function ChatViewComposerForm() {
   const c = useChatViewCtx()
   const { composerFormRef } = c.scroll.refs
   const isGitRepo = c.cd.isGitRepo
+  if (c.td.isSubagentThread) return null
   return (
     <div className={cn('px-3 pt-1.5 sm:px-5 sm:pt-2', isGitRepo ? 'pb-1' : 'pb-3 sm:pb-4')}>
       <form
@@ -41,7 +42,7 @@ function ChatViewComposerForm() {
 function ChatViewBranchToolbarBlock() {
   const c = useChatViewCtx()
   const { td } = c
-  if (!td.activeThread || !c.cd.isGitRepo) return null
+  if (!td.activeThread || !c.cd.isGitRepo || td.isSubagentThread) return null
   return (
     <BranchToolbar
       threadId={td.activeThread.id}
@@ -158,7 +159,8 @@ function ChatViewTerminalDrawerBlock() {
   const c = useChatViewCtx()
   const { store, gitCwd } = c
   const { activeThread, activeProject } = c.td
-  if (!store.terminalState.terminalOpen || !activeProject || !activeThread) return null
+  if (c.td.isSubagentThread || !store.terminalState.terminalOpen || !activeProject || !activeThread)
+    return null
   return (
     <ThreadTerminalDrawer
       key={activeThread.id}

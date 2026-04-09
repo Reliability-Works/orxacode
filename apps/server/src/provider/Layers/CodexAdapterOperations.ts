@@ -169,9 +169,9 @@ function createSendTurnOperation(
 function createThreadStateOperations(
   manager: CodexAppServerManager
 ): Pick<CodexAdapterShape, 'interruptTurn' | 'readThread' | 'rollbackThread'> {
-  const interruptTurn: CodexAdapterShape['interruptTurn'] = (threadId, turnId) =>
+  const interruptTurn: CodexAdapterShape['interruptTurn'] = (threadId, turnId, providerThreadId) =>
     Effect.tryPromise({
-      try: () => manager.interruptTurn(threadId, turnId),
+      try: () => manager.interruptTurn(threadId, turnId, providerThreadId),
       catch: cause => toRequestError(threadId, 'turn/interrupt', cause),
     })
 

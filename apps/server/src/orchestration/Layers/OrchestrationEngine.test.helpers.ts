@@ -3,6 +3,7 @@ import {
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   MessageId,
+  type OrchestrationThreadParentLink,
   ProjectId,
   ThreadId,
   TurnId,
@@ -180,6 +181,7 @@ export function createThreadCommand(input: {
   readonly title: string
   readonly createdAt: string
   readonly runtimeMode?: 'approval-required' | 'full-access'
+  readonly parentLink?: OrchestrationThreadParentLink | null
 }) {
   return {
     type: 'thread.create' as const,
@@ -192,6 +194,7 @@ export function createThreadCommand(input: {
     runtimeMode: input.runtimeMode ?? 'approval-required',
     branch: null,
     worktreePath: null,
+    parentLink: input.parentLink ?? null,
     createdAt: input.createdAt,
   }
 }

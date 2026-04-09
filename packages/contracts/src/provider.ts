@@ -99,6 +99,7 @@ export type ProviderTurnStartResult = typeof ProviderTurnStartResult.Type
 export const ProviderInterruptTurnInput = Schema.Struct({
   threadId: ThreadId,
   turnId: Schema.optional(TurnId),
+  providerThreadId: Schema.optional(TrimmedNonEmptyString),
 })
 export type ProviderInterruptTurnInput = typeof ProviderInterruptTurnInput.Type
 

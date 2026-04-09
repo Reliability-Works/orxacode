@@ -74,6 +74,57 @@ function buildActivity(
   }
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function formatAgentLabel(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  return value
+    .split(/[\s_-]+/)
+    .filter(part => part.length > 0)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
+function extractSubagentLabel(payload: unknown): string | null {
+  const data = asRecord(payload)
+  const item = asRecord(data?.item)
+  return formatAgentLabel(
+    asTrimmedString(item?.subagent_type) ??
+      asTrimmedString(item?.subagentType) ??
+      asTrimmedString(item?.agent_label) ??
+      asTrimmedString(item?.agentLabel)
+  )
+}
+
+function subagentLifecycleSummary(
+  event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.updated' | 'item.completed' }>
+): string | null {
+  if (event.payload.itemType !== 'collab_agent_tool_call') {
+    return null
+  }
+  const agentLabel = extractSubagentLabel(event.payload.data)
+  switch (event.type) {
+    case 'item.started':
+      return agentLabel ? `Delegating to ${agentLabel}` : 'Delegating to subagent'
+    case 'item.updated':
+      return agentLabel ? `${agentLabel} update` : 'Subagent update'
+    case 'item.completed':
+      return agentLabel ? `Delegated to ${agentLabel}` : 'Delegated to subagent'
+  }
+}
+
 function requestActivities(
   event: ProviderRuntimeEvent,
   maybeSequence: { sequence?: number }
@@ -339,11 +390,12 @@ function toolLifecycleActivities(
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return []
       }
+      const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool updated'
       return [
         buildActivity(event, maybeSequence, {
           tone: 'tool',
           kind: 'tool.updated',
-          summary: event.payload.title ?? 'Tool updated',
+          summary,
           payload: {
             itemType: event.payload.itemType,
             ...(event.payload.status ? { status: event.payload.status } : {}),
@@ -358,11 +410,12 @@ function toolLifecycleActivities(
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return []
       }
+      const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool'
       return [
         buildActivity(event, maybeSequence, {
           tone: 'tool',
           kind: 'tool.completed',
-          summary: event.payload.title ?? 'Tool',
+          summary,
           payload: {
             itemType: event.payload.itemType,
             ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
@@ -376,11 +429,12 @@ function toolLifecycleActivities(
       if (!isToolLifecycleItemType(event.payload.itemType)) {
         return []
       }
+      const summary = subagentLifecycleSummary(event) ?? `${event.payload.title ?? 'Tool'} started`
       return [
         buildActivity(event, maybeSequence, {
           tone: 'tool',
           kind: 'tool.started',
-          summary: `${event.payload.title ?? 'Tool'} started`,
+          summary,
           payload: {
             itemType: event.payload.itemType,
             ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),

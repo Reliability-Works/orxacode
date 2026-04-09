@@ -190,6 +190,8 @@ export function itemTitle(itemType: CanonicalItemType): string | undefined {
       return 'MCP tool call'
     case 'dynamic_tool_call':
       return 'Tool call'
+    case 'collab_agent_tool_call':
+      return 'Subagent delegation'
     case 'web_search':
       return 'Web search'
     case 'image_view':

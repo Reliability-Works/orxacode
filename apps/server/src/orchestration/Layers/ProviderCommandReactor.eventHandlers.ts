@@ -10,6 +10,12 @@ import type { ProviderServiceError } from '../../provider/Errors.ts'
 import type { ProviderServiceShape } from '../../provider/Services/ProviderService.ts'
 import type { OrchestrationEngineShape } from '../Services/OrchestrationEngine.ts'
 import type { ProviderCommandReactorSessionRuntime } from './ProviderCommandReactor.sessionRuntime.ts'
+import {
+  buildSessionStateSnapshot,
+  listInterruptibleSubagentRoutes,
+  resolveProviderControlRoute,
+  propagateSubagentSessionState,
+} from './ProviderCommandReactor.subagentRouting.ts'
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -42,6 +48,35 @@ interface ProviderCommandReactorEventHandlerDeps extends ProviderCommandReactorS
     requestId: string
   ) => string
   readonly defaultRuntimeMode: 'full-access'
+}
+
+function interruptSubagentChildren(
+  deps: ProviderCommandReactorEventHandlerDeps,
+  input: {
+    readonly parentThreadId: ThreadId
+    readonly sessionThreadId: ThreadId
+  }
+) {
+  return Effect.gen(function* () {
+    const readModel = yield* deps.orchestrationEngine.getReadModel()
+    const childRoutes = listInterruptibleSubagentRoutes(
+      {
+        threads: readModel.threads,
+        parentThreadId: input.parentThreadId,
+      },
+      input.sessionThreadId
+    )
+    yield* Effect.forEach(
+      childRoutes,
+      childRoute =>
+        deps.providerService.interruptTurn({
+          threadId: childRoute.sessionThreadId,
+          turnId: childRoute.activeTurnId ?? undefined,
+          ...(childRoute.providerThreadId ? { providerThreadId: childRoute.providerThreadId } : {}),
+        }),
+      { concurrency: 1 }
+    ).pipe(Effect.asVoid)
+  })
 }
 
 function appendMissingSessionFailure(
@@ -235,7 +270,39 @@ function createProcessTurnInterruptRequested(deps: ProviderCommandReactorEventHa
       createdAt: event.payload.createdAt,
     })
     if (guard.handled) return
-    yield* deps.providerService.interruptTurn({ threadId: event.payload.threadId })
+    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
+    if (!controlRoute) {
+      return
+    }
+    yield* deps.providerService.interruptTurn({
+      threadId: controlRoute.sessionThreadId,
+      turnId: event.payload.turnId ?? controlRoute.activeTurnId ?? undefined,
+      ...(controlRoute.providerThreadId ? { providerThreadId: controlRoute.providerThreadId } : {}),
+    })
+    if (controlRoute.isSubagentThread) {
+      yield* deps.setThreadSession({
+        threadId: controlRoute.thread.id,
+        session: buildSessionStateSnapshot({
+          thread: controlRoute.thread,
+          status: 'interrupted',
+          createdAt: event.payload.createdAt,
+        }),
+        createdAt: event.payload.createdAt,
+      })
+      return
+    }
+    yield* interruptSubagentChildren(deps, {
+      parentThreadId: event.payload.threadId,
+      sessionThreadId: controlRoute.sessionThreadId,
+    })
+    const readModel = yield* deps.orchestrationEngine.getReadModel()
+    yield* propagateSubagentSessionState({
+      threads: readModel.threads,
+      parentThreadId: event.payload.threadId,
+      status: 'interrupted',
+      createdAt: event.payload.createdAt,
+      setThreadSession: deps.setThreadSession,
+    })
   })
 }
 
@@ -251,9 +318,13 @@ function createProcessApprovalResponseRequested(deps: ProviderCommandReactorEven
       createdAt: event.payload.createdAt,
     })
     if (guard.handled) return
+    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
+    if (!controlRoute) {
+      return
+    }
     yield* deps.providerService
       .respondToRequest({
-        threadId: event.payload.threadId,
+        threadId: controlRoute.sessionThreadId,
         requestId: event.payload.requestId,
         decision: event.payload.decision,
       })
@@ -287,9 +358,13 @@ function createProcessUserInputResponseRequested(deps: ProviderCommandReactorEve
       createdAt: event.payload.createdAt,
     })
     if (guard.handled) return
+    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
+    if (!controlRoute) {
+      return
+    }
     yield* deps.providerService
       .respondToUserInput({
-        threadId: event.payload.threadId,
+        threadId: controlRoute.sessionThreadId,
         requestId: event.payload.requestId,
         answers: event.payload.answers,
       })
@@ -315,27 +390,31 @@ function createProcessSessionStopRequested(deps: ProviderCommandReactorEventHand
   return Effect.fnUntraced(function* (
     event: Extract<ProviderIntentEvent, { type: 'thread.session-stop-requested' }>
   ) {
-    const thread = yield* deps.resolveThread(event.payload.threadId)
-    if (!thread) {
+    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
+    if (!controlRoute) {
       return
     }
+    const thread = controlRoute.thread
     if (thread.session && thread.session.status !== 'stopped') {
-      yield* deps.providerService.stopSession({ threadId: thread.id })
+      yield* deps.providerService.stopSession({ threadId: controlRoute.sessionThreadId })
     }
+    const rootThread = controlRoute.parentThread ?? thread
     yield* deps.setThreadSession({
-      threadId: thread.id,
-      session: {
-        threadId: thread.id,
+      threadId: rootThread.id,
+      session: buildSessionStateSnapshot({
+        thread: rootThread,
         status: 'stopped',
-        providerName: thread.session?.providerName ?? null,
-        providerSessionId: thread.session?.providerSessionId ?? null,
-        providerThreadId: thread.session?.providerThreadId ?? null,
-        runtimeMode: thread.session?.runtimeMode ?? deps.defaultRuntimeMode,
-        activeTurnId: null,
-        lastError: thread.session?.lastError ?? null,
-        updatedAt: event.payload.createdAt,
-      },
+        createdAt: event.payload.createdAt,
+      }),
       createdAt: event.payload.createdAt,
+    })
+    const readModel = yield* deps.orchestrationEngine.getReadModel()
+    yield* propagateSubagentSessionState({
+      threads: readModel.threads,
+      parentThreadId: rootThread.id,
+      status: 'stopped',
+      createdAt: event.payload.createdAt,
+      setThreadSession: deps.setThreadSession,
     })
   })
 }

@@ -1,6 +1,7 @@
 import type {
   ModelSelection,
   OrchestrationLatestTurn,
+  OrchestrationThreadParentLink,
   OrchestrationProposedPlanId,
   OrchestrationSessionStatus,
   OrchestrationThreadHandoff,
@@ -109,6 +110,7 @@ export interface Thread {
   branch: string | null
   worktreePath: string | null
   handoff: OrchestrationThreadHandoff | null
+  parentLink?: OrchestrationThreadParentLink | null
   turnDiffSummaries: TurnDiffSummary[]
   activities: OrchestrationThreadActivity[]
 }

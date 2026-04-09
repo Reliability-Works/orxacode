@@ -38,6 +38,7 @@ export function buildLocalDraftThread(
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
     handoff: null,
+    parentLink: null,
     turnDiffSummaries: [],
     activities: [],
     proposedPlans: [],

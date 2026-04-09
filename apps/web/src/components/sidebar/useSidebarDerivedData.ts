@@ -75,6 +75,7 @@ export function toSidebarThreadSnapshot(
     lastVisitedAt,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    parentLink: thread.parentLink ?? null,
     activities: thread.activities,
     proposedPlans: thread.proposedPlans,
     latestUserMessageAt: getLatestUserMessageAt(thread),

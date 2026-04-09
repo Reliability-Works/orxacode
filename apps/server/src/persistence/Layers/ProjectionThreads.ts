@@ -11,12 +11,17 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from '../Services/ProjectionThreads.ts'
-import { ModelSelection, OrchestrationThreadHandoff } from '@orxa-code/contracts'
+import {
+  ModelSelection,
+  OrchestrationThreadHandoff,
+  OrchestrationThreadParentLink,
+} from '@orxa-code/contracts'
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
     handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),
+    parentLink: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadParentLink)),
   })
 )
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type
@@ -36,6 +41,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           branch,
           worktree_path,
           handoff_json,
+          parent_link_json,
           latest_turn_id,
           created_at,
           updated_at,
@@ -52,6 +58,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           ${row.branch},
           ${row.worktreePath},
           ${row.handoff ? JSON.stringify(row.handoff) : null},
+          ${row.parentLink ? JSON.stringify(row.parentLink) : null},
           ${row.latestTurnId},
           ${row.createdAt},
           ${row.updatedAt},
@@ -68,6 +75,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           branch = excluded.branch,
           worktree_path = excluded.worktree_path,
           handoff_json = excluded.handoff_json,
+          parent_link_json = excluded.parent_link_json,
           latest_turn_id = excluded.latest_turn_id,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
@@ -93,6 +101,7 @@ function makeGetProjectionThreadRow(sql: SqlClient.SqlClient) {
           branch,
           worktree_path AS "worktreePath",
           handoff_json AS "handoff",
+          parent_link_json AS "parentLink",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -120,6 +129,7 @@ function makeListProjectionThreadRows(sql: SqlClient.SqlClient) {
           branch,
           worktree_path AS "worktreePath",
           handoff_json AS "handoff",
+          parent_link_json AS "parentLink",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

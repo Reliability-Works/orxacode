@@ -26,6 +26,7 @@ import {
   decideThreadActivityAppendCommand,
   decideThreadAssistantCompleteCommand,
   decideThreadAssistantDeltaCommand,
+  decideThreadMessageSeedCommand,
   decideThreadProposedPlanUpsertCommand,
   decideThreadRevertCompleteCommand,
   decideThreadTurnDiffCompleteCommand,
@@ -50,6 +51,8 @@ const THREAD_COMMAND_HANDLERS: Record<ThreadCommandType, ThreadHandler> = {
     decideThreadInteractionModeSetCommand(
       input as ThreadCommandInput<'thread.interaction-mode.set'>
     ),
+  'thread.message.seed': input =>
+    decideThreadMessageSeedCommand(input as ThreadCommandInput<'thread.message.seed'>),
   'thread.turn.start': input =>
     decideThreadTurnStartCommand(input as ThreadCommandInput<'thread.turn.start'>),
   'thread.turn.interrupt': input =>

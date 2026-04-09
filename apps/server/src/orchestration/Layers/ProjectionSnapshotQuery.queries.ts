@@ -4,6 +4,7 @@ import {
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
+  OrchestrationThreadParentLink,
   OrchestrationThreadHandoff,
   OrchestrationProposedPlanId,
   ModelSelection,
@@ -42,6 +43,7 @@ const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
     handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),
+    parentLink: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadParentLink)),
   })
 )
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -129,6 +131,7 @@ export function createListThreadRows(sql: SqlClient.SqlClient) {
           branch,
           worktree_path AS "worktreePath",
           handoff_json AS "handoff",
+          parent_link_json AS "parentLink",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

@@ -1,4 +1,5 @@
 import { type ProviderSession, TurnId } from '@orxa-code/contracts'
+import type { CodexChildRoute } from './codexChildThreads'
 
 import {
   normalizeProviderThreadId,
@@ -11,7 +12,7 @@ import {
 
 export interface NotificationSessionLike {
   session: ProviderSession
-  collabReceiverTurns: Map<string, TurnId>
+  collabReceiverTurns: Map<string, CodexChildRoute>
 }
 
 export type SessionUpdateFn = (updates: Partial<ProviderSession>) => void

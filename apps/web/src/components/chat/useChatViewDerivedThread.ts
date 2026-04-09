@@ -370,6 +370,7 @@ export function useChatViewDerivedThread(
   const { runtimeMode, interactionMode } = deriveThreadModes(composerDraft, activeThread)
   const isServerThread = serverThread !== undefined
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined
+  const isSubagentThread = activeThread?.parentLink?.relationKind === 'subagent'
 
   return {
     localDraftThread,
@@ -382,6 +383,7 @@ export function useChatViewDerivedThread(
     interactionMode,
     isServerThread,
     isLocalDraftThread,
+    isSubagentThread,
     canCheckoutPullRequestIntoThread: isLocalDraftThread,
     activeThreadId: activeThread?.id ?? null,
     activeLatestTurn: activeThread?.latestTurn ?? null,

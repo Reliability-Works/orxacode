@@ -77,6 +77,7 @@ export function makeReadModelThread(overrides: Partial<OrchestrationReadModel['t
     worktreePath: null,
     ...overrides,
     handoff: overrides.handoff ?? null,
+    parentLink: overrides.parentLink ?? null,
     latestTurn: overrides.latestTurn ?? null,
     createdAt: overrides.createdAt ?? '2026-02-27T00:00:00.000Z',
     updatedAt: overrides.updatedAt ?? '2026-02-27T00:00:00.000Z',

@@ -11,11 +11,10 @@ import {
   ThreadId,
   TurnId,
 } from '@orxa-code/contracts'
+import { readCodexChildThreadDescriptors, type CodexChildRoute } from './codexChildThreads'
 
 import {
   normalizeCodexModelSlug,
-  readArrayField,
-  readObjectField,
   readProviderConversationId,
   readStringField,
   type JsonRpcNotification,
@@ -33,7 +32,7 @@ export type CodexSessionContextLike = {
   pending: Map<PendingRequestKey, PendingRequest>
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>
   pendingUserInputs: Map<ApprovalRequestId, PendingUserInputRequest>
-  collabReceiverTurns: Map<string, TurnId>
+  collabReceiverTurns: Map<string, CodexChildRoute>
   nextRequestId: number
   stopping: boolean
 }
@@ -107,7 +106,7 @@ export function buildApprovalDecisionEvent(
     id: EventId.makeUnsafe(randomUUID()),
     kind: 'notification',
     provider: 'codex',
-    threadId: context.session.threadId,
+    threadId: pendingRequest.threadId,
     createdAt: new Date().toISOString(),
     method: 'item/requestApproval/decision',
     turnId: pendingRequest.turnId,
@@ -131,7 +130,7 @@ export function buildUserInputAnsweredEvent(
     id: EventId.makeUnsafe(randomUUID()),
     kind: 'notification',
     provider: 'codex',
-    threadId: context.session.threadId,
+    threadId: pendingRequest.threadId,
     createdAt: new Date().toISOString(),
     method: 'item/tool/requestUserInput/answered',
     turnId: pendingRequest.turnId,
@@ -148,7 +147,7 @@ export function buildProviderNotificationEvent(
   context: CodexSessionContextLike,
   notification: JsonRpcNotification,
   rawRoute: { turnId?: TurnId; itemId?: import('@orxa-code/contracts').ProviderItemId },
-  childParentTurnId: TurnId | undefined
+  childRoute: CodexChildRoute | undefined
 ): ProviderEvent {
   const textDelta =
     notification.method === 'item/agentMessage/delta'
@@ -159,12 +158,10 @@ export function buildProviderNotificationEvent(
     id: EventId.makeUnsafe(randomUUID()),
     kind: 'notification',
     provider: 'codex',
-    threadId: context.session.threadId,
+    threadId: childRoute?.childThreadId ?? context.session.threadId,
     createdAt: new Date().toISOString(),
     method: notification.method,
-    ...((childParentTurnId ?? rawRoute.turnId)
-      ? { turnId: childParentTurnId ?? rawRoute.turnId }
-      : {}),
+    ...(rawRoute.turnId ? { turnId: rawRoute.turnId } : {}),
     ...(rawRoute.itemId ? { itemId: rawRoute.itemId } : {}),
     textDelta,
     payload: notification.params,
@@ -230,7 +227,7 @@ export function createSessionContext(
 export function readChildParentTurnId(
   context: CodexSessionContextLike,
   params: unknown
-): TurnId | undefined {
+): CodexChildRoute | undefined {
   const providerConversationId = readProviderConversationId(params)
   if (!providerConversationId) {
     return undefined
@@ -246,18 +243,11 @@ export function rememberCollabReceiverTurns(
   if (!parentTurnId) {
     return
   }
-  const payload = readObjectField(params)
-  const item = readObjectField(payload, 'item') ?? payload
-  const itemType = readStringField(item, 'type') ?? readStringField(item, 'kind')
-  if (itemType !== 'collabAgentToolCall') {
-    return
-  }
-
-  const receiverThreadIds =
-    readArrayField(item, 'receiverThreadIds')
-      ?.map(value => (typeof value === 'string' ? value : null))
-      .filter((value): value is string => value !== null) ?? []
-  for (const receiverThreadId of receiverThreadIds) {
-    context.collabReceiverTurns.set(receiverThreadId, parentTurnId)
+  const childDescriptors = readCodexChildThreadDescriptors(context.session.threadId, params)
+  for (const childDescriptor of childDescriptors) {
+    context.collabReceiverTurns.set(childDescriptor.providerChildThreadId, {
+      parentTurnId,
+      childThreadId: childDescriptor.childThreadId,
+    })
   }
 }

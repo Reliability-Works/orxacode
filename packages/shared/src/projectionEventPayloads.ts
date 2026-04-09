@@ -43,6 +43,7 @@ export interface ThreadCreatedCoreFields {
   readonly branch: ThreadCreatedEvent['payload']['branch']
   readonly worktreePath: ThreadCreatedEvent['payload']['worktreePath']
   readonly handoff: OrchestrationThread['handoff']
+  readonly parentLink: OrchestrationThread['parentLink']
   readonly createdAt: ThreadCreatedEvent['payload']['createdAt']
   readonly updatedAt: ThreadCreatedEvent['payload']['updatedAt']
   readonly archivedAt: null
@@ -60,6 +61,7 @@ export function threadCreatedToCoreFields(event: ThreadCreatedEvent): ThreadCrea
     branch: event.payload.branch,
     worktreePath: event.payload.worktreePath,
     handoff: event.payload.handoff ?? null,
+    parentLink: event.payload.parentLink ?? null,
     createdAt: event.payload.createdAt,
     updatedAt: event.payload.updatedAt,
     archivedAt: null,

@@ -8,6 +8,7 @@ import { ProviderSessionRuntimeRepository } from '../../persistence/Services/Pro
 import {
   asRequestId,
   asThreadId,
+  asTurnId,
   assertStartPayload,
   makeProviderServiceLayer,
 } from './ProviderService.test.helpers.ts'
@@ -16,8 +17,8 @@ const routing = makeProviderServiceLayer()
 const codex = routing.codex!
 const claude = routing.claude!
 
-routing.layer('ProviderServiceLive routing operations', it => {
-  it.effect('routes provider operations and rollback conversation', () =>
+routing.layer('ProviderServiceLive send/interrupt routing', it => {
+  it.effect('routes sendTurn and interrupt operations', () =>
     Effect.gen(function* () {
       const provider = yield* ProviderService
 
@@ -29,9 +30,6 @@ routing.layer('ProviderServiceLive routing operations', it => {
       })
       assert.equal(session.provider, 'codex')
 
-      const sessions = yield* provider.listSessions()
-      assert.equal(sessions.length, 1)
-
       yield* provider.sendTurn({
         threadId: session.threadId,
         input: 'hello',
@@ -40,7 +38,22 @@ routing.layer('ProviderServiceLive routing operations', it => {
       assert.equal(codex.sendTurn.mock.calls.length, 1)
 
       yield* provider.interruptTurn({ threadId: session.threadId })
-      assert.deepEqual(codex.interruptTurn.mock.calls, [[session.threadId, undefined]])
+      assert.deepEqual(codex.interruptTurn.mock.calls, [[session.threadId, undefined, undefined]])
+    })
+  )
+})
+
+routing.layer('ProviderServiceLive request routing', it => {
+  it.effect('routes approval and user-input responses', () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService
+
+      const session = yield* provider.startSession(asThreadId('thread-approval-1'), {
+        provider: 'codex',
+        threadId: asThreadId('thread-approval-1'),
+        cwd: '/tmp/project',
+        runtimeMode: 'full-access',
+      })
 
       yield* provider.respondToRequest({
         threadId: session.threadId,
@@ -67,6 +80,24 @@ routing.layer('ProviderServiceLive routing operations', it => {
           },
         ],
       ])
+    })
+  )
+})
+
+routing.layer('ProviderServiceLive rollback/stop routing', it => {
+  it.effect('routes rollback and stop session operations', () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService
+
+      const session = yield* provider.startSession(asThreadId('thread-stop-1'), {
+        provider: 'codex',
+        threadId: asThreadId('thread-stop-1'),
+        cwd: '/tmp/project',
+        runtimeMode: 'full-access',
+      })
+
+      const sessions = yield* provider.listSessions()
+      assert.equal(sessions.length >= 1, true)
 
       yield* provider.rollbackConversation({
         threadId: session.threadId,
@@ -88,6 +119,30 @@ routing.layer('ProviderServiceLive routing operations', it => {
           issue: `Cannot route thread '${session.threadId}' because no persisted provider binding exists.`,
         })
       )
+    })
+  )
+
+  it.effect('passes provider child thread overrides through interrupt routing', () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService
+
+      const session = yield* provider.startSession(asThreadId('thread-interrupt-child'), {
+        provider: 'codex',
+        threadId: asThreadId('thread-interrupt-child'),
+        runtimeMode: 'full-access',
+      })
+
+      yield* provider.interruptTurn({
+        threadId: session.threadId,
+        turnId: asTurnId('turn-child-1'),
+        providerThreadId: 'child-provider-1',
+      })
+
+      assert.deepEqual(codex.interruptTurn.mock.calls.at(-1), [
+        session.threadId,
+        asTurnId('turn-child-1'),
+        'child-provider-1',
+      ])
     })
   )
 })

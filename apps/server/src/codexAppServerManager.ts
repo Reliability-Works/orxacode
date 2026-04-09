@@ -19,7 +19,6 @@ import {
   killChildTree,
   readResumeThreadId,
   readRouteFields,
-  shouldSuppressChildConversationNotification,
   toCodexUserInputAnswers,
   type JsonRpcNotification,
   type JsonRpcRequest,
@@ -140,10 +139,14 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
     return this.buildTurnStartResult(context, turnId)
   }
 
-  async interruptTurn(threadId: ThreadId, turnId?: TurnId): Promise<void> {
+  async interruptTurn(
+    threadId: ThreadId,
+    turnId?: TurnId,
+    providerThreadIdOverride?: string
+  ): Promise<void> {
     const context = this.requireSession(threadId)
     const effectiveTurnId = turnId ?? context.session.activeTurnId
-    const providerThreadId = readResumeCursor(context.session)
+    const providerThreadId = providerThreadIdOverride ?? readResumeCursor(context.session)
     if (!effectiveTurnId || !providerThreadId) {
       return
     }
@@ -292,14 +295,9 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   ): void {
     const rawRoute = readRouteFields(notification.params)
     rememberCollabReceiverTurns(context, notification.params, rawRoute.turnId)
-    const childParentTurnId = readChildParentTurnId(context, notification.params)
-    const isChildConversation = childParentTurnId !== undefined
-    if (isChildConversation && shouldSuppressChildConversationNotification(notification.method)) {
-      return
-    }
-    this.emitEvent(
-      buildProviderNotificationEvent(context, notification, rawRoute, childParentTurnId)
-    )
+    const childRoute = readChildParentTurnId(context, notification.params)
+    const isChildConversation = childRoute !== undefined
+    this.emitEvent(buildProviderNotificationEvent(context, notification, rawRoute, childRoute))
     applySessionNotificationStateExternal(
       context,
       notification,
@@ -421,8 +419,8 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   }
 
   private handleServerRequest(context: CodexSessionContext, request: JsonRpcRequest): void {
-    const childParentTurnId = readChildParentTurnId(context, request.params)
-    handleServerRequest(context, request, childParentTurnId, event => this.emitEvent(event))
+    const childRoute = readChildParentTurnId(context, request.params)
+    handleServerRequest(context, request, childRoute, event => this.emitEvent(event))
   }
 
   private sendRequest<T>(

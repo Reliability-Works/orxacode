@@ -6,8 +6,8 @@ import {
   EventId,
   type ProviderEvent,
   type ProviderSession,
-  TurnId,
 } from '@orxa-code/contracts'
+import type { CodexChildRoute } from './codexChildThreads'
 
 import {
   readRouteFields,
@@ -26,7 +26,7 @@ export interface TransportContext {
   pending: Map<PendingRequestKey, PendingRequest>
   pendingApprovals: Map<ApprovalRequestId, PendingApprovalRequest>
   pendingUserInputs: Map<ApprovalRequestId, PendingUserInputRequest>
-  collabReceiverTurns: Map<string, TurnId>
+  collabReceiverTurns: Map<string, CodexChildRoute>
   nextRequestId: number
 }
 
@@ -89,11 +89,12 @@ export function handleResponse(context: TransportContext, response: JsonRpcRespo
 export function handleServerRequest(
   context: TransportContext,
   request: JsonRpcRequest,
-  childParentTurnId: TurnId | undefined,
+  childRoute: CodexChildRoute | undefined,
   emitEvent: (event: ProviderEvent) => void
 ): void {
   const rawRoute = readRouteFields(request.params)
-  const effectiveTurnId = childParentTurnId ?? rawRoute.turnId
+  const effectiveTurnId = rawRoute.turnId
+  const effectiveThreadId = childRoute?.childThreadId ?? context.session.threadId
   const requestKind = requestKindForMethod(request.method)
   let requestId: ApprovalRequestId | undefined
   if (requestKind) {
@@ -108,7 +109,7 @@ export function handleServerRequest(
             ? 'item/fileRead/requestApproval'
             : 'item/fileChange/requestApproval',
       requestKind,
-      threadId: context.session.threadId,
+      threadId: effectiveThreadId,
       ...(effectiveTurnId ? { turnId: effectiveTurnId } : {}),
       ...(rawRoute.itemId ? { itemId: rawRoute.itemId } : {}),
     }
@@ -120,7 +121,7 @@ export function handleServerRequest(
     context.pendingUserInputs.set(requestId, {
       requestId,
       jsonRpcId: request.id,
-      threadId: context.session.threadId,
+      threadId: effectiveThreadId,
       ...(effectiveTurnId ? { turnId: effectiveTurnId } : {}),
       ...(rawRoute.itemId ? { itemId: rawRoute.itemId } : {}),
     })
@@ -130,7 +131,7 @@ export function handleServerRequest(
     id: EventId.makeUnsafe(randomUUID()),
     kind: 'request',
     provider: 'codex',
-    threadId: context.session.threadId,
+    threadId: effectiveThreadId,
     createdAt: new Date().toISOString(),
     method: request.method,
     ...(effectiveTurnId ? { turnId: effectiveTurnId } : {}),

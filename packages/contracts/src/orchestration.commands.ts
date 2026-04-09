@@ -15,6 +15,7 @@ import {
   ChatAttachment,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ModelSelection,
+  OrchestrationThreadParentLink,
   OrchestrationThreadHandoff,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointStatus,
@@ -75,9 +76,22 @@ export const ThreadCreateCommand = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
+  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
   createdAt: IsoDateTime,
 })
 export type ThreadCreateCommand = typeof ThreadCreateCommand.Type
+
+export const ThreadMessageSeedCommand = Schema.Struct({
+  type: Schema.Literal('thread.message.seed'),
+  commandId: CommandId,
+  threadId: ThreadId,
+  messageId: MessageId,
+  role: Schema.Literals(['user', 'assistant', 'system']),
+  text: Schema.String,
+  turnId: Schema.optional(Schema.NullOr(TurnId)),
+  createdAt: IsoDateTime,
+})
+export type ThreadMessageSeedCommand = typeof ThreadMessageSeedCommand.Type
 
 export const ThreadDeleteCommand = Schema.Struct({
   type: Schema.Literal('thread.delete'),
@@ -207,6 +221,7 @@ export const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
+  ThreadMessageSeedCommand,
   ThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
   ThreadApprovalRespondCommand,
@@ -228,6 +243,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
+  ThreadMessageSeedCommand,
   ClientThreadTurnStartCommand,
   ThreadTurnInterruptCommand,
   ThreadApprovalRespondCommand,

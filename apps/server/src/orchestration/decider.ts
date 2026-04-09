@@ -15,6 +15,7 @@ type ThreadCommandType =
   | 'thread.meta.update'
   | 'thread.runtime-mode.set'
   | 'thread.interaction-mode.set'
+  | 'thread.message.seed'
   | 'thread.turn.start'
   | 'thread.turn.interrupt'
   | 'thread.approval.respond'
@@ -42,6 +43,7 @@ const THREAD_COMMAND_TYPES = new Set<ThreadCommandType>([
   'thread.meta.update',
   'thread.runtime-mode.set',
   'thread.interaction-mode.set',
+  'thread.message.seed',
   'thread.turn.start',
   'thread.turn.interrupt',
   'thread.approval.respond',

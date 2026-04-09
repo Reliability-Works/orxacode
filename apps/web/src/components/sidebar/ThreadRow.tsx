@@ -25,6 +25,7 @@ export type SidebarThreadSnapshot = Pick<
   | 'interactionMode'
   | 'latestTurn'
   | 'modelSelection'
+  | 'parentLink'
   | 'projectId'
   | 'proposedPlans'
   | 'session'
@@ -109,6 +110,7 @@ export interface ThreadRowArchiveState {
 
 export interface ThreadRowProps {
   thread: SidebarThreadSnapshot
+  nestingLevel?: number
   isActive: boolean
   isSelected: boolean
   jumpLabel: string | null
@@ -449,6 +451,7 @@ function ThreadRowButton(
     terminalStatus,
     isConfirmingArchive,
     orderedProjectThreadIds,
+    nestingLevel = 0,
     rowClassName,
     onThreadClick,
     onThreadNavigate,
@@ -465,6 +468,7 @@ function ThreadRowButton(
       isActive={isActive}
       data-testid={`thread-row-${thread.id}`}
       className={`${rowClassName} relative isolate`}
+      style={nestingLevel > 0 ? { paddingLeft: `${8 + nestingLevel * 14}px` } : undefined}
       onClick={event => {
         onThreadClick(event, thread.id, orderedProjectThreadIds)
       }}

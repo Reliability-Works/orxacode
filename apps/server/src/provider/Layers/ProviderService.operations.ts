@@ -163,7 +163,7 @@ function createInterruptTurn(input: {
       operation: 'ProviderService.interruptTurn',
       allowRecovery: true,
     })
-    yield* routed.adapter.interruptTurn(routed.threadId, request.turnId)
+    yield* routed.adapter.interruptTurn(routed.threadId, request.turnId, request.providerThreadId)
     yield* input.analytics.record('provider.turn.interrupted', {
       provider: routed.adapter.provider,
     })

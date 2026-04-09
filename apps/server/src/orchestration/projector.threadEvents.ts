@@ -56,6 +56,7 @@ function handleThreadCreatedEvent(nextBase: OrchestrationReadModel, event: Orche
         branch: payload.branch,
         worktreePath: payload.worktreePath,
         handoff: payload.handoff ?? null,
+        parentLink: payload.parentLink ?? null,
         latestTurn: null,
         createdAt: payload.createdAt,
         updatedAt: payload.updatedAt,

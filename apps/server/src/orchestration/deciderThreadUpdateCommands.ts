@@ -20,6 +20,21 @@ type AssistantMessageCommand = ThreadCommandInput<
   'thread.message.assistant.delta' | 'thread.message.assistant.complete'
 >['command']
 
+function buildSeededMessageSentPayload(
+  command: ThreadCommandInput<'thread.message.seed'>['command']
+) {
+  return {
+    threadId: command.threadId,
+    messageId: command.messageId,
+    role: command.role,
+    text: command.text,
+    turnId: command.turnId ?? null,
+    streaming: false,
+    createdAt: command.createdAt,
+    updatedAt: command.createdAt,
+  }
+}
+
 function buildAssistantMessageSentPayload(
   command: AssistantMessageCommand,
   options: { readonly text: string; readonly streaming: boolean }
@@ -68,6 +83,20 @@ export function decideThreadAssistantCompleteCommand({
   return decideAssistantMessageSentCommand(command, readModel, {
     text: '',
     streaming: false,
+  })
+}
+
+export function decideThreadMessageSeedCommand({
+  command,
+  readModel,
+}: ThreadCommandInput<'thread.message.seed'>) {
+  return Effect.gen(function* () {
+    yield* requireThread({ readModel, command, threadId: command.threadId })
+    return createThreadEvent(command, {
+      type: 'thread.message-sent',
+      occurredAt: command.createdAt,
+      payload: buildSeededMessageSentPayload(command),
+    })
   })
 }
 

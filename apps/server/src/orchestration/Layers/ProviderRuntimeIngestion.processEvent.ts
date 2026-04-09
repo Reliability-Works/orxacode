@@ -1,5 +1,12 @@
-import { MessageId, type ProviderRuntimeEvent, ThreadId, TurnId } from '@orxa-code/contracts'
+import {
+  MessageId,
+  type OrchestrationReadModel,
+  type ProviderRuntimeEvent,
+  ThreadId,
+  TurnId,
+} from '@orxa-code/contracts'
 import { Effect } from 'effect'
+import { readCodexChildThreadDescriptors } from '../../codexChildThreads.ts'
 
 import {
   proposedPlanIdFromEvent,
@@ -18,6 +25,143 @@ import {
 } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
 
 export type { ProcessRuntimeEventDeps } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
+
+function buildSubagentThreadTitle(agentLabel: string | null): string {
+  const trimmed = agentLabel?.trim()
+  if (!trimmed) {
+    return 'Codex Subagent'
+  }
+  return trimmed
+    .split(/[\s_-]+/)
+    .filter(part => part.length > 0)
+    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ')
+}
+
+function buildSeedMessageText(
+  descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number],
+  event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>
+): string {
+  const prompt =
+    descriptor.prompt?.trim() ??
+    (typeof event.payload.detail === 'string' ? event.payload.detail.trim() : '')
+  if (prompt.length > 0) {
+    return prompt
+  }
+  return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
+}
+
+function isCodexCollabLifecycleEvent(
+  event: ProviderRuntimeEvent
+): event is Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }> {
+  return (
+    event.provider === 'codex' &&
+    (event.type === 'item.started' || event.type === 'item.completed') &&
+    event.payload.itemType === 'collab_agent_tool_call'
+  )
+}
+
+function buildSubagentParentLink(
+  thread: ReadModelThread,
+  descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number],
+  event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>
+) {
+  return {
+    parentThreadId: thread.id,
+    relationKind: 'subagent' as const,
+    parentTurnId: toTurnId(event.turnId) ?? null,
+    provider: event.provider,
+    providerTaskId: null,
+    providerChildThreadId: descriptor.providerChildThreadId,
+    agentLabel: descriptor.agentLabel,
+    createdAt: event.createdAt,
+    completedAt: null,
+  }
+}
+
+const createCodexSubagentThread = (deps: ProcessRuntimeEventDeps) =>
+  Effect.fn('createCodexSubagentThread')(function* (
+    event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>,
+    thread: ReadModelThread,
+    descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number]
+  ) {
+    yield* deps.orchestrationEngine.dispatch({
+      type: 'thread.create',
+      commandId: providerCommandId(
+        event,
+        `subagent-thread-create:${descriptor.providerChildThreadId}`
+      ),
+      threadId: descriptor.childThreadId,
+      projectId: thread.projectId,
+      title: buildSubagentThreadTitle(descriptor.agentLabel),
+      modelSelection: thread.modelSelection,
+      runtimeMode: thread.runtimeMode,
+      interactionMode: thread.interactionMode,
+      branch: thread.branch,
+      worktreePath: thread.worktreePath,
+      parentLink: buildSubagentParentLink(thread, descriptor, event),
+      createdAt: event.createdAt,
+    })
+
+    yield* deps.orchestrationEngine.dispatch({
+      type: 'thread.session.set',
+      commandId: providerCommandId(
+        event,
+        `subagent-thread-session-set:${descriptor.providerChildThreadId}`
+      ),
+      threadId: descriptor.childThreadId,
+      session: {
+        threadId: descriptor.childThreadId,
+        status: 'running',
+        providerName: event.provider,
+        providerSessionId: thread.session?.providerSessionId ?? null,
+        providerThreadId: descriptor.providerChildThreadId,
+        runtimeMode: thread.runtimeMode,
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: event.createdAt,
+      },
+      createdAt: event.createdAt,
+    })
+
+    yield* deps.orchestrationEngine.dispatch({
+      type: 'thread.message.seed',
+      commandId: providerCommandId(
+        event,
+        `subagent-thread-seed:${descriptor.providerChildThreadId}`
+      ),
+      threadId: descriptor.childThreadId,
+      messageId: MessageId.makeUnsafe(`seed:${descriptor.childThreadId}:delegated-prompt`),
+      role: 'user',
+      text: buildSeedMessageText(descriptor, event),
+      turnId: null,
+      createdAt: event.createdAt,
+    })
+  })
+
+const ensureCodexChildThreadsForEvent = (deps: ProcessRuntimeEventDeps) => {
+  const createSubagentThread = createCodexSubagentThread(deps)
+  return Effect.fn('ensureCodexChildThreadsForEvent')(function* (
+    event: ProviderRuntimeEvent,
+    thread: ReadModelThread,
+    readModel: OrchestrationReadModel
+  ) {
+    if (!isCodexCollabLifecycleEvent(event)) {
+      return
+    }
+
+    const childDescriptors = readCodexChildThreadDescriptors(
+      thread.id,
+      event.payload.data ?? event.raw?.payload
+    )
+    for (const descriptor of childDescriptors) {
+      if (readModel.threads.some(entry => entry.id === descriptor.childThreadId)) {
+        continue
+      }
+      yield* createSubagentThread(event, thread, descriptor)
+    }
+  })
+}
 
 function buildLifecycleContext(
   event: ProviderRuntimeEvent,
@@ -153,6 +297,7 @@ const runTerminalSteps = (deps: ProcessRuntimeEventDeps, dispatchers: RuntimeEve
 
 export const createProcessRuntimeEvent = (deps: ProcessRuntimeEventDeps) => {
   const dispatchers = makeRuntimeEventDispatchers(deps)
+  const ensureCodexChildThreads = ensureCodexChildThreadsForEvent(deps)
   const lifecycleStep = runLifecycleStep(dispatchers)
   const assistantCompletionSteps = runAssistantCompletionSteps(dispatchers)
   const terminalSteps = runTerminalSteps(deps, dispatchers)
@@ -161,6 +306,8 @@ export const createProcessRuntimeEvent = (deps: ProcessRuntimeEventDeps) => {
     const readModel = yield* deps.orchestrationEngine.getReadModel()
     const thread = readModel.threads.find(entry => entry.id === event.threadId)
     if (!thread) return
+
+    yield* ensureCodexChildThreads(event, thread, readModel)
 
     const ctx = buildLifecycleContext(event, thread)
 

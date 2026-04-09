@@ -51,6 +51,7 @@ const buildOrchestrationSuccessApp = (now: string) =>
                 branch: null,
                 worktreePath: null,
                 handoff: null,
+                parentLink: null,
                 createdAt: now,
                 updatedAt: now,
                 archivedAt: null,

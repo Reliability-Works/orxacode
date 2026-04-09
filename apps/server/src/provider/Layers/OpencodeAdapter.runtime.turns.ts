@@ -253,7 +253,11 @@ export const sendTurn = (
 
 export const interruptTurn = (
   deps: OpencodeAdapterDeps
-): ((threadId: ThreadId, turnId?: TurnId) => Effect.Effect<void, ProviderAdapterError>) =>
+): ((
+  threadId: ThreadId,
+  turnId?: TurnId,
+  providerThreadId?: string
+) => Effect.Effect<void, ProviderAdapterError>) =>
   Effect.fn('opencode.interruptTurn')(function* (threadId) {
     const context = yield* requireOpencodeSession(deps, threadId)
     if (!context.turnState) return

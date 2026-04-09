@@ -108,7 +108,7 @@ function useSidebarRenderedAndKeyboardNav(
     routeThreadId: s.routeThreadId,
     renderedProjects: rendered.renderedProjects.map(rp => ({
       shouldShowThreadPanel: rp.shouldShowThreadPanel,
-      renderedThreads: rp.renderedThreads.map(t => ({ id: t.id })),
+      renderedThreads: rp.renderedThreadEntries.map(t => ({ id: t.thread.id })),
     })),
     navigateToThread: threadActions.navigateToThread,
     updateThreadJumpHintsVisibility,
@@ -128,22 +128,22 @@ export function useSidebarWiring(s: StoreBindings) {
     shortcutLabelForCommand(s.keybindings, 'chat.new', derived.sidebarShortcutLabelOptions)
   const { getProjectItemProps, getThreadRowProps, confirmingArchiveThreadId } =
     useSidebarCallbackFactories({
-    threadActions,
-    projectActions,
-    keyboardNavThreadJumpLabelById: keyboardNav.threadJumpLabelById,
-    terminalStateByThreadId: s.terminalStateByThreadId,
-    prByThreadId: derived.prByThreadId,
-    routeThreadId: s.routeThreadId,
-    selectedThreadIds: s.selectedThreadIds,
-    clearSelection: s.clearSelection,
-    expandThreadListForProject: rendered.expandThreadListForProject,
-    collapseThreadListForProject: rendered.collapseThreadListForProject,
-    isManualProjectSorting: rendered.isManualProjectSorting,
-    newThreadShortcutLabel,
-    handleNewThread: s.handleNewThread,
-    defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
-    confirmThreadArchive: s.appSettings.confirmThreadArchive,
-    showThreadJumpHints,
+      threadActions,
+      projectActions,
+      keyboardNavThreadJumpLabelById: keyboardNav.threadJumpLabelById,
+      terminalStateByThreadId: s.terminalStateByThreadId,
+      prByThreadId: derived.prByThreadId,
+      routeThreadId: s.routeThreadId,
+      selectedThreadIds: s.selectedThreadIds,
+      clearSelection: s.clearSelection,
+      expandThreadListForProject: rendered.expandThreadListForProject,
+      collapseThreadListForProject: rendered.collapseThreadListForProject,
+      isManualProjectSorting: rendered.isManualProjectSorting,
+      newThreadShortcutLabel,
+      handleNewThread: s.handleNewThread,
+      defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
+      confirmThreadArchive: s.appSettings.confirmThreadArchive,
+      showThreadJumpHints,
     })
 
   return {

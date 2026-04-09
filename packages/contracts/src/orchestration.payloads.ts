@@ -16,6 +16,7 @@ import {
   ModelSelection,
   OrchestrationProposedPlan,
   OrchestrationSession,
+  OrchestrationThreadParentLink,
   OrchestrationThreadHandoff,
   OrchestrationThreadActivity,
   ProjectScript,
@@ -68,6 +69,7 @@ export const ThreadCreatedPayload = Schema.Struct({
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
+  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 })

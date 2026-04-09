@@ -165,7 +165,7 @@ export function makeFakeCodexAdapter(provider: ProviderKind = 'codex') {
 
   const startSession = makeStartSessionMock(provider, sessions)
   const sendTurn = makeSendTurnMock(provider, sessions)
-  const interruptTurn = makeVoidMock<[ThreadId, TurnId | undefined]>()
+  const interruptTurn = makeVoidMock<[ThreadId, TurnId | undefined, string | undefined]>()
   const respondToRequest = makeVoidMock<[ThreadId, string, ProviderApprovalDecision]>()
   const respondToUserInput = makeVoidMock<[ThreadId, string, Record<string, unknown>]>()
   const stopSession = makeStopSessionMock(sessions)

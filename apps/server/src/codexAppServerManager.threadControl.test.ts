@@ -34,6 +34,20 @@ it('reads thread turns from thread/read', async () => {
   })
 })
 
+it('interrupts a specific child provider thread when one is supplied', async () => {
+  const { manager, context, sendRequest } = createThreadControlHarness()
+  context.session.activeTurnId = 'turn_parent'
+  context.session.resumeCursor = { threadId: 'provider_parent' }
+  sendRequest.mockResolvedValue({})
+
+  await manager.interruptTurn(asThreadId('thread_1'), undefined, 'provider_child_1')
+
+  expect(sendRequest).toHaveBeenCalledWith(context, 'turn/interrupt', {
+    threadId: 'provider_child_1',
+    turnId: 'turn_parent',
+  })
+})
+
 it('reads thread turns from flat thread/read responses', async () => {
   const { manager, context, sendRequest } = createThreadControlHarness()
   sendRequest.mockResolvedValue({
