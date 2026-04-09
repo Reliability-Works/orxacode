@@ -2,7 +2,7 @@
  * Plan/send actions + remaining callbacks extracted from useChatViewController.
  */
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { type ThreadId } from '@orxa-code/contracts'
 import { useChatSendInFlight, useChatSendAction } from './useChatSendAction'
 import { useChatSubmitPlanFollowUp, useChatImplementPlanInNewThread } from './useChatPlanActions'
@@ -23,6 +23,7 @@ import {
   buildOnRevertUserMessage,
   buildRemoveComposerImage,
 } from './useChatViewBehavior3'
+import type { ParsedStandaloneComposerSlashCommand } from '../../composer-logic'
 
 type S = ReturnType<typeof useChatViewStoreSelectors>
 type L = ReturnType<typeof useChatViewLocalState>
@@ -90,9 +91,9 @@ export type PlanAndSendActionsInput = {
   envMode: DraftThreadEnvMode
   setThreadError: (id: ThreadId | null, error: string | null) => void
   setPrompt: (s: string) => void
-  handleInteractionModeChange: (
-    mode: import('@orxa-code/contracts').ProviderInteractionMode
-  ) => void
+  onExecuteStandaloneSlashCommand: (
+    command: ParsedStandaloneComposerSlashCommand
+  ) => Promise<boolean> | boolean
   composerDraftCbs: ReturnType<typeof useComposerDraftCallbacks>
   runProjectScript: (
     script: { id: string; command: string; name: string },
@@ -124,7 +125,9 @@ function useSendActionWiring(
     runtimeMode: td.runtimeMode,
     interactionMode: td.interactionMode,
     isSendBusy: ld.isSendBusy,
+    isTurnRunning: td.phase === 'running' || !ad.latestTurnSettled,
     isConnecting: false,
+    queueFollowUp: () => ls.setQueuedFollowUpPending(true),
     showPlanFollowUpPrompt: p.showPlanFollowUpPrompt,
     activeProposedPlan: p.activeProposedPlan,
     activePendingProgress: ad.activePendingProgress,
@@ -147,7 +150,7 @@ function useSendActionWiring(
     addComposerImagesToDraft: args.composerDraftCbs.addComposerImagesToDraft,
     addComposerTerminalContextsToDraft: args.composerDraftCbs.addComposerTerminalContextsToDraft,
     setPrompt: args.setPrompt,
-    handleInteractionModeChange: args.handleInteractionModeChange,
+    onExecuteStandaloneSlashCommand: args.onExecuteStandaloneSlashCommand,
     onSubmitPlanFollowUp,
     onAdvanceActivePendingUserInput: args.onAdvanceActivePendingUserInput,
     persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
@@ -158,6 +161,8 @@ function useSendActionWiring(
 
 export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
   const sendInFlightRef = useChatSendInFlight()
+  const queuedFollowUpPending = args.ls.queuedFollowUpPending
+  const setQueuedFollowUpPending = args.ls.setQueuedFollowUpPending
   const planActions = usePlanActions({
     store: args.store,
     ls: args.ls,
@@ -170,6 +175,23 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
     persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
   })
   const onSend = useSendActionWiring(args, sendInFlightRef, planActions.onSubmitPlanFollowUp)
+  useEffect(() => {
+    if (!queuedFollowUpPending) {
+      return
+    }
+    if (args.ld.isSendBusy || args.td.phase === 'running' || !args.ad.latestTurnSettled) {
+      return
+    }
+    setQueuedFollowUpPending(false)
+    void onSend()
+  }, [
+    args.ad.latestTurnSettled,
+    args.ld.isSendBusy,
+    args.td.phase,
+    onSend,
+    queuedFollowUpPending,
+    setQueuedFollowUpPending,
+  ])
   return { sendInFlightRef, ...planActions, onSend }
 }
 

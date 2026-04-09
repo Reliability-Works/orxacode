@@ -37,6 +37,7 @@ export function buildLocalDraftThread(
     latestTurn: null,
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
+    handoff: null,
     turnDiffSummaries: [],
     activities: [],
     proposedPlans: [],
@@ -77,6 +78,7 @@ export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[
 
 export interface PullRequestDialogState {
   initialReference: string | null
+  bootstrapPrompt: string | null
   key: number
 }
 

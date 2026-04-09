@@ -92,6 +92,9 @@ function ComposerFooterActions() {
       className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
     >
       {ad.activeContextWindow ? <ContextWindowMeter usage={ad.activeContextWindow} /> : null}
+      {ad.activeRateLimits ? (
+        <span className="text-muted-foreground/70 text-xs">{ad.activeRateLimits.summary}</span>
+      ) : null}
       {c.ld.isPreparingWorktree ? (
         <span className="text-muted-foreground/70 text-xs">Preparing worktree...</span>
       ) : null}
@@ -112,6 +115,7 @@ function ComposerFooterActions() {
         showPlanFollowUpPrompt={ad.pendingUserInputs.length === 0 && p.showPlanFollowUpPrompt}
         promptHasText={(store.prompt ?? '').trim().length > 0}
         isSendBusy={c.ld.isSendBusy}
+        hasQueuedFollowUp={c.ls.queuedFollowUpPending}
         isConnecting={false}
         isPreparingWorktree={c.ld.isPreparingWorktree}
         hasSendableContent={store.composerSendState.hasSendableContent}

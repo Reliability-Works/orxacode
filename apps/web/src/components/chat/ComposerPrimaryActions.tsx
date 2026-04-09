@@ -19,6 +19,7 @@ interface ComposerPrimaryActionsProps {
   showPlanFollowUpPrompt: boolean
   promptHasText: boolean
   isSendBusy: boolean
+  hasQueuedFollowUp: boolean
   isConnecting: boolean
   isPreparingWorktree: boolean
   hasSendableContent: boolean
@@ -92,18 +93,28 @@ function renderPendingPrimaryActions(
   )
 }
 
-function renderRunningPrimaryAction(onInterrupt: () => void) {
+function renderRunningPrimaryAction(input: {
+  onInterrupt: () => void
+  hasQueuedFollowUp: boolean
+}) {
   return (
-    <button
-      type="button"
-      className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
-      onClick={onInterrupt}
-      aria-label="Stop generation"
-    >
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
-        <rect x="2" y="2" width="8" height="8" rx="1.5" />
-      </svg>
-    </button>
+    <div className="flex items-center gap-2">
+      {input.hasQueuedFollowUp ? (
+        <span className="rounded-full border border-border/80 bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+          Queued follow-up
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
+        onClick={input.onInterrupt}
+        aria-label="Stop generation"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+          <rect x="2" y="2" width="8" height="8" rx="1.5" />
+        </svg>
+      </button>
+    </div>
   )
 }
 
@@ -235,6 +246,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   showPlanFollowUpPrompt,
   promptHasText,
   isSendBusy,
+  hasQueuedFollowUp,
   isConnecting,
   isPreparingWorktree,
   hasSendableContent,
@@ -247,7 +259,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   }
 
   if (isRunning) {
-    return renderRunningPrimaryAction(onInterrupt)
+    return renderRunningPrimaryAction({ onInterrupt, hasQueuedFollowUp })
   }
 
   if (showPlanFollowUpPrompt) {

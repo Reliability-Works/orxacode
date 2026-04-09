@@ -48,6 +48,7 @@ const insertHydratedThread = Effect.gen(function* () {
       model_selection_json,
       branch,
       worktree_path,
+      handoff_json,
       latest_turn_id,
       created_at,
       updated_at,
@@ -58,6 +59,7 @@ const insertHydratedThread = Effect.gen(function* () {
       'project-1',
       'Thread 1',
       '{"provider":"codex","model":"gpt-5-codex"}',
+      NULL,
       NULL,
       NULL,
       'turn-1',
@@ -286,6 +288,7 @@ export const expectedHydratedThreads: OrchestrationReadModel['threads'] = [
     runtimeMode: 'full-access',
     branch: null,
     worktreePath: null,
+    handoff: null,
     latestTurn: {
       turnId: asTurnId('turn-1'),
       state: 'completed',

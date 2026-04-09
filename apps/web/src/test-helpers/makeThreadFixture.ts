@@ -41,6 +41,7 @@ export function createMakeThread(defaults: MakeThreadDefaults) {
       latestTurn: null,
       branch: null,
       worktreePath: null,
+      handoff: null,
       ...overrides,
     }
   }

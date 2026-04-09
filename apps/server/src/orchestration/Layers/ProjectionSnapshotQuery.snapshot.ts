@@ -34,6 +34,7 @@ export type ProjectionSnapshotThreadRow = {
   interactionMode: OrchestrationThread['interactionMode']
   branch: string | null
   worktreePath: string | null
+  handoff: OrchestrationThread['handoff']
   createdAt: string
   updatedAt: string
   archivedAt: string | null
@@ -356,6 +357,7 @@ function buildThreads(
     interactionMode: row.interactionMode,
     branch: row.branch,
     worktreePath: row.worktreePath,
+    handoff: row.handoff,
     latestTurn: state.latestTurnByThread.get(row.threadId) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

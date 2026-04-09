@@ -204,6 +204,7 @@ function buildTestThread(
     runtimeMode: 'full-access',
     branch: 'main',
     worktreePath: null,
+    handoff: null,
     latestTurn: null,
     createdAt: BROWSER_TEST_NOW_ISO,
     updatedAt: BROWSER_TEST_NOW_ISO,

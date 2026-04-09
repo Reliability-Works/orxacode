@@ -60,6 +60,14 @@ import {
   SkillSetRootsResult,
   SkillsServiceError,
 } from './skills'
+import {
+  ProviderGetComposerCapabilitiesInput,
+  ProviderComposerCapabilities,
+  ProviderListCommandsInput,
+  ProviderListCommandsResult,
+  ProviderListPluginsInput,
+  ProviderListPluginsResult,
+} from './providerDiscovery'
 import { KeybindingsConfigError } from './keybindings'
 import {
   ClientOrchestrationCommand,
@@ -175,6 +183,9 @@ export const WS_METHODS = {
 
   // Provider methods
   providerListAgents: 'provider.listAgents',
+  providerGetComposerCapabilities: 'provider.getComposerCapabilities',
+  providerListCommands: 'provider.listCommands',
+  providerListPlugins: 'provider.listPlugins',
 
   // Streaming subscriptions
   subscribeOrchestrationDomainEvents: 'subscribeOrchestrationDomainEvents',
@@ -216,6 +227,10 @@ export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
   payload: ProviderListAgentsInput,
   success: ProviderListAgentsResult,
 })
+
+export const WsProviderGetComposerCapabilitiesRpc = Rpc.make(WS_METHODS.providerGetComposerCapabilities, { payload: ProviderGetComposerCapabilitiesInput, success: ProviderComposerCapabilities })
+export const WsProviderListCommandsRpc = Rpc.make(WS_METHODS.providerListCommands, { payload: ProviderListCommandsInput, success: ProviderListCommandsResult })
+export const WsProviderListPluginsRpc = Rpc.make(WS_METHODS.providerListPlugins, { payload: ProviderListPluginsInput, success: ProviderListPluginsResult })
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
@@ -503,6 +518,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsProviderListAgentsRpc,
+  WsProviderGetComposerCapabilitiesRpc,
+  WsProviderListCommandsRpc,
+  WsProviderListPluginsRpc,
   WsProjectsListEntriesRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsReadFileRpc,

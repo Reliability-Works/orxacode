@@ -4,6 +4,7 @@ import {
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
+  OrchestrationThreadHandoff,
   OrchestrationProposedPlanId,
   ModelSelection,
   ProjectScript,
@@ -40,6 +41,7 @@ const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),
   })
 )
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -126,6 +128,7 @@ export function createListThreadRows(sql: SqlClient.SqlClient) {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          handoff_json AS "handoff",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

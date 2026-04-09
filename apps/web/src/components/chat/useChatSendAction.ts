@@ -15,7 +15,10 @@ import {
   type ProviderInteractionMode,
 } from '@orxa-code/contracts'
 import { type TerminalContextDraft } from '../../lib/terminalContext'
-import { parseStandaloneComposerSlashCommand } from '../../composer-logic'
+import {
+  parseStandaloneComposerSlashCommand,
+  type ParsedStandaloneComposerSlashCommand,
+} from '../../composer-logic'
 import { buildExpiredTerminalContextToastCopy, deriveComposerSendState } from '../ChatView.logic'
 import type { ComposerImageAttachment, DraftThreadEnvMode } from '../../composerDraftStore'
 import type { Thread } from '../../types'
@@ -65,7 +68,9 @@ export interface SendActionInput extends SendStateRefsAndCallbacks {
   runtimeMode: RuntimeMode
   interactionMode: ProviderInteractionMode
   isSendBusy: boolean
+  isTurnRunning: boolean
   isConnecting: boolean
+  queueFollowUp: () => void
   showPlanFollowUpPrompt: boolean
   activeProposedPlan: { id: string; planMarkdown: string } | null
   activePendingProgress: {
@@ -75,7 +80,9 @@ export interface SendActionInput extends SendStateRefsAndCallbacks {
     canAdvance: boolean
     activeQuestion: { id: string } | null
   } | null
-  handleInteractionModeChange: (mode: ProviderInteractionMode) => void
+  onExecuteStandaloneSlashCommand: (
+    command: ParsedStandaloneComposerSlashCommand
+  ) => Promise<boolean> | boolean
   onSubmitPlanFollowUp: (input: {
     text: string
     interactionMode: 'default' | 'plan'
@@ -123,12 +130,16 @@ async function tryHandlePlanFollowUp(
   return true
 }
 
-function tryHandleStandaloneSlashCommand(input: SendActionInput, ctx: PreSendContext): boolean {
+async function tryHandleStandaloneSlashCommand(
+  input: SendActionInput,
+  ctx: PreSendContext
+): Promise<boolean> {
   const hasImages = input.composerImages.length > 0
   const hasContexts = ctx.sendableTerminalContexts.length > 0
   const cmd = !hasImages && !hasContexts ? parseStandaloneComposerSlashCommand(ctx.trimmed) : null
   if (!cmd) return false
-  input.handleInteractionModeChange(cmd)
+  const handled = await input.onExecuteStandaloneSlashCommand(cmd)
+  if (!handled) return false
   clearComposerAfterShortcut(input)
   return true
 }
@@ -144,13 +155,7 @@ function handleEmptyContentIfNeeded(ctx: PreSendContext): boolean {
 
 async function runSendFlow(input: SendActionInput): Promise<void> {
   const api = readNativeApi()
-  if (
-    !api ||
-    !input.activeThread ||
-    input.isSendBusy ||
-    input.isConnecting ||
-    input.sendInFlightRef.current
-  )
+  if (!api || !input.activeThread || input.isSendBusy || input.isConnecting || input.sendInFlightRef.current)
     return
   if (input.activePendingProgress) {
     input.onAdvanceActivePendingUserInput()
@@ -169,9 +174,13 @@ async function runSendFlow(input: SendActionInput): Promise<void> {
     hasSendableContent: ctx.hasSendableContent,
   }
   if (await tryHandlePlanFollowUp(input, preCtx)) return
-  if (tryHandleStandaloneSlashCommand(input, preCtx)) return
+  if (await tryHandleStandaloneSlashCommand(input, preCtx)) return
   if (handleEmptyContentIfNeeded(preCtx)) return
   if (!input.activeProject) return
+  if (input.isTurnRunning) {
+    input.queueFollowUp()
+    return
+  }
   await executeSend({
     api,
     activeThread: input.activeThread,

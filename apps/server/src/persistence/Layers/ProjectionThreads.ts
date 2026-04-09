@@ -11,11 +11,12 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from '../Services/ProjectionThreads.ts'
-import { ModelSelection } from '@orxa-code/contracts'
+import { ModelSelection, OrchestrationThreadHandoff } from '@orxa-code/contracts'
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),
   })
 )
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type
@@ -34,6 +35,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           interaction_mode,
           branch,
           worktree_path,
+          handoff_json,
           latest_turn_id,
           created_at,
           updated_at,
@@ -49,6 +51,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           ${row.interactionMode},
           ${row.branch},
           ${row.worktreePath},
+          ${row.handoff ? JSON.stringify(row.handoff) : null},
           ${row.latestTurnId},
           ${row.createdAt},
           ${row.updatedAt},
@@ -64,6 +67,7 @@ function makeUpsertProjectionThreadRow(sql: SqlClient.SqlClient) {
           interaction_mode = excluded.interaction_mode,
           branch = excluded.branch,
           worktree_path = excluded.worktree_path,
+          handoff_json = excluded.handoff_json,
           latest_turn_id = excluded.latest_turn_id,
           created_at = excluded.created_at,
           updated_at = excluded.updated_at,
@@ -88,6 +92,7 @@ function makeGetProjectionThreadRow(sql: SqlClient.SqlClient) {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          handoff_json AS "handoff",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",
@@ -114,6 +119,7 @@ function makeListProjectionThreadRows(sql: SqlClient.SqlClient) {
           interaction_mode AS "interactionMode",
           branch,
           worktree_path AS "worktreePath",
+          handoff_json AS "handoff",
           latest_turn_id AS "latestTurnId",
           created_at AS "createdAt",
           updated_at AS "updatedAt",

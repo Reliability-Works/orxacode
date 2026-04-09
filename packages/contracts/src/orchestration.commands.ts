@@ -13,7 +13,9 @@ import {
 } from './baseSchemas'
 import {
   ChatAttachment,
+  DEFAULT_PROVIDER_INTERACTION_MODE,
   ModelSelection,
+  OrchestrationThreadHandoff,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointStatus,
   OrchestrationProposedPlan,
@@ -28,7 +30,6 @@ import {
 } from './orchestration.models'
 import {
   projectMetaUpdatableFields,
-  threadCoreFields,
   threadMetaUpdatableFields,
   threadTurnStartOptionsFields,
   turnStartUserMessageStruct,
@@ -64,7 +65,16 @@ export const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal('thread.create'),
   commandId: CommandId,
   threadId: ThreadId,
-  ...threadCoreFields,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode.pipe(
+    Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
+  ),
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
   createdAt: IsoDateTime,
 })
 export type ThreadCreateCommand = typeof ThreadCreateCommand.Type

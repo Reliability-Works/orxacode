@@ -238,15 +238,46 @@ describe('isCollapsedCursorAdjacentToInlineToken', () => {
 
 describe('parseStandaloneComposerSlashCommand', () => {
   it('parses standalone /plan command', () => {
-    expect(parseStandaloneComposerSlashCommand(' /plan ')).toBe('plan')
+    expect(parseStandaloneComposerSlashCommand(' /plan ')).toEqual({
+      command: 'plan',
+      argument: '',
+    })
   })
 
   it('parses standalone /default command', () => {
-    expect(parseStandaloneComposerSlashCommand('/default')).toBe('default')
+    expect(parseStandaloneComposerSlashCommand('/default')).toEqual({
+      command: 'default',
+      argument: '',
+    })
+  })
+
+  it('parses /handoff with a target provider argument', () => {
+    expect(parseStandaloneComposerSlashCommand('/handoff claude')).toEqual({
+      command: 'handoff',
+      argument: 'claude',
+    })
+  })
+
+  it('parses /fork with an optional pull request reference', () => {
+    expect(parseStandaloneComposerSlashCommand('/fork #123')).toEqual({
+      command: 'fork',
+      argument: '#123',
+    })
+  })
+
+  it('parses standalone /status command', () => {
+    expect(parseStandaloneComposerSlashCommand('/status')).toEqual({
+      command: 'status',
+      argument: '',
+    })
   })
 
   it('ignores slash commands with extra message text', () => {
     expect(parseStandaloneComposerSlashCommand('/plan explain this')).toBeNull()
+  })
+
+  it('ignores /status when extra text is present', () => {
+    expect(parseStandaloneComposerSlashCommand('/status now')).toBeNull()
   })
 })
 
@@ -256,6 +287,9 @@ describe('getSlashCommandsForProvider', () => {
     expect(cmds).toContain('model')
     expect(cmds).toContain('plan')
     expect(cmds).toContain('default')
+    expect(cmds).toContain('handoff')
+    expect(cmds).toContain('fork')
+    expect(cmds).toContain('status')
   })
 
   it('returns model, plan, default for codex', () => {
@@ -263,22 +297,33 @@ describe('getSlashCommandsForProvider', () => {
     expect(cmds).toContain('model')
     expect(cmds).toContain('plan')
     expect(cmds).toContain('default')
+    expect(cmds).toContain('handoff')
+    expect(cmds).toContain('fork')
+    expect(cmds).toContain('status')
   })
 
-  it('returns only model and default for opencode (no plan)', () => {
+  it('returns the shared app-level slash commands for opencode too', () => {
     const cmds = getSlashCommandsForProvider('opencode')
     expect(cmds).toContain('model')
+    expect(cmds).toContain('plan')
     expect(cmds).toContain('default')
-    expect(cmds).not.toContain('plan')
+    expect(cmds).toContain('handoff')
+    expect(cmds).toContain('fork')
+    expect(cmds).toContain('status')
   })
 })
 
 describe('detectComposerTrigger with opencode provider commands', () => {
-  it('does not trigger slash-command for /plan when opencode commands are active', () => {
+  it('triggers slash-command for /plan when opencode commands are active', () => {
     const text = '/pl'
     const allowedCommands = getSlashCommandsForProvider('opencode')
     const trigger = detectComposerTrigger(text, text.length, allowedCommands)
-    expect(trigger).toBeNull()
+    expect(trigger).toEqual({
+      kind: 'slash-command',
+      query: 'pl',
+      rangeStart: 0,
+      rangeEnd: text.length,
+    })
   })
 
   it('triggers slash-command for /de (default) when opencode commands are active', () => {
@@ -300,6 +345,18 @@ describe('detectComposerTrigger with opencode provider commands', () => {
     expect(trigger).toEqual({
       kind: 'slash-model',
       query: '',
+      rangeStart: 0,
+      rangeEnd: text.length,
+    })
+  })
+
+  it('triggers slash-command for /ha (handoff) when opencode commands are active', () => {
+    const text = '/ha'
+    const allowedCommands = getSlashCommandsForProvider('opencode')
+    const trigger = detectComposerTrigger(text, text.length, allowedCommands)
+    expect(trigger).toEqual({
+      kind: 'slash-command',
+      query: 'ha',
       rangeStart: 0,
       rangeEnd: text.length,
     })

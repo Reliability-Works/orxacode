@@ -31,10 +31,18 @@ function claudeSkillsRoot(): SkillRoot {
   }
 }
 
+function opencodeSkillsRoot(): SkillRoot {
+  return {
+    provider: 'opencode',
+    path: path.join(homeDir(), '.config', 'opencode', 'skill'),
+    editable: false,
+  }
+}
+
 export function defaultSkillRoots(): SkillRootsConfig {
   return {
     codex: [codexSkillsRoot()],
     claudeAgent: [claudeSkillsRoot()],
-    opencode: [],
+    opencode: [opencodeSkillsRoot()],
   }
 }

@@ -51,6 +51,7 @@ import { normalizeDispatchCommand } from './orchestration/Normalizer'
 import { OrchestrationEngineService } from './orchestration/Services/OrchestrationEngine'
 import { ProjectionSnapshotQuery } from './orchestration/Services/ProjectionSnapshotQuery'
 import { OpencodeAdapter } from './provider/Services/OpencodeAdapter'
+import { ProviderDiscoveryService } from './provider/Services/ProviderDiscoveryService'
 import { ProviderRegistry } from './provider/Services/ProviderRegistry'
 import { ServerLifecycleEvents } from './serverLifecycleEvents'
 import { ServerRuntimeStartup } from './serverRuntimeStartup'
@@ -62,6 +63,7 @@ import { SkillsService } from './skills/Services/SkillsService'
 import { WorkspacePathOutsideRootError } from './workspace/Services/WorkspacePaths'
 import { createDashboardMethods } from './ws.dashboard'
 import { createGitMethods } from './ws.git'
+import { createProviderMethods } from './ws.provider'
 import { createSkillsMethods } from './ws.skills'
 
 type WsRpcDependencies = {
@@ -79,6 +81,7 @@ type WsRpcDependencies = {
   readonly terminalManager: typeof TerminalManager.Service
   readonly providerRegistry: typeof ProviderRegistry.Service
   readonly opencodeAdapter: typeof OpencodeAdapter.Service
+  readonly providerDiscoveryService: typeof ProviderDiscoveryService.Service
   readonly config: typeof ServerConfig.Service
   readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
   readonly serverSettings: typeof ServerSettingsService.Service
@@ -440,6 +443,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       terminalManager: yield* TerminalManager,
       providerRegistry: yield* ProviderRegistry,
       opencodeAdapter: yield* OpencodeAdapter,
+      providerDiscoveryService: yield* ProviderDiscoveryService,
       config: yield* ServerConfig,
       lifecycleEvents: yield* ServerLifecycleEvents,
       serverSettings: yield* ServerSettingsService,
@@ -456,6 +460,7 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       ...createGitMethods(dependencies),
       ...createTerminalMethods(dependencies),
       ...createDashboardMethods(dependencies),
+      ...createProviderMethods(dependencies),
       ...createSkillsMethods(dependencies),
     })
   })

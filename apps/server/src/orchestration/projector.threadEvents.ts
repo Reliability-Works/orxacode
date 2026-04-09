@@ -55,6 +55,7 @@ function handleThreadCreatedEvent(nextBase: OrchestrationReadModel, event: Orche
         interactionMode: payload.interactionMode,
         branch: payload.branch,
         worktreePath: payload.worktreePath,
+        handoff: payload.handoff ?? null,
         latestTurn: null,
         createdAt: payload.createdAt,
         updatedAt: payload.updatedAt,

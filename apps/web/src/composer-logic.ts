@@ -3,7 +3,12 @@ import { splitPromptIntoComposerSegments } from './composer-editor-mentions'
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from './lib/terminalContext'
 
 export type ComposerTriggerKind = 'path' | 'slash-command' | 'slash-model'
-export type ComposerSlashCommand = 'model' | 'plan' | 'default'
+export type ComposerSlashCommand = 'model' | 'plan' | 'default' | 'handoff' | 'fork' | 'status'
+
+export interface ParsedStandaloneComposerSlashCommand {
+  command: Exclude<ComposerSlashCommand, 'model'>
+  argument: string
+}
 
 export interface ComposerTrigger {
   kind: ComposerTriggerKind
@@ -12,13 +17,19 @@ export interface ComposerTrigger {
   rangeEnd: number
 }
 
-const SLASH_COMMANDS_ALL: readonly ComposerSlashCommand[] = ['model', 'plan', 'default']
-const SLASH_COMMANDS_NO_PLAN: readonly ComposerSlashCommand[] = ['model', 'default']
+const SLASH_COMMANDS_ALL: readonly ComposerSlashCommand[] = [
+  'model',
+  'plan',
+  'default',
+  'handoff',
+  'fork',
+  'status',
+]
 
 export function getSlashCommandsForProvider(
   provider: ProviderKind
 ): readonly ComposerSlashCommand[] {
-  if (provider === 'opencode') return SLASH_COMMANDS_NO_PLAN
+  void provider
   return SLASH_COMMANDS_ALL
 }
 const isInlineTokenSegment = (
@@ -248,15 +259,30 @@ export function detectComposerTrigger(
 }
 
 export function parseStandaloneComposerSlashCommand(
-  text: string
-): Exclude<ComposerSlashCommand, 'model'> | null {
-  const match = /^\/(plan|default)\s*$/i.exec(text.trim())
+  text: string,
+  allowedCommands: readonly ComposerSlashCommand[] = SLASH_COMMANDS_ALL
+): ParsedStandaloneComposerSlashCommand | null {
+  const match = /^\/([^\s]+)(?:\s+(.*))?$/i.exec(text.trim())
   if (!match) {
     return null
   }
-  const command = match[1]?.toLowerCase()
-  if (command === 'plan') return 'plan'
-  return 'default'
+  const rawCommand = match[1]?.toLowerCase()
+  const argument = (match[2] ?? '').trim()
+  if (
+    !rawCommand ||
+    rawCommand === 'model' ||
+    !allowedCommands.includes(rawCommand as ComposerSlashCommand)
+  ) {
+    return null
+  }
+  const command = rawCommand as Exclude<ComposerSlashCommand, 'model'>
+  if ((command === 'plan' || command === 'default' || command === 'status') && argument.length > 0) {
+    return null
+  }
+  return {
+    command,
+    argument,
+  }
 }
 
 export function replaceTextRange(

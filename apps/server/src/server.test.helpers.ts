@@ -45,6 +45,10 @@ import {
 } from './orchestration/Services/ProjectionSnapshotQuery.ts'
 import { OpencodeAdapter } from './provider/Services/OpencodeAdapter.ts'
 import {
+  ProviderDiscoveryService,
+  type ProviderDiscoveryServiceShape,
+} from './provider/Services/ProviderDiscoveryService.ts'
+import {
   ProviderRegistry,
   type ProviderRegistryShape,
 } from './provider/Services/ProviderRegistry.ts'
@@ -91,6 +95,7 @@ export const makeDefaultOrchestrationReadModel = () => {
         runtimeMode: 'full-access' as const,
         branch: null,
         worktreePath: null,
+        handoff: null,
         createdAt: now,
         updatedAt: now,
         archivedAt: null,
@@ -117,6 +122,7 @@ const workspaceAndProjectServicesLayer = Layer.mergeAll(
 )
 
 export interface TestServerLayerOverrides {
+  readonly providerDiscoveryService?: Partial<ProviderDiscoveryServiceShape>
   readonly keybindings?: Partial<KeybindingsShape>
   readonly providerRegistry?: Partial<ProviderRegistryShape>
   readonly serverSettings?: Partial<ServerSettingsShape>
@@ -251,6 +257,20 @@ const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
       refresh: () => Effect.succeed([]),
       streamChanges: Stream.empty,
       ...overrides?.providerRegistry,
+    }),
+    Layer.mock(ProviderDiscoveryService)({
+      getComposerCapabilities: ({ provider }) =>
+        Effect.succeed({
+          provider,
+          supportsSkillMentions: true,
+          supportsSkillDiscovery: true,
+          supportsNativeSlashCommandDiscovery: provider === 'claudeAgent',
+          supportsPluginDiscovery: provider !== 'opencode',
+        }),
+      listCommands: () => Effect.succeed({ commands: [], updatedAt: new Date(0).toISOString() }),
+      listPlugins: () =>
+        Effect.succeed({ plugins: [], warnings: [], updatedAt: new Date(0).toISOString() }),
+      ...overrides?.providerDiscoveryService,
     }),
     Layer.mock(ServerSettingsService)({
       start: Effect.void,

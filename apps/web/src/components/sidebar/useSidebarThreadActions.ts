@@ -5,11 +5,12 @@
 import { useCallback, useRef, useState } from 'react'
 import { ThreadId } from '@orxa-code/contracts'
 import type { MouseEvent } from 'react'
-import { isMacPlatform, newCommandId } from '../../lib/utils'
+import { newCommandId } from '../../lib/utils'
 import { readNativeApi } from '../../nativeApi'
 import { toastManager } from '../ui/toastState'
 import { useCopyToClipboard } from '~/hooks/useCopyToClipboard'
 import type { SidebarThreadSnapshot } from './ThreadRow'
+import { useSidebarThreadNavigation } from './useSidebarThreadNavigation'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -293,70 +294,6 @@ function useThreadRename() {
 }
 
 // ---------------------------------------------------------------------------
-// Navigation / click sub-hook
-// ---------------------------------------------------------------------------
-
-function useThreadNavigation(
-  params: Pick<
-    SidebarThreadActionsParams,
-    | 'navigate'
-    | 'selectedThreadIds'
-    | 'clearSelection'
-    | 'setSelectionAnchor'
-    | 'toggleThreadSelection'
-    | 'rangeSelectTo'
-  >
-) {
-  const {
-    navigate,
-    selectedThreadIds,
-    clearSelection,
-    setSelectionAnchor,
-    toggleThreadSelection,
-    rangeSelectTo,
-  } = params
-
-  const navigateToThread = useCallback(
-    (threadId: ThreadId) => {
-      if (selectedThreadIds.size > 0) clearSelection()
-      setSelectionAnchor(threadId)
-      void navigate({ to: '/$threadId', params: { threadId } })
-    },
-    [clearSelection, navigate, selectedThreadIds.size, setSelectionAnchor]
-  )
-
-  const handleThreadClick = useCallback(
-    (event: MouseEvent, threadId: ThreadId, orderedProjectThreadIds: readonly ThreadId[]) => {
-      const isMac = isMacPlatform(navigator.platform)
-      const isModClick = isMac ? event.metaKey : event.ctrlKey
-      if (isModClick) {
-        event.preventDefault()
-        toggleThreadSelection(threadId)
-        return
-      }
-      if (event.shiftKey) {
-        event.preventDefault()
-        rangeSelectTo(threadId, orderedProjectThreadIds)
-        return
-      }
-      if (selectedThreadIds.size > 0) clearSelection()
-      setSelectionAnchor(threadId)
-      void navigate({ to: '/$threadId', params: { threadId } })
-    },
-    [
-      clearSelection,
-      navigate,
-      rangeSelectTo,
-      selectedThreadIds.size,
-      setSelectionAnchor,
-      toggleThreadSelection,
-    ]
-  )
-
-  return { navigateToThread, handleThreadClick }
-}
-
-// ---------------------------------------------------------------------------
 // Context-menu sub-hook
 // ---------------------------------------------------------------------------
 
@@ -463,7 +400,7 @@ export function useSidebarThreadActions(
   const { archiveThread } = params
   const { copyThreadIdToClipboard, copyPathToClipboard } = useThreadClipboard()
   const rename = useThreadRename()
-  const nav = useThreadNavigation(params)
+  const nav = useSidebarThreadNavigation(params)
 
   const attemptArchiveThread = useCallback(
     async (threadId: ThreadId) => {

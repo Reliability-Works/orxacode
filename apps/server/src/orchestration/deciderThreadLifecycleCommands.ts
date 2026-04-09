@@ -37,6 +37,7 @@ export function decideThreadCreateCommand({
         interactionMode: command.interactionMode,
         branch: command.branch,
         worktreePath: command.worktreePath,
+        handoff: command.handoff ?? null,
         createdAt: command.createdAt,
         updatedAt: command.createdAt,
       },

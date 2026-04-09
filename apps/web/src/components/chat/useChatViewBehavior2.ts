@@ -132,6 +132,31 @@ function extendRangeForTrailingSpace(text: string, rangeEnd: number, replacement
   return text[rangeEnd] === ' ' ? rangeEnd + 1 : rangeEnd
 }
 
+function handleSlashCommandMenuSelection(args: {
+  item: Extract<ComposerCommandItem, { type: 'slash-command' }>
+  applyRangeReplacement: (replacement: string) => void
+  clearComposerHighlight: () => boolean
+  handleInteractionModeChange: (mode: ProviderInteractionMode) => void
+  setComposerHighlightedItemId: L['setComposerHighlightedItemId']
+}) {
+  if (args.item.command === 'model') {
+    args.applyRangeReplacement('/model ')
+    return
+  }
+  if (args.item.command === 'handoff' || args.item.command === 'fork') {
+    args.applyRangeReplacement(`/${args.item.command} `)
+    return
+  }
+  if (args.item.command === 'status') {
+    args.applyRangeReplacement('/status')
+    return
+  }
+  args.handleInteractionModeChange(args.item.command === 'plan' ? 'plan' : 'default')
+  if (args.clearComposerHighlight()) {
+    args.setComposerHighlightedItemId(null)
+  }
+}
+
 export function useApplyPromptReplacement(ls: L, setPrompt: (s: string) => void) {
   const { composerEditorRef, promptRef, setComposerCursor, setComposerTrigger } = ls
   return useCallback(
@@ -236,31 +261,28 @@ export function useOnSelectComposerItem(
         )
           setComposerHighlightedItemId(null)
       }
-      if (item.type === 'path') {
-        applyRangeReplacement(`@${item.path} `)
-        return
-      }
-      if (item.type === 'slash-command') {
-        if (item.command === 'model') {
-          applyRangeReplacement('/model ')
-          return
-        }
-        void handleInteractionModeChange(item.command === 'plan' ? 'plan' : 'default')
-        if (
-          applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, '', {
-            expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
-          })
-        )
-          setComposerHighlightedItemId(null)
-        return
-      }
-      onProviderModelSelect(item.provider, item.model)
-      if (
+      const clearComposerHighlight = () =>
         applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, '', {
           expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
         })
-      )
+      if (item.type === 'path') return void applyRangeReplacement(`@${item.path} `)
+      if (item.type === 'skill') return void applyRangeReplacement(`@${item.skill.id} `)
+      if (item.type === 'slash-command') {
+        handleSlashCommandMenuSelection({
+          item,
+          applyRangeReplacement,
+          clearComposerHighlight,
+          handleInteractionModeChange,
+          setComposerHighlightedItemId,
+        })
+        return
+      }
+      if (item.type === 'native-slash-command')
+        return void applyRangeReplacement(`/${item.command} `)
+      onProviderModelSelect(item.provider, item.model)
+      if (clearComposerHighlight()) {
         setComposerHighlightedItemId(null)
+      }
     },
     [
       applyPromptReplacement,

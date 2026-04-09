@@ -3,6 +3,7 @@ import type {
   OrchestrationLatestTurn,
   OrchestrationProposedPlanId,
   OrchestrationSessionStatus,
+  OrchestrationThreadHandoff,
   OrchestrationThreadActivity,
   ProjectScript as ContractProjectScript,
   ThreadId,
@@ -107,6 +108,7 @@ export interface Thread {
   pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
   branch: string | null
   worktreePath: string | null
+  handoff: OrchestrationThreadHandoff | null
   turnDiffSummaries: TurnDiffSummary[]
   activities: OrchestrationThreadActivity[]
 }

@@ -44,6 +44,7 @@ import { ProviderRuntimeIngestionLive } from './orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from './orchestration/Layers/ProviderCommandReactor'
 import { CheckpointReactorLive } from './orchestration/Layers/CheckpointReactor'
 import { ProviderRegistryLive } from './provider/Layers/ProviderRegistry'
+import { ProviderDiscoveryServiceLive } from './provider/Layers/ProviderDiscoveryService'
 import { ServerSettingsLive } from './serverSettings'
 import { ProjectFaviconResolverLive } from './project/Layers/ProjectFaviconResolver'
 import { WorkspaceEntriesLive } from './workspace/Layers/WorkspaceEntries'
@@ -172,6 +173,7 @@ const RuntimeServicesLive = Layer.empty.pipe(
   Layer.provideMerge(PersistenceLayerLive),
   Layer.provideMerge(KeybindingsLive),
   Layer.provideMerge(ProviderRegistryLive),
+  Layer.provideMerge(ProviderDiscoveryServiceLive),
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),

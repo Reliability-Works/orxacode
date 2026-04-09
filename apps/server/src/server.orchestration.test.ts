@@ -50,6 +50,7 @@ const buildOrchestrationSuccessApp = (now: string) =>
                 runtimeMode: 'full-access' as const,
                 branch: null,
                 worktreePath: null,
+                handoff: null,
                 createdAt: now,
                 updatedAt: now,
                 archivedAt: null,

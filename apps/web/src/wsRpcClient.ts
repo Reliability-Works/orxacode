@@ -125,6 +125,9 @@ export interface WsRpcClient {
   }
   readonly provider: {
     readonly listAgents: RpcUnaryMethod<typeof WS_METHODS.providerListAgents>
+    readonly getComposerCapabilities: RpcUnaryMethod<typeof WS_METHODS.providerGetComposerCapabilities>
+    readonly listCommands: RpcUnaryMethod<typeof WS_METHODS.providerListCommands>
+    readonly listPlugins: RpcUnaryMethod<typeof WS_METHODS.providerListPlugins>
   }
   readonly skills: {
     readonly list: (input: SkillListInput) => Promise<SkillListResult>
@@ -265,6 +268,12 @@ function createServerApi(transport: WsTransport): WsRpcClient['server'] {
 function createProviderApi(transport: WsTransport): WsRpcClient['provider'] {
   return {
     listAgents: input => transport.request(client => client[WS_METHODS.providerListAgents](input)),
+    getComposerCapabilities: input =>
+      transport.request(client => client[WS_METHODS.providerGetComposerCapabilities](input)),
+    listCommands: input =>
+      transport.request(client => client[WS_METHODS.providerListCommands](input)),
+    listPlugins: input =>
+      transport.request(client => client[WS_METHODS.providerListPlugins](input)),
   }
 }
 

@@ -77,10 +77,9 @@ export function useChatViewLocalState(prompt: string) {
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
-  const [pullRequestDialogState, setPullRequestDialogState] =
-    useState<PullRequestDialogState | null>(null)
-  const [pendingPullRequestSetupRequest, setPendingPullRequestSetupRequest] =
-    useState<PendingPullRequestSetupRequest | null>(null)
+  const [queuedFollowUpPending, setQueuedFollowUpPending] = useState(false)
+  const [pullRequestDialogState, setPullRequestDialogState] = useState<PullRequestDialogState | null>(null)
+  const [pendingPullRequestSetupRequest, setPendingPullRequestSetupRequest] = useState<PendingPullRequestSetupRequest | null>(null)
   const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
     Record<string, string[]>
   >({})
@@ -118,6 +117,8 @@ export function useChatViewLocalState(prompt: string) {
     setTerminalFocusRequestId,
     composerHighlightedItemId,
     setComposerHighlightedItemId,
+    queuedFollowUpPending,
+    setQueuedFollowUpPending,
     pullRequestDialogState,
     setPullRequestDialogState,
     pendingPullRequestSetupRequest,

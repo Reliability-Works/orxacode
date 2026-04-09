@@ -151,6 +151,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setIsRevertingCheckpoint,
     dragDepthRef,
     setIsDragOverComposer,
+    setQueuedFollowUpPending,
     planSidebarOpenOnNextThreadRef,
     setPlanSidebarOpen,
   } = ls
@@ -161,6 +162,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setIsRevertingCheckpoint(false)
     dragDepthRef.current = 0
     setIsDragOverComposer(false)
+    setQueuedFollowUpPending(false)
     if (planSidebarOpenOnNextThreadRef.current) {
       planSidebarOpenOnNextThreadRef.current = false
       setPlanSidebarOpen(true)
@@ -175,6 +177,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setExpandedWorkGroups,
     setIsDragOverComposer,
     setIsRevertingCheckpoint,
+    setQueuedFollowUpPending,
     setPlanSidebarOpen,
     setPullRequestDialogState,
   ])
@@ -183,18 +186,43 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
 function useMenuHighlightEffect(
   ls: L,
   composerMenuOpen: boolean,
-  composerMenuItems: ReturnType<typeof useChatViewDerivedComposer>['composerMenuItems']
+  composerMenuItems: ReturnType<typeof useChatViewDerivedComposer>['composerMenuItems'],
+  composerHighlightedItemId: string | null
 ) {
   const { setComposerHighlightedItemId } = ls
   useEffect(() => {
-    if (!composerMenuOpen) {
-      setComposerHighlightedItemId(null)
+    const nextHighlightedItemId = resolveComposerHighlightedItemId(
+      composerMenuOpen,
+      composerMenuItems,
+      composerHighlightedItemId
+    )
+    if (nextHighlightedItemId === composerHighlightedItemId) {
       return
     }
-    setComposerHighlightedItemId(ex =>
-      ex && composerMenuItems.some(i => i.id === ex) ? ex : (composerMenuItems[0]?.id ?? null)
-    )
-  }, [composerMenuItems, composerMenuOpen, setComposerHighlightedItemId])
+    setComposerHighlightedItemId(nextHighlightedItemId)
+  }, [
+    composerHighlightedItemId,
+    composerMenuItems,
+    composerMenuOpen,
+    setComposerHighlightedItemId,
+  ])
+}
+
+export function resolveComposerHighlightedItemId(
+  composerMenuOpen: boolean,
+  composerMenuItems: ReadonlyArray<{ id: string }>,
+  composerHighlightedItemId: string | null
+): string | null {
+  if (!composerMenuOpen) {
+    return null
+  }
+  if (
+    composerHighlightedItemId &&
+    composerMenuItems.some(item => item.id === composerHighlightedItemId)
+  ) {
+    return composerHighlightedItemId
+  }
+  return composerMenuItems[0]?.id ?? null
 }
 
 function useFocusAndTickEffects(
@@ -247,7 +275,12 @@ export function useChatViewCoreEffects(args: {
     args.activeComposerMenuItem
   )
   useResetOnThreadChangeEffect(args.ls, args.activeThreadId)
-  useMenuHighlightEffect(args.ls, args.composerMenuOpen, args.composerMenuItems)
+  useMenuHighlightEffect(
+    args.ls,
+    args.composerMenuOpen,
+    args.composerMenuItems,
+    args.ls.composerHighlightedItemId
+  )
   useFocusAndTickEffects(
     args.ls,
     args.activeThreadId,

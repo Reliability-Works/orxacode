@@ -14,6 +14,7 @@ import { Toggle } from '../ui/toggle'
 import { OpenInPicker } from './OpenInPicker'
 import type { ChatAuxSidebarMode } from './useChatViewLocalState'
 import { cn } from '~/lib/utils'
+import type { ReactNode } from 'react'
 
 interface ProjectActionProps {
   activeThreadId: ThreadId
@@ -46,6 +47,7 @@ interface ChatHeaderProps extends ProjectActionProps {
   onToggleTerminal: () => void
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
+  extraActions?: ReactNode
 }
 
 function ChatHeaderTitle(props: {
@@ -281,6 +283,7 @@ interface ChatHeaderActionsProps extends ProjectActionProps {
   onToggleTerminal: () => void
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
+  extraActions?: ReactNode
 }
 
 function ChatHeaderActions(props: ChatHeaderActionsProps) {
@@ -306,6 +309,7 @@ function ChatHeaderActions(props: ChatHeaderActionsProps) {
     onToggleTerminal,
     onToggleGitSidebar,
     onToggleFilesSidebar,
+    extraActions,
   } = props
 
   return (
@@ -336,6 +340,7 @@ function ChatHeaderActions(props: ChatHeaderActionsProps) {
         filesAvailable={openInCwd !== null}
         diffStats={diffStats}
       />
+      {extraActions}
     </div>
   )
 }
@@ -363,6 +368,7 @@ export const ChatHeader = memo(function ChatHeader({
   onToggleTerminal,
   onToggleGitSidebar,
   onToggleFilesSidebar,
+  extraActions,
 }: ChatHeaderProps) {
   const terminalToggleLabel = !terminalAvailable
     ? 'Terminal is unavailable until this thread has an active project.'
@@ -399,6 +405,7 @@ export const ChatHeader = memo(function ChatHeader({
         onToggleTerminal={onToggleTerminal}
         onToggleGitSidebar={onToggleGitSidebar}
         onToggleFilesSidebar={onToggleFilesSidebar}
+        extraActions={extraActions}
       />
     </div>
   )

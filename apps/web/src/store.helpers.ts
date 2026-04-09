@@ -234,6 +234,7 @@ export function mapThread(thread: OrchestrationThread): Thread {
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    handoff: thread.handoff,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
     activities: thread.activities.map(activity => ({ ...activity })),
   }

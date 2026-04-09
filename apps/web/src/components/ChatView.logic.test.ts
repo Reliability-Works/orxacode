@@ -107,6 +107,7 @@ const makeThread = (input?: {
     : null,
   branch: null,
   worktreePath: null,
+  handoff: null,
   turnDiffSummaries: [],
   activities: [],
 })
@@ -147,6 +148,7 @@ function createBaselineLocalDispatch() {
     latestTurn: previousLatestTurn,
     branch: null,
     worktreePath: null,
+    handoff: null,
     turnDiffSummaries: [],
     activities: [],
   })

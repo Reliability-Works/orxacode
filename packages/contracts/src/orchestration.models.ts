@@ -278,6 +278,15 @@ export const OrchestrationLatestTurn = Schema.Struct({
 })
 export type OrchestrationLatestTurn = typeof OrchestrationLatestTurn.Type
 
+export const OrchestrationThreadHandoff = Schema.Struct({
+  sourceThreadId: ThreadId,
+  sourceProvider: ProviderKind,
+  targetProvider: ProviderKind,
+  sourceThreadTitle: TrimmedNonEmptyString,
+  createdAt: IsoDateTime,
+})
+export type OrchestrationThreadHandoff = typeof OrchestrationThreadHandoff.Type
+
 export const threadCoreFields = {
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
@@ -288,6 +297,7 @@ export const threadCoreFields = {
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  handoff: Schema.NullOr(OrchestrationThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
 } as const
 
 export const OrchestrationThread = Schema.Struct({

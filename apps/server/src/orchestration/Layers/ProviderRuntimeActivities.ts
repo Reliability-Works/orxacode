@@ -316,6 +316,15 @@ function threadStateActivities(
         }),
       ]
     }
+    case 'account.rate-limits.updated':
+      return [
+        buildActivity(event, maybeSequence, {
+          tone: 'info',
+          kind: 'rate-limits.updated',
+          summary: 'Rate limits updated',
+          payload: event.payload.rateLimits,
+        }),
+      ]
     default:
       return []
   }

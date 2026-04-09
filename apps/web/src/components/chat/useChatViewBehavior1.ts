@@ -21,7 +21,7 @@ import {
 import { revokeBlobPreviewUrl } from '../ChatView.logic'
 import { randomUUID, newThreadId } from '~/lib/utils'
 import { setupProjectScript } from '../../projectScripts'
-import type { ComposerImageAttachment, DraftThreadEnvMode } from '../../composerDraftStore'
+import { useComposerDraftStore, type ComposerImageAttachment, type DraftThreadEnvMode } from '../../composerDraftStore'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
@@ -221,13 +221,13 @@ function useOpenOrReuseProjectDraftThreadCallback(threadId: ThreadId, store: S, 
         setProjectDraftThreadId(activeProject.id, stored.threadId, input)
         if (stored.threadId !== threadId)
           await navigate({ to: '/$threadId', params: { threadId: stored.threadId } })
-        return stored.threadId
+        return { threadId: stored.threadId, createdFresh: false }
       }
       const active = getDraftThread(threadId)
       if (!isServerThread && active?.projectId === activeProject.id) {
         setDraftThreadContext(threadId, input)
         setProjectDraftThreadId(activeProject.id, threadId, input)
-        return threadId
+        return { threadId, createdFresh: false }
       }
       clearProjectDraftThreadId(activeProject.id)
       const next = newThreadId()
@@ -238,7 +238,7 @@ function useOpenOrReuseProjectDraftThreadCallback(threadId: ThreadId, store: S, 
         ...input,
       })
       await navigate({ to: '/$threadId', params: { threadId: next } })
-      return next
+      return { threadId: next, createdFresh: true }
     },
     [
       activeProject,
@@ -256,16 +256,22 @@ function useOpenOrReuseProjectDraftThreadCallback(threadId: ThreadId, store: S, 
 
 export function usePullRequestCallbacks(threadId: ThreadId, store: S, ls: L, td: T) {
   const {
+    pullRequestDialogState,
     setComposerHighlightedItemId,
     setPullRequestDialogState,
     setPendingPullRequestSetupRequest,
   } = ls
   const { canCheckoutPullRequestIntoThread, activeProject } = td
+  const { setComposerDraftPrompt } = store
 
   const openPullRequestDialog = useCallback(
-    (reference?: string) => {
+    (reference?: string, bootstrapPrompt?: string | null) => {
       if (!canCheckoutPullRequestIntoThread) return
-      setPullRequestDialogState({ initialReference: reference ?? null, key: Date.now() })
+      setPullRequestDialogState({
+        initialReference: reference ?? null,
+        bootstrapPrompt: bootstrapPrompt ?? null,
+        key: Date.now(),
+      })
       setComposerHighlightedItemId(null)
     },
     [canCheckoutPullRequestIntoThread, setComposerHighlightedItemId, setPullRequestDialogState]
@@ -283,22 +289,36 @@ export function usePullRequestCallbacks(threadId: ThreadId, store: S, ls: L, td:
 
   const handlePreparedPullRequestThread = useCallback(
     async (input: { branch: string; worktreePath: string | null }) => {
-      const targetId = await openOrReuseProjectDraftThread({
+      const bootstrapPrompt = pullRequestDialogState?.bootstrapPrompt?.trim() ?? ''
+      const target = await openOrReuseProjectDraftThread({
         branch: input.branch,
         worktreePath: input.worktreePath,
         envMode: input.worktreePath ? 'worktree' : 'local',
       })
+      if (bootstrapPrompt.length > 0) {
+        const existingDraftPrompt =
+          useComposerDraftStore.getState().draftsByThreadId[target.threadId]?.prompt.trim() ?? ''
+        if (target.createdFresh || existingDraftPrompt.length === 0) {
+          setComposerDraftPrompt(target.threadId, bootstrapPrompt)
+        }
+      }
       const setupScript =
         input.worktreePath && activeProject ? setupProjectScript(activeProject.scripts) : null
-      if (targetId && input.worktreePath && setupScript)
+      if (target.threadId && input.worktreePath && setupScript)
         setPendingPullRequestSetupRequest({
-          threadId: targetId,
+          threadId: target.threadId,
           worktreePath: input.worktreePath,
           scriptId: setupScript.id,
         })
       else setPendingPullRequestSetupRequest(null)
     },
-    [activeProject, openOrReuseProjectDraftThread, setPendingPullRequestSetupRequest]
+    [
+      activeProject,
+      openOrReuseProjectDraftThread,
+      pullRequestDialogState?.bootstrapPrompt,
+      setComposerDraftPrompt,
+      setPendingPullRequestSetupRequest,
+    ]
   )
 
   return {

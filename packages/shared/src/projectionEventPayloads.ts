@@ -2,7 +2,7 @@
 // payload-to-row mapping. Migrate apps/web handlers to consume these helpers
 // in slice J so the client no longer owns a parallel copy.
 
-import type { OrchestrationEvent } from '@orxa-code/contracts'
+import type { OrchestrationEvent, OrchestrationThread } from '@orxa-code/contracts'
 
 type ProjectCreatedEvent = Extract<OrchestrationEvent, { type: 'project.created' }>
 type ThreadCreatedEvent = Extract<OrchestrationEvent, { type: 'thread.created' }>
@@ -42,6 +42,7 @@ export interface ThreadCreatedCoreFields {
   readonly interactionMode: ThreadCreatedEvent['payload']['interactionMode']
   readonly branch: ThreadCreatedEvent['payload']['branch']
   readonly worktreePath: ThreadCreatedEvent['payload']['worktreePath']
+  readonly handoff: OrchestrationThread['handoff']
   readonly createdAt: ThreadCreatedEvent['payload']['createdAt']
   readonly updatedAt: ThreadCreatedEvent['payload']['updatedAt']
   readonly archivedAt: null
@@ -58,6 +59,7 @@ export function threadCreatedToCoreFields(event: ThreadCreatedEvent): ThreadCrea
     interactionMode: event.payload.interactionMode,
     branch: event.payload.branch,
     worktreePath: event.payload.worktreePath,
+    handoff: event.payload.handoff ?? null,
     createdAt: event.payload.createdAt,
     updatedAt: event.payload.updatedAt,
     archivedAt: null,

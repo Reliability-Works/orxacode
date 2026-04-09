@@ -22,6 +22,7 @@ import {
   type PendingUserInputDraftAnswer,
 } from '../../pendingUserInput'
 import { deriveLatestContextWindowSnapshot } from '../../lib/contextWindow'
+import { deriveLatestRateLimitSnapshot } from '../../lib/rateLimits'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
@@ -190,6 +191,10 @@ export function useChatViewDerivedActivities(
     () => deriveLatestContextWindowSnapshot(activeThread?.activities ?? []),
     [activeThread?.activities]
   )
+  const activeRateLimits = useMemo(
+    () => deriveLatestRateLimitSnapshot(activeThread?.activities ?? []),
+    [activeThread?.activities]
+  )
   const timeline = useTimelineMemos({
     td,
     ls,
@@ -210,6 +215,7 @@ export function useChatViewDerivedActivities(
     ...pendingInput,
     latestTurnSettled,
     activeContextWindow,
+    activeRateLimits,
     ...timeline,
     isWorking,
     activeWorkStartedAt,

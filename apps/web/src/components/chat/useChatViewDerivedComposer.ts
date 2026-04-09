@@ -16,6 +16,7 @@ import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
 import { getSlashCommandsForProvider } from '../../composer-logic'
 import type { ProjectEntry, ProviderKind } from '@orxa-code/contracts'
+import { useProviderDiscoveryMenuData } from './useChatViewDerivedComposer.discovery'
 
 const EMPTY_PROJECT_ENTRIES: ProjectEntry[] = []
 const COMPOSER_PATH_QUERY_DEBOUNCE_MS = 120
@@ -45,6 +46,27 @@ const ALL_SLASH_COMMAND_ITEMS = [
     command: 'default' as const,
     label: '/default',
     description: 'Switch this thread back to normal chat mode',
+  },
+  {
+    id: 'slash:handoff',
+    type: 'slash-command' as const,
+    command: 'handoff' as const,
+    label: '/handoff',
+    description: 'Hand off to another provider, for example `/handoff claude`',
+  },
+  {
+    id: 'slash:fork',
+    type: 'slash-command' as const,
+    command: 'fork' as const,
+    label: '/fork',
+    description: 'Open the pull request worktree flow, optionally with a PR reference',
+  },
+  {
+    id: 'slash:status',
+    type: 'slash-command' as const,
+    command: 'status' as const,
+    label: '/status',
+    description: 'Show the active provider status and latest rate-limit summary',
   },
 ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: 'slash-command' }>>
 
@@ -134,6 +156,8 @@ function useComposerMenuItems(params: {
   selectedProvider: ProviderKind
   modelOptionsByProvider: ThreadDerived['modelOptionsByProvider']
   composerHighlightedItemId: string | null
+  nativeSlashCommandItems: ReadonlyArray<Extract<ComposerCommandItem, { type: 'native-slash-command' }>>
+  skillItems: ReadonlyArray<Extract<ComposerCommandItem, { type: 'skill' }>>
 }) {
   const { composerTrigger, workspaceEntries, lockedProvider, selectedProvider } = params
   const { modelOptionsByProvider, composerHighlightedItemId } = params
@@ -156,17 +180,36 @@ function useComposerMenuItems(params: {
   )
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return []
-    if (composerTrigger.kind === 'path') return buildPathCommandItems(workspaceEntries)
+    if (composerTrigger.kind === 'path') {
+      const items = [...buildPathCommandItems(workspaceEntries)]
+      if (params.skillItems.length > 0) {
+        items.push(...params.skillItems)
+      }
+      return items
+    }
     if (composerTrigger.kind === 'slash-command') {
-      const items = buildSlashCommandItems(selectedProvider)
+      const items = [
+        ...buildSlashCommandItems(selectedProvider),
+        ...params.nativeSlashCommandItems,
+      ]
       const query = composerTrigger.query.trim().toLowerCase()
       if (!query) return [...items]
       return items.filter(
-        item => item.command.includes(query) || item.label.slice(1).includes(query)
+        item =>
+          item.command.includes(query) ||
+          item.label.slice(1).includes(query) ||
+          item.description.toLowerCase().includes(query)
       )
     }
     return buildModelCommandItems(searchableModelOptions, composerTrigger.query)
-  }, [composerTrigger, searchableModelOptions, selectedProvider, workspaceEntries])
+  }, [
+    composerTrigger,
+    params.nativeSlashCommandItems,
+    params.skillItems,
+    searchableModelOptions,
+    selectedProvider,
+    workspaceEntries,
+  ])
   const composerMenuOpen = Boolean(composerTrigger)
   const activeComposerMenuItem = useMemo(
     () =>
@@ -228,6 +271,10 @@ export function useChatViewDerivedComposer(
   const composerTriggerKind = composerTrigger?.kind ?? null
   const pathTriggerQuery = composerTrigger?.kind === 'path' ? composerTrigger.query : ''
   const pathAndQueries = useComposerPathAndQueries(gitCwd, composerTriggerKind, pathTriggerQuery)
+  const discovery = useProviderDiscoveryMenuData({
+    provider: selectedProvider,
+    pathTriggerQuery,
+  })
   const menu = useComposerMenuItems({
     composerTrigger,
     workspaceEntries: pathAndQueries.workspaceEntries,
@@ -235,12 +282,18 @@ export function useChatViewDerivedComposer(
     selectedProvider,
     modelOptionsByProvider,
     composerHighlightedItemId,
+    nativeSlashCommandItems: discovery.nativeSlashCommandItems,
+    skillItems: discovery.skillItems,
   })
   const isComposerMenuLoading =
-    composerTriggerKind === 'path' &&
-    ((pathTriggerQuery.length > 0 && pathAndQueries.composerPathQueryDebouncer.state.isPending) ||
-      pathAndQueries.workspaceEntriesQuery.isLoading ||
-      pathAndQueries.workspaceEntriesQuery.isFetching)
+    (composerTriggerKind === 'path' &&
+      ((pathTriggerQuery.length > 0 && pathAndQueries.composerPathQueryDebouncer.state.isPending) ||
+        pathAndQueries.workspaceEntriesQuery.isLoading ||
+        pathAndQueries.workspaceEntriesQuery.isFetching ||
+        discovery.skillsQuery.isLoading ||
+        discovery.skillsQuery.isFetching)) ||
+    (composerTriggerKind === 'slash-command' &&
+      ((discovery.nativeCommandsQuery.isLoading || discovery.nativeCommandsQuery.isFetching)))
   const shortcutLabels = useShortcutLabels(keybindings, Boolean(terminalState.terminalOpen))
   const nonPersistedComposerImageIdSet = useMemo(
     () => new Set(store.nonPersistedComposerImageIds),
@@ -251,6 +304,9 @@ export function useChatViewDerivedComposer(
     composerTriggerKind,
     pathTriggerQuery,
     ...pathAndQueries,
+    composerCapabilities: discovery.composerCapabilities,
+    nativeCommandsQuery: discovery.nativeCommandsQuery,
+    skillsQuery: discovery.skillsQuery,
     ...menu,
     isComposerMenuLoading,
     ...shortcutLabels,

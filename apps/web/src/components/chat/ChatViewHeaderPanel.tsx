@@ -12,6 +12,95 @@ import { ProviderStatusBanner } from './ProviderStatusBanner'
 import { ThreadErrorBanner } from './ThreadErrorBanner'
 import { useChatViewCtx } from './ChatViewContext'
 import { useSidebar } from '../ui/sidebar.shared'
+import { useChatSplitPaneContext } from './ChatSplitPaneContext'
+import { Badge } from '../ui/badge'
+import { Button } from '../ui/button'
+import {
+  Columns2Icon,
+  Maximize2Icon,
+  Minimize2Icon,
+  PanelLeftCloseIcon,
+  PanelRightCloseIcon,
+} from 'lucide-react'
+import { ThreadHandoffMenu } from './ThreadHandoffMenu'
+
+function HandoffMenuAction() {
+  const c = useChatViewCtx()
+  if (!c.td.activeThread) return null
+  return (
+    <ThreadHandoffMenu
+      thread={c.td.activeThread}
+      project={c.td.activeProject ?? null}
+      {...(c.td.canCheckoutPullRequestIntoThread
+        ? { onOpenPullRequestDialog: c.openPullRequestDialog }
+        : {})}
+    />
+  )
+}
+
+function ChatHeaderSplitActions() {
+  const split = useChatSplitPaneContext()
+  const c = useChatViewCtx()
+  if (!c.td.activeThread) return null
+  if (!split || !split.splitOpen) {
+    if (split) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <HandoffMenuAction />
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={split.toggleSplit}
+            aria-label="Open split view"
+          >
+            <Columns2Icon className="size-3.5" />
+          </Button>
+        </div>
+      )
+    }
+    return <HandoffMenuAction />
+  }
+
+  const closeIcon = split.pane === 'primary' ? PanelRightCloseIcon : PanelLeftCloseIcon
+  const CloseIcon = closeIcon
+  return (
+    <div className="flex items-center gap-1.5">
+      <HandoffMenuAction />
+      <Button
+        size="xs"
+        variant={split.focusedPane === split.pane ? 'secondary' : 'outline'}
+        onClick={split.focusPane}
+        aria-label={`Focus ${split.pane} pane`}
+      >
+        <Columns2Icon className="size-3.5" />
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={split.toggleMaximize}
+        aria-label={
+          split.maximizedPane === split.pane
+            ? `Restore ${split.pane} pane`
+            : `Maximize ${split.pane} pane`
+        }
+      >
+        {split.maximizedPane === split.pane ? (
+          <Minimize2Icon className="size-3.5" />
+        ) : (
+          <Maximize2Icon className="size-3.5" />
+        )}
+      </Button>
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={split.toggleSplit}
+        aria-label={split.splitOpen ? 'Close split view' : 'Open split view'}
+      >
+        <CloseIcon className="size-3.5" />
+      </Button>
+    </div>
+  )
+}
 
 export function ChatViewHeaderPanel() {
   const c = useChatViewCtx()
@@ -66,8 +155,20 @@ export function ChatViewHeaderPanel() {
           onToggleTerminal={c.toggleTerminalVisibility}
           onToggleGitSidebar={c.toggleGitSidebar}
           onToggleFilesSidebar={c.toggleFilesSidebar}
+          extraActions={<ChatHeaderSplitActions />}
         />
       </header>
+      {activeThread.handoff ? (
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+            Handoff
+          </Badge>
+          <p className="truncate text-xs text-muted-foreground">
+            From {activeThread.handoff.sourceProvider} to {activeThread.handoff.targetProvider} via{' '}
+            {activeThread.handoff.sourceThreadTitle}
+          </p>
+        </div>
+      ) : null}
       <ProviderStatusBanner status={activeProviderStatus} />
       <ThreadErrorBanner
         error={activeThread.error}

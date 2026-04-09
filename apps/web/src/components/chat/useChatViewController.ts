@@ -10,6 +10,7 @@ import { useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   type ThreadId,
+  PROVIDER_DISPLAY_NAMES,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from '@orxa-code/contracts'
@@ -43,6 +44,12 @@ import {
   useChatViewPlanAndSendActions,
   useChatViewRemainingCallbacks,
 } from './useChatViewController.plansend'
+import { toastManager } from '../ui/toastState'
+import {
+  buildWorktreeHandoffContext,
+  resolveHandoffTargetProviderArgument,
+  startThreadHandoff,
+} from './ThreadHandoffMenu.helpers'
 
 function useBuildAddComposerImages(
   store: ReturnType<typeof useChatViewStoreSelectors>,
@@ -186,10 +193,161 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
   return { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar }
 }
 
+function showPullRequestHandoffUnavailableToast() {
+  toastManager.add({
+    type: 'warning',
+    title: 'Pull request handoff unavailable',
+    description: 'This thread cannot prepare a pull request worktree from the current project.',
+  })
+}
+
+function showInvalidHandoffTargetToast() {
+  toastManager.add({
+    type: 'warning',
+    title: 'Choose a different target provider',
+    description:
+      'Use `/handoff codex`, `/handoff claude`, or `/handoff opencode`, excluding the current provider.',
+  })
+}
+
+function showProviderStatusToast(params: {
+  selectedProvider: ReturnType<typeof useChatViewDerivedThread>['selectedProvider']
+  activeProviderStatus: ReturnType<typeof useChatViewDerivedThread>['activeProviderStatus']
+  rateLimitSummary: string | null
+}) {
+  const providerLabel = PROVIDER_DISPLAY_NAMES[params.selectedProvider] ?? params.selectedProvider
+  const statusMessage =
+    params.activeProviderStatus?.message ??
+    (params.activeProviderStatus
+      ? `${providerLabel} is ${params.activeProviderStatus.status}.`
+      : `${providerLabel} status is unavailable.`)
+  const description = [statusMessage, params.rateLimitSummary]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+  toastManager.add({
+    type: params.activeProviderStatus?.status === 'error' ? 'error' : 'info',
+    title: `${providerLabel} status`,
+    description,
+  })
+}
+
+async function runStandaloneSlashCommand(args: {
+  input: import('../../composer-logic').ParsedStandaloneComposerSlashCommand
+  navigate: ReturnType<typeof useChatViewStoreSelectors>['navigate']
+  activeProject: ReturnType<typeof useChatViewDerivedThread>['activeProject']
+  activeProviderStatus: ReturnType<typeof useChatViewDerivedThread>['activeProviderStatus']
+  activeThread: ReturnType<typeof useChatViewDerivedThread>['activeThread']
+  canCheckoutPullRequestIntoThread: ReturnType<
+    typeof useChatViewDerivedThread
+  >['canCheckoutPullRequestIntoThread']
+  selectedProvider: ReturnType<typeof useChatViewDerivedThread>['selectedProvider']
+  rateLimitSummary: string | null
+  callbacksCore: ReturnType<typeof useChatViewCallbacksCore>
+  pullRequestCbs: ReturnType<typeof usePullRequestCallbacks>
+}) {
+  const {
+    input,
+    navigate,
+    activeProject,
+    activeProviderStatus,
+    activeThread,
+    canCheckoutPullRequestIntoThread,
+    selectedProvider,
+    rateLimitSummary,
+    callbacksCore,
+    pullRequestCbs,
+  } = args
+  switch (input.command) {
+    case 'plan':
+      callbacksCore.handleInteractionModeChange('plan')
+      return true
+    case 'default':
+      callbacksCore.handleInteractionModeChange('default')
+      return true
+    case 'fork':
+      if (!activeThread || !canCheckoutPullRequestIntoThread) {
+        showPullRequestHandoffUnavailableToast()
+        return true
+      }
+      pullRequestCbs.openPullRequestDialog(
+        input.argument || undefined,
+        buildWorktreeHandoffContext(activeThread)
+      )
+      return true
+    case 'handoff': {
+      if (!activeThread) return false
+      const targetProvider = resolveHandoffTargetProviderArgument(
+        activeThread.modelSelection.provider,
+        input.argument
+      )
+      if (!targetProvider) {
+        showInvalidHandoffTargetToast()
+        return true
+      }
+      await startThreadHandoff({
+        navigate,
+        thread: activeThread,
+        project: activeProject ?? null,
+        targetProvider,
+      })
+      return true
+    }
+    case 'status':
+      showProviderStatusToast({ selectedProvider, activeProviderStatus, rateLimitSummary })
+      return true
+    default:
+      return false
+  }
+}
+
+function useStandaloneSlashCommandExecutor(args: {
+  store: ReturnType<typeof useChatViewStoreSelectors>
+  td: ReturnType<typeof useChatViewDerivedThread>
+  ad: ReturnType<typeof useChatViewDerivedActivities>
+  callbacksCore: ReturnType<typeof useChatViewCallbacksCore>
+  pullRequestCbs: ReturnType<typeof usePullRequestCallbacks>
+}) {
+  const { callbacksCore, pullRequestCbs } = args
+  const { navigate } = args.store
+  const {
+    activeProject,
+    activeProviderStatus,
+    activeThread,
+    canCheckoutPullRequestIntoThread,
+    selectedProvider,
+  } = args.td
+  const rateLimitSummary = args.ad.activeRateLimits?.summary ?? null
+  return useCallback(
+    (input: import('../../composer-logic').ParsedStandaloneComposerSlashCommand) =>
+      runStandaloneSlashCommand({
+        input,
+        navigate,
+        activeProject,
+        activeProviderStatus,
+        activeThread,
+        canCheckoutPullRequestIntoThread,
+        selectedProvider,
+        rateLimitSummary,
+        callbacksCore,
+        pullRequestCbs,
+      }),
+    [
+      activeProject,
+      activeProviderStatus,
+      activeThread,
+      callbacksCore,
+      canCheckoutPullRequestIntoThread,
+      navigate,
+      pullRequestCbs,
+      rateLimitSummary,
+      selectedProvider,
+    ]
+  )
+}
+
 function useChatViewControllerActions(
   threadId: ThreadId,
-  state: ReturnType<typeof useChatViewControllerState>,
-  utils: ReturnType<typeof useChatViewControllerUtilsAndDispatch>
+  state: ReturnType<typeof useChatViewControllerState>, utils: ReturnType<typeof useChatViewControllerUtilsAndDispatch>
 ) {
   const { store, ls, td, ad, p, cd, scroll } = state
   const { setThreadError, focusComposer, scheduleComposerFocus, setPrompt, composerDraftCbs, ld } =
@@ -211,6 +369,14 @@ function useChatViewControllerActions(
     td.isLocalDraftThread,
     store.draftThread?.envMode ?? null
   )
+  const pullRequestCbs = usePullRequestCallbacks(threadId, store, ls, td)
+  const onExecuteStandaloneSlashCommand = useStandaloneSlashCommandExecutor({
+    store,
+    td,
+    ad,
+    callbacksCore,
+    pullRequestCbs,
+  })
   const planSendActions = useChatViewPlanAndSendActions({
     threadId,
     store,
@@ -223,7 +389,7 @@ function useChatViewControllerActions(
     envMode,
     setThreadError,
     setPrompt,
-    handleInteractionModeChange: callbacksCore.handleInteractionModeChange,
+    onExecuteStandaloneSlashCommand,
     composerDraftCbs,
     runProjectScript: callbacksCore.runProjectScript as (
       script: { id: string; command: string; name: string },
@@ -232,7 +398,6 @@ function useChatViewControllerActions(
     persistThreadSettingsForNextTurn: callbacksCore.persistThreadSettingsForNextTurn,
     onAdvanceActivePendingUserInput: callbacksCore.onAdvanceActivePendingUserInput,
   })
-  const pullRequestCbs = usePullRequestCallbacks(threadId, store, ls, td)
   const addComposerImages = useBuildAddComposerImages(
     store,
     td,

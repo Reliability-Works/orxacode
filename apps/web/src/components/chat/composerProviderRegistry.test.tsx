@@ -443,10 +443,10 @@ describe('getComposerProviderState opencode', () => {
     })
   })
 
-  it('returns opencode state confirming plan mode is not in model options (plan is toggle-driven)', () => {
-    // opencode uses the plan toggle (interactionMode), not a /plan slash command.
+  it('returns opencode state confirming plan mode is not encoded in model options', () => {
+    // Opencode plan mode is driven through interactionMode rather than model options.
     // Verify that getComposerProviderState for opencode does not produce any
-    // plan-mode model options — plan mode is driven externally by the composer toggle.
+    // plan-mode model options.
     const state = getComposerProviderState({
       provider: 'opencode',
       model: 'claude-sonnet-4-5',

@@ -1,4 +1,4 @@
-import { type ProjectEntry, type ProviderKind } from '@orxa-code/contracts'
+import { type ProjectEntry, type ProviderKind, type Skill } from '@orxa-code/contracts'
 import { memo, useLayoutEffect, useRef } from 'react'
 import { type ComposerSlashCommand, type ComposerTriggerKind } from '../../composer-logic'
 import { BotIcon } from 'lucide-react'
@@ -20,6 +20,21 @@ export type ComposerCommandItem =
       id: string
       type: 'slash-command'
       command: ComposerSlashCommand
+      label: string
+      description: string
+    }
+  | {
+      id: string
+      type: 'native-slash-command'
+      provider: ProviderKind
+      command: string
+      label: string
+      description: string
+    }
+  | {
+      id: string
+      type: 'skill'
+      skill: Skill
       label: string
       description: string
     }
@@ -52,15 +67,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   }, [props.activeItemId])
 
   return (
-    <Command
-      autoHighlight={false}
-      mode="none"
-      onItemHighlighted={highlightedValue => {
-        props.onHighlightedItemChange(
-          typeof highlightedValue === 'string' ? highlightedValue : null
-        )
-      }}
-    >
+    <Command autoHighlight={false} mode="none">
       <div
         ref={listRef}
         className="relative overflow-hidden rounded-xl border border-border/80 bg-popover/96 shadow-lg/8 backdrop-blur-xs"
@@ -125,6 +132,14 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === 'slash-command' ? (
         <BotIcon className="size-4 text-muted-foreground/80" />
+      ) : null}
+      {props.item.type === 'native-slash-command' ? (
+        <BotIcon className="size-4 text-muted-foreground/80" />
+      ) : null}
+      {props.item.type === 'skill' ? (
+        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+          skill
+        </Badge>
       ) : null}
       {props.item.type === 'model' ? (
         <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
