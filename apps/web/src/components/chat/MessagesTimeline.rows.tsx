@@ -343,12 +343,7 @@ function AssistantTurnDiffSummary(props: AssistantDisplayProps) {
           >
             {allDirectoriesExpanded ? 'Collapse all' : 'Expand all'}
           </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            onClick={props.onOpenGitSidebar}
-          >
+          <Button type="button" size="xs" variant="outline" onClick={props.onOpenGitSidebar}>
             View diff
           </Button>
         </div>

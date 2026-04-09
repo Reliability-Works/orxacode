@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildTurnDiffTree } from '../../lib/turnDiffTree'
-import { buildExpansionState, collectDirectoryPaths, collectFilePaths } from './ChangedFilesTree.logic'
+import {
+  buildExpansionState,
+  collectDirectoryPaths,
+  collectFilePaths,
+} from './ChangedFilesTree.logic'
 
 const TREE = buildTurnDiffTree([
   { path: 'docs/readme.md', additions: 1, deletions: 0 },

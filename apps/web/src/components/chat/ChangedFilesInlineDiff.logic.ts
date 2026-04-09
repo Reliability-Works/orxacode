@@ -15,7 +15,10 @@ export function findChangedFileDiff(
   if (!patch) return null
   const normalizedPatch = patch.trim()
   if (normalizedPatch.length === 0) return null
-  const parsedPatches = parsePatchFiles(normalizedPatch, buildPatchCacheKey(normalizedPatch, cacheScope))
+  const parsedPatches = parsePatchFiles(
+    normalizedPatch,
+    buildPatchCacheKey(normalizedPatch, cacheScope)
+  )
   const files = parsedPatches.flatMap(entry => entry.files)
   return (
     files.find(fileDiff => {

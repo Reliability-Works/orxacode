@@ -1,5 +1,11 @@
 import { type ThreadId } from '@orxa-code/contracts'
-import { type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useMemo, useRef } from 'react'
+import {
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react'
 import * as Schema from 'effect/Schema'
 
 import ChatView from '../components/ChatView'
@@ -22,8 +28,16 @@ function SplitAwareChatThreadShell(props: {
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
 }) {
-  const { focusedPane, maximizedPane, onFocusPane, onToggleMaximize, onToggleSplit, pane, splitOpen, threadId } =
-    props
+  const {
+    focusedPane,
+    maximizedPane,
+    onFocusPane,
+    onToggleMaximize,
+    onToggleSplit,
+    pane,
+    splitOpen,
+    threadId,
+  } = props
   const controls = useMemo(
     () => ({
       pane,
@@ -61,7 +75,10 @@ function useSplitResizeHandle(
         const rect = root.getBoundingClientRect()
         if (rect.width <= 0) return
         setSplitRatio(
-          Math.max(CHAT_SPLIT_MIN_RATIO, Math.min(CHAT_SPLIT_MAX_RATIO, (clientX - rect.left) / rect.width))
+          Math.max(
+            CHAT_SPLIT_MIN_RATIO,
+            Math.min(CHAT_SPLIT_MAX_RATIO, (clientX - rect.left) / rect.width)
+          )
         )
       }
       target.setPointerCapture(pointerId)
@@ -96,7 +113,11 @@ function SplitThreadPane(props: {
   return (
     <div
       className={props.pane === 'primary' ? 'min-h-0 min-w-0' : 'min-h-0 min-w-0 flex-1'}
-      style={{ flexBasis: props.basis, flexGrow: props.pane === 'primary' ? 0 : 1, flexShrink: props.pane === 'primary' ? 0 : 1 }}
+      style={{
+        flexBasis: props.basis,
+        flexGrow: props.pane === 'primary' ? 0 : 1,
+        flexShrink: props.pane === 'primary' ? 0 : 1,
+      }}
       onPointerDown={() => props.onFocusPane(props.pane)}
     >
       <SplitAwareChatThreadShell
@@ -165,7 +186,11 @@ function ChatSplitInlineLayout(props: {
         onToggleMaximize={props.onToggleMaximize}
       />
       {!primaryHidden && !secondaryHidden ? (
-        <div className="relative z-10 w-2 shrink-0 cursor-col-resize touch-none bg-transparent" onPointerDown={handleResizePointerDown} aria-hidden="true">
+        <div
+          className="relative z-10 w-2 shrink-0 cursor-col-resize touch-none bg-transparent"
+          onPointerDown={handleResizePointerDown}
+          aria-hidden="true"
+        >
           <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80" />
         </div>
       ) : null}

@@ -2,13 +2,21 @@ import { ThreadId } from '@orxa-code/contracts'
 import { createFileRoute, retainSearchParams, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect } from 'react'
 
-import { type DiffRouteSearch, parseDiffRouteSearch, stripDiffSearchParams } from '../diffRouteSearch'
+import {
+  type DiffRouteSearch,
+  parseDiffRouteSearch,
+  stripDiffSearchParams,
+} from '../diffRouteSearch'
 import { useStore } from '../store'
 import { type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
 import { ChatThreadInlineLayout } from './chatThreadLayout'
 import { useChatThreadRouteState } from './chatThreadRouteState'
 
-function useSplitSearchState(search: DiffRouteSearch, threadId: ThreadId, defaultSecondaryThreadId: ThreadId | null) {
+function useSplitSearchState(
+  search: DiffRouteSearch,
+  threadId: ThreadId,
+  defaultSecondaryThreadId: ThreadId | null
+) {
   const secondaryThreadId =
     search.secondaryThreadId && search.secondaryThreadId !== threadId
       ? search.secondaryThreadId

@@ -339,14 +339,8 @@ export function useChatViewDerivedThread(
   store: StoreSelectors,
   ls: LocalState
 ) {
-  const {
-    serverThread,
-    settings,
-    composerDraft,
-    draftThread,
-    fallbackDraftProject,
-    serverConfig,
-  } = store
+  const { serverThread, settings, composerDraft, draftThread, fallbackDraftProject, serverConfig } =
+    store
   const localDraftError = serverThread ? null : (ls.localDraftErrorsByThreadId[threadId] ?? null)
 
   const localDraftThread = useMemo(

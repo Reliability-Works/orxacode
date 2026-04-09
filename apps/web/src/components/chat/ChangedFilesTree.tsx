@@ -73,7 +73,16 @@ function FileTreeNodeRow(props: {
   isExpanded: boolean
   onToggleExpanded: () => void
 }) {
-  const { checkpointTurnCount, depth, isExpanded, node, onToggleExpanded, resolvedTheme, threadId, turnId } = props
+  const {
+    checkpointTurnCount,
+    depth,
+    isExpanded,
+    node,
+    onToggleExpanded,
+    resolvedTheme,
+    threadId,
+    turnId,
+  } = props
   const leftPadding = 8 + depth * 14
   return (
     <div>
@@ -122,7 +131,10 @@ function useChangedFilesExpansionState(input: {
     () => collectDirectoryPaths(input.treeNodes).join('\u0000'),
     [input.treeNodes]
   )
-  const filePathsKey = useMemo(() => collectFilePaths(input.treeNodes).join('\u0000'), [input.treeNodes])
+  const filePathsKey = useMemo(
+    () => collectFilePaths(input.treeNodes).join('\u0000'),
+    [input.treeNodes]
+  )
   const allDirectoryExpansionState = useMemo(
     () =>
       buildExpansionState(
@@ -177,7 +189,8 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   allDirectoriesExpanded: boolean
   resolvedTheme: 'light' | 'dark'
 }) {
-  const { allDirectoriesExpanded, checkpointTurnCount, files, resolvedTheme, threadId, turnId } = props
+  const { allDirectoriesExpanded, checkpointTurnCount, files, resolvedTheme, threadId, turnId } =
+    props
   const treeNodes = useMemo(() => buildTurnDiffTree(files), [files])
   const { expandedDirectories, expandedFiles, toggleDirectory, toggleFileExpansion } =
     useChangedFilesExpansionState({

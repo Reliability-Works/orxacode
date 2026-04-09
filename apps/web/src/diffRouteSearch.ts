@@ -40,19 +40,13 @@ function parseSplitRouteSearch(search: Record<string, unknown>) {
 
 export function stripDiffSearchParams<T extends Record<string, unknown>>(
   params: T
-): Omit<
-  T,
-  'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'
-> {
+): Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'> {
   const nextParams = { ...params }
   delete nextParams.split
   delete nextParams.secondaryThreadId
   delete nextParams.focusedPane
   delete nextParams.maximizedPane
-  return nextParams as Omit<
-    T,
-    'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'
-  >
+  return nextParams as Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'>
 }
 
 export function parseDiffRouteSearch(search: Record<string, unknown>): DiffRouteSearch {
