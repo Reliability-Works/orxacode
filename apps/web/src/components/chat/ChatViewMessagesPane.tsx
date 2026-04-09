@@ -47,6 +47,7 @@ export function ChatViewMessagesPane() {
       >
         <MessagesTimeline
           key={td.activeThread.id}
+          threadId={td.activeThread.id}
           hasMessages={ad.timelineEntries.length > 0}
           isWorking={ad.isWorking}
           activeTurnInProgress={ad.isWorking || !ad.latestTurnSettled}
@@ -59,7 +60,7 @@ export function ChatViewMessagesPane() {
           nowIso={new Date(nowTick).toISOString()}
           expandedWorkGroups={expandedWorkGroups}
           onToggleWorkGroup={c.onToggleWorkGroup}
-          onOpenTurnDiff={c.onOpenTurnDiff}
+          onOpenGitSidebar={c.openGitSidebar}
           revertTurnCountByUserMessageId={ad.revertTurnCountByUserMessageId}
           onRevertUserMessage={c.onRevertUserMessage}
           isRevertingCheckpoint={isRevertingCheckpoint}

@@ -345,7 +345,6 @@ export function useChatViewDerivedThread(
     composerDraft,
     draftThread,
     fallbackDraftProject,
-    rawSearch,
     serverConfig,
   } = store
   const localDraftError = serverThread ? null : (ls.localDraftErrorsByThreadId[threadId] ?? null)
@@ -390,7 +389,6 @@ export function useChatViewDerivedThread(
     isServerThread,
     isLocalDraftThread,
     canCheckoutPullRequestIntoThread: isLocalDraftThread,
-    diffOpen: rawSearch.diff === '1',
     activeThreadId: activeThread?.id ?? null,
     activeLatestTurn: activeThread?.latestTurn ?? null,
     phase: derivePhase(activeThread?.session ?? null),

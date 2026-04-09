@@ -22,7 +22,7 @@ import {
   useOnSelectComposerItem,
   useImageExpandCallbacks,
   useRevertAndInterruptCallbacks,
-  useToggleDiffCallback,
+  useGitSidebarCallbacks,
   useEnvModeAndTraitsCallbacks,
   useWorkGroupCallbacks,
 } from './useChatViewBehavior2'
@@ -157,7 +157,7 @@ function useThreadCallbacks(
     setThreadError,
     ls
   )
-  const { onToggleDiff, onOpenTurnDiff } = useToggleDiffCallback(threadId, store, td)
+  const { openGitSidebar } = useGitSidebarCallbacks(ls)
   const { onEnvModeChange, setPromptFromTraits } = useEnvModeAndTraitsCallbacks(
     threadId,
     store,
@@ -177,8 +177,7 @@ function useThreadCallbacks(
     ...imageCbs,
     onRevertToTurnCount,
     onInterrupt,
-    onToggleDiff,
-    onOpenTurnDiff,
+    openGitSidebar,
     onEnvModeChange,
     setPromptFromTraits,
     onToggleWorkGroup,

@@ -1,4 +1,4 @@
-import { type MessageId, type TurnId } from '@orxa-code/contracts'
+import { type MessageId, type ThreadId, type TurnId } from '@orxa-code/contracts'
 import { type TimestampFormat } from '@orxa-code/contracts/settings'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { type VirtualItem } from '@tanstack/react-virtual'
@@ -23,7 +23,7 @@ interface MessagesTimelineProps {
   nowIso: string
   expandedWorkGroups: Record<string, boolean>
   onToggleWorkGroup: (groupId: string) => void
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void
+  onOpenGitSidebar: () => void
   revertTurnCountByUserMessageId: Map<MessageId, number>
   onRevertUserMessage: (messageId: MessageId) => void
   isRevertingCheckpoint: boolean
@@ -32,6 +32,7 @@ interface MessagesTimelineProps {
   resolvedTheme: 'light' | 'dark'
   timestampFormat: TimestampFormat
   workspaceRoot: string | undefined
+  threadId: ThreadId
 }
 
 // SharedTimelineRowProps is defined in MessagesTimeline.rows and re-used here
@@ -69,10 +70,11 @@ function buildSharedTimelineRowProps(
     allDirectoriesExpandedByTurnId,
     onToggleAllDirectories,
     resolvedTheme: props.resolvedTheme,
-    onOpenTurnDiff: props.onOpenTurnDiff,
+    onOpenGitSidebar: props.onOpenGitSidebar,
     nowIso: props.nowIso,
     timestampFormat: props.timestampFormat,
     workspaceRoot: props.workspaceRoot,
+    threadId: props.threadId,
   }
 }
 

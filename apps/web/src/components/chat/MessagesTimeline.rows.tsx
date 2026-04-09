@@ -1,4 +1,4 @@
-import { type MessageId, type TurnId } from '@orxa-code/contracts'
+import { type MessageId, type ThreadId, type TurnId } from '@orxa-code/contracts'
 import { type TimestampFormat } from '@orxa-code/contracts/settings'
 import { Undo2Icon } from 'lucide-react'
 
@@ -36,10 +36,11 @@ export type SharedTimelineRowProps = {
   allDirectoriesExpandedByTurnId: Record<string, boolean>
   onToggleAllDirectories: (turnId: TurnId) => void
   resolvedTheme: 'light' | 'dark'
-  onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void
+  onOpenGitSidebar: () => void
   nowIso: string
   timestampFormat: TimestampFormat
   workspaceRoot: string | undefined
+  threadId: ThreadId
 }
 
 type AssistantMessageRow = Extract<TimelineRow, { kind: 'message' }>
@@ -50,7 +51,8 @@ type AssistantDisplayProps = Pick<
   | 'allDirectoriesExpandedByTurnId'
   | 'onToggleAllDirectories'
   | 'resolvedTheme'
-  | 'onOpenTurnDiff'
+  | 'onOpenGitSidebar'
+  | 'threadId'
 > & {
   row: AssistantMessageRow
 }
@@ -94,7 +96,8 @@ export function TimelineRowContent(props: TimelineRowContentProps) {
           allDirectoriesExpandedByTurnId={props.allDirectoriesExpandedByTurnId}
           onToggleAllDirectories={props.onToggleAllDirectories}
           resolvedTheme={props.resolvedTheme}
-          onOpenTurnDiff={props.onOpenTurnDiff}
+          onOpenGitSidebar={props.onOpenGitSidebar}
+          threadId={props.threadId}
           nowIso={props.nowIso}
           timestampFormat={props.timestampFormat}
         />
@@ -292,7 +295,8 @@ function AssistantTimelineRow(
           allDirectoriesExpandedByTurnId={props.allDirectoriesExpandedByTurnId}
           onToggleAllDirectories={props.onToggleAllDirectories}
           resolvedTheme={props.resolvedTheme}
-          onOpenTurnDiff={props.onOpenTurnDiff}
+          onOpenGitSidebar={props.onOpenGitSidebar}
+          threadId={props.threadId}
         />
         <p className="mt-1.5 text-[10px] text-muted-foreground/30">
           {formatMessageMeta(
@@ -343,7 +347,7 @@ function AssistantTurnDiffSummary(props: AssistantDisplayProps) {
             type="button"
             size="xs"
             variant="outline"
-            onClick={() => props.onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)}
+            onClick={props.onOpenGitSidebar}
           >
             View diff
           </Button>
@@ -351,11 +355,12 @@ function AssistantTurnDiffSummary(props: AssistantDisplayProps) {
       </div>
       <ChangedFilesTree
         key={`changed-files-tree:${turnSummary.turnId}`}
+        threadId={props.threadId}
         turnId={turnSummary.turnId}
+        checkpointTurnCount={turnSummary.checkpointTurnCount}
         files={checkpointFiles}
         allDirectoriesExpanded={allDirectoriesExpanded}
         resolvedTheme={props.resolvedTheme}
-        onOpenTurnDiff={props.onOpenTurnDiff}
       />
     </div>
   )

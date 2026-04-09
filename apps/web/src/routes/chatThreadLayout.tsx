@@ -1,136 +1,16 @@
 import { type ThreadId } from '@orxa-code/contracts'
-import { Suspense, lazy, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, useCallback, useMemo, useRef } from 'react'
+import { type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useMemo, useRef } from 'react'
 import * as Schema from 'effect/Schema'
 
 import ChatView from '../components/ChatView'
 import { ChatSplitPaneContext, type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
-import { DiffWorkerPoolProvider } from '../components/DiffWorkerPoolProvider'
-import {
-  DiffPanelHeaderSkeleton,
-  DiffPanelLoadingState,
-  DiffPanelShell,
-  type DiffPanelMode,
-} from '../components/DiffPanelShell'
 import { useLocalStorage } from '../hooks/useLocalStorage'
-import { Sheet, SheetPopup } from '../components/ui/sheet'
-import { Sidebar, SidebarInset, SidebarProvider, SidebarRail } from '~/components/ui/sidebar'
-
-const DiffPanel = lazy(() => import('../components/DiffPanel'))
-const DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY = 'chat_diff_sidebar_width'
-const DIFF_INLINE_DEFAULT_WIDTH = 'clamp(28rem,48vw,44rem)'
-const DIFF_INLINE_SIDEBAR_MIN_WIDTH = 26 * 16
-const COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX = 208
+import { SidebarInset } from '~/components/ui/sidebar'
 const CHAT_SPLIT_RATIO_STORAGE_KEY = 'orxa:chat-split-ratio'
 const CHAT_SPLIT_DEFAULT_RATIO = 0.5
 const CHAT_SPLIT_MIN_RATIO = 0.28
 const CHAT_SPLIT_MAX_RATIO = 0.72
 const ChatSplitRatioSchema = Schema.Number
-
-function shouldAcceptInlineSidebarWidth(input: { nextWidth: number; wrapper: HTMLElement }) {
-  const composerForm = document.querySelector<HTMLElement>("[data-chat-composer-form='true']")
-  if (!composerForm) return true
-  const composerViewport = composerForm.parentElement
-  if (!composerViewport) return true
-  const previousSidebarWidth = input.wrapper.style.getPropertyValue('--sidebar-width')
-  input.wrapper.style.setProperty('--sidebar-width', `${input.nextWidth}px`)
-
-  const viewportStyle = window.getComputedStyle(composerViewport)
-  const viewportPaddingLeft = Number.parseFloat(viewportStyle.paddingLeft) || 0
-  const viewportPaddingRight = Number.parseFloat(viewportStyle.paddingRight) || 0
-  const viewportContentWidth = Math.max(
-    0,
-    composerViewport.clientWidth - viewportPaddingLeft - viewportPaddingRight
-  )
-  const formRect = composerForm.getBoundingClientRect()
-  const composerFooter = composerForm.querySelector<HTMLElement>("[data-chat-composer-footer='true']")
-  const composerRightActions = composerForm.querySelector<HTMLElement>("[data-chat-composer-actions='right']")
-  const composerRightActionsWidth = composerRightActions?.getBoundingClientRect().width ?? 0
-  const composerFooterGap = composerFooter
-    ? Number.parseFloat(window.getComputedStyle(composerFooter).columnGap) ||
-      Number.parseFloat(window.getComputedStyle(composerFooter).gap) ||
-      0
-    : 0
-  const minimumComposerWidth =
-    COMPOSER_COMPACT_MIN_LEFT_CONTROLS_WIDTH_PX + composerRightActionsWidth + composerFooterGap
-  const hasComposerOverflow = composerForm.scrollWidth > composerForm.clientWidth + 0.5
-  const overflowsViewport = formRect.width > viewportContentWidth + 0.5
-  const violatesMinimumComposerWidth = composerForm.clientWidth + 0.5 < minimumComposerWidth
-
-  if (previousSidebarWidth.length > 0) {
-    input.wrapper.style.setProperty('--sidebar-width', previousSidebarWidth)
-  } else {
-    input.wrapper.style.removeProperty('--sidebar-width')
-  }
-  return !hasComposerOverflow && !overflowsViewport && !violatesMinimumComposerWidth
-}
-
-function DiffPanelSheet(props: { children: ReactNode; diffOpen: boolean; onCloseDiff: () => void }) {
-  return (
-    <Sheet open={props.diffOpen} onOpenChange={open => !open && props.onCloseDiff()}>
-      <SheetPopup side="right" showCloseButton={false} keepMounted className="w-[min(88vw,820px)] max-w-[820px] p-0">
-        {props.children}
-      </SheetPopup>
-    </Sheet>
-  )
-}
-
-function LazyDiffPanel(props: { mode: DiffPanelMode }) {
-  return (
-    <DiffWorkerPoolProvider>
-      <Suspense
-        fallback={
-          <DiffPanelShell mode={props.mode} header={<DiffPanelHeaderSkeleton />}>
-            <DiffPanelLoadingState label="Loading diff viewer..." />
-          </DiffPanelShell>
-        }
-      >
-        <DiffPanel mode={props.mode} />
-      </Suspense>
-    </DiffWorkerPoolProvider>
-  )
-}
-
-function DiffPanelInlineSidebar(props: {
-  diffOpen: boolean
-  onCloseDiff: () => void
-  onOpenDiff: () => void
-  renderDiffContent: boolean
-}) {
-  const onOpenChange = useCallback(
-    (open: boolean) => {
-      if (open) {
-        props.onOpenDiff()
-        return
-      }
-      props.onCloseDiff()
-    },
-    [props]
-  )
-
-  return (
-    <SidebarProvider
-      defaultOpen={false}
-      open={props.diffOpen}
-      onOpenChange={onOpenChange}
-      className="w-auto min-h-0 flex-none bg-transparent"
-      style={{ '--sidebar-width': DIFF_INLINE_DEFAULT_WIDTH } as React.CSSProperties}
-    >
-      <Sidebar
-        side="right"
-        collapsible="offcanvas"
-        className="border-l border-border bg-card text-foreground"
-        resizable={{
-          minWidth: DIFF_INLINE_SIDEBAR_MIN_WIDTH,
-          shouldAcceptWidth: shouldAcceptInlineSidebarWidth,
-          storageKey: DIFF_INLINE_SIDEBAR_WIDTH_STORAGE_KEY,
-        }}
-      >
-        {props.renderDiffContent ? <LazyDiffPanel mode="sidebar" /> : null}
-        <SidebarRail />
-      </Sidebar>
-    </SidebarProvider>
-  )
-}
 
 function SplitAwareChatThreadShell(props: {
   threadId: ThreadId
@@ -310,35 +190,21 @@ export function ChatThreadInlineLayout(props: {
   splitOpen: boolean
   focusedPane: ChatSplitPane
   maximizedPane: ChatSplitPane | null
-  diffOpen: boolean
-  onCloseDiff: () => void
-  onOpenDiff: () => void
   onToggleSplit: () => void
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
-  renderDiffContent: boolean
 }) {
   return (
-    <>
-      <ChatSplitInlineLayout
-        primaryThreadId={props.threadId}
-        secondaryThreadId={props.secondaryThreadId}
-        splitOpen={props.splitOpen}
-        focusedPane={props.focusedPane}
-        maximizedPane={props.maximizedPane}
-        onToggleSplit={props.onToggleSplit}
-        onFocusPane={props.onFocusPane}
-        onToggleMaximize={props.onToggleMaximize}
-      />
-      {props.renderDiffContent ? (
-        <DiffPanelInlineSidebar
-          diffOpen={props.diffOpen}
-          onCloseDiff={props.onCloseDiff}
-          onOpenDiff={props.onOpenDiff}
-          renderDiffContent
-        />
-      ) : null}
-    </>
+    <ChatSplitInlineLayout
+      primaryThreadId={props.threadId}
+      secondaryThreadId={props.secondaryThreadId}
+      splitOpen={props.splitOpen}
+      focusedPane={props.focusedPane}
+      maximizedPane={props.maximizedPane}
+      onToggleSplit={props.onToggleSplit}
+      onFocusPane={props.onFocusPane}
+      onToggleMaximize={props.onToggleMaximize}
+    />
   )
 }
 
@@ -348,28 +214,20 @@ export function ChatThreadSheetLayout(props: {
   splitOpen: boolean
   focusedPane: ChatSplitPane
   maximizedPane: ChatSplitPane | null
-  diffOpen: boolean
-  onCloseDiff: () => void
   onToggleSplit: () => void
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
-  renderDiffContent: boolean
 }) {
   return (
-    <>
-      <ChatSplitInlineLayout
-        primaryThreadId={props.threadId}
-        secondaryThreadId={props.secondaryThreadId}
-        splitOpen={props.splitOpen}
-        focusedPane={props.focusedPane}
-        maximizedPane={props.maximizedPane}
-        onToggleSplit={props.onToggleSplit}
-        onFocusPane={props.onFocusPane}
-        onToggleMaximize={props.onToggleMaximize}
-      />
-      <DiffPanelSheet diffOpen={props.diffOpen} onCloseDiff={props.onCloseDiff}>
-        {props.renderDiffContent ? <LazyDiffPanel mode="sheet" /> : null}
-      </DiffPanelSheet>
-    </>
+    <ChatSplitInlineLayout
+      primaryThreadId={props.threadId}
+      secondaryThreadId={props.secondaryThreadId}
+      splitOpen={props.splitOpen}
+      focusedPane={props.focusedPane}
+      maximizedPane={props.maximizedPane}
+      onToggleSplit={props.onToggleSplit}
+      onFocusPane={props.onFocusPane}
+      onToggleMaximize={props.onToggleMaximize}
+    />
   )
 }

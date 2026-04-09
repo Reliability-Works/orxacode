@@ -11,11 +11,9 @@ import {
   type ProviderKind,
   type RuntimeMode,
   type ThreadId,
-  type TurnId,
 } from '@orxa-code/contracts'
 import { newCommandId, randomUUID } from '~/lib/utils'
 import { readNativeApi } from '~/nativeApi'
-import { stripDiffSearchParams } from '../../diffRouteSearch'
 import {
   collapseExpandedComposerCursor,
   detectComposerTrigger,
@@ -393,42 +391,15 @@ export function useRevertAndInterruptCallbacks(
 }
 
 // ---------------------------------------------------------------------------
-// Toggle diff + open turn diff
+// Git sidebar
 // ---------------------------------------------------------------------------
 
-export function useToggleDiffCallback(threadId: ThreadId, store: S, td: T) {
-  const { navigate } = store
-  const { diffOpen } = td
+export function useGitSidebarCallbacks(ls: L) {
+  const openGitSidebar = useCallback(() => {
+    ls.setAuxSidebarMode('git')
+  }, [ls])
 
-  const onToggleDiff = useCallback(() => {
-    void navigate({
-      to: '/$threadId',
-      params: { threadId },
-      replace: true,
-      search: previous => {
-        const rest = stripDiffSearchParams(previous)
-        return diffOpen ? rest : { ...rest, diff: '1' as const }
-      },
-    })
-  }, [diffOpen, navigate, threadId])
-
-  const onOpenTurnDiff = useCallback(
-    (turnId: TurnId, filePath?: string) => {
-      void navigate({
-        to: '/$threadId',
-        params: { threadId },
-        search: previous => {
-          const rest = stripDiffSearchParams(previous)
-          return filePath
-            ? { ...rest, diff: '1' as const, diffTurnId: turnId, diffFilePath: filePath }
-            : { ...rest, diff: '1' as const, diffTurnId: turnId }
-        },
-      })
-    },
-    [navigate, threadId]
-  )
-
-  return { onToggleDiff, onOpenTurnDiff }
+  return { openGitSidebar }
 }
 
 // ---------------------------------------------------------------------------

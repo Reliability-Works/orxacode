@@ -1,4 +1,4 @@
-import { MessageId } from '@orxa-code/contracts'
+import { MessageId, ThreadId } from '@orxa-code/contracts'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ComponentProps } from 'react'
@@ -58,7 +58,7 @@ function createBaseProps(): Omit<MessagesTimelineProps, 'timelineEntries'> {
     nowIso: '2026-03-17T19:12:30.000Z',
     expandedWorkGroups: {},
     onToggleWorkGroup: () => {},
-    onOpenTurnDiff: () => {},
+    onOpenGitSidebar: () => {},
     revertTurnCountByUserMessageId: new Map(),
     onRevertUserMessage: () => {},
     isRevertingCheckpoint: false,
@@ -67,6 +67,7 @@ function createBaseProps(): Omit<MessagesTimelineProps, 'timelineEntries'> {
     resolvedTheme: 'light',
     timestampFormat: 'locale',
     workspaceRoot: undefined,
+    threadId: ThreadId.makeUnsafe('thread-1'),
   }
 }
 
