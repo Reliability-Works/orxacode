@@ -129,6 +129,8 @@ export function VirtualizedBranchList({
   ...itemProps
 }: VirtualizedBranchListProps) {
   const branchListScrollElementRef = useRef<HTMLDivElement | null>(null)
+  // TanStack Virtual is not React Compiler-compatible yet; this hook is safe here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const branchListVirtualizer = useVirtualizer({
     count: filteredBranchPickerItems.length,
     estimateSize: index =>

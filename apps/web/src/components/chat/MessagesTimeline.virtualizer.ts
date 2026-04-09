@@ -106,6 +106,8 @@ function useTimelineVirtualizerCore({
     maximum: rows.length,
   })
 
+  // TanStack Virtual is not React Compiler-compatible yet; this hook is safe here.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
     count: virtualizedRowCount,
     getScrollElement: () => scrollContainer,
