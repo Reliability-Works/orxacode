@@ -93,6 +93,7 @@ function useSidebarRenderedAndKeyboardNav(
   const rendered = useSidebarRenderedProjects({
     sidebarProjects: derived.sidebarProjects,
     threads: derived.threads,
+    pinnedThreadIds: s.pinnedThreadIds,
     routeThreadId: s.routeThreadId,
     sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
     sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
@@ -125,7 +126,8 @@ export function useSidebarWiring(s: StoreBindings) {
   const newThreadShortcutLabel =
     shortcutLabelForCommand(s.keybindings, 'chat.newLocal', derived.sidebarShortcutLabelOptions) ??
     shortcutLabelForCommand(s.keybindings, 'chat.new', derived.sidebarShortcutLabelOptions)
-  const { getProjectItemProps } = useSidebarCallbackFactories({
+  const { getProjectItemProps, getThreadRowProps, confirmingArchiveThreadId } =
+    useSidebarCallbackFactories({
     threadActions,
     projectActions,
     keyboardNavThreadJumpLabelById: keyboardNav.threadJumpLabelById,
@@ -142,13 +144,18 @@ export function useSidebarWiring(s: StoreBindings) {
     defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
     confirmThreadArchive: s.appSettings.confirmThreadArchive,
     showThreadJumpHints,
-  })
+    })
 
   return {
     projectActions,
     renderedProjects: rendered.renderedProjects,
+    renderedPinnedThreads: rendered.renderedPinnedThreads,
     isManualProjectSorting: rendered.isManualProjectSorting,
     desktopUpdate,
+    threadJumpLabelById: keyboardNav.threadJumpLabelById,
+    prByThreadId: derived.prByThreadId,
+    confirmingArchiveThreadId,
+    getThreadRowProps,
     getProjectItemProps,
   }
 }

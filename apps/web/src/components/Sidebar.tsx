@@ -51,6 +51,7 @@ function buildSidebarBodyProps(
     desktopUpdateButtonDisabled: w.desktopUpdate.desktopUpdateButtonDisabled,
     onDesktopUpdateButtonClick: w.desktopUpdate.handleDesktopUpdateButtonClick,
     projects: s.projects,
+    renderedPinnedThreads: w.renderedPinnedThreads,
     renderedProjects: w.renderedProjects,
     isManualProjectSorting: w.isManualProjectSorting,
     appSettings: {
@@ -81,6 +82,13 @@ function buildSidebarBodyProps(
       }
     },
     onNavigateToSettings: () => void s.navigate({ to: '/settings' }),
+    getThreadRowProps: w.getThreadRowProps,
+    routeThreadId: s.routeThreadId,
+    selectedThreadIds: s.selectedThreadIds,
+    threadJumpLabelById: w.threadJumpLabelById,
+    terminalStateByThreadId: s.terminalStateByThreadId,
+    prByThreadId: w.prByThreadId,
+    confirmingArchiveThreadId: w.confirmingArchiveThreadId,
     getProjectItemProps: w.getProjectItemProps,
     projectDnDSensors: w.projectActions.projectDnDSensors,
     projectCollisionDetection: w.projectActions.projectCollisionDetection,

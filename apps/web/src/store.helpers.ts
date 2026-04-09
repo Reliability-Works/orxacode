@@ -157,6 +157,8 @@ export function mapSession(session: OrchestrationSession): Thread['session'] {
     provider: toLegacyProvider(session.providerName),
     status: toLegacySessionStatus(session.status),
     orchestrationStatus: session.status,
+    providerSessionId: session.providerSessionId ?? null,
+    providerThreadId: session.providerThreadId ?? null,
     activeTurnId: session.activeTurnId ?? undefined,
     createdAt: session.updatedAt,
     updatedAt: session.updatedAt,

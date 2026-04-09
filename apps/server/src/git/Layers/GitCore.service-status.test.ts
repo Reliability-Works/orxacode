@@ -114,6 +114,79 @@ it.effect('returns full patch blocks for sidebar diff rendering', () =>
   )
 )
 
+it.effect('renders patches for text-based untracked files', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+      yield* writeTextFile(path.join(tmp, 'notes.md'), 'hello\nworld\n')
+
+      const diff = yield* core.getDiff({ cwd: tmp })
+      const file = diff.untracked.find(entry => entry.path === 'notes.md')
+
+      expect(file).toBeDefined()
+      expect(file?.patch).toContain('diff --git a/notes.md b/notes.md')
+      expect(file?.patch).toContain('--- /dev/null')
+      expect(file?.patch).toContain('+++ b/notes.md')
+      expect(file?.additions).toBe(2)
+    })
+  )
+)
+
+it.effect('returns diff scope summaries and branch compare data', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+      yield* core.createBranch({ cwd: tmp, branch: 'feature/scoped-diff' })
+      yield* core.checkoutBranch({ cwd: tmp, branch: 'feature/scoped-diff' })
+      yield* git(tmp, ['config', 'branch.feature/scoped-diff.gh-merge-base', 'main'])
+      yield* writeTextFile(path.join(tmp, 'README.md'), 'updated\nwith more context\n')
+      yield* git(tmp, ['add', 'README.md'])
+      yield* git(tmp, ['commit', '-m', 'scoped diff change'])
+
+      const diff = yield* core.getDiff({ cwd: tmp })
+
+      expect(diff.scopeSummaries.map(summary => summary.scope)).toEqual([
+        'unstaged',
+        'staged',
+        'branch',
+      ])
+      expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.available).toBe(true)
+      expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.baseRef).toBe('main')
+      expect(diff.branch?.baseRef).toBe('main')
+      expect(diff.branch?.files.some(file => file.path === 'README.md')).toBe(true)
+      expect(diff.branch?.fileCount).toBeGreaterThan(0)
+    })
+  )
+)
+
+it.effect('keeps local diff data available when branch compare output is oversized', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      yield* initRepoWithCommit(tmp)
+      const core = yield* GitCore
+      yield* core.createBranch({ cwd: tmp, branch: 'feature/oversized-branch-diff' })
+      yield* core.checkoutBranch({ cwd: tmp, branch: 'feature/oversized-branch-diff' })
+      yield* git(tmp, ['config', 'branch.feature/oversized-branch-diff.gh-merge-base', 'main'])
+      yield* writeTextFile(path.join(tmp, 'big.txt'), `${'x'.repeat(1_200_000)}\n`)
+      yield* git(tmp, ['add', 'big.txt'])
+      yield* git(tmp, ['commit', '-m', 'oversized branch diff'])
+      yield* writeTextFile(path.join(tmp, 'README.md'), 'local unstaged change\n')
+
+      const diff = yield* core.getDiff({ cwd: tmp })
+
+      expect(diff.unstaged.some(file => file.path === 'README.md')).toBe(true)
+      expect(diff.scopeSummaries.find(summary => summary.scope === 'unstaged')?.fileCount).toBe(1)
+      expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.available).toBe(false)
+      expect(diff.branch).toBeNull()
+    })
+  )
+)
+
 it.effect('returns git log entries for repositories with commits', () =>
   withGitTestLayer(
     Effect.gen(function* () {

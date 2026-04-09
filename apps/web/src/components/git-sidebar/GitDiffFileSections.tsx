@@ -1,15 +1,10 @@
 import type { ReactNode } from 'react'
-import type { GitDiffFile, GitDiffResult, GitDiffSectionKind } from '@orxa-code/contracts'
+import type { GitDiffFile, GitDiffResult, GitDiffScopeKind } from '@orxa-code/contracts'
 import { FilePlusIcon, MinusCircleIcon, RotateCcwIcon } from 'lucide-react'
 
 import { Button } from '../ui/button'
 import { cn } from '~/lib/utils'
-
-const SECTION_LABELS: Record<GitDiffSectionKind, string> = {
-  staged: 'Staged',
-  unstaged: 'Unstaged',
-  untracked: 'Untracked',
-}
+import { getVisibleDiffSections } from './GitDiffFileSections.logic'
 
 function DiffStatBadge({ additions, deletions }: { additions: number; deletions: number }) {
   if (additions === 0 && deletions === 0) return null
@@ -68,11 +63,14 @@ function FileRow(props: {
 function FileActionButtons(props: {
   file: GitDiffFile
   pendingAction: string | null
+  actionsEnabled: boolean
   stagePath: (path: string) => Promise<void>
   unstagePath: (path: string) => Promise<void>
   restorePath: (path: string) => Promise<void>
 }) {
-  const { file, pendingAction, stagePath, unstagePath, restorePath } = props
+  const { file, pendingAction, actionsEnabled, stagePath, unstagePath, restorePath } = props
+
+  if (!actionsEnabled) return null
 
   return (
     <div className="flex shrink-0 gap-0.5 pr-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -126,6 +124,7 @@ function SectionGroup(props: {
   unstagePath: (path: string) => Promise<void>
   restorePath: (path: string) => Promise<void>
   interactive: boolean
+  actionsEnabled: boolean
 }) {
   if (props.files.length === 0) return null
   const onSelect = props.onSelect ?? (() => undefined)
@@ -148,6 +147,7 @@ function SectionGroup(props: {
           <FileActionButtons
             file={file}
             pendingAction={props.pendingAction}
+            actionsEnabled={props.actionsEnabled}
             stagePath={props.stagePath}
             unstagePath={props.unstagePath}
             restorePath={props.restorePath}
@@ -166,84 +166,58 @@ type GitDiffActions = {
 
 export function GitDiffListView(props: {
   data: GitDiffResult
+  scope: GitDiffScopeKind
   pendingAction: string | null
   actions: GitDiffActions
 }): ReactNode {
+  const sections = getVisibleDiffSections(props.data, props.scope)
+  const actionsEnabled = props.scope !== 'branch'
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-2">
-      <SectionGroup
-        label={SECTION_LABELS.staged}
-        files={props.data.staged}
-        pendingAction={props.pendingAction}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={false}
-      />
-      <SectionGroup
-        label={SECTION_LABELS.unstaged}
-        files={props.data.unstaged}
-        pendingAction={props.pendingAction}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={false}
-      />
-      <SectionGroup
-        label={SECTION_LABELS.untracked}
-        files={props.data.untracked}
-        pendingAction={props.pendingAction}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={false}
-      />
+      {sections.map(section => (
+        <SectionGroup
+          key={section.kind}
+          label={section.label}
+          files={section.files}
+          pendingAction={props.pendingAction}
+          stagePath={props.actions.stagePath}
+          unstagePath={props.actions.unstagePath}
+          restorePath={props.actions.restorePath}
+          interactive={false}
+          actionsEnabled={actionsEnabled}
+        />
+      ))}
     </div>
   )
 }
 
 export function GitDiffTreePane(props: {
   data: GitDiffResult
+  scope: GitDiffScopeKind
   activePath: string | null
   pendingAction: string | null
   onSelectPath: (path: string) => void
   actions: GitDiffActions
 }): ReactNode {
+  const sections = getVisibleDiffSections(props.data, props.scope)
+  const actionsEnabled = props.scope !== 'branch'
   return (
     <div className="w-52 shrink-0 overflow-y-auto border-r border-border p-2">
-      <SectionGroup
-        label={SECTION_LABELS.staged}
-        files={props.data.staged}
-        selectedPath={props.activePath}
-        pendingAction={props.pendingAction}
-        onSelect={file => props.onSelectPath(file.path)}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={true}
-      />
-      <SectionGroup
-        label={SECTION_LABELS.unstaged}
-        files={props.data.unstaged}
-        selectedPath={props.activePath}
-        pendingAction={props.pendingAction}
-        onSelect={file => props.onSelectPath(file.path)}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={true}
-      />
-      <SectionGroup
-        label={SECTION_LABELS.untracked}
-        files={props.data.untracked}
-        selectedPath={props.activePath}
-        pendingAction={props.pendingAction}
-        onSelect={file => props.onSelectPath(file.path)}
-        stagePath={props.actions.stagePath}
-        unstagePath={props.actions.unstagePath}
-        restorePath={props.actions.restorePath}
-        interactive={true}
-      />
+      {sections.map(section => (
+        <SectionGroup
+          key={section.kind}
+          label={section.label}
+          files={section.files}
+          selectedPath={props.activePath}
+          pendingAction={props.pendingAction}
+          onSelect={file => props.onSelectPath(file.path)}
+          stagePath={props.actions.stagePath}
+          unstagePath={props.actions.unstagePath}
+          restorePath={props.actions.restorePath}
+          interactive={true}
+          actionsEnabled={actionsEnabled}
+        />
+      ))}
     </div>
   )
 }

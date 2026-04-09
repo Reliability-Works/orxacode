@@ -143,6 +143,7 @@ function buildInitialContext(input: {
     threadId: input.threadId,
     provider: PROVIDER,
     status: 'ready',
+    providerSessionId: input.providerSessionId,
     runtimeMode: input.runtimeMode,
     ...(input.cwd ? { cwd: input.cwd } : {}),
     createdAt: input.startedAt,

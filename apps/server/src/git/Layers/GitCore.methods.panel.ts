@@ -8,6 +8,7 @@
 import { Effect } from 'effect'
 
 import type {
+  GitBranchDiff,
   GitDiffFile,
   GitDiffFileStatus,
   GitDiffHunk,
@@ -19,8 +20,11 @@ import type {
 } from '@orxa-code/contracts'
 import type { GitCoreShape } from '../Services/GitCore.ts'
 import type { GitCoreInternalDeps } from './GitCore.deps.ts'
+import { buildBranchCompareResult, makeScopeSummaries } from './GitCore.methods.panel.branch.ts'
 
 // ── Unified-diff parser ──────────────────────────────────────────────
+
+const UNTRACKED_PREVIEW_MAX_BYTES = 64 * 1024
 
 function parseDiffLines(lines: string[]): GitDiffLine[] {
   const result: GitDiffLine[] = []
@@ -76,9 +80,18 @@ function parseHunks(lines: string[]): GitDiffHunk[] {
   return hunks
 }
 
+function inferPatchStatus(status: GitDiffFileStatus, line: string): GitDiffFileStatus {
+  if (line.startsWith('rename from ')) return 'R'
+  if (line.startsWith('new file mode')) return 'A'
+  if (line.startsWith('deleted file mode')) return 'D'
+  if (line.startsWith('copy from ')) return 'C'
+  return status
+}
+
 interface RawFilePatch {
   path: string
   oldPath: string | undefined
+  status: GitDiffFileStatus
   isBinary: boolean
   patch: string
   hunks: GitDiffHunk[]
@@ -102,6 +115,7 @@ function parsePatchText(text: string): Map<string, RawFilePatch> {
 
     let path = headerMatch[2] ?? ''
     let oldPath: string | undefined
+    let status: GitDiffFileStatus = 'M'
     const isBinary = block.includes('Binary files ')
 
     // Check for rename
@@ -113,6 +127,7 @@ function parsePatchText(text: string): Map<string, RawFilePatch> {
       } else if (l.startsWith('+++ b/')) {
         path = l.slice('+++ b/'.length).trim()
       }
+      status = inferPatchStatus(status, l)
     }
 
     // Find hunk body (lines after --- / +++, starting from @@)
@@ -137,9 +152,81 @@ function parsePatchText(text: string): Map<string, RawFilePatch> {
       }
     }
 
-    files.set(path, { path, oldPath, isBinary, patch, hunks, additions, deletions })
+    files.set(path, { path, oldPath, status, isBinary, patch, hunks, additions, deletions })
   }
   return files
+}
+
+function hasBinaryBytes(value: string) {
+  return value.includes('\0')
+}
+
+function buildUntrackedPatch(path: string, contents: string) {
+  const normalized = contents.replace(/\r\n/g, '\n')
+  const lines = normalized.split('\n')
+  const bodyLines =
+    lines.at(-1) === ''
+      ? lines.slice(0, -1).map(line => `+${line}`)
+      : lines.map(line => `+${line}`)
+  const newLineCount = lines.at(-1) === '' ? lines.length - 1 : lines.length
+  const patchLines = [
+    `diff --git a/${path} b/${path}`,
+    'new file mode 100644',
+    '--- /dev/null',
+    `+++ b/${path}`,
+    `@@ -0,0 +1,${newLineCount} @@`,
+    ...bodyLines,
+  ]
+  return patchLines.join('\n')
+}
+
+function buildUntrackedRawPatch(input: {
+  path: string
+  contents: string
+}): RawFilePatch | null {
+  if (hasBinaryBytes(input.contents)) {
+    return {
+      path: input.path,
+      oldPath: undefined,
+      status: '?',
+      isBinary: true,
+      patch: '',
+      hunks: [],
+      additions: 0,
+      deletions: 0,
+    }
+  }
+  const patch = buildUntrackedPatch(input.path, input.contents)
+  return parsePatchText(patch).get(input.path) ?? null
+}
+
+function buildLoadUntrackedPatches(deps: GitCoreInternalDeps) {
+  return Effect.fn('GitCore.loadUntrackedPatches')(function* (cwd: string, paths: ReadonlyArray<string>) {
+    const patches = new Map<string, RawFilePatch>()
+    for (const relativePath of paths) {
+      const absolutePath = deps.path.join(cwd, relativePath)
+      const contents = yield* deps.fileSystem.readFileString(absolutePath).pipe(
+        Effect.catch(() => Effect.succeed(null))
+      )
+      if (contents === null) continue
+      if (Buffer.byteLength(contents) > UNTRACKED_PREVIEW_MAX_BYTES) {
+        patches.set(relativePath, {
+          path: relativePath,
+          oldPath: undefined,
+          status: '?',
+          isBinary: false,
+          patch: '',
+          hunks: [],
+          additions: 0,
+          deletions: 0,
+        })
+        continue
+      }
+      const rawPatch = buildUntrackedRawPatch({ path: relativePath, contents })
+      if (rawPatch) patches.set(relativePath, rawPatch)
+    }
+    return patches
+  })
 }
 
 // ── Porcelain parser ─────────────────────────────────────────────────
@@ -184,7 +271,8 @@ function toStatus(ch: string): GitDiffFileStatus {
 function buildDiffFiles(
   porcelain: PorcelainEntry[],
   stagedPatches: Map<string, RawFilePatch>,
-  unstagedPatches: Map<string, RawFilePatch>
+  unstagedPatches: Map<string, RawFilePatch>,
+  untrackedPatches: Map<string, RawFilePatch>
 ): { staged: GitDiffFile[]; unstaged: GitDiffFile[]; untracked: GitDiffFile[] } {
   const staged: GitDiffFile[] = []
   const unstaged: GitDiffFile[] = []
@@ -196,6 +284,7 @@ function buildDiffFiles(
     const { path, origPath } = entry
 
     const empty: Omit<RawFilePatch, 'path' | 'oldPath'> = {
+      status: 'M',
       isBinary: false,
       patch: '',
       hunks: [],
@@ -220,15 +309,16 @@ function buildDiffFiles(
     }
 
     if (y === '?') {
+      const raw = untrackedPatches.get(path) ?? { ...empty, path, oldPath: origPath, status: '?' as GitDiffFileStatus }
       const f: GitDiffFile = {
         path,
         status: '?' as GitDiffFileStatus,
         section: 'untracked' as GitDiffSectionKind,
-        isBinary: false,
-        patch: '',
-        hunks: [],
-        additions: 0,
-        deletions: 0,
+        isBinary: raw.isBinary,
+        patch: raw.patch,
+        hunks: raw.hunks,
+        additions: raw.additions,
+        deletions: raw.deletions,
       }
       untracked.push(f)
     } else if (y !== ' ') {
@@ -249,6 +339,42 @@ function buildDiffFiles(
   }
 
   return { staged, unstaged, untracked }
+}
+
+function buildReadPanelDiffParts(deps: GitCoreInternalDeps) {
+  const loadUntrackedPatches = buildLoadUntrackedPatches(deps)
+  return Effect.fn('GitCore.readPanelDiffParts')(function* (cwd: string) {
+    const [statusText, branchName] = yield* Effect.all([
+      deps.runGitStdout('GitCore.getDiff.status', cwd, ['status', '--porcelain'], true),
+      deps
+        .runGitStdout('GitCore.getDiff.branchName', cwd, ['branch', '--show-current'], true)
+        .pipe(Effect.map(stdout => stdout.trim())),
+    ])
+    const [stagedText, unstagedText] = yield* Effect.all([
+      deps.runGitStdoutWithOptions('GitCore.getDiff.staged', cwd, ['diff', '--cached', '-U3'], {
+        allowNonZeroExit: true,
+      }),
+      deps.runGitStdoutWithOptions('GitCore.getDiff.unstaged', cwd, ['diff', '-U3'], {
+        allowNonZeroExit: true,
+      }),
+    ])
+
+    const porcelain = parsePorcelain(statusText)
+    const untrackedPaths = porcelain
+      .filter(entry => (entry.xy[1] ?? ' ') === '?')
+      .map(entry => entry.path)
+
+    return {
+      branchName,
+      porcelain,
+      stagedPatches: parsePatchText(stagedText),
+      unstagedPatches: parsePatchText(unstagedText),
+      untrackedPatches:
+        untrackedPaths.length > 0
+          ? yield* loadUntrackedPatches(cwd, untrackedPaths)
+          : new Map<string, RawFilePatch>(),
+    }
+  })
 }
 
 // ── Log parser ───────────────────────────────────────────────────────
@@ -273,29 +399,37 @@ function parseLogEntry(chunk: string): GitLogEntry | null {
 // ── Method implementations ───────────────────────────────────────────
 
 function buildGetDiff(deps: GitCoreInternalDeps): GitCoreShape['getDiff'] {
+  const buildBranchCompare = buildBranchCompareResult(deps)
+  const readPanelDiffParts = buildReadPanelDiffParts(deps)
   return input =>
     Effect.gen(function* () {
-      const [statusText, stagedText, unstagedText] = yield* Effect.all([
-        deps.runGitStdout('GitCore.getDiff.status', input.cwd, ['status', '--porcelain'], true),
-        deps.runGitStdoutWithOptions(
-          'GitCore.getDiff.staged',
-          input.cwd,
-          ['diff', '--cached', '-U3'],
-          { allowNonZeroExit: true }
-        ),
-        deps.runGitStdoutWithOptions('GitCore.getDiff.unstaged', input.cwd, ['diff', '-U3'], {
-          allowNonZeroExit: true,
-        }),
-      ])
-
-      const porcelain = parsePorcelain(statusText)
-      const stagedPatches = parsePatchText(stagedText)
-      const unstagedPatches = parsePatchText(unstagedText)
+      const { branchName, porcelain, stagedPatches, unstagedPatches, untrackedPatches } =
+        yield* readPanelDiffParts(input.cwd)
       const { staged, unstaged, untracked } = buildDiffFiles(
         porcelain,
         stagedPatches,
-        unstagedPatches
+        unstagedPatches,
+        untrackedPatches
       )
+      const branch =
+        branchName.length > 0
+          ? yield* buildBranchCompare(input.cwd, branchName).pipe(
+              Effect.map(result =>
+                result
+                  ? ({
+                      headRef: result.headRef,
+                      baseRef: result.baseRef,
+                      compareLabel: result.compareLabel,
+                      files: result.files,
+                      additions: result.additions,
+                      deletions: result.deletions,
+                      fileCount: result.files.length,
+                    } satisfies GitBranchDiff)
+                  : null
+              ),
+              Effect.catch(() => Effect.succeed(null))
+            )
+          : null
 
       let totalAdditions = 0
       let totalDeletions = 0
@@ -304,7 +438,22 @@ function buildGetDiff(deps: GitCoreInternalDeps): GitCoreShape['getDiff'] {
         totalDeletions += f.deletions
       }
 
-      return { staged, unstaged, untracked, totalAdditions, totalDeletions } satisfies GitDiffResult
+      const scopeSummaries = makeScopeSummaries({
+        unstaged,
+        untracked,
+        staged,
+        branch,
+      })
+
+      return {
+        staged,
+        unstaged,
+        untracked,
+        branch,
+        scopeSummaries,
+        totalAdditions,
+        totalDeletions,
+      } satisfies GitDiffResult
     })
 }
 

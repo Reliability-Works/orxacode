@@ -14,7 +14,11 @@ import {
 } from '../Sidebar.logic'
 import { derivePendingApprovals, derivePendingUserInputs } from '../../session-logic'
 import type { SidebarThreadSnapshot } from './ThreadRow'
-import type { RenderedProjectData, SidebarProjectSnapshot } from './ProjectItem'
+import type {
+  RenderedPinnedThreadData,
+  RenderedProjectData,
+  SidebarProjectSnapshot,
+} from './ProjectItem'
 
 const THREAD_PREVIEW_LIMIT = 6
 
@@ -85,56 +89,49 @@ function buildRenderedProject(opts: {
   }
 }
 
-export function useSidebarRenderedProjects(params: {
-  sidebarProjects: Array<SidebarProjectSnapshot>
-  threads: SidebarThreadSnapshot[]
-  routeThreadId: ThreadId | null
-  sidebarProjectSortOrder: SidebarProjectSortOrder
+function buildRenderedPinnedThreads(params: {
+  pinnedThreadIds: readonly ThreadId[]
+  sidebarProjects: ReadonlyArray<SidebarProjectSnapshot>
   sidebarThreadSortOrder: SidebarThreadSortOrder
-}): {
-  renderedProjects: RenderedProjectData[]
-  isManualProjectSorting: boolean
-  expandedThreadListsByProject: ReadonlySet<ProjectId>
-  expandThreadListForProject: (projectId: ProjectId) => void
-  collapseThreadListForProject: (projectId: ProjectId) => void
-} {
-  const {
-    sidebarProjects,
-    threads,
-    routeThreadId,
-    sidebarProjectSortOrder,
-    sidebarThreadSortOrder,
-  } = params
+  visibleThreads: ReadonlyArray<SidebarThreadSnapshot>
+}): RenderedPinnedThreadData[] {
+  const { pinnedThreadIds, sidebarProjects, sidebarThreadSortOrder, visibleThreads } = params
+  if (pinnedThreadIds.length === 0) {
+    return []
+  }
+  const orderedProjectThreadIdsByProject = new Map<ProjectId, readonly ThreadId[]>(
+    sidebarProjects.map(project => [
+      project.id,
+      sortThreadsForSidebar(
+        visibleThreads.filter(thread => thread.projectId === project.id),
+        sidebarThreadSortOrder
+      ).map(thread => thread.id),
+    ])
+  )
+  const visibleThreadById = new Map(visibleThreads.map(thread => [thread.id, thread] as const))
+  return pinnedThreadIds.flatMap(threadId => {
+    const thread = visibleThreadById.get(threadId)
+    if (!thread) {
+      return []
+    }
+    return [
+      {
+        thread,
+        orderedProjectThreadIds: orderedProjectThreadIdsByProject.get(thread.projectId) ?? [thread.id],
+        threadStatus: resolveThreadStatusPill({
+          thread: thread as Parameters<typeof resolveThreadStatusPill>[0]['thread'],
+          hasPendingApprovals: derivePendingApprovals(thread.activities).length > 0,
+          hasPendingUserInput: derivePendingUserInputs(thread.activities).length > 0,
+        }),
+      } satisfies RenderedPinnedThreadData,
+    ]
+  })
+}
 
+function useExpandedThreadListsState() {
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<ProjectId>
   >(() => new Set())
-  const isManualProjectSorting = sidebarProjectSortOrder === 'manual'
-
-  const visibleThreads = useMemo(() => threads.filter(t => t.archivedAt === null), [threads])
-  const sortedProjects = useMemo(
-    () => sortProjectsForSidebar(sidebarProjects, visibleThreads, sidebarProjectSortOrder),
-    [sidebarProjectSortOrder, sidebarProjects, visibleThreads]
-  )
-  const renderedProjects = useMemo(
-    () =>
-      sortedProjects.map(project =>
-        buildRenderedProject({
-          project,
-          visibleThreads,
-          sidebarThreadSortOrder,
-          routeThreadId,
-          expandedThreadListsByProject,
-        })
-      ),
-    [
-      sidebarThreadSortOrder,
-      expandedThreadListsByProject,
-      routeThreadId,
-      sortedProjects,
-      visibleThreads,
-    ]
-  )
 
   const expandThreadListForProject = useCallback((projectId: ProjectId) => {
     setExpandedThreadListsByProject(current => {
@@ -155,7 +152,84 @@ export function useSidebarRenderedProjects(params: {
   }, [])
 
   return {
+    expandedThreadListsByProject,
+    expandThreadListForProject,
+    collapseThreadListForProject,
+  }
+}
+
+export function useSidebarRenderedProjects(params: {
+  sidebarProjects: Array<SidebarProjectSnapshot>
+  threads: SidebarThreadSnapshot[]
+  pinnedThreadIds: readonly ThreadId[]
+  routeThreadId: ThreadId | null
+  sidebarProjectSortOrder: SidebarProjectSortOrder
+  sidebarThreadSortOrder: SidebarThreadSortOrder
+}): {
+  renderedProjects: RenderedProjectData[]
+  renderedPinnedThreads: RenderedPinnedThreadData[]
+  isManualProjectSorting: boolean
+  expandedThreadListsByProject: ReadonlySet<ProjectId>
+  expandThreadListForProject: (projectId: ProjectId) => void
+  collapseThreadListForProject: (projectId: ProjectId) => void
+} {
+  const {
+    sidebarProjects,
+    threads,
+    pinnedThreadIds,
+    routeThreadId,
+    sidebarProjectSortOrder,
+    sidebarThreadSortOrder,
+  } = params
+
+  const {
+    expandedThreadListsByProject,
+    expandThreadListForProject,
+    collapseThreadListForProject,
+  } = useExpandedThreadListsState()
+  const isManualProjectSorting = sidebarProjectSortOrder === 'manual'
+
+  const visibleThreads = useMemo(() => threads.filter(t => t.archivedAt === null), [threads])
+  const pinnedThreadIdSet = useMemo(() => new Set(pinnedThreadIds), [pinnedThreadIds])
+  const visibleUnpinnedThreads = useMemo(
+    () => visibleThreads.filter(thread => !pinnedThreadIdSet.has(thread.id)),
+    [pinnedThreadIdSet, visibleThreads]
+  )
+  const sortedProjects = useMemo(
+    () => sortProjectsForSidebar(sidebarProjects, visibleThreads, sidebarProjectSortOrder),
+    [sidebarProjectSortOrder, sidebarProjects, visibleThreads]
+  )
+  const renderedProjects = useMemo(
+    () =>
+      sortedProjects.map(project =>
+        buildRenderedProject({
+          project,
+          visibleThreads: visibleUnpinnedThreads,
+          sidebarThreadSortOrder,
+          routeThreadId,
+          expandedThreadListsByProject,
+        })
+      ),
+    [
+      sidebarThreadSortOrder,
+      expandedThreadListsByProject,
+      routeThreadId,
+      sortedProjects,
+      visibleUnpinnedThreads,
+    ]
+  )
+  const renderedPinnedThreads = useMemo(() => {
+    return buildRenderedPinnedThreads({
+      pinnedThreadIds,
+      sidebarProjects,
+      sidebarThreadSortOrder,
+      visibleThreads,
+    })
+  }, [pinnedThreadIds, sidebarProjects, sidebarThreadSortOrder, visibleThreads])
+
+  return {
     renderedProjects,
+    renderedPinnedThreads,
     isManualProjectSorting,
     expandedThreadListsByProject,
     expandThreadListForProject,

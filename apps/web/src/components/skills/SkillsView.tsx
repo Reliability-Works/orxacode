@@ -9,6 +9,7 @@ import { skillsListQueryOptions } from '../../lib/skillsReactQuery'
 import { useUiStateStore } from '../../uiStateStore'
 import { getWsRpcClient } from '../../wsRpcClient'
 import { cn } from '~/lib/utils'
+import { APP_TOP_LEFT_BAR_WIDTH } from '../AppTopLeftBar'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { SidebarInset } from '../ui/sidebar'
@@ -31,9 +32,9 @@ function SkillsHeader(props: { collapsed: boolean; onRefresh: () => void; refres
     <div
       className={cn(
         'flex h-[52px] shrink-0 items-center border-b border-border px-5',
-        isElectron && 'drag-region',
-        props.collapsed && 'ps-[var(--sidebar-width)]'
+        isElectron && 'drag-region'
       )}
+      style={props.collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
     >
       <span className="text-xs font-medium tracking-wide text-muted-foreground/70">Discovery</span>
       <div className="ms-auto">

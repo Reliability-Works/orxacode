@@ -34,6 +34,7 @@ export function finalizeStartedSession(
 ): void {
   collab.updateSession({
     status: 'ready',
+    providerThreadId,
     resumeCursor: { threadId: providerThreadId },
   })
   collab.emitLifecycleEvent('session/threadOpenResolved', `Codex ${threadOpenMethod} resolved.`)

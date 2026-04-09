@@ -200,6 +200,8 @@ function bindSessionToThread(input: {
       threadId: input.threadId,
       status: input.mapProviderSessionStatusToOrchestrationStatus(input.session.status),
       providerName: input.session.provider,
+      providerSessionId: input.session.providerSessionId ?? null,
+      providerThreadId: input.session.providerThreadId ?? null,
       runtimeMode: input.desiredRuntimeMode,
       activeTurnId: null,
       lastError: input.session.lastError ?? null,

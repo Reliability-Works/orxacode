@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon, XIcon } from 'lucide-react'
+import { CheckIcon, ChevronDownIcon, GitBranchIcon, RefreshCwIcon, XIcon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 
-import type { GitDiffResult } from '@orxa-code/contracts'
+import type { GitDiffResult, GitDiffScopeKind } from '@orxa-code/contracts'
 import {
   gitPanelIssuesQueryOptions,
   gitPanelLogQueryOptions,
@@ -22,6 +22,12 @@ const TABS: Array<{ id: GitSidebarTab; label: string }> = [
   { id: 'log', label: 'Log' },
   { id: 'issues', label: 'Issues' },
   { id: 'prs', label: 'PRs' },
+]
+
+const FALLBACK_SCOPE_OPTIONS: Array<{ scope: GitDiffScopeKind; label: string }> = [
+  { scope: 'unstaged', label: 'Unstaged' },
+  { scope: 'staged', label: 'Staged' },
+  { scope: 'branch', label: 'Branch' },
 ]
 
 function GitSidebarViewPicker(props: {
@@ -62,9 +68,79 @@ function useGitSidebarQueries(cwd: string, activeTab: GitSidebarTab) {
   return { logQuery, issuesQuery, prsQuery }
 }
 
+function GitSidebarScopePicker(props: {
+  diffData: GitDiffResult | undefined
+  scope: GitDiffScopeKind
+  onScopeChange: (scope: GitDiffScopeKind) => void
+}) {
+  const activeSummary =
+    props.diffData?.scopeSummaries.find(summary => summary.scope === props.scope) ?? null
+  const activeLabel =
+    activeSummary?.label ??
+    FALLBACK_SCOPE_OPTIONS.find(option => option.scope === props.scope)?.label ??
+    'Unstaged'
+  const scopeOptions =
+    props.diffData?.scopeSummaries.length && props.diffData.scopeSummaries.length > 0
+      ? props.diffData.scopeSummaries
+      : FALLBACK_SCOPE_OPTIONS.map(option => ({
+          scope: option.scope,
+          label: option.label,
+          available: option.scope !== 'branch',
+          additions: 0,
+          deletions: 0,
+          fileCount: 0,
+          baseRef: null,
+          compareLabel: null,
+        }))
+  return (
+    <Menu>
+      <MenuTrigger
+        render={
+          <Button
+            variant="outline"
+            size="xs"
+            className="h-7 rounded-full px-2.5 text-xs font-medium"
+          />
+        }
+        >
+          <span>{activeLabel}</span>
+          {activeSummary ? (
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+              {activeSummary.fileCount}
+            </span>
+          ) : null}
+        <ChevronDownIcon className="size-3 opacity-60" />
+      </MenuTrigger>
+      <MenuPopup align="start" className="min-w-44">
+        {scopeOptions.map(summary => (
+          <MenuItem key={summary.scope} onClick={() => props.onScopeChange(summary.scope)}>
+            <CheckIcon
+              className={cn('size-4', props.scope === summary.scope ? 'opacity-100' : 'opacity-0')}
+            />
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <span>{summary.label}</span>
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                {summary.fileCount}
+              </span>
+              {summary.compareLabel ? (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  {summary.compareLabel}
+                </span>
+              ) : null}
+            </div>
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
+  )
+}
+
 function GitSidebarHeader(props: {
   activeTab: GitSidebarTab
   onTabChange: (tab: GitSidebarTab) => void
+  diffData: GitDiffResult | undefined
+  diffScope: GitDiffScopeKind
+  onDiffScopeChange: (scope: GitDiffScopeKind) => void
   isRefreshing: boolean
   onRefresh: () => void
   onClose: () => void
@@ -73,6 +149,13 @@ function GitSidebarHeader(props: {
     <div className="flex h-[52px] shrink-0 items-center gap-2 border-b border-border px-3">
       <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <GitSidebarViewPicker activeTab={props.activeTab} onTabChange={props.onTabChange} />
+      {props.activeTab === 'diff' ? (
+        <GitSidebarScopePicker
+          diffData={props.diffData}
+          scope={props.diffScope}
+          onScopeChange={props.onDiffScopeChange}
+        />
+      ) : null}
       <div className="ms-auto flex items-center gap-0.5">
         <Button
           size="xs"
@@ -100,16 +183,84 @@ function GitSidebarHeader(props: {
 
 export interface GitSidebarProps {
   cwd: string
+  diffScope: GitDiffScopeKind
   diffQueryResult: {
     data: GitDiffResult | undefined
     isPending: boolean
     isFetching: boolean
+    isError: boolean
+    error: unknown
     refetch: () => unknown
   }
+  onDiffScopeChange: (scope: GitDiffScopeKind) => void
   onClose: () => void
 }
 
-export function GitSidebar({ cwd, diffQueryResult, onClose }: GitSidebarProps): ReactNode {
+function GitSidebarContent(props: {
+  activeTab: GitSidebarTab
+  cwd: string
+  diffScope: GitDiffScopeKind
+  diffQueryResult: GitSidebarProps['diffQueryResult']
+  logQuery: ReturnType<typeof useGitSidebarQueries>['logQuery']
+  issuesQuery: ReturnType<typeof useGitSidebarQueries>['issuesQuery']
+  prsQuery: ReturnType<typeof useGitSidebarQueries>['prsQuery']
+}) {
+  if (props.activeTab === 'diff') {
+    return (
+      <GitDiffTab
+        cwd={props.cwd}
+        data={props.diffQueryResult.data}
+        scope={props.diffScope}
+        isPending={props.diffQueryResult.isPending}
+        isError={props.diffQueryResult.isError}
+        {...(props.diffQueryResult.error instanceof Error
+          ? { errorMessage: props.diffQueryResult.error.message }
+          : {})}
+        onRefresh={() => void props.diffQueryResult.refetch()}
+      />
+    )
+  }
+  if (props.activeTab === 'log') {
+    return (
+      <GitLogTab
+        data={props.logQuery.data}
+        isPending={props.logQuery.isPending}
+        isError={props.logQuery.isError}
+        errorMessage={props.logQuery.error instanceof Error ? props.logQuery.error.message : undefined}
+      />
+    )
+  }
+  if (props.activeTab === 'issues') {
+    return (
+      <GitTextTab
+        data={props.issuesQuery.data}
+        isPending={props.issuesQuery.isPending}
+        isError={props.issuesQuery.isError}
+        errorMessage={props.issuesQuery.error instanceof Error ? props.issuesQuery.error.message : undefined}
+        emptyMessage="No open issues found."
+        variant="issues"
+      />
+    )
+  }
+  return (
+    <GitTextTab
+      data={props.prsQuery.data}
+      isPending={props.prsQuery.isPending}
+      isError={props.prsQuery.isError}
+      errorMessage={props.prsQuery.error instanceof Error ? props.prsQuery.error.message : undefined}
+      emptyMessage="No open pull requests found."
+      variant="prs"
+    />
+  )
+}
+
+export function GitSidebar({
+  cwd,
+  diffScope,
+  diffQueryResult,
+  onDiffScopeChange,
+  onClose,
+}: GitSidebarProps): ReactNode {
   const [activeTab, setActiveTab] = useState<GitSidebarTab>('diff')
   const { logQuery, issuesQuery, prsQuery } = useGitSidebarQueries(cwd, activeTab)
 
@@ -134,49 +285,23 @@ export function GitSidebar({ cwd, diffQueryResult, onClose }: GitSidebarProps): 
       <GitSidebarHeader
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        diffData={diffQueryResult.data}
+        diffScope={diffScope}
+        onDiffScopeChange={onDiffScopeChange}
         isRefreshing={isRefreshing}
         onRefresh={handleRefresh}
         onClose={onClose}
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {activeTab === 'diff' && (
-          <GitDiffTab
-            cwd={cwd}
-            data={diffQueryResult.data}
-            isPending={diffQueryResult.isPending}
-            onRefresh={() => void diffQueryResult.refetch()}
-          />
-        )}
-        {activeTab === 'log' && (
-          <GitLogTab
-            data={logQuery.data}
-            isPending={logQuery.isPending}
-            isError={logQuery.isError}
-            errorMessage={logQuery.error instanceof Error ? logQuery.error.message : undefined}
-          />
-        )}
-        {activeTab === 'issues' && (
-          <GitTextTab
-            data={issuesQuery.data}
-            isPending={issuesQuery.isPending}
-            isError={issuesQuery.isError}
-            errorMessage={
-              issuesQuery.error instanceof Error ? issuesQuery.error.message : undefined
-            }
-            emptyMessage="No open issues found."
-            variant="issues"
-          />
-        )}
-        {activeTab === 'prs' && (
-          <GitTextTab
-            data={prsQuery.data}
-            isPending={prsQuery.isPending}
-            isError={prsQuery.isError}
-            errorMessage={prsQuery.error instanceof Error ? prsQuery.error.message : undefined}
-            emptyMessage="No open pull requests found."
-            variant="prs"
-          />
-        )}
+        <GitSidebarContent
+          activeTab={activeTab}
+          cwd={cwd}
+          diffScope={diffScope}
+          diffQueryResult={diffQueryResult}
+          logQuery={logQuery}
+          issuesQuery={issuesQuery}
+          prsQuery={prsQuery}
+        />
       </div>
     </div>
   )

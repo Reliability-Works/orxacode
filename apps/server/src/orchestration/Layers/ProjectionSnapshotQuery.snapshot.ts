@@ -80,6 +80,8 @@ export type ProjectionSnapshotSessionRow = {
   threadId: OrchestrationThread['id']
   status: OrchestrationSession['status']
   providerName: OrchestrationSession['providerName']
+  providerSessionId?: OrchestrationSession['providerSessionId']
+  providerThreadId?: OrchestrationSession['providerThreadId']
   runtimeMode: OrchestrationSession['runtimeMode']
   activeTurnId: OrchestrationSession['activeTurnId']
   lastError: string | null
@@ -315,6 +317,8 @@ function applySessionRows(
       threadId: row.threadId,
       status: row.status,
       providerName: row.providerName,
+      providerSessionId: row.providerSessionId,
+      providerThreadId: row.providerThreadId,
       runtimeMode: row.runtimeMode,
       activeTurnId: row.activeTurnId,
       lastError: row.lastError,

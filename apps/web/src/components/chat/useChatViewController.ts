@@ -182,7 +182,7 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
     if (turnKey) ls.setPlanSidebarDismissedForTurn(turnKey)
   }, [ls, p.activePlan, p.sidebarProposedPlan])
   const toggleAuxSidebar = useCallback(
-    (mode: 'git' | 'files') => {
+    (mode: 'git' | 'files' | 'browser') => {
       ls.setAuxSidebarMode(current => (current === mode ? 'none' : mode))
     },
     [ls]
@@ -471,6 +471,7 @@ export function useChatViewController(threadId: ThreadId) {
     closeAuxSidebar,
     toggleGitSidebar: () => toggleAuxSidebar('git'),
     toggleFilesSidebar: () => toggleAuxSidebar('files'),
+    toggleBrowserSidebar: () => toggleAuxSidebar('browser'),
     insertComposerPathReference,
   }
 }

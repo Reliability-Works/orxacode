@@ -90,6 +90,13 @@ export interface ExecProjectContextMenuOpts {
   clearProjectDraftThreadId: (projectId: ProjectId) => void
 }
 
+export function hasRemovableProjectBlockers(
+  threads: ReadonlyArray<Pick<SidebarThreadSnapshot, 'projectId' | 'archivedAt'>>,
+  projectId: ProjectId
+): boolean {
+  return threads.some(thread => thread.projectId === projectId && thread.archivedAt === null)
+}
+
 export async function execProjectContextMenu(opts: ExecProjectContextMenuOpts): Promise<void> {
   const api = readNativeApi()
   if (!api) return
@@ -107,8 +114,7 @@ export async function execProjectContextMenu(opts: ExecProjectContextMenuOpts): 
     return
   }
   if (clicked !== 'delete') return
-  const projectThreads = opts.threads.filter(t => t.projectId === opts.projectId)
-  if (projectThreads.length > 0) {
+  if (hasRemovableProjectBlockers(opts.threads, opts.projectId)) {
     toastManager.add({
       type: 'warning',
       title: 'Project is not empty',

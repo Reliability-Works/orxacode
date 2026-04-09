@@ -54,6 +54,8 @@ it('resolves claude aliases when session provider is claudeAgent', () => {
         threadId: ThreadId.makeUnsafe('thread-1'),
         status: 'ready',
         providerName: 'claudeAgent',
+        providerSessionId: null,
+        providerThreadId: 'claude-thread-1',
         runtimeMode: 'approval-required',
         activeTurnId: null,
         lastError: null,
@@ -79,6 +81,31 @@ it('preserves project and thread updatedAt timestamps from the read model', () =
 
   expect(next.projects[0]?.updatedAt).toBe('2026-02-27T00:00:00.000Z')
   expect(next.threads[0]?.updatedAt).toBe('2026-02-27T00:05:00.000Z')
+})
+
+it('maps provider session and thread identifiers from the read model session', () => {
+  const initialState = makeState(makeThread())
+  const next = syncServerReadModel(
+    initialState,
+    makeReadModel(
+      makeReadModelThread({
+        session: {
+          threadId: ThreadId.makeUnsafe('thread-1'),
+          status: 'ready',
+          providerName: 'opencode',
+          providerSessionId: 'sess-opencode-1',
+          providerThreadId: 'thread-provider-1',
+          runtimeMode: 'full-access',
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: '2026-02-27T00:00:00.000Z',
+        },
+      })
+    )
+  )
+
+  expect(next.threads[0]?.session?.providerSessionId).toBe('sess-opencode-1')
+  expect(next.threads[0]?.session?.providerThreadId).toBe('thread-provider-1')
 })
 
 it('maps archivedAt from the read model', () => {

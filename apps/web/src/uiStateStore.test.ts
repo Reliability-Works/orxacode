@@ -4,10 +4,13 @@ import { describe, expect, it } from 'vitest'
 import {
   clearThreadUi,
   markThreadUnread,
+  pinThread,
   reorderProjects,
   setProjectExpanded,
   syncProjects,
   syncThreads,
+  togglePinnedThread,
+  unpinThread,
   type UiState,
 } from './uiStateStore'
 
@@ -16,6 +19,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectExpandedById: {},
     projectOrder: [],
     threadLastVisitedAtById: {},
+    pinnedThreadIds: [],
     ...overrides,
   }
 }
@@ -167,6 +171,18 @@ describe('syncThreads', () => {
       [thread1]: '2026-02-25T12:35:00.000Z',
     })
   })
+
+  it('syncThreads prunes pinned thread state for deleted threads', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+    const thread2 = ThreadId.makeUnsafe('thread-2')
+    const initialState = makeUiState({
+      pinnedThreadIds: [thread1, thread2],
+    })
+
+    const next = syncThreads(initialState, [{ id: thread2 }])
+
+    expect(next.pinnedThreadIds).toEqual([thread2])
+  })
 })
 
 describe('setProjectExpanded', () => {
@@ -193,10 +209,42 @@ describe('clearThreadUi', () => {
       threadLastVisitedAtById: {
         [thread1]: '2026-02-25T12:35:00.000Z',
       },
+      pinnedThreadIds: [thread1],
     })
 
     const next = clearThreadUi(initialState, thread1)
 
     expect(next.threadLastVisitedAtById).toEqual({})
+    expect(next.pinnedThreadIds).toEqual([])
+  })
+})
+
+describe('pinned threads', () => {
+  it('pinThread inserts newly pinned threads at the top', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+    const thread2 = ThreadId.makeUnsafe('thread-2')
+
+    const next = pinThread(makeUiState({ pinnedThreadIds: [thread2] }), thread1)
+
+    expect(next.pinnedThreadIds).toEqual([thread1, thread2])
+  })
+
+  it('unpinThread removes a pinned thread', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+    const thread2 = ThreadId.makeUnsafe('thread-2')
+
+    const next = unpinThread(makeUiState({ pinnedThreadIds: [thread1, thread2] }), thread1)
+
+    expect(next.pinnedThreadIds).toEqual([thread2])
+  })
+
+  it('togglePinnedThread flips the pinned state', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+
+    const pinned = togglePinnedThread(makeUiState(), thread1)
+    expect(pinned.pinnedThreadIds).toEqual([thread1])
+
+    const unpinned = togglePinnedThread(pinned, thread1)
+    expect(unpinned.pinnedThreadIds).toEqual([])
   })
 })

@@ -7,6 +7,7 @@ const PERSISTED_STATE_KEY = 'orxa:ui-state:v1'
 interface PersistedUiState {
   expandedProjectCwds?: string[]
   projectOrderCwds?: string[]
+  pinnedThreadIds?: string[]
 }
 
 export interface UiProjectState {
@@ -16,6 +17,7 @@ export interface UiProjectState {
 
 export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>
+  pinnedThreadIds: ThreadId[]
 }
 
 export interface UiState extends UiProjectState, UiThreadState {}
@@ -34,10 +36,12 @@ const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
   threadLastVisitedAtById: {},
+  pinnedThreadIds: [],
 }
 
 const persistedExpandedProjectCwds = new Set<string>()
 const persistedProjectOrderCwds: string[] = []
+const persistedPinnedThreadIds: ThreadId[] = []
 const currentProjectCwdById = new Map<ProjectId, string>()
 
 function readPersistedState(): UiState {
@@ -59,6 +63,7 @@ function readPersistedState(): UiState {
 function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedExpandedProjectCwds.clear()
   persistedProjectOrderCwds.length = 0
+  persistedPinnedThreadIds.length = 0
   for (const cwd of parsed.expandedProjectCwds ?? []) {
     if (typeof cwd === 'string' && cwd.length > 0) {
       persistedExpandedProjectCwds.add(cwd)
@@ -67,6 +72,15 @@ function hydratePersistedProjectState(parsed: PersistedUiState): void {
   for (const cwd of parsed.projectOrderCwds ?? []) {
     if (typeof cwd === 'string' && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
       persistedProjectOrderCwds.push(cwd)
+    }
+  }
+  for (const threadId of parsed.pinnedThreadIds ?? []) {
+    if (
+      typeof threadId === 'string' &&
+      threadId.length > 0 &&
+      !persistedPinnedThreadIds.includes(threadId as ThreadId)
+    ) {
+      persistedPinnedThreadIds.push(threadId as ThreadId)
     }
   }
 }
@@ -91,6 +105,7 @@ function persistState(state: UiState): void {
       JSON.stringify({
         expandedProjectCwds,
         projectOrderCwds,
+        pinnedThreadIds: state.pinnedThreadIds,
       } satisfies PersistedUiState)
     )
   } catch {
@@ -271,12 +286,18 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       nextThreadLastVisitedAtById[thread.id] = thread.seedVisitedAt
     }
   }
-  if (recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById)) {
+  const nextPinnedThreadIds = state.pinnedThreadIds.filter(threadId => retainedThreadIds.has(threadId))
+  if (
+    recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
+    state.pinnedThreadIds.length === nextPinnedThreadIds.length &&
+    state.pinnedThreadIds.every((threadId, index) => threadId === nextPinnedThreadIds[index])
+  ) {
     return state
   }
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    pinnedThreadIds: nextPinnedThreadIds,
   }
 }
 
@@ -327,7 +348,9 @@ export function markThreadUnread(
 }
 
 export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
-  if (!(threadId in state.threadLastVisitedAtById)) {
+  const hadVisitedAt = threadId in state.threadLastVisitedAtById
+  const nextPinnedThreadIds = state.pinnedThreadIds.filter(pinnedThreadId => pinnedThreadId !== threadId)
+  if (!hadVisitedAt && nextPinnedThreadIds.length === state.pinnedThreadIds.length) {
     return state
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById }
@@ -335,7 +358,34 @@ export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
+    pinnedThreadIds: nextPinnedThreadIds,
   }
+}
+
+export function pinThread(state: UiState, threadId: ThreadId): UiState {
+  if (state.pinnedThreadIds.includes(threadId)) {
+    return state
+  }
+  return {
+    ...state,
+    pinnedThreadIds: [threadId, ...state.pinnedThreadIds],
+  }
+}
+
+export function unpinThread(state: UiState, threadId: ThreadId): UiState {
+  if (!state.pinnedThreadIds.includes(threadId)) {
+    return state
+  }
+  return {
+    ...state,
+    pinnedThreadIds: state.pinnedThreadIds.filter(pinnedThreadId => pinnedThreadId !== threadId),
+  }
+}
+
+export function togglePinnedThread(state: UiState, threadId: ThreadId): UiState {
+  return state.pinnedThreadIds.includes(threadId)
+    ? unpinThread(state, threadId)
+    : pinThread(state, threadId)
 }
 
 export function toggleProject(state: UiState, projectId: ProjectId): UiState {
@@ -397,6 +447,9 @@ interface UiStateStore extends UiState {
   markThreadVisited: (threadId: ThreadId, visitedAt?: string) => void
   markThreadUnread: (threadId: ThreadId, latestTurnCompletedAt: string | null | undefined) => void
   clearThreadUi: (threadId: ThreadId) => void
+  pinThread: (threadId: ThreadId) => void
+  unpinThread: (threadId: ThreadId) => void
+  togglePinnedThread: (threadId: ThreadId) => void
   toggleProject: (projectId: ProjectId) => void
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void
@@ -404,6 +457,7 @@ interface UiStateStore extends UiState {
 
 export const useUiStateStore = create<UiStateStore>(set => ({
   ...readPersistedState(),
+  pinnedThreadIds: persistedPinnedThreadIds,
   syncProjects: projects => set(state => syncProjects(state, projects)),
   syncThreads: threads => set(state => syncThreads(state, threads)),
   markThreadVisited: (threadId, visitedAt) =>
@@ -411,6 +465,9 @@ export const useUiStateStore = create<UiStateStore>(set => ({
   markThreadUnread: (threadId, latestTurnCompletedAt) =>
     set(state => markThreadUnread(state, threadId, latestTurnCompletedAt)),
   clearThreadUi: threadId => set(state => clearThreadUi(state, threadId)),
+  pinThread: threadId => set(state => pinThread(state, threadId)),
+  unpinThread: threadId => set(state => unpinThread(state, threadId)),
+  togglePinnedThread: threadId => set(state => togglePinnedThread(state, threadId)),
   toggleProject: projectId => set(state => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set(state => setProjectExpanded(state, projectId, expanded)),

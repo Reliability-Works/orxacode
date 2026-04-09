@@ -328,6 +328,8 @@ function createProcessSessionStopRequested(deps: ProviderCommandReactorEventHand
         threadId: thread.id,
         status: 'stopped',
         providerName: thread.session?.providerName ?? null,
+        providerSessionId: thread.session?.providerSessionId ?? null,
+        providerThreadId: thread.session?.providerThreadId ?? null,
         runtimeMode: thread.session?.runtimeMode ?? deps.defaultRuntimeMode,
         activeTurnId: null,
         lastError: thread.session?.lastError ?? null,

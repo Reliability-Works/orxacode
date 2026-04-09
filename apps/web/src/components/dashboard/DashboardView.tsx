@@ -5,6 +5,7 @@ import { SidebarInset } from '../ui/sidebar'
 import { useSidebar } from '../ui/sidebar.shared'
 import { Button } from '../ui/button'
 import { Skeleton } from '../ui/skeleton'
+import { APP_TOP_LEFT_BAR_WIDTH } from '../AppTopLeftBar'
 import { isElectron } from '../../env'
 import {
   dashboardSnapshotQueryOptions,
@@ -30,9 +31,9 @@ function DashboardHeader({
     <div
       className={cn(
         'flex h-[52px] shrink-0 items-center border-b border-border px-5',
-        isElectron && 'drag-region',
-        collapsed && 'ps-[var(--sidebar-width)]'
+        isElectron && 'drag-region'
       )}
+      style={collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
     >
       <span className="text-xs font-medium tracking-wide text-muted-foreground/70">Dashboard</span>
       <div className="ms-auto">

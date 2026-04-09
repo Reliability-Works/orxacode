@@ -54,6 +54,8 @@ export const ProviderSession = Schema.Struct({
   cwd: Schema.optional(TrimmedNonEmptyString),
   model: Schema.optional(TrimmedNonEmptyString),
   threadId: ThreadId,
+  providerSessionId: Schema.optional(TrimmedNonEmptyString),
+  providerThreadId: Schema.optional(TrimmedNonEmptyString),
   resumeCursor: Schema.optional(Schema.Unknown),
   activeTurnId: Schema.optional(TurnId),
   createdAt: IsoDateTime,

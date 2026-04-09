@@ -182,6 +182,8 @@ it('clears pending source proposed plans after revert before a new session-set e
         threadId: thread.id,
         status: 'running',
         providerName: 'codex',
+        providerSessionId: null,
+        providerThreadId: 'codex-thread-1',
         runtimeMode: 'full-access',
         activeTurnId: TurnId.makeUnsafe('turn-3'),
         lastError: null,

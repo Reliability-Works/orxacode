@@ -341,7 +341,7 @@ export const GitDiffFileStatus = Schema.Literals(['M', 'A', 'D', 'R', 'C', 'U', 
 export type GitDiffFileStatus = typeof GitDiffFileStatus.Type
 
 /** Where a file is in the diff surface. */
-export const GitDiffSectionKind = Schema.Literals(['staged', 'unstaged', 'untracked'])
+export const GitDiffSectionKind = Schema.Literals(['staged', 'unstaged', 'untracked', 'branch'])
 export type GitDiffSectionKind = typeof GitDiffSectionKind.Type
 
 /** A single rendered line in a unified/split diff. */
@@ -382,10 +382,39 @@ export const GitDiffFile = Schema.Struct({
 })
 export type GitDiffFile = typeof GitDiffFile.Type
 
+export const GitDiffScopeKind = Schema.Literals(['unstaged', 'staged', 'branch'])
+export type GitDiffScopeKind = typeof GitDiffScopeKind.Type
+export type GitDiffScope = typeof GitDiffScopeKind.Type
+
+export const GitDiffScopeSummary = Schema.Struct({
+  scope: GitDiffScopeKind,
+  label: TrimmedNonEmptyStringSchema,
+  available: Schema.Boolean,
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+  fileCount: NonNegativeInt,
+  baseRef: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  compareLabel: Schema.NullOr(TrimmedNonEmptyStringSchema),
+})
+export type GitDiffScopeSummary = typeof GitDiffScopeSummary.Type
+
+export const GitBranchDiff = Schema.Struct({
+  headRef: TrimmedNonEmptyStringSchema,
+  baseRef: TrimmedNonEmptyStringSchema,
+  compareLabel: TrimmedNonEmptyStringSchema,
+  files: Schema.Array(GitDiffFile),
+  additions: NonNegativeInt,
+  deletions: NonNegativeInt,
+  fileCount: NonNegativeInt,
+})
+export type GitBranchDiff = typeof GitBranchDiff.Type
+
 export const GitDiffResult = Schema.Struct({
   staged: Schema.Array(GitDiffFile),
   unstaged: Schema.Array(GitDiffFile),
   untracked: Schema.Array(GitDiffFile),
+  branch: Schema.NullOr(GitBranchDiff),
+  scopeSummaries: Schema.Array(GitDiffScopeSummary),
   totalAdditions: NonNegativeInt,
   totalDeletions: NonNegativeInt,
 })

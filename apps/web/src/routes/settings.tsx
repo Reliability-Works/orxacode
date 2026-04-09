@@ -3,6 +3,7 @@ import { Outlet, createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 
 import { useSettingsRestore } from '../components/settings/useSettingsRestore'
+import { APP_TOP_LEFT_BAR_WIDTH } from '../components/AppTopLeftBar'
 import { Button } from '../components/ui/button'
 import { SidebarInset } from '../components/ui/sidebar'
 import { useSidebar } from '../components/ui/sidebar.shared'
@@ -35,9 +36,9 @@ function SettingsHeader({
     return (
       <div
         className={cn(
-          'drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5',
-          collapsed && 'ps-[var(--sidebar-width)]'
+          'drag-region flex h-[52px] shrink-0 items-center border-b border-border px-5'
         )}
+        style={collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
       >
         <span className="text-xs font-medium tracking-wide text-muted-foreground/70">Settings</span>
         <RestoreDefaultsButton disabled={disabled} onClick={onRestore} />
@@ -46,10 +47,8 @@ function SettingsHeader({
   }
   return (
     <header
-      className={cn(
-        'border-b border-border px-3 py-2 sm:px-5',
-        collapsed && 'ps-[var(--sidebar-width)]'
-      )}
+      className={cn('border-b border-border px-3 py-2 sm:px-5')}
+      style={collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
     >
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-foreground">Settings</span>

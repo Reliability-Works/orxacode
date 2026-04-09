@@ -7,7 +7,9 @@
 import { useMemo } from 'react'
 import { cn } from '~/lib/utils'
 import { isElectron } from '../../env'
+import { APP_TOP_LEFT_BAR_WIDTH } from '../AppTopLeftBar'
 import { ChatHeader } from './ChatHeader'
+import { getHeaderDiffStats } from './ChatViewHeaderPanel.logic'
 import { ProviderStatusBanner } from './ProviderStatusBanner'
 import { ThreadErrorBanner } from './ThreadErrorBanner'
 import { useChatViewCtx } from './ChatViewContext'
@@ -23,6 +25,7 @@ import {
   PanelRightCloseIcon,
 } from 'lucide-react'
 import { ThreadHandoffMenu } from './ThreadHandoffMenu'
+import { ThreadActionsMenu } from './ThreadActionsMenu'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()
@@ -40,32 +43,24 @@ function HandoffMenuAction() {
 
 function ChatHeaderSplitActions() {
   const split = useChatSplitPaneContext()
-  const c = useChatViewCtx()
-  if (!c.td.activeThread) return null
   if (!split || !split.splitOpen) {
-    if (split) {
-      return (
-        <div className="flex items-center gap-1.5">
-          <HandoffMenuAction />
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={split.toggleSplit}
-            aria-label="Open split view"
-          >
-            <Columns2Icon className="size-3.5" />
-          </Button>
-        </div>
-      )
-    }
-    return <HandoffMenuAction />
+    if (!split) return null
+    return (
+      <Button
+        size="xs"
+        variant="outline"
+        onClick={split.toggleSplit}
+        aria-label="Open split view"
+      >
+        <Columns2Icon className="size-3.5" />
+      </Button>
+    )
   }
 
   const closeIcon = split.pane === 'primary' ? PanelRightCloseIcon : PanelLeftCloseIcon
   const CloseIcon = closeIcon
   return (
     <div className="flex items-center gap-1.5">
-      <HandoffMenuAction />
       <Button
         size="xs"
         variant={split.focusedPane === split.pane ? 'secondary' : 'outline'}
@@ -102,6 +97,29 @@ function ChatHeaderSplitActions() {
   )
 }
 
+function useHeaderDiffStats(
+  diffData: ReturnType<typeof useChatViewCtx>['panelDiffQuery']['data'],
+  scope: ReturnType<typeof useChatViewCtx>['ls']['gitDiffScope']
+) {
+  return useMemo(() => getHeaderDiffStats(diffData, scope), [diffData, scope])
+}
+
+function ChatHeaderHandoffBanner() {
+  const c = useChatViewCtx()
+  const handoff = c.td.activeThread?.handoff
+  if (!handoff) return null
+  return (
+    <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
+      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+        Handoff
+      </Badge>
+      <p className="truncate text-xs text-muted-foreground">
+        From {handoff.sourceProvider} to {handoff.targetProvider} via {handoff.sourceThreadTitle}
+      </p>
+    </div>
+  )
+}
+
 export function ChatViewHeaderPanel() {
   const c = useChatViewCtx()
   const { td, store, cd, gitCwd, setThreadError } = c
@@ -109,26 +127,20 @@ export function ChatViewHeaderPanel() {
   const { keybindings, availableEditors, terminalState } = store
   const { state } = useSidebar()
   const collapsed = state === 'collapsed'
-  const diffData = c.panelDiffQuery.data
-  const diffStats = useMemo(() => {
-    if (!diffData) return null
-    const files = [...diffData.staged, ...diffData.unstaged]
-    const additions = files.reduce((s, f) => s + f.additions, 0)
-    const deletions = files.reduce((s, f) => s + f.deletions, 0)
-    return { additions, deletions }
-  }, [diffData])
+  const diffStats = useHeaderDiffStats(c.panelDiffQuery.data, c.ls.gitDiffScope)
   if (!activeThread) return null
   const lastInvokedScriptId = activeProject
     ? (c.ls.lastInvokedScriptByProjectId[activeProject.id] ?? null)
     : null
+  const browserAvailable = Boolean(activeProject) && isElectron
   return (
     <>
       <header
         className={cn(
           'border-b border-border px-3 sm:px-5',
-          isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3',
-          collapsed && 'ps-[var(--sidebar-width)]'
+          isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3'
         )}
+        style={collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
       >
         <ChatHeader
           activeThreadId={activeThread.id}
@@ -155,20 +167,16 @@ export function ChatViewHeaderPanel() {
           onToggleTerminal={c.toggleTerminalVisibility}
           onToggleGitSidebar={c.toggleGitSidebar}
           onToggleFilesSidebar={c.toggleFilesSidebar}
-          extraActions={<ChatHeaderSplitActions />}
+          onToggleBrowserSidebar={c.toggleBrowserSidebar}
+          browserAvailable={browserAvailable}
+          splitActions={<ChatHeaderSplitActions />}
+          handoffAction={<HandoffMenuAction />}
+          threadActionsMenu={
+            <ThreadActionsMenu thread={activeThread} project={activeProject ?? null} />
+          }
         />
       </header>
-      {activeThread.handoff ? (
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
-          <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-            Handoff
-          </Badge>
-          <p className="truncate text-xs text-muted-foreground">
-            From {activeThread.handoff.sourceProvider} to {activeThread.handoff.targetProvider} via{' '}
-            {activeThread.handoff.sourceThreadTitle}
-          </p>
-        </div>
-      ) : null}
+      <ChatHeaderHandoffBanner />
       <ProviderStatusBanner status={activeProviderStatus} />
       <ThreadErrorBanner
         error={activeThread.error}

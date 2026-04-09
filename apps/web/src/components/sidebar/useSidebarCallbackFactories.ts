@@ -240,5 +240,5 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
     getThreadRowProps,
   })
 
-  return { getThreadRowProps, getProjectItemProps }
+  return { getThreadRowProps, getProjectItemProps, confirmingArchiveThreadId }
 }

@@ -1,6 +1,8 @@
 import { BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import type {
+  DesktopBrowserInspectPoint,
+  DesktopBrowserBounds,
   ContextMenuItem,
   DesktopUpdateActionResult,
   DesktopUpdateCheckResult,
@@ -8,6 +10,22 @@ import type {
   DesktopUpdateState,
 } from '@orxa-code/contracts'
 
+import {
+  BROWSER_BACK_CHANNEL,
+  BROWSER_CLOSE_TAB_CHANNEL,
+  BROWSER_DISABLE_INSPECT_CHANNEL,
+  BROWSER_ENABLE_INSPECT_CHANNEL,
+  BROWSER_FORWARD_CHANNEL,
+  BROWSER_GET_STATE_CHANNEL,
+  BROWSER_INSPECT_AT_POINT_CHANNEL,
+  BROWSER_NAVIGATE_CHANNEL,
+  BROWSER_OPEN_TAB_CHANNEL,
+  BROWSER_POLL_INSPECT_ANNOTATION_CHANNEL,
+  BROWSER_RELOAD_CHANNEL,
+  BROWSER_SET_BOUNDS_CHANNEL,
+  BROWSER_SWITCH_TAB_CHANNEL,
+} from './browser.channels'
+import { createBrowserRuntimeController } from './browserRuntime'
 import { showDesktopConfirmDialog } from './confirmDialog'
 import { getSafeExternalUrl, getSafeTheme } from './main.logging'
 import { getDestructiveMenuIcon } from './main.menu'
@@ -247,9 +265,130 @@ function registerOpenExternalHandler(host: IpcHost): void {
   })
 }
 
+function normalizeBrowserBounds(raw: unknown): DesktopBrowserBounds | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const bounds = raw as Partial<DesktopBrowserBounds>
+  if (
+    !Number.isFinite(bounds.x) ||
+    !Number.isFinite(bounds.y) ||
+    !Number.isFinite(bounds.width) ||
+    !Number.isFinite(bounds.height)
+  ) {
+    return null
+  }
+  const x = bounds.x as number
+  const y = bounds.y as number
+  const width = bounds.width as number
+  const height = bounds.height as number
+  return {
+    x: Math.max(0, Math.floor(x)),
+    y: Math.max(0, Math.floor(y)),
+    width: Math.max(0, Math.floor(width)),
+    height: Math.max(0, Math.floor(height)),
+  }
+}
+
+function normalizeInspectPoint(raw: unknown): DesktopBrowserInspectPoint | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const point = raw as Partial<DesktopBrowserInspectPoint>
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    return null
+  }
+  const x = point.x as number
+  const y = point.y as number
+  return {
+    x: Math.floor(x),
+    y: Math.floor(y),
+  }
+}
+
+function registerBrowserRuntimeHandlers(host: IpcHost): void {
+  const browserRuntime = createBrowserRuntimeController({
+    mainWindow: () => host.mainWindow(),
+  })
+
+  ipcMain.removeHandler(BROWSER_GET_STATE_CHANNEL)
+  ipcMain.handle(BROWSER_GET_STATE_CHANNEL, async () => browserRuntime.getState())
+
+  ipcMain.removeHandler(BROWSER_NAVIGATE_CHANNEL)
+  ipcMain.handle(BROWSER_NAVIGATE_CHANNEL, async (_event, rawUrl: unknown) => {
+    if (typeof rawUrl !== 'string') {
+      return browserRuntime.getState()
+    }
+    return browserRuntime.navigate(rawUrl)
+  })
+
+  ipcMain.removeHandler(BROWSER_BACK_CHANNEL)
+  ipcMain.handle(BROWSER_BACK_CHANNEL, async () => browserRuntime.back())
+
+  ipcMain.removeHandler(BROWSER_FORWARD_CHANNEL)
+  ipcMain.handle(BROWSER_FORWARD_CHANNEL, async () => browserRuntime.forward())
+
+  ipcMain.removeHandler(BROWSER_RELOAD_CHANNEL)
+  ipcMain.handle(BROWSER_RELOAD_CHANNEL, async () => browserRuntime.reload())
+
+  ipcMain.removeHandler(BROWSER_OPEN_TAB_CHANNEL)
+  ipcMain.handle(BROWSER_OPEN_TAB_CHANNEL, async (_event, rawUrl: unknown) => {
+    if (typeof rawUrl !== 'string') {
+      return browserRuntime.openTab()
+    }
+    return browserRuntime.openTab(rawUrl)
+  })
+
+  ipcMain.removeHandler(BROWSER_CLOSE_TAB_CHANNEL)
+  ipcMain.handle(BROWSER_CLOSE_TAB_CHANNEL, async (_event, rawTabId: unknown) => {
+    if (typeof rawTabId !== 'string') {
+      return browserRuntime.getState()
+    }
+    return browserRuntime.closeTab(rawTabId)
+  })
+
+  ipcMain.removeHandler(BROWSER_SWITCH_TAB_CHANNEL)
+  ipcMain.handle(BROWSER_SWITCH_TAB_CHANNEL, async (_event, rawTabId: unknown) => {
+    if (typeof rawTabId !== 'string') {
+      return browserRuntime.getState()
+    }
+    return browserRuntime.switchTab(rawTabId)
+  })
+
+  ipcMain.removeHandler(BROWSER_SET_BOUNDS_CHANNEL)
+  ipcMain.handle(BROWSER_SET_BOUNDS_CHANNEL, async (_event, rawBounds: unknown) => {
+    const bounds = normalizeBrowserBounds(rawBounds)
+    if (!bounds) {
+      return browserRuntime.getState()
+    }
+    return browserRuntime.setBounds(bounds)
+  })
+
+  ipcMain.removeHandler(BROWSER_ENABLE_INSPECT_CHANNEL)
+  ipcMain.handle(BROWSER_ENABLE_INSPECT_CHANNEL, async () => browserRuntime.enableInspect())
+
+  ipcMain.removeHandler(BROWSER_DISABLE_INSPECT_CHANNEL)
+  ipcMain.handle(BROWSER_DISABLE_INSPECT_CHANNEL, async () => browserRuntime.disableInspect())
+
+  ipcMain.removeHandler(BROWSER_POLL_INSPECT_ANNOTATION_CHANNEL)
+  ipcMain.handle(BROWSER_POLL_INSPECT_ANNOTATION_CHANNEL, async () =>
+    browserRuntime.pollInspectAnnotation()
+  )
+
+  ipcMain.removeHandler(BROWSER_INSPECT_AT_POINT_CHANNEL)
+  ipcMain.handle(BROWSER_INSPECT_AT_POINT_CHANNEL, async (_event, rawPoint: unknown) => {
+    const point = normalizeInspectPoint(rawPoint)
+    if (!point) {
+      return null
+    }
+    return browserRuntime.inspectAtPoint(point)
+  })
+}
+
 export function registerIpcHandlers(host: IpcHost): void {
   registerCoreIpcHandlers(host)
   registerContextMenuHandler(host)
   registerOpenExternalHandler(host)
+  registerBrowserRuntimeHandlers(host)
   registerDesktopUpdateIpcHandlers(host)
 }

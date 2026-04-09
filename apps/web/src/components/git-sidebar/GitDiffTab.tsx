@@ -1,13 +1,14 @@
 import { PatchDiff } from '@pierre/diffs/react'
-import type { GitDiffFile, GitDiffResult } from '@orxa-code/contracts'
+import type { GitDiffFile, GitDiffResult, GitDiffScopeKind } from '@orxa-code/contracts'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlignJustifyIcon, Columns2Icon, ListIcon, PlusIcon, RotateCcwIcon } from 'lucide-react'
-import { useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 
 import { invalidateGitQueries } from '../../lib/gitReactQuery'
 import { getWsRpcClient } from '../../wsRpcClient'
 import { useTheme } from '../../hooks/useTheme'
 import { Button } from '../ui/button'
+import { getVisibleDiffFiles } from './GitDiffFileSections.logic'
 import { GitSidebarSkeleton } from './GitTextTab'
 import { GitDiffListView, GitDiffTreePane } from './GitDiffFileSections'
 
@@ -53,10 +54,14 @@ function PatchModeDiffView(props: { file: GitDiffFile; mode: Exclude<GitDiffView
     )
   }
 
-  if (props.file.section === 'untracked' || props.file.patch.trim().length === 0) {
+  if (props.file.patch.trim().length === 0) {
     return (
       <div className="flex items-center justify-center p-6">
-        <p className="text-xs text-muted-foreground">No rendered diff available</p>
+        <p className="text-xs text-muted-foreground">
+          {props.file.section === 'untracked'
+            ? 'Preview unavailable for this untracked file'
+            : 'No rendered diff available'}
+        </p>
       </div>
     )
   }
@@ -101,11 +106,50 @@ function GitDiffModeButton(props: {
   )
 }
 
+function GitDiffBulkActions(props: {
+  showLocalActions: boolean
+  canStageAll: boolean
+  canRestoreAll: boolean
+  pendingAction: string | null
+  onStageAll: () => void
+  onRestoreAll: () => void
+}) {
+  if (!props.showLocalActions) return null
+  return (
+    <>
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
+        disabled={!props.canStageAll || props.pendingAction !== null}
+        onClick={props.onStageAll}
+      >
+        <PlusIcon className="size-3" />
+        <span>Stage all</span>
+      </Button>
+      <Button
+        type="button"
+        size="xs"
+        variant="ghost"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-[11px] text-destructive hover:text-destructive"
+        disabled={!props.canRestoreAll || props.pendingAction !== null}
+        onClick={props.onRestoreAll}
+      >
+        <RotateCcwIcon className="size-3" />
+        <span>Revert all</span>
+      </Button>
+    </>
+  )
+}
+
 function GitDiffControls(props: {
   mode: GitDiffViewMode
+  compareLabel: string | null
   setMode: (mode: GitDiffViewMode) => void
   fileListOpen: boolean
   showFileToggle: boolean
+  showLocalActions: boolean
   canStageAll: boolean
   canRestoreAll: boolean
   pendingAction: string | null
@@ -135,6 +179,9 @@ function GitDiffControls(props: {
           onClick={() => props.setMode('split')}
         />
       </div>
+      {props.compareLabel ? (
+        <p className="truncate text-[11px] text-muted-foreground">{props.compareLabel}</p>
+      ) : null}
       <div className="ms-auto flex items-center gap-1">
         {props.showFileToggle ? (
           <Button
@@ -147,28 +194,14 @@ function GitDiffControls(props: {
             {props.fileListOpen ? 'Hide files' : 'Show files'}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
-          disabled={!props.canStageAll || props.pendingAction !== null}
-          onClick={props.onStageAll}
-        >
-          <PlusIcon className="size-3" />
-          <span>Stage all</span>
-        </Button>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-7 gap-1.5 rounded-full px-2.5 text-[11px] text-destructive hover:text-destructive"
-          disabled={!props.canRestoreAll || props.pendingAction !== null}
-          onClick={props.onRestoreAll}
-        >
-          <RotateCcwIcon className="size-3" />
-          <span>Revert all</span>
-        </Button>
+        <GitDiffBulkActions
+          showLocalActions={props.showLocalActions}
+          canStageAll={props.canStageAll}
+          canRestoreAll={props.canRestoreAll}
+          pendingAction={props.pendingAction}
+          onStageAll={props.onStageAll}
+          onRestoreAll={props.onRestoreAll}
+        />
       </div>
     </div>
   )
@@ -177,32 +210,53 @@ function GitDiffControls(props: {
 export interface GitDiffTabProps {
   cwd: string
   data: GitDiffResult | undefined
+  scope: GitDiffScopeKind
   isPending: boolean
+  isError?: boolean
+  errorMessage?: string
   onRefresh: () => void
 }
 
 function GitDiffDetailPane(props: {
-  activeFile: GitDiffFile | null
+  files: ReadonlyArray<GitDiffFile>
+  selectedPath: string | null
   mode: Exclude<GitDiffViewMode, 'list'>
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!props.selectedPath || !containerRef.current) return
+    const escapedPath =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(props.selectedPath)
+        : props.selectedPath.replaceAll('"', '\\"')
+    const target = containerRef.current.querySelector<HTMLElement>(
+      `[data-git-diff-path="${escapedPath}"]`
+    )
+    target?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [props.selectedPath])
+
   return (
-    <div className="min-w-0 flex-1 overflow-y-auto">
-      {props.activeFile ? (
-        <>
+    <div ref={containerRef} className="min-w-0 flex-1 overflow-y-auto">
+      {props.files.map(file => (
+        <section
+          key={`${file.section}:${file.path}`}
+          data-git-diff-path={file.path}
+          className="border-b border-border last:border-b-0"
+        >
           <div className="sticky top-0 z-10 border-b border-border bg-background px-3 py-1.5">
-            <p className="truncate font-mono text-xs font-medium text-foreground">
-              {props.activeFile.path}
-            </p>
+            <p className="truncate font-mono text-xs font-medium text-foreground">{file.path}</p>
           </div>
-          <PatchModeDiffView file={props.activeFile} mode={props.mode} />
-        </>
-      ) : null}
+          <PatchModeDiffView file={file} mode={props.mode} />
+        </section>
+      ))}
     </div>
   )
 }
 
 function GitDiffTabContent({
   data,
+  scope,
   actions,
   mode,
   setMode,
@@ -212,6 +266,7 @@ function GitDiffTabContent({
   onSelectPath,
 }: {
   data: GitDiffResult
+  scope: GitDiffScopeKind
   actions: ReturnType<typeof useGitDiffActions>
   mode: GitDiffViewMode
   setMode: (mode: GitDiffViewMode) => void
@@ -220,18 +275,21 @@ function GitDiffTabContent({
   selectedPath: string | null
   onSelectPath: (path: string) => void
 }) {
-  const allFiles = [...data.staged, ...data.unstaged, ...data.untracked]
+  const allFiles = getVisibleDiffFiles(data, scope)
   const activeFile = allFiles.find(file => file.path === selectedPath) ?? allFiles[0] ?? null
-  const canStageAll = data.unstaged.length > 0 || data.untracked.length > 0
-  const canRestoreAll = data.unstaged.length > 0
+  const isLocalWorkingTreeScope = scope === 'unstaged'
+  const canStageAll = isLocalWorkingTreeScope && (data.unstaged.length > 0 || data.untracked.length > 0)
+  const canRestoreAll = isLocalWorkingTreeScope && data.unstaged.length > 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <GitDiffControls
         mode={mode}
+        compareLabel={scope === 'branch' ? data.branch?.compareLabel ?? null : null}
         setMode={setMode}
         fileListOpen={fileListOpen}
         showFileToggle={mode !== 'list'}
+        showLocalActions={isLocalWorkingTreeScope}
         canStageAll={canStageAll}
         canRestoreAll={canRestoreAll}
         pendingAction={actions.pendingAction}
@@ -240,26 +298,40 @@ function GitDiffTabContent({
         onRestoreAll={() => void actions.restoreAllUnstaged()}
       />
       {mode === 'list' ? (
-        <GitDiffListView data={data} pendingAction={actions.pendingAction} actions={actions} />
+        <GitDiffListView
+          data={data}
+          scope={scope}
+          pendingAction={actions.pendingAction}
+          actions={actions}
+        />
       ) : (
         <div className="flex min-h-0 flex-1">
           {fileListOpen ? (
             <GitDiffTreePane
               data={data}
+              scope={scope}
               activePath={activeFile?.path ?? null}
               pendingAction={actions.pendingAction}
               onSelectPath={onSelectPath}
               actions={actions}
             />
           ) : null}
-          <GitDiffDetailPane activeFile={activeFile} mode={mode} />
+          <GitDiffDetailPane files={allFiles} selectedPath={selectedPath} mode={mode} />
         </div>
       )}
     </div>
   )
 }
 
-export function GitDiffTab({ cwd, data, isPending, onRefresh }: GitDiffTabProps): ReactNode {
+export function GitDiffTab({
+  cwd,
+  data,
+  scope,
+  isPending,
+  isError = false,
+  errorMessage,
+  onRefresh,
+}: GitDiffTabProps): ReactNode {
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [mode, setMode] = useState<GitDiffViewMode>('unified')
   const [fileListOpen, setFileListOpen] = useState(false)
@@ -281,16 +353,28 @@ export function GitDiffTab({ cwd, data, isPending, onRefresh }: GitDiffTabProps)
     return <GitSidebarSkeleton />
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <p className="max-w-xs text-center text-xs text-muted-foreground">
+          {errorMessage ?? 'Unable to load git diff.'}
+        </p>
+      </div>
+    )
+  }
+
   if (!data) {
     return null
   }
 
-  const allFiles = [...data.staged, ...data.unstaged, ...data.untracked]
+  const allFiles = getVisibleDiffFiles(data, scope)
 
   if (allFiles.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
-        <p className="text-xs text-muted-foreground">Working tree is clean.</p>
+        <p className="text-xs text-muted-foreground">
+          {scope === 'branch' ? 'No branch diff available.' : 'Working tree is clean.'}
+        </p>
       </div>
     )
   }
@@ -298,6 +382,7 @@ export function GitDiffTab({ cwd, data, isPending, onRefresh }: GitDiffTabProps)
   return (
     <GitDiffTabContent
       data={data}
+      scope={scope}
       actions={actions}
       mode={mode}
       setMode={handleSetMode}

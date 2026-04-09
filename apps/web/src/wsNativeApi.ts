@@ -91,6 +91,7 @@ export function createWsNativeApi(): NativeApi {
 
   const api: NativeApi = {
     dialogs: createDialogsApi(),
+    ...(window.desktopBridge?.browser ? { browser: window.desktopBridge.browser } : {}),
     terminal: {
       open: input => rpcClient.terminal.open(input as never),
       write: input => rpcClient.terminal.write(input as never),

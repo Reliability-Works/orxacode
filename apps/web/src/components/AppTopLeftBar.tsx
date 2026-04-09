@@ -1,22 +1,25 @@
 /**
- * AppTopLeftBar — persistent top-left bar containing the sidebar toggle and
- * app wordmark. Fixed position so it remains visible regardless of sidebar
- * collapsed/expanded state; its width matches SIDEBAR_WIDTH so the inset
- * headers only need to add `peer-data-[state=collapsed]:ps-[var(--sidebar-width)]`
- * to avoid content slipping underneath it.
+ * AppTopLeftBar — persistent top-left bar containing the sidebar toggle.
+ * Fixed position so it remains visible regardless of sidebar collapsed/
+ * expanded state; collapsed-route headers reserve this exact width so content
+ * never slides underneath the traffic lights or trigger.
  */
 
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from '../branding'
 import { isElectron } from '../env'
 import { cn } from '~/lib/utils'
 import { SidebarTrigger } from './ui/sidebar'
+
+export const APP_TOP_LEFT_BAR_WIDTH = '272px'
+
 export function AppTopLeftBar() {
   return (
     <div
       className={cn(
-        'pointer-events-none fixed inset-y-0 start-0 top-0 z-50 flex h-[52px] w-[var(--sidebar-width)] items-center gap-2',
-        isElectron ? 'drag-region ps-[90px] pe-3' : 'px-3'
+        'pointer-events-none fixed inset-y-0 start-0 top-0 z-50 flex h-[52px] items-center gap-2',
+        isElectron ? 'drag-region ps-[98px] pe-3 pt-[5px]' : 'px-3'
       )}
+      style={{ width: APP_TOP_LEFT_BAR_WIDTH }}
       data-slot="app-top-left-bar"
     >
       <SidebarTrigger className="pointer-events-auto size-7 shrink-0" />

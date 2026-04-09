@@ -107,6 +107,64 @@ export interface DesktopUpdateActionResult {
   state: DesktopUpdateState
 }
 
+export interface DesktopBrowserBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface DesktopBrowserTabState {
+  id: string
+  title: string
+  url: string
+  isActive: boolean
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+export interface DesktopBrowserInspectPoint {
+  x: number
+  y: number
+}
+
+export interface DesktopBrowserAnnotationCandidate {
+  element: string
+  selector: string
+  text: string | null
+  boundingBox: DesktopBrowserBounds | null
+  computedStyles: string | null
+}
+
+export interface DesktopBrowserState {
+  tabs: DesktopBrowserTabState[]
+  activeTabId: string | null
+  activeUrl: string | null
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  bounds: DesktopBrowserBounds | null
+}
+
+export interface DesktopBrowserBridge {
+  getState: () => Promise<DesktopBrowserState>
+  navigate: (url: string) => Promise<DesktopBrowserState>
+  back: () => Promise<DesktopBrowserState>
+  forward: () => Promise<DesktopBrowserState>
+  reload: () => Promise<DesktopBrowserState>
+  openTab: (url?: string) => Promise<DesktopBrowserState>
+  closeTab: (tabId: string) => Promise<DesktopBrowserState>
+  switchTab: (tabId: string) => Promise<DesktopBrowserState>
+  setBounds: (bounds: DesktopBrowserBounds) => Promise<DesktopBrowserState>
+  enableInspect: () => Promise<{ ok: boolean }>
+  disableInspect: () => Promise<{ ok: boolean }>
+  pollInspectAnnotation: () => Promise<DesktopBrowserAnnotationCandidate | null>
+  inspectAtPoint: (
+    point: DesktopBrowserInspectPoint
+  ) => Promise<DesktopBrowserAnnotationCandidate | null>
+}
+
 export interface DesktopUpdateCheckResult {
   checked: boolean
   state: DesktopUpdateState
@@ -132,6 +190,7 @@ export interface DesktopBridge {
     input: Partial<DesktopUpdatePreferences>
   ) => Promise<DesktopUpdatePreferences>
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void
+  browser?: DesktopBrowserBridge
 }
 
 export interface NativeApi {
@@ -139,6 +198,7 @@ export interface NativeApi {
     pickFolder: () => Promise<string | null>
     confirm: (message: string) => Promise<boolean>
   }
+  browser?: DesktopBrowserBridge
   terminal: {
     open: (input: typeof TerminalOpenInput.Encoded) => Promise<TerminalSessionSnapshot>
     write: (input: typeof TerminalWriteInput.Encoded) => Promise<void>

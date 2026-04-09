@@ -12,6 +12,7 @@ import PlanSidebar from '../PlanSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
 import { PullRequestThreadDialog } from '../PullRequestThreadDialog'
 import { GitSidebar } from '../git-sidebar/GitSidebar'
+import { BrowserSidebar } from '../browser-sidebar/BrowserSidebar'
 import { ChatViewHeaderPanel } from './ChatViewHeaderPanel'
 import { ChatViewMessagesPane } from './ChatViewMessagesPane'
 import { ChatViewComposerBody } from './ChatViewComposerBody'
@@ -117,8 +118,17 @@ function ChatViewAuxSidebarShell(props: { children: React.ReactNode }) {
 
 function ChatViewAuxSidebarBlock() {
   const c = useChatViewCtx()
-  const { gitCwd } = c
-  if (!gitCwd || c.ls.auxSidebarMode === 'none') return null
+  const { gitCwd, td } = c
+  if (c.ls.auxSidebarMode === 'none') return null
+  if (c.ls.auxSidebarMode === 'browser') {
+    if (!td.activeProject) return null
+    return (
+      <ChatViewAuxSidebarShell>
+        <BrowserSidebar onClose={c.closeAuxSidebar} />
+      </ChatViewAuxSidebarShell>
+    )
+  }
+  if (!gitCwd) return null
   if (c.ls.auxSidebarMode === 'files') {
     return (
       <ChatViewAuxSidebarShell>
@@ -133,7 +143,13 @@ function ChatViewAuxSidebarBlock() {
   if (!c.cd.isGitRepo) return null
   return (
     <ChatViewAuxSidebarShell>
-      <GitSidebar cwd={gitCwd} diffQueryResult={c.panelDiffQuery} onClose={c.closeAuxSidebar} />
+      <GitSidebar
+        cwd={gitCwd}
+        diffQueryResult={c.panelDiffQuery}
+        diffScope={c.ls.gitDiffScope}
+        onDiffScopeChange={c.ls.setGitDiffScope}
+        onClose={c.closeAuxSidebar}
+      />
     </ChatViewAuxSidebarShell>
   )
 }

@@ -51,6 +51,12 @@ export interface RenderedProjectData {
   isThreadListExpanded: boolean
 }
 
+export interface RenderedPinnedThreadData {
+  thread: SidebarThreadSnapshot
+  orderedProjectThreadIds: readonly ThreadId[]
+  threadStatus: ThreadStatusPill | null
+}
+
 /** Raw PR shape matching GitStatusResult['pr'] — stored per-thread by parent. */
 export type ThreadPr = GitStatusResult['pr']
 

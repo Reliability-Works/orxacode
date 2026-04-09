@@ -162,6 +162,7 @@ export const createSessionContext = (input: {
     threadId: input.threadId,
     provider: PROVIDER,
     status: 'ready',
+    ...(input.sessionId ? { providerThreadId: input.sessionId } : {}),
     runtimeMode: input.runtimeMode,
     ...(input.cwd ? { cwd: input.cwd } : {}),
     ...(input.config.modelSelection?.model ? { model: input.config.modelSelection.model } : {}),

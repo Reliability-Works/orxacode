@@ -218,6 +218,8 @@ function buildTestThread(
       threadId,
       status: sessionStatus,
       providerName: 'codex',
+      providerSessionId: null,
+      providerThreadId: 'codex-thread-1',
       runtimeMode: 'full-access',
       activeTurnId: null,
       lastError: null,

@@ -116,6 +116,8 @@ export interface Thread {
 export interface ThreadSession {
   provider: ProviderKind
   status: SessionPhase | 'error' | 'closed'
+  providerSessionId?: string | null
+  providerThreadId?: string | null
   activeTurnId?: TurnId | undefined
   createdAt: string
   updatedAt: string

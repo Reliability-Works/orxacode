@@ -22,11 +22,12 @@ export function useSidebarStoreBindings() {
   const projects = useStore(store => store.projects)
   const serverThreads = useStore(store => store.threads)
 
-  const { projectExpandedById, projectOrder, threadLastVisitedAtById } = useUiStateStore(
+  const { projectExpandedById, projectOrder, threadLastVisitedAtById, pinnedThreadIds } = useUiStateStore(
     useShallow(store => ({
       projectExpandedById: store.projectExpandedById,
       projectOrder: store.projectOrder,
       threadLastVisitedAtById: store.threadLastVisitedAtById,
+      pinnedThreadIds: store.pinnedThreadIds,
     }))
   )
 
@@ -67,6 +68,7 @@ export function useSidebarStoreBindings() {
     projectExpandedById,
     projectOrder,
     threadLastVisitedAtById,
+    pinnedThreadIds,
     markThreadUnread,
     toggleProject,
     reorderProjects,

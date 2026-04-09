@@ -9,7 +9,6 @@
 import {
   LayoutDashboardIcon,
   PlugZapIcon,
-  PlusIcon,
   TriangleAlertIcon,
   ZapIcon,
 } from 'lucide-react'
@@ -31,19 +30,20 @@ import {
 } from './ui/sidebar'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
-import { Tooltip, TooltipPopup, TooltipTrigger } from './ui/tooltip'
 import { cn } from '~/lib/utils'
 import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
-import { ProjectSortMenu } from './sidebar/SidebarHelpers'
 import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
 import { ProjectItem } from './sidebar/ProjectItem'
-import type { RenderedProjectData } from './sidebar/ProjectItem'
-import {
-  AddProjectForm,
-  SidebarDndProjectList,
-  SidebarStaticProjectList,
-  type AddProjectFormProps,
-} from './SidebarProjectList'
+import type {
+  ProjectItemProps,
+  RenderedPinnedThreadData,
+  RenderedProjectData,
+  ThreadPr,
+} from './sidebar/ProjectItem'
+import type { ThreadId } from '@orxa-code/contracts'
+import type { ThreadTerminalState } from '../terminalStateStore.logic'
+import { type AddProjectFormProps } from './SidebarProjectList'
+import { SidebarProjectGroup, type SidebarProjectGroupProps } from './SidebarProjectGroup'
 import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
 
 // ---------------------------------------------------------------------------
@@ -83,6 +83,7 @@ export interface SidebarBodyProps {
 
   // -- Projects --
   projects: Project[]
+  renderedPinnedThreads: RenderedPinnedThreadData[]
   renderedProjects: RenderedProjectData[]
   isManualProjectSorting: boolean
 
@@ -110,6 +111,15 @@ export interface SidebarBodyProps {
   // -- Navigation --
   onNavigateToSettings: () => void
 
+  // -- Pinned thread rendering --
+  getThreadRowProps: ProjectItemProps['getThreadRowProps']
+  routeThreadId: ThreadId | null
+  selectedThreadIds: ReadonlySet<ThreadId>
+  threadJumpLabelById: Map<ThreadId, string>
+  terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>
+  prByThreadId: Map<ThreadId, ThreadPr | null>
+  confirmingArchiveThreadId: ThreadId | null
+
   // -- Callbacks passed through to ProjectItem --
   getProjectItemProps: () => {
     dragHandleProps: SortableProjectHandleProps | null
@@ -130,133 +140,6 @@ export interface SidebarBodyProps {
 // ---------------------------------------------------------------------------
 // SidebarProjectGroup — the project section content
 // ---------------------------------------------------------------------------
-
-interface SidebarProjectGroupProps {
-  projects: Project[]
-  renderedProjects: RenderedProjectData[]
-  isManualProjectSorting: boolean
-  shouldShowProjectPathEntry: boolean
-  appSettings: SidebarBodyProps['appSettings']
-  onUpdateProjectSortOrder: SidebarBodyProps['onUpdateProjectSortOrder']
-  onUpdateThreadSortOrder: SidebarBodyProps['onUpdateThreadSortOrder']
-  onStartAddProject: SidebarBodyProps['onStartAddProject']
-  getProjectItemProps: SidebarBodyProps['getProjectItemProps']
-  projectDnDSensors: SidebarBodyProps['projectDnDSensors']
-  projectCollisionDetection: SidebarBodyProps['projectCollisionDetection']
-  onProjectDragStart: SidebarBodyProps['onProjectDragStart']
-  onProjectDragEnd: SidebarBodyProps['onProjectDragEnd']
-  onProjectDragCancel: SidebarBodyProps['onProjectDragCancel']
-  attachProjectListAutoAnimateRef: SidebarBodyProps['attachProjectListAutoAnimateRef']
-  addFormProps: AddProjectFormProps
-}
-
-interface SidebarProjectGroupHeaderProps {
-  shouldShowProjectPathEntry: boolean
-  appSettings: SidebarBodyProps['appSettings']
-  onUpdateProjectSortOrder: SidebarBodyProps['onUpdateProjectSortOrder']
-  onUpdateThreadSortOrder: SidebarBodyProps['onUpdateThreadSortOrder']
-  onStartAddProject: SidebarBodyProps['onStartAddProject']
-}
-
-function SidebarProjectGroupHeader({
-  shouldShowProjectPathEntry,
-  appSettings,
-  onUpdateProjectSortOrder,
-  onUpdateThreadSortOrder,
-  onStartAddProject,
-}: SidebarProjectGroupHeaderProps) {
-  return (
-    <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-        Projects
-      </span>
-      <div className="flex items-center gap-1">
-        <ProjectSortMenu
-          projectSortOrder={appSettings.sidebarProjectSortOrder}
-          threadSortOrder={appSettings.sidebarThreadSortOrder}
-          onProjectSortOrderChange={onUpdateProjectSortOrder}
-          onThreadSortOrderChange={onUpdateThreadSortOrder}
-        />
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={shouldShowProjectPathEntry ? 'Cancel add project' : 'Add project'}
-                aria-pressed={shouldShowProjectPathEntry}
-                className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                onClick={onStartAddProject}
-              />
-            }
-          >
-            <PlusIcon
-              className={`size-3.5 transition-transform duration-150 ${shouldShowProjectPathEntry ? 'rotate-45' : 'rotate-0'}`}
-            />
-          </TooltipTrigger>
-          <TooltipPopup side="right">
-            {shouldShowProjectPathEntry ? 'Cancel add project' : 'Add project'}
-          </TooltipPopup>
-        </Tooltip>
-      </div>
-    </div>
-  )
-}
-
-function SidebarProjectGroup({
-  projects,
-  renderedProjects,
-  isManualProjectSorting,
-  shouldShowProjectPathEntry,
-  appSettings,
-  onUpdateProjectSortOrder,
-  onUpdateThreadSortOrder,
-  onStartAddProject,
-  getProjectItemProps,
-  projectDnDSensors,
-  projectCollisionDetection,
-  onProjectDragStart,
-  onProjectDragEnd,
-  onProjectDragCancel,
-  attachProjectListAutoAnimateRef,
-  addFormProps,
-}: SidebarProjectGroupProps) {
-  return (
-    <SidebarGroup className="px-2 py-2">
-      <SidebarProjectGroupHeader
-        shouldShowProjectPathEntry={shouldShowProjectPathEntry}
-        appSettings={appSettings}
-        onUpdateProjectSortOrder={onUpdateProjectSortOrder}
-        onUpdateThreadSortOrder={onUpdateThreadSortOrder}
-        onStartAddProject={onStartAddProject}
-      />
-      {shouldShowProjectPathEntry && <AddProjectForm {...addFormProps} />}
-
-      {isManualProjectSorting ? (
-        <SidebarDndProjectList
-          renderedProjects={renderedProjects}
-          getProjectItemProps={getProjectItemProps}
-          projectDnDSensors={projectDnDSensors}
-          projectCollisionDetection={projectCollisionDetection}
-          onProjectDragStart={onProjectDragStart}
-          onProjectDragEnd={onProjectDragEnd}
-          onProjectDragCancel={onProjectDragCancel}
-        />
-      ) : (
-        <SidebarStaticProjectList
-          renderedProjects={renderedProjects}
-          getProjectItemProps={getProjectItemProps}
-          attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
-        />
-      )}
-
-      {projects.length === 0 && !shouldShowProjectPathEntry && (
-        <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
-          No projects yet
-        </div>
-      )}
-    </SidebarGroup>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // SidebarArm64Warning — ARM/Intel build alert
@@ -368,70 +251,74 @@ function buildAddFormProps(p: SidebarMainViewProps): AddProjectFormProps {
 }
 
 function SidebarMainView(props: SidebarMainViewProps) {
-  const {
-    pathname,
-    shouldShowProjectPathEntry,
-    showArm64IntelBuildWarning,
-    arm64IntelBuildWarningDescription,
-    desktopUpdateState,
-    desktopUpdateButtonAction,
-    desktopUpdateButtonDisabled,
-    onDesktopUpdateButtonClick,
-    projects,
-    renderedProjects,
-    isManualProjectSorting,
-    appSettings,
-    onUpdateProjectSortOrder,
-    onUpdateThreadSortOrder,
-    onStartAddProject,
-    onNavigateToSettings,
-    getProjectItemProps,
-    projectDnDSensors,
-    projectCollisionDetection,
-    onProjectDragStart,
-    onProjectDragEnd,
-    onProjectDragCancel,
-    attachProjectListAutoAnimateRef,
-  } = props
   const addFormProps = buildAddFormProps(props)
   return (
     <>
       <SidebarContent className="gap-0">
-        <SidebarTopNav pathname={pathname} />
+        <SidebarTopNav pathname={props.pathname} />
         <SidebarSeparator />
-        {showArm64IntelBuildWarning && arm64IntelBuildWarningDescription ? (
-          <SidebarArm64Warning
-            description={arm64IntelBuildWarningDescription}
-            buttonAction={desktopUpdateButtonAction}
-            buttonDisabled={desktopUpdateButtonDisabled}
-            onButtonClick={onDesktopUpdateButtonClick}
-          />
-        ) : null}
-        <SidebarProjectGroup
-          projects={projects}
-          renderedProjects={renderedProjects}
-          isManualProjectSorting={isManualProjectSorting}
-          shouldShowProjectPathEntry={shouldShowProjectPathEntry}
-          appSettings={appSettings}
-          onUpdateProjectSortOrder={onUpdateProjectSortOrder}
-          onUpdateThreadSortOrder={onUpdateThreadSortOrder}
-          onStartAddProject={onStartAddProject}
-          getProjectItemProps={getProjectItemProps}
-          projectDnDSensors={projectDnDSensors}
-          projectCollisionDetection={projectCollisionDetection}
-          onProjectDragStart={onProjectDragStart}
-          onProjectDragEnd={onProjectDragEnd}
-          onProjectDragCancel={onProjectDragCancel}
-          attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
+        <SidebarMainContent
+          showArm64IntelBuildWarning={props.showArm64IntelBuildWarning}
+          arm64IntelBuildWarningDescription={props.arm64IntelBuildWarningDescription}
+          desktopUpdateButtonAction={props.desktopUpdateButtonAction}
+          desktopUpdateButtonDisabled={props.desktopUpdateButtonDisabled}
+          onDesktopUpdateButtonClick={props.onDesktopUpdateButtonClick}
+          projects={props.projects}
+          renderedPinnedThreads={props.renderedPinnedThreads}
+          renderedProjects={props.renderedProjects}
+          isManualProjectSorting={props.isManualProjectSorting}
+          shouldShowProjectPathEntry={props.shouldShowProjectPathEntry}
+          appSettings={props.appSettings}
+          onUpdateProjectSortOrder={props.onUpdateProjectSortOrder}
+          onUpdateThreadSortOrder={props.onUpdateThreadSortOrder}
+          onStartAddProject={props.onStartAddProject}
+          getThreadRowProps={props.getThreadRowProps}
+          routeThreadId={props.routeThreadId}
+          selectedThreadIds={props.selectedThreadIds}
+          threadJumpLabelById={props.threadJumpLabelById}
+          terminalStateByThreadId={props.terminalStateByThreadId}
+          prByThreadId={props.prByThreadId}
+          confirmingArchiveThreadId={props.confirmingArchiveThreadId}
+          getProjectItemProps={props.getProjectItemProps}
+          projectDnDSensors={props.projectDnDSensors}
+          projectCollisionDetection={props.projectCollisionDetection}
+          onProjectDragStart={props.onProjectDragStart}
+          onProjectDragEnd={props.onProjectDragEnd}
+          onProjectDragCancel={props.onProjectDragCancel}
+          attachProjectListAutoAnimateRef={props.attachProjectListAutoAnimateRef}
           addFormProps={addFormProps}
         />
       </SidebarContent>
       <SidebarSeparator />
       <SidebarMainFooter
-        desktopUpdateState={desktopUpdateState}
-        onNavigateToSettings={onNavigateToSettings}
-        onUpdateAction={onDesktopUpdateButtonClick}
+        desktopUpdateState={props.desktopUpdateState}
+        onNavigateToSettings={props.onNavigateToSettings}
+        onUpdateAction={props.onDesktopUpdateButtonClick}
       />
+    </>
+  )
+}
+
+function SidebarMainContent(
+  props: SidebarProjectGroupProps & {
+    showArm64IntelBuildWarning: boolean
+    arm64IntelBuildWarningDescription: string | null
+    desktopUpdateButtonAction: 'download' | 'install' | 'none'
+    desktopUpdateButtonDisabled: boolean
+    onDesktopUpdateButtonClick: () => void
+  }
+) {
+  return (
+    <>
+      {props.showArm64IntelBuildWarning && props.arm64IntelBuildWarningDescription ? (
+        <SidebarArm64Warning
+          description={props.arm64IntelBuildWarningDescription}
+          buttonAction={props.desktopUpdateButtonAction}
+          buttonDisabled={props.desktopUpdateButtonDisabled}
+          onButtonClick={props.onDesktopUpdateButtonClick}
+        />
+      ) : null}
+      <SidebarProjectGroup {...props} />
     </>
   )
 }

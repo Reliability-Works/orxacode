@@ -7,7 +7,7 @@
 
 import * as Schema from 'effect/Schema'
 import { useState } from 'react'
-import type { ThreadId } from '@orxa-code/contracts'
+import type { GitDiffScopeKind, ThreadId } from '@orxa-code/contracts'
 import type { ExpandedImagePreview } from './ExpandedImagePreview'
 import type { PullRequestDialogState } from '../ChatView.logic'
 import type { ChatMessage } from '../../types'
@@ -29,23 +29,28 @@ interface PendingPullRequestSetupRequest {
   scriptId: string
 }
 
-export const ChatAuxSidebarModeSchema = Schema.Literals(['none', 'git', 'files'])
+export const ChatAuxSidebarModeSchema = Schema.Literals(['none', 'git', 'files', 'browser'])
 export type ChatAuxSidebarMode = typeof ChatAuxSidebarModeSchema.Type
+export const ChatGitDiffScopeSchema = Schema.Literals(['unstaged', 'staged', 'branch'])
 
-const CHAT_AUX_SIDEBAR_MODE_KEY = 'orxa:chat-aux-sidebar-mode'
 const CHAT_AUX_SIDEBAR_WIDTH_KEY = 'orxa:chat-aux-sidebar-width'
 const DEFAULT_CHAT_AUX_SIDEBAR_WIDTH = 384
+const CHAT_GIT_DIFF_SCOPE_KEY = 'orxa:chat-git-diff-scope'
 
 function useChatAuxSidebarModeState() {
-  return useLocalStorage(
-    CHAT_AUX_SIDEBAR_MODE_KEY,
-    'none' as ChatAuxSidebarMode,
-    ChatAuxSidebarModeSchema
-  )
+  return useState<ChatAuxSidebarMode>('none')
 }
 
 function useChatAuxSidebarWidthState() {
   return useLocalStorage(CHAT_AUX_SIDEBAR_WIDTH_KEY, DEFAULT_CHAT_AUX_SIDEBAR_WIDTH, Schema.Finite)
+}
+
+function useGitDiffScopeState() {
+  return useLocalStorage<GitDiffScopeKind, GitDiffScopeKind>(
+    CHAT_GIT_DIFF_SCOPE_KEY,
+    'unstaged',
+    ChatGitDiffScopeSchema
+  )
 }
 
 function useChatAuxSidebarState() {
@@ -58,11 +63,32 @@ function useLastInvokedScriptState() {
   return useLocalStorage(LAST_INVOKED_SCRIPT_BY_PROJECT_KEY, {}, LastInvokedScriptByProjectSchema)
 }
 
+function useChatViewComposerUiState(prompt: string) {
+  const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
+    Record<string, string[]>
+  >({})
+  const [composerCursor, setComposerCursor] = useState(() =>
+    collapseExpandedComposerCursor(prompt, prompt.length)
+  )
+  const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
+    detectComposerTrigger(prompt, prompt.length)
+  )
+  return {
+    attachmentPreviewHandoffByMessageId,
+    setAttachmentPreviewHandoffByMessageId,
+    composerCursor,
+    setComposerCursor,
+    composerTrigger,
+    setComposerTrigger,
+  }
+}
+
 export function useChatViewLocalState(prompt: string) {
   const refs = useChatViewLocalRefs(prompt)
   const pending = useChatViewPendingInputState()
   const { auxSidebarMode, setAuxSidebarMode, auxSidebarWidth, setAuxSidebarWidth } =
     useChatAuxSidebarState()
+  const [gitDiffScope, setGitDiffScope] = useGitDiffScopeState()
   const [lastInvokedScriptByProjectId, setLastInvokedScriptByProjectId] =
     useLastInvokedScriptState()
   const [isDragOverComposer, setIsDragOverComposer] = useState(false)
@@ -80,15 +106,7 @@ export function useChatViewLocalState(prompt: string) {
   const [queuedFollowUpPending, setQueuedFollowUpPending] = useState(false)
   const [pullRequestDialogState, setPullRequestDialogState] = useState<PullRequestDialogState | null>(null)
   const [pendingPullRequestSetupRequest, setPendingPullRequestSetupRequest] = useState<PendingPullRequestSetupRequest | null>(null)
-  const [attachmentPreviewHandoffByMessageId, setAttachmentPreviewHandoffByMessageId] = useState<
-    Record<string, string[]>
-  >({})
-  const [composerCursor, setComposerCursor] = useState(() =>
-    collapseExpandedComposerCursor(prompt, prompt.length)
-  )
-  const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
-    detectComposerTrigger(prompt, prompt.length)
-  )
+  const composerUi = useChatViewComposerUiState(prompt)
 
   return {
     ...refs,
@@ -111,6 +129,8 @@ export function useChatViewLocalState(prompt: string) {
     setAuxSidebarMode,
     auxSidebarWidth,
     setAuxSidebarWidth,
+    gitDiffScope,
+    setGitDiffScope,
     nowTick,
     setNowTick,
     terminalFocusRequestId,
@@ -123,12 +143,7 @@ export function useChatViewLocalState(prompt: string) {
     setPullRequestDialogState,
     pendingPullRequestSetupRequest,
     setPendingPullRequestSetupRequest,
-    attachmentPreviewHandoffByMessageId,
-    setAttachmentPreviewHandoffByMessageId,
-    composerCursor,
-    setComposerCursor,
-    composerTrigger,
-    setComposerTrigger,
+    ...composerUi,
     lastInvokedScriptByProjectId,
     setLastInvokedScriptByProjectId,
   }

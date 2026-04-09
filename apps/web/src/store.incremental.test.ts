@@ -166,6 +166,8 @@ it('applies replay batches in sequence and updates session state', () => {
           threadId: thread.id,
           status: 'running',
           providerName: 'codex',
+          providerSessionId: null,
+          providerThreadId: 'codex-thread-1',
           runtimeMode: 'full-access',
           activeTurnId: TurnId.makeUnsafe('turn-1'),
           lastError: null,
