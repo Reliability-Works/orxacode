@@ -6,7 +6,13 @@
  * + wiring).
  */
 
-import { LayoutDashboardIcon, PlusIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
+import {
+  LayoutDashboardIcon,
+  PlugZapIcon,
+  PlusIcon,
+  TriangleAlertIcon,
+  ZapIcon,
+} from 'lucide-react'
 import type React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
@@ -324,6 +330,21 @@ function SidebarTopNav({ pathname }: { pathname: string }) {
           >
             <ZapIcon className="size-3.5" />
             <span className="text-xs">Skills</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className={cn(
+              'gap-2 px-2 py-1.5',
+              pathname === '/plugins'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground/70 hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => void navigate({ to: '/plugins' })}
+          >
+            <PlugZapIcon className="size-3.5" />
+            <span className="text-xs">Plugins</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

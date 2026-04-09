@@ -1,4 +1,4 @@
-import type { ProviderKind, ProviderPluginDescriptor, Skill } from '@orxa-code/contracts'
+import type { ProviderPluginDescriptor, Skill } from '@orxa-code/contracts'
 import { useQuery } from '@tanstack/react-query'
 import { RefreshCwIcon, SearchIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
@@ -16,50 +16,15 @@ import { useSidebar } from '../ui/sidebar.shared'
 import { Skeleton } from '../ui/skeleton'
 import { PluginCard } from './PluginCard'
 import { SkillCard } from './SkillCard'
-
-type ProviderFilter = 'all' | ProviderKind
-type DiscoveryViewMode = 'skills' | 'plugins'
-
-const PROVIDER_TABS: Array<{ key: ProviderFilter; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'codex', label: 'Codex' },
-  { key: 'claudeAgent', label: 'Claude' },
-  { key: 'opencode', label: 'OpenCode' },
-]
-
-function filterSkills(skills: ReadonlyArray<Skill>, provider: ProviderFilter, search: string) {
-  let result = provider === 'all' ? skills : skills.filter(skill => skill.provider === provider)
-  if (search.trim().length > 0) {
-    const lower = search.toLowerCase()
-    result = result.filter(
-      skill =>
-        skill.name.toLowerCase().includes(lower) ||
-        skill.description.toLowerCase().includes(lower) ||
-        skill.tags.some(tag => tag.toLowerCase().includes(lower))
-    )
-  }
-  return result
-}
-
-function filterPlugins(
-  plugins: ReadonlyArray<ProviderPluginDescriptor>,
-  provider: ProviderFilter,
-  search: string
-) {
-  let result = provider === 'all' ? plugins : plugins.filter(plugin => plugin.provider === provider)
-  if (search.trim().length > 0) {
-    const lower = search.toLowerCase()
-    result = result.filter(
-      plugin =>
-        plugin.name.toLowerCase().includes(lower) ||
-        (plugin.displayName?.toLowerCase().includes(lower) ?? false) ||
-        (plugin.shortDescription?.toLowerCase().includes(lower) ?? false) ||
-        (plugin.longDescription?.toLowerCase().includes(lower) ?? false) ||
-        plugin.tags.some(tag => tag.toLowerCase().includes(lower))
-    )
-  }
-  return result
-}
+import {
+  type DiscoveryViewMode,
+  filterPlugins,
+  filterSkills,
+  getPluginDiscoveryKey,
+  getSkillDiscoveryKey,
+  type ProviderFilter,
+  PROVIDER_TABS,
+} from './SkillsView.logic'
 
 function SkillsHeader(props: { collapsed: boolean; onRefresh: () => void; refreshing: boolean }) {
   return (
@@ -85,6 +50,11 @@ function SkillsHeader(props: { collapsed: boolean; onRefresh: () => void; refres
       </div>
     </div>
   )
+}
+
+const DISCOVERY_COPY: Record<DiscoveryViewMode, { title: string; searchPlaceholder: string }> = {
+  skills: { title: 'Skills', searchPlaceholder: 'Search skills…' },
+  plugins: { title: 'Plugins', searchPlaceholder: 'Search plugins…' },
 }
 
 function SkillsSkeleton() {
@@ -204,12 +174,20 @@ function DiscoveryResults(props: {
     if (props.skillsPending) return <SkillsSkeleton />
     if (props.skillsError) return <EmptyState label="Failed to load skills." />
     if (props.displayedSkills.length === 0) {
-      return <EmptyState label={props.search.length > 0 ? 'No skills match your search.' : 'No skills found.'} />
+      return (
+        <EmptyState
+          label={props.search.length > 0 ? 'No skills match your search.' : 'No skills found.'}
+        />
+      )
     }
     return (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {props.displayedSkills.map(skill => (
-          <SkillCard key={skill.id} skill={skill} activeThreadId={props.activeThreadId} />
+          <SkillCard
+            key={getSkillDiscoveryKey(skill)}
+            skill={skill}
+            activeThreadId={props.activeThreadId}
+          />
         ))}
       </div>
     )
@@ -217,12 +195,16 @@ function DiscoveryResults(props: {
   if (props.pluginsPending) return <SkillsSkeleton />
   if (props.pluginsError) return <EmptyState label="Failed to load plugins." />
   if (props.displayedPlugins.length === 0) {
-    return <EmptyState label={props.search.length > 0 ? 'No plugins match your search.' : 'No plugins found.'} />
+    return (
+      <EmptyState
+        label={props.search.length > 0 ? 'No plugins match your search.' : 'No plugins found.'}
+      />
+    )
   }
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {props.displayedPlugins.map(plugin => (
-        <PluginCard key={plugin.id} plugin={plugin} />
+        <PluginCard key={getPluginDiscoveryKey(plugin)} plugin={plugin} />
       ))}
     </div>
   )
@@ -236,13 +218,13 @@ function EmptyState({ label }: { label: string }) {
   )
 }
 
-export function SkillsView(): ReactNode {
+function ProviderDiscoveryView({ mode }: { mode: DiscoveryViewMode }): ReactNode {
   const { state } = useSidebar()
-  const [mode, setMode] = useState<DiscoveryViewMode>('skills')
   const [provider, setProvider] = useState<ProviderFilter>('all')
   const [search, setSearch] = useState('')
   const activeThreadId = useActiveThreadId()
   const discovery = useDiscoveryViewData(provider, search)
+  const copy = DISCOVERY_COPY[mode]
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
@@ -254,23 +236,19 @@ export function SkillsView(): ReactNode {
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="flex flex-col gap-4 p-5">
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight text-foreground">{copy.title}</h1>
+              <p className="text-sm text-muted-foreground">
+                Browse {copy.title.toLowerCase()} by provider.
+              </p>
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                <ToggleTabs
-                  tabs={[
-                    { key: 'skills', label: 'Skills' },
-                    { key: 'plugins', label: 'Plugins' },
-                  ]}
-                  selected={mode}
-                  onChange={setMode}
-                />
-                <ToggleTabs tabs={PROVIDER_TABS} selected={provider} onChange={setProvider} />
-              </div>
+              <ToggleTabs tabs={PROVIDER_TABS} selected={provider} onChange={setProvider} />
               <div className="relative sm:ms-auto sm:w-56">
                 <SearchIcon className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
                 <Input
                   size="sm"
-                  placeholder={mode === 'skills' ? 'Search skills…' : 'Search plugins…'}
+                  placeholder={copy.searchPlaceholder}
                   value={search}
                   onChange={event => setSearch((event.target as HTMLInputElement).value)}
                   className="ps-8"
@@ -293,4 +271,12 @@ export function SkillsView(): ReactNode {
       </div>
     </SidebarInset>
   )
+}
+
+export function SkillsView(): ReactNode {
+  return <ProviderDiscoveryView mode="skills" />
+}
+
+export function PluginsView(): ReactNode {
+  return <ProviderDiscoveryView mode="plugins" />
 }
