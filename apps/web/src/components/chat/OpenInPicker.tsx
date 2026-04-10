@@ -2,67 +2,49 @@ import { EditorId, type ResolvedKeybindingsConfig } from '@orxa-code/contracts'
 import { memo, useCallback, useEffect, useMemo } from 'react'
 import { isOpenFavoriteEditorShortcut, shortcutLabelForCommand } from '../../keybindings'
 import { usePreferredEditor } from '../../editorPreferences'
-import { ChevronDownIcon, FolderClosedIcon } from 'lucide-react'
+import { ChevronDownIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Group, GroupSeparator } from '../ui/group'
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from '../ui/menu'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
-import { AntigravityIcon, CursorIcon, Icon, TraeIcon, VisualStudioCode, Zed } from '../Icons'
-import { isMacPlatform, isWindowsPlatform } from '~/lib/utils'
+import { cn } from '~/lib/utils'
+import type { MenuVisual } from './OpenInPicker.options'
+import { resolveOpenInOptions } from './OpenInPicker.options'
 import { readNativeApi } from '~/nativeApi'
 
-const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
-  const baseOptions: ReadonlyArray<{ label: string; Icon: Icon; value: EditorId }> = [
-    {
-      label: 'Cursor',
-      Icon: CursorIcon,
-      value: 'cursor',
-    },
-    {
-      label: 'Trae',
-      Icon: TraeIcon,
-      value: 'trae',
-    },
-    {
-      label: 'VS Code',
-      Icon: VisualStudioCode,
-      value: 'vscode',
-    },
-    {
-      label: 'VS Code Insiders',
-      Icon: VisualStudioCode,
-      value: 'vscode-insiders',
-    },
-    {
-      label: 'VSCodium',
-      Icon: VisualStudioCode,
-      value: 'vscodium',
-    },
-    {
-      label: 'Zed',
-      Icon: Zed,
-      value: 'zed',
-    },
-    {
-      label: 'Antigravity',
-      Icon: AntigravityIcon,
-      value: 'antigravity',
-    },
-    {
-      label: isMacPlatform(platform)
-        ? 'Finder'
-        : isWindowsPlatform(platform)
-          ? 'Explorer'
-          : 'Files',
-      Icon: FolderClosedIcon,
-      value: 'file-manager',
-    },
-  ]
-  return baseOptions.filter(option => availableEditors.includes(option.value))
+function OpenInOptionVisual({ visual, className }: { visual: MenuVisual; className?: string }) {
+  if (visual.kind === 'image') {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        src={visual.src}
+        className={cn('size-4 shrink-0 object-contain', visual.rounded !== false && 'rounded-sm')}
+      />
+    )
+  }
+  if (visual.kind === 'simple') {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className={cn('size-4 shrink-0', className)}
+        fill="none"
+      >
+        <path d={visual.icon.path} fill={`#${visual.icon.hex}`} />
+      </svg>
+    )
+  }
+  const IconComponent = visual.Icon
+  return <IconComponent aria-hidden="true" className={cn('size-4 shrink-0', className)} />
 }
 
-function OpenInPrimaryButton(props: { disabled: boolean; Icon: Icon | null; onClick: () => void }) {
-  const { disabled, Icon, onClick } = props
+function OpenInPrimaryButton(props: {
+  disabled: boolean
+  visual: ReturnType<typeof resolveOpenInOptions>[number]['visual'] | null
+  onClick: () => void
+}) {
+  const { disabled, visual, onClick } = props
   return (
     <Tooltip>
       <TooltipTrigger
@@ -76,7 +58,7 @@ function OpenInPrimaryButton(props: { disabled: boolean; Icon: Icon | null; onCl
           />
         }
       >
-        {Icon && <Icon aria-hidden="true" className="size-3.5" />}
+        {visual && <OpenInOptionVisual visual={visual} />}
         <span className="sr-only">Open</span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">
@@ -87,7 +69,7 @@ function OpenInPrimaryButton(props: { disabled: boolean; Icon: Icon | null; onCl
 }
 
 function OpenInMenuItems(props: {
-  options: ReturnType<typeof resolveOptions>
+  options: ReturnType<typeof resolveOpenInOptions>
   preferredEditor: EditorId | null
   openFavoriteEditorShortcutLabel: string | null
   onOpenEditor: (editorId: EditorId) => void
@@ -97,9 +79,9 @@ function OpenInMenuItems(props: {
     return <MenuItem disabled>No installed editors found</MenuItem>
   }
 
-  return options.map(({ label, Icon, value }) => (
+  return options.map(({ label, value, visual }) => (
     <MenuItem key={value} onClick={() => onOpenEditor(value)}>
-      <Icon aria-hidden="true" className="text-muted-foreground" />
+      <OpenInOptionVisual visual={visual} className="text-muted-foreground" />
       {label}
       {value === preferredEditor && openFavoriteEditorShortcutLabel && (
         <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
@@ -119,7 +101,7 @@ export const OpenInPicker = memo(function OpenInPicker({
 }) {
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors)
   const options = useMemo(
-    () => resolveOptions(navigator.platform, availableEditors),
+    () => resolveOpenInOptions(navigator.platform, availableEditors),
     [availableEditors]
   )
   const primaryOption = options.find(({ value }) => value === preferredEditor) ?? null
@@ -159,7 +141,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     <Group aria-label="Subscription actions">
       <OpenInPrimaryButton
         disabled={!preferredEditor || !openInCwd}
-        Icon={primaryOption?.Icon ?? null}
+        visual={primaryOption?.visual ?? null}
         onClick={() => openInEditor(preferredEditor)}
       />
       <GroupSeparator className="hidden @3xl/header-actions:block" />

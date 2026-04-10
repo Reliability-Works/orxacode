@@ -13,6 +13,11 @@ export const EDITORS = [
   },
   { id: 'vscodium', label: 'VSCodium', command: 'codium', supportsGoto: true },
   { id: 'zed', label: 'Zed', command: 'zed', supportsGoto: false },
+  { id: 'android-studio', label: 'Android Studio', command: 'studio', supportsGoto: false },
+  { id: 'xcode', label: 'Xcode', command: 'xed', supportsGoto: false },
+  { id: 'terminal', label: 'Terminal', command: null, supportsGoto: false },
+  { id: 'iterm', label: 'iTerm', command: 'iterm', supportsGoto: false },
+  { id: 'ghostty', label: 'Ghostty', command: 'ghostty', supportsGoto: false },
   { id: 'antigravity', label: 'Antigravity', command: 'agy', supportsGoto: false },
   { id: 'file-manager', label: 'File Manager', command: null, supportsGoto: false },
 ] as const

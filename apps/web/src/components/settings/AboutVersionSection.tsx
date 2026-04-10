@@ -1,10 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import type React from 'react'
-import type { DesktopUpdateReleaseChannel, DesktopUpdateState } from '@orxa-code/contracts'
+import type { DesktopUpdateReleaseChannel } from '@orxa-code/contracts'
 import { APP_VERSION } from '../../branding'
 import {
-  beginDesktopUpdateCheckState,
   canAttemptDesktopUpdateCheck,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateInstallConfirmationMessage,
@@ -17,6 +16,7 @@ import {
   useDesktopUpdatePreferences,
   useDesktopUpdateState,
 } from '../../lib/desktopUpdateReactQuery'
+import { useManualDesktopUpdateCheck } from '../useManualDesktopUpdateCheck'
 import { Button } from '../ui/button'
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '../ui/select'
 import { toastManager } from '../ui/toastState'
@@ -100,47 +100,6 @@ function runInstallUpdate(
     })
 }
 
-function runCheckForUpdate(
-  bridge: NonNullable<typeof window.desktopBridge>,
-  queryClient: ReturnType<typeof useQueryClient>,
-  updateState: DesktopUpdateState | null,
-  setManualCheckInFlight: React.Dispatch<React.SetStateAction<boolean>>
-) {
-  if (typeof bridge.checkForUpdate !== 'function') return
-  setManualCheckInFlight(true)
-  setDesktopUpdateStateQueryData(queryClient, beginDesktopUpdateCheckState(updateState))
-  void bridge
-    .checkForUpdate()
-    .then(result => {
-      setDesktopUpdateStateQueryData(queryClient, result.state)
-      if (result.checked && result.state.status === 'up-to-date') {
-        toastManager.add({
-          type: 'success',
-          title: "You're up to date",
-          description: `${result.state.currentVersion} is currently the newest version available.`,
-        })
-        return
-      }
-      if (!result.checked) {
-        toastManager.add({
-          type: 'warning',
-          title: 'Updates unavailable',
-          description: result.state.message ?? 'Automatic updates are not available in this build.',
-        })
-      }
-    })
-    .catch((error: unknown) => {
-      toastManager.add({
-        type: 'error',
-        title: 'Could not check for updates',
-        description: error instanceof Error ? error.message : 'Update check failed.',
-      })
-    })
-    .finally(() => {
-      setManualCheckInFlight(false)
-    })
-}
-
 export function AboutVersionRow({
   SettingsRowComponent,
 }: {
@@ -148,14 +107,17 @@ export function AboutVersionRow({
 }) {
   const queryClient = useQueryClient()
   const updateStateQuery = useDesktopUpdateState()
-  const [manualCheckInFlight, setManualCheckInFlight] = useState(false)
   const updateState = updateStateQuery.data ?? null
-  const visibleUpdateState =
-    manualCheckInFlight && updateState ? beginDesktopUpdateCheckState(updateState) : updateState
-  const action = resolveUpdateButtonAction(visibleUpdateState)
   const bridge = window.desktopBridge
+  const { startManualCheck } = useManualDesktopUpdateCheck({
+    state: updateState,
+    setState: nextState => setDesktopUpdateStateQueryData(queryClient, nextState),
+    bridge,
+    showToast: toast => toastManager.add(toast),
+  })
+  const action = resolveUpdateButtonAction(updateState)
   const canManualCheck = canAttemptDesktopUpdateCheck(
-    visibleUpdateState,
+    updateState,
     typeof bridge?.checkForUpdate === 'function'
   )
 
@@ -166,19 +128,16 @@ export function AboutVersionRow({
       return
     }
     if (action === 'install') {
-      runInstallUpdate(bridge, queryClient, visibleUpdateState)
+      runInstallUpdate(bridge, queryClient, updateState)
       return
     }
-    runCheckForUpdate(bridge, queryClient, visibleUpdateState, setManualCheckInFlight)
-  }, [action, bridge, queryClient, visibleUpdateState])
+    startManualCheck()
+  }, [action, bridge, queryClient, startManualCheck, updateState])
 
-  const buttonTooltip = visibleUpdateState
-    ? getDesktopUpdateButtonTooltip(visibleUpdateState)
-    : null
+  const buttonTooltip = updateState ? getDesktopUpdateButtonTooltip(updateState) : null
   const buttonDisabled =
-    manualCheckInFlight ||
-    (action === 'none' ? !canManualCheck : isDesktopUpdateButtonDisabled(visibleUpdateState))
-  const buttonLabel = buildUpdateButtonLabel(action, visibleUpdateState)
+    action === 'none' ? !canManualCheck : isDesktopUpdateButtonDisabled(updateState)
+  const buttonLabel = buildUpdateButtonLabel(action, updateState)
   const description =
     action === 'download' || action === 'install'
       ? 'Update available.'

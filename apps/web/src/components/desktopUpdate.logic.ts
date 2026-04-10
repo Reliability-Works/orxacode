@@ -2,6 +2,11 @@ import type { DesktopUpdateActionResult, DesktopUpdateState } from '@orxa-code/c
 import { APP_BASE_NAME } from '../branding'
 
 export type DesktopUpdateButtonAction = 'download' | 'install' | 'none'
+export interface DesktopUpdateToast {
+  type: 'error' | 'success' | 'warning'
+  title: string
+  description?: string
+}
 
 export function resolveDesktopUpdateButtonAction(
   state: DesktopUpdateState
@@ -51,6 +56,43 @@ export function beginDesktopUpdateCheckState(
     errorContext: null,
     canRetry: false,
   }
+}
+
+export function resolveDesktopUpdateManualCheckToast(
+  state: DesktopUpdateState | null
+): DesktopUpdateToast | null {
+  if (!state || state.status === 'checking') {
+    return null
+  }
+  if (state.status === 'up-to-date') {
+    return {
+      type: 'success',
+      title: "You're up to date",
+      description: `${state.currentVersion} is currently the newest version available.`,
+    }
+  }
+  if (state.status === 'available') {
+    return {
+      type: 'success',
+      title: 'Update available',
+      description: `Version ${state.availableVersion ?? 'available'} is ready to download.`,
+    }
+  }
+  if (state.status === 'disabled') {
+    return {
+      type: 'warning',
+      title: 'Updates unavailable',
+      description: state.message ?? 'Automatic updates are not available in this build.',
+    }
+  }
+  if (state.status === 'error') {
+    return {
+      type: 'error',
+      title: 'Could not check for updates',
+      description: state.message ?? 'Update check failed.',
+    }
+  }
+  return null
 }
 
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {

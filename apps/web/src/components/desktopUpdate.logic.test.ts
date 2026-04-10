@@ -9,6 +9,7 @@ import {
   getDesktopUpdateActionError,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateInstallConfirmationMessage,
+  resolveDesktopUpdateManualCheckToast,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
@@ -122,6 +123,34 @@ describe('manual desktop update checks', () => {
     expect(nextState?.status).toBe('checking')
     expect(nextState?.message).toBeNull()
     expect(nextState?.errorContext).toBeNull()
+  })
+
+  it('builds success toast content when already on the latest version', () => {
+    expect(
+      resolveDesktopUpdateManualCheckToast({
+        ...baseState,
+        status: 'up-to-date',
+      })
+    ).toEqual({
+      type: 'success',
+      title: "You're up to date",
+      description: '1.0.0 is currently the newest version available.',
+    })
+  })
+
+  it('builds warning toast content for disabled update builds', () => {
+    expect(
+      resolveDesktopUpdateManualCheckToast({
+        ...baseState,
+        enabled: false,
+        status: 'disabled',
+        message: 'Automatic updates are unavailable for local builds.',
+      })
+    ).toEqual({
+      type: 'warning',
+      title: 'Updates unavailable',
+      description: 'Automatic updates are unavailable for local builds.',
+    })
   })
 })
 

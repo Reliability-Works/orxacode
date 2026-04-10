@@ -7,7 +7,6 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
 import { anchoredToastManager, toastManager } from '../ui/toastState'
 import {
-  beginDesktopUpdateCheckState,
   canAttemptDesktopUpdateCheck,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
@@ -17,6 +16,7 @@ import {
   getDesktopUpdateActionError,
   getDesktopUpdateInstallConfirmationMessage,
 } from '../desktopUpdate.logic'
+import { useManualDesktopUpdateCheck } from '../useManualDesktopUpdateCheck'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,7 +97,7 @@ function runDesktopUpdateCheck(input: {
   bridge: NonNullable<typeof window.desktopBridge>
   desktopUpdateState: DesktopUpdateState | null
   setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
-  setManualCheckInFlight: React.Dispatch<React.SetStateAction<boolean>>
+  startManualCheck: (anchor?: HTMLElement | null) => void
   showSidebarToast: (input: SidebarToastInput) => void
   anchor?: HTMLElement | null | undefined
 }) {
@@ -109,41 +109,7 @@ function runDesktopUpdateCheck(input: {
   ) {
     return
   }
-  input.setManualCheckInFlight(true)
-  input.setDesktopUpdateState(current => beginDesktopUpdateCheckState(current))
-  void input.bridge
-    .checkForUpdate()
-    .then(result => {
-      input.setDesktopUpdateState(result.state)
-      if (result.checked) {
-        if (result.state.status === 'up-to-date') {
-          input.showSidebarToast({
-            type: 'success',
-            title: "You're up to date",
-            description: `${result.state.currentVersion} is currently the newest version available.`,
-            anchor: input.anchor,
-          })
-        }
-        return
-      }
-      input.showSidebarToast({
-        type: 'warning',
-        title: 'Updates unavailable',
-        description: result.state.message ?? 'Automatic updates are not available in this build.',
-        anchor: input.anchor,
-      })
-    })
-    .catch(error =>
-      input.showSidebarToast({
-        type: 'error',
-        title: 'Could not check for updates',
-        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
-        anchor: input.anchor,
-      })
-    )
-    .finally(() => {
-      input.setManualCheckInFlight(false)
-    })
+  input.startManualCheck(input.anchor)
 }
 
 interface DesktopUpdateClickOpts {
@@ -151,7 +117,7 @@ interface DesktopUpdateClickOpts {
   desktopUpdateButtonDisabled: boolean
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
-  setManualCheckInFlight: React.Dispatch<React.SetStateAction<boolean>>
+  startManualCheck: (anchor?: HTMLElement | null) => void
   showSidebarToast: (input: SidebarToastInput) => void
   anchor?: HTMLElement | null | undefined
 }
@@ -259,7 +225,7 @@ function execDesktopUpdateClick(opts: DesktopUpdateClickOpts) {
     desktopUpdateButtonDisabled,
     desktopUpdateButtonAction,
     setDesktopUpdateState,
-    setManualCheckInFlight,
+    startManualCheck,
     showSidebarToast,
     anchor,
   } = opts
@@ -292,7 +258,7 @@ function execDesktopUpdateClick(opts: DesktopUpdateClickOpts) {
     bridge,
     desktopUpdateState,
     setDesktopUpdateState,
-    setManualCheckInFlight,
+    startManualCheck,
     showSidebarToast,
     anchor,
   })
@@ -302,17 +268,9 @@ function execDesktopUpdateClick(opts: DesktopUpdateClickOpts) {
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
-  const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null)
-  const [manualCheckInFlight, setManualCheckInFlight] = useState(false)
-  const anchoredToastIdRef = useRef<ReturnType<typeof anchoredToastManager.add> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      clearAnchoredSidebarToast(anchoredToastIdRef)
-    }
-  }, [])
-
+function useDesktopUpdateStateSubscription(
+  setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
+) {
   useEffect(() => {
     if (!isElectron) return
     const bridge = window.desktopBridge
@@ -340,41 +298,58 @@ export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
       disposed = true
       unsubscribe()
     }
-  }, [])
+  }, [setDesktopUpdateState])
+}
 
-  const visibleDesktopUpdateState =
-    manualCheckInFlight && desktopUpdateState
-      ? beginDesktopUpdateCheckState(desktopUpdateState)
-      : desktopUpdateState
-  const desktopUpdateButtonDisabled =
-    manualCheckInFlight || isDesktopUpdateButtonDisabled(visibleDesktopUpdateState)
-  const desktopUpdateButtonAction = visibleDesktopUpdateState
-    ? resolveDesktopUpdateButtonAction(visibleDesktopUpdateState)
-    : 'none'
-  const showArm64IntelBuildWarning =
-    isElectron && shouldShowArm64IntelBuildWarning(visibleDesktopUpdateState)
-  const arm64IntelBuildWarningDescription =
-    visibleDesktopUpdateState && showArm64IntelBuildWarning
-      ? getArm64IntelBuildWarningDescription(visibleDesktopUpdateState)
-      : null
+export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
+  const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null)
+  const anchoredToastIdRef = useRef<ReturnType<typeof anchoredToastManager.add> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      clearAnchoredSidebarToast(anchoredToastIdRef)
+    }
+  }, [])
+  useDesktopUpdateStateSubscription(setDesktopUpdateState)
 
   const showSidebarToast = (input: SidebarToastInput) =>
     createSidebarToastDispatcher(anchoredToastIdRef)(input)
+  const bridge = isElectron ? window.desktopBridge : null
+  const { startManualCheck } = useManualDesktopUpdateCheck({
+    state: desktopUpdateState,
+    setState: setDesktopUpdateState,
+    bridge,
+    showToast: toast =>
+      showSidebarToast({
+        ...toast,
+      }),
+  })
+
+  const desktopUpdateButtonDisabled = isDesktopUpdateButtonDisabled(desktopUpdateState)
+  const desktopUpdateButtonAction = desktopUpdateState
+    ? resolveDesktopUpdateButtonAction(desktopUpdateState)
+    : 'none'
+  const showArm64IntelBuildWarning =
+    isElectron && shouldShowArm64IntelBuildWarning(desktopUpdateState)
+  const arm64IntelBuildWarningDescription =
+    desktopUpdateState && showArm64IntelBuildWarning
+      ? getArm64IntelBuildWarningDescription(desktopUpdateState)
+      : null
 
   function handleDesktopUpdateButtonClick(anchor?: HTMLElement | null) {
     execDesktopUpdateClick({
-      desktopUpdateState: visibleDesktopUpdateState,
+      desktopUpdateState,
       desktopUpdateButtonDisabled,
       desktopUpdateButtonAction,
       setDesktopUpdateState,
-      setManualCheckInFlight,
+      startManualCheck,
       showSidebarToast,
       anchor,
     })
   }
 
   return {
-    desktopUpdateState: visibleDesktopUpdateState,
+    desktopUpdateState,
     desktopUpdateButtonDisabled,
     desktopUpdateButtonAction,
     showArm64IntelBuildWarning,

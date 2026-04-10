@@ -35,6 +35,25 @@ interface CommandAvailabilityOptions {
 }
 
 const LINE_COLUMN_SUFFIX_PATTERN = /:\d+(?::\d+)?$/
+const DARWIN_EDITOR_APPLICATIONS: Partial<
+  Record<EditorId, { appName: string; bundleNames: ReadonlyArray<string> }>
+> = {
+  cursor: { appName: 'Cursor', bundleNames: ['Cursor.app'] },
+  trae: { appName: 'Trae', bundleNames: ['Trae.app'] },
+  vscode: { appName: 'Visual Studio Code', bundleNames: ['Visual Studio Code.app'] },
+  'vscode-insiders': {
+    appName: 'Visual Studio Code - Insiders',
+    bundleNames: ['Visual Studio Code - Insiders.app'],
+  },
+  vscodium: { appName: 'VSCodium', bundleNames: ['VSCodium.app'] },
+  zed: { appName: 'Zed', bundleNames: ['Zed.app'] },
+  'android-studio': { appName: 'Android Studio', bundleNames: ['Android Studio.app'] },
+  xcode: { appName: 'Xcode', bundleNames: ['Xcode.app'] },
+  terminal: { appName: 'Terminal', bundleNames: ['Terminal.app'] },
+  iterm: { appName: 'iTerm', bundleNames: ['iTerm.app'] },
+  ghostty: { appName: 'Ghostty', bundleNames: ['Ghostty.app'] },
+  antigravity: { appName: 'Antigravity', bundleNames: ['Antigravity.app'] },
+}
 
 function shouldUseGotoFlag(editor: (typeof EDITORS)[number], target: string): boolean {
   return editor.supportsGoto && LINE_COLUMN_SUFFIX_PATTERN.test(target)
@@ -51,7 +70,39 @@ function resolveDarwinApplicationRoots(env: NodeJS.ProcessEnv): ReadonlyArray<st
 
   const homeDir = env.HOME?.trim()
   const homeApplicationsDir = homeDir ? join(homeDir, 'Applications') : null
-  return ['/Applications', ...(homeApplicationsDir ? [homeApplicationsDir] : [])]
+  return [
+    '/Applications',
+    '/System/Applications',
+    '/System/Applications/Utilities',
+    '/System/Library/CoreServices',
+    ...(homeApplicationsDir ? [homeApplicationsDir] : []),
+  ]
+}
+
+function findDarwinEditorApplicationBundle(
+  editor: EditorDefinition,
+  env: NodeJS.ProcessEnv
+): { appName: string; bundlePath: string } | null {
+  const app = DARWIN_EDITOR_APPLICATIONS[editor.id]
+  if (!app) {
+    return null
+  }
+  for (const root of resolveDarwinApplicationRoots(env)) {
+    for (const bundleName of app.bundleNames) {
+      const bundlePath = join(root, bundleName)
+      try {
+        if (statSync(bundlePath).isDirectory()) {
+          return {
+            appName: app.appName,
+            bundlePath,
+          }
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+  return null
 }
 
 function resolveDarwinEditorCommandCandidates(
@@ -81,6 +132,21 @@ function resolveDarwinEditorCommandCandidates(
       ...applicationRoots.map(root => join(root, 'Antigravity.app/Contents/MacOS/Antigravity')),
     ]
   }
+  if (editor.id === 'ghostty') {
+    return ['ghostty']
+  }
+  if (editor.id === 'xcode') {
+    return ['xed']
+  }
+  if (editor.id === 'android-studio') {
+    return ['studio']
+  }
+  if (editor.id === 'iterm') {
+    return ['iterm']
+  }
+  if (editor.id === 'terminal') {
+    return []
+  }
   return editor.command ? [editor.command] : []
 }
 
@@ -103,6 +169,24 @@ function findAvailableEditorCommand(
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv
 ): string | null {
+  const directCommand = findAvailableDirectEditorCommand(editor, platform, env)
+  if (directCommand) {
+    return directCommand
+  }
+  if (platform === 'darwin') {
+    const bundle = findDarwinEditorApplicationBundle(editor, env)
+    if (bundle) {
+      return bundle.bundlePath
+    }
+  }
+  return null
+}
+
+function findAvailableDirectEditorCommand(
+  editor: EditorDefinition,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv
+): string | null {
   const candidates = resolveEditorCommandCandidates(editor, platform, env)
   for (const candidate of candidates) {
     if (isCommandAvailable(candidate, { platform, env })) return candidate
@@ -116,7 +200,7 @@ function resolveLaunchEditorCommand(
   env: NodeJS.ProcessEnv
 ): string | null {
   return (
-    findAvailableEditorCommand(editor, platform, env) ??
+    findAvailableDirectEditorCommand(editor, platform, env) ??
     resolveEditorCommandCandidates(editor, platform, env)[0] ??
     null
   )
@@ -287,6 +371,16 @@ export const resolveEditorLaunch = Effect.fnUntraced(function* (
   const editorDef = EDITORS.find(editor => editor.id === input.editor)
   if (!editorDef) {
     return yield* new OpenError({ message: `Unknown editor: ${input.editor}` })
+  }
+
+  if (platform === 'darwin' && editorDef.id !== 'file-manager') {
+    const bundle = findDarwinEditorApplicationBundle(editorDef, env)
+    if (bundle && !findAvailableDirectEditorCommand(editorDef, platform, env)) {
+      return {
+        command: 'open',
+        args: ['-a', bundle.bundlePath, input.cwd],
+      }
+    }
   }
 
   const command = resolveLaunchEditorCommand(editorDef, platform, env)
