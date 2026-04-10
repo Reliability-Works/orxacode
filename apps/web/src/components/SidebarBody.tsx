@@ -27,6 +27,8 @@ import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
 import { cn } from '~/lib/utils'
 import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
+import { ScrollArea } from './ui/scroll-area'
+import { useSidebar } from './ui/sidebar.shared'
 import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
 import { ProjectItem } from './sidebar/ProjectItem'
 import type {
@@ -245,52 +247,75 @@ function buildAddFormProps(p: SidebarMainViewProps): AddProjectFormProps {
   }
 }
 
+function SidebarProjectSection(props: SidebarMainViewProps) {
+  return (
+    <SidebarMainContent
+      showArm64IntelBuildWarning={props.showArm64IntelBuildWarning}
+      arm64IntelBuildWarningDescription={props.arm64IntelBuildWarningDescription}
+      desktopUpdateButtonAction={props.desktopUpdateButtonAction}
+      desktopUpdateButtonDisabled={props.desktopUpdateButtonDisabled}
+      onDesktopUpdateButtonClick={props.onDesktopUpdateButtonClick}
+      projects={props.projects}
+      renderedPinnedThreads={props.renderedPinnedThreads}
+      renderedProjects={props.renderedProjects}
+      isManualProjectSorting={props.isManualProjectSorting}
+      shouldShowProjectPathEntry={props.shouldShowProjectPathEntry}
+      appSettings={props.appSettings}
+      onUpdateProjectSortOrder={props.onUpdateProjectSortOrder}
+      onUpdateThreadSortOrder={props.onUpdateThreadSortOrder}
+      onStartAddProject={props.onStartAddProject}
+      getThreadRowProps={props.getThreadRowProps}
+      routeThreadId={props.routeThreadId}
+      selectedThreadIds={props.selectedThreadIds}
+      threadJumpLabelById={props.threadJumpLabelById}
+      terminalStateByThreadId={props.terminalStateByThreadId}
+      prByThreadId={props.prByThreadId}
+      confirmingArchiveThreadId={props.confirmingArchiveThreadId}
+      getProjectItemProps={props.getProjectItemProps}
+      projectDnDSensors={props.projectDnDSensors}
+      projectCollisionDetection={props.projectCollisionDetection}
+      onProjectDragStart={props.onProjectDragStart}
+      onProjectDragEnd={props.onProjectDragEnd}
+      onProjectDragCancel={props.onProjectDragCancel}
+      attachProjectListAutoAnimateRef={props.attachProjectListAutoAnimateRef}
+      addFormProps={buildAddFormProps(props)}
+    />
+  )
+}
+
 function SidebarMainView(props: SidebarMainViewProps) {
-  const addFormProps = buildAddFormProps(props)
+  const { isMobile } = useSidebar()
   return (
     <>
       <SidebarContent className="gap-0">
-        <SidebarTopNav pathname={props.pathname} />
-        <SidebarSeparator />
-        <SidebarMainContent
-          showArm64IntelBuildWarning={props.showArm64IntelBuildWarning}
-          arm64IntelBuildWarningDescription={props.arm64IntelBuildWarningDescription}
-          desktopUpdateButtonAction={props.desktopUpdateButtonAction}
-          desktopUpdateButtonDisabled={props.desktopUpdateButtonDisabled}
-          onDesktopUpdateButtonClick={props.onDesktopUpdateButtonClick}
-          projects={props.projects}
-          renderedPinnedThreads={props.renderedPinnedThreads}
-          renderedProjects={props.renderedProjects}
-          isManualProjectSorting={props.isManualProjectSorting}
-          shouldShowProjectPathEntry={props.shouldShowProjectPathEntry}
-          appSettings={props.appSettings}
-          onUpdateProjectSortOrder={props.onUpdateProjectSortOrder}
-          onUpdateThreadSortOrder={props.onUpdateThreadSortOrder}
-          onStartAddProject={props.onStartAddProject}
-          getThreadRowProps={props.getThreadRowProps}
-          routeThreadId={props.routeThreadId}
-          selectedThreadIds={props.selectedThreadIds}
-          threadJumpLabelById={props.threadJumpLabelById}
-          terminalStateByThreadId={props.terminalStateByThreadId}
-          prByThreadId={props.prByThreadId}
-          confirmingArchiveThreadId={props.confirmingArchiveThreadId}
-          getProjectItemProps={props.getProjectItemProps}
-          projectDnDSensors={props.projectDnDSensors}
-          projectCollisionDetection={props.projectCollisionDetection}
-          onProjectDragStart={props.onProjectDragStart}
-          onProjectDragEnd={props.onProjectDragEnd}
-          onProjectDragCancel={props.onProjectDragCancel}
-          attachProjectListAutoAnimateRef={props.attachProjectListAutoAnimateRef}
-          addFormProps={addFormProps}
-        />
+        {!isMobile ? <SidebarTopNav pathname={props.pathname} /> : null}
+        {!isMobile ? <SidebarSeparator /> : null}
+        <SidebarProjectSection {...props} />
       </SidebarContent>
-      <SidebarSeparator />
-      <SidebarMainFooter
-        desktopUpdateState={props.desktopUpdateState}
-        onNavigateToSettings={props.onNavigateToSettings}
-        onUpdateAction={props.onDesktopUpdateButtonClick}
-      />
+      {!isMobile ? <SidebarSeparator /> : null}
+      {!isMobile ? (
+        <SidebarMainFooter
+          desktopUpdateState={props.desktopUpdateState}
+          onNavigateToSettings={props.onNavigateToSettings}
+          onUpdateAction={props.onDesktopUpdateButtonClick}
+        />
+      ) : null}
     </>
+  )
+}
+
+function SidebarMobileThreadsView(props: SidebarMainViewProps) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground">
+      <div className="border-b border-sidebar-border px-4 py-3">
+        <div className="text-sm font-medium text-sidebar-foreground">Threads</div>
+      </div>
+      <ScrollArea hideScrollbars scrollFade className="min-h-0 flex-1">
+        <div className="px-2 py-2">
+          <SidebarProjectSection {...props} />
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
@@ -323,16 +348,19 @@ function SidebarMainContent(
 // ---------------------------------------------------------------------------
 
 export function SidebarBody({ isOnSettings, pathname, ...rest }: SidebarBodyProps) {
+  const { isMobile } = useSidebar()
   return (
     <>
-      {/* Empty spacer that reserves room for the fixed AppTopLeftBar so
-          sidebar content never slides under the toggle + wordmark. */}
-      <SidebarHeader
-        aria-hidden="true"
-        className={isElectron ? 'drag-region h-[52px] p-0' : 'h-[52px] p-0'}
-      />
+      {!isMobile ? (
+        <SidebarHeader
+          aria-hidden="true"
+          className={isElectron ? 'drag-region h-[52px] p-0' : 'h-[52px] p-0'}
+        />
+      ) : null}
       {isOnSettings ? (
         <SettingsSidebarNav pathname={pathname} />
+      ) : isMobile ? (
+        <SidebarMobileThreadsView pathname={pathname} {...rest} />
       ) : (
         <SidebarMainView pathname={pathname} {...rest} />
       )}

@@ -15,7 +15,6 @@ import {
   SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH,
   SIDEBAR_WIDTH,
   SIDEBAR_WIDTH_ICON,
-  SIDEBAR_WIDTH_MOBILE,
   SidebarContext,
   SidebarInstanceContext,
   type SidebarContextProps,
@@ -395,19 +394,14 @@ function renderMobileSidebar(input: {
       <Sheet onOpenChange={input.setOpenMobile} open={input.openMobile} {...input.props}>
         <SheetPopup
           className={cn(
-            'w-(--sidebar-width) max-w-none bg-sidebar p-0 text-sidebar-foreground',
+            'w-full max-w-none bg-sidebar p-0 text-sidebar-foreground',
             input.className
           )}
           data-mobile="true"
           data-sidebar="sidebar"
           data-slot="sidebar"
-          showCloseButton={false}
+          showCloseButton
           side={input.side}
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>

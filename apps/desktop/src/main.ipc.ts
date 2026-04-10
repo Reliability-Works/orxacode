@@ -4,6 +4,7 @@ import type {
   DesktopBrowserInspectPoint,
   DesktopBrowserBounds,
   ContextMenuItem,
+  DesktopRemoteAccessSnapshot,
   DesktopUpdateActionResult,
   DesktopUpdateCheckResult,
   DesktopUpdatePreferences,
@@ -32,6 +33,7 @@ import { getDestructiveMenuIcon } from './main.menu'
 
 export interface IpcChannels {
   readonly getWsUrl: string
+  readonly getRemoteAccessSnapshot: string
   readonly pickFolder: string
   readonly confirm: string
   readonly setTheme: string
@@ -56,6 +58,7 @@ export interface IpcUpdaterAdapter {
 export interface IpcHost {
   readonly channels: IpcChannels
   readonly backendWsUrl: () => string
+  readonly getRemoteAccessSnapshot: () => DesktopRemoteAccessSnapshot
   readonly mainWindow: () => BrowserWindow | null
   readonly isQuitting: () => boolean
   readonly updater: IpcUpdaterAdapter
@@ -200,6 +203,9 @@ function registerCoreIpcHandlers(host: IpcHost): void {
   ipcMain.on(channels.getWsUrl, event => {
     event.returnValue = host.backendWsUrl()
   })
+
+  ipcMain.removeHandler(channels.getRemoteAccessSnapshot)
+  ipcMain.handle(channels.getRemoteAccessSnapshot, async () => host.getRemoteAccessSnapshot())
 
   ipcMain.removeHandler(channels.pickFolder)
   ipcMain.handle(channels.pickFolder, () => pickFolderForDesktop(host))

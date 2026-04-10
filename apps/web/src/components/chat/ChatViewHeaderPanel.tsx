@@ -23,6 +23,7 @@ import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { formatSubagentLabel } from '@orxa-code/shared/subagent'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()
@@ -156,6 +157,7 @@ export function ChatViewHeaderPanel() {
   const { activeThread, activeProject, activeProviderStatus } = td
   const { keybindings, availableEditors, terminalState } = store
   const { state } = useSidebar()
+  const isMobile = useIsMobile()
   const collapsed = state === 'collapsed'
   const diffStats = useHeaderDiffStats(c.panelDiffQuery.data, c.ls.gitDiffScope)
   if (!activeThread) return null
@@ -170,7 +172,7 @@ export function ChatViewHeaderPanel() {
           'border-b border-border px-3 sm:px-5',
           isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3'
         )}
-        style={collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
+        style={!isMobile && collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
       >
         <ChatHeader
           activeThreadId={activeThread.id}
@@ -198,6 +200,7 @@ export function ChatViewHeaderPanel() {
           onToggleGitSidebar={c.toggleGitSidebar}
           onToggleFilesSidebar={c.toggleFilesSidebar}
           onToggleBrowserSidebar={c.toggleBrowserSidebar}
+          onSelectChatView={c.closeAuxSidebar}
           browserAvailable={browserAvailable}
           splitActions={<ChatHeaderSplitActions />}
           handoffAction={<HandoffMenuAction />}

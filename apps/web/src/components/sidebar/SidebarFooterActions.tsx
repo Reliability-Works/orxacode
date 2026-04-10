@@ -5,6 +5,7 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
 import { cn } from '~/lib/utils'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
+import { RemoteAccessControl } from '../RemoteAccessControl'
 import { SidebarFooter } from '../ui/sidebar'
 import {
   canCheckForUpdate,
@@ -136,6 +137,9 @@ export function SidebarMainFooter({
       <div className="flex items-center gap-1">
         {isElectron ? (
           <SidebarUpdateFooterButton state={desktopUpdateState} onClick={onUpdateAction} />
+        ) : null}
+        {isElectron ? (
+          <RemoteAccessControl buttonClassName="size-8" iconClassName="size-3.5" />
         ) : null}
         <SidebarFooterIconButton ariaLabel="Settings" onClick={() => void onNavigateToSettings()}>
           <SettingsIcon className="size-3.5" />

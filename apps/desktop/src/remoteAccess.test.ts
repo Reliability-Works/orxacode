@@ -1,0 +1,87 @@
+import * as OS from 'node:os'
+
+import { describe, expect, it } from 'vitest'
+
+import { resolveRemoteAccessSnapshot } from './remoteAccess'
+
+const LAN_NETWORK_INTERFACES = (() => ({
+  lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true, netmask: '', mac: '', cidr: null }],
+  en0: [
+    {
+      address: '192.168.1.24',
+      family: 'IPv4',
+      internal: false,
+      netmask: '',
+      mac: '',
+      cidr: null,
+    },
+    {
+      address: 'fe80::1',
+      family: 'IPv6',
+      internal: false,
+      netmask: '',
+      mac: '',
+      cidr: null,
+      scopeid: 0,
+    },
+  ],
+  bridge0: [
+    {
+      address: '169.254.10.3',
+      family: 'IPv4',
+      internal: false,
+      netmask: '',
+      mac: '',
+      cidr: null,
+    },
+  ],
+  utun4: [
+    {
+      address: '100.80.4.7',
+      family: 'IPv4',
+      internal: false,
+      netmask: '',
+      mac: '',
+      cidr: null,
+    },
+  ],
+  en7: [
+    { address: '10.0.0.15', family: 'IPv4', internal: false, netmask: '', mac: '', cidr: null },
+  ],
+})) as typeof OS.networkInterfaces
+
+const LOOPBACK_ONLY_NETWORK_INTERFACES = (() => ({
+  lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true, netmask: '', mac: '', cidr: null }],
+})) as typeof OS.networkInterfaces
+
+describe('resolveRemoteAccessSnapshot', () => {
+  it('returns sorted LAN endpoints and skips internal or link-local interfaces', () => {
+    const snapshot = resolveRemoteAccessSnapshot({
+      cacheKey: 'fresh-view',
+      port: 3773,
+      token: 'secret-token',
+      networkInterfaces: LAN_NETWORK_INTERFACES,
+    })
+
+    expect(snapshot.enabled).toBe(true)
+    expect(snapshot.endpoints.map(endpoint => endpoint.address)).toEqual([
+      '10.0.0.15',
+      '192.168.1.24',
+      '100.80.4.7',
+    ])
+    expect(snapshot.endpoints[0]?.url).toBe(
+      'http://10.0.0.15:3773/?token=secret-token&mobile=1&v=fresh-view'
+    )
+  })
+
+  it('reports disabled when no external IPv4 interfaces are available', () => {
+    const snapshot = resolveRemoteAccessSnapshot({
+      port: 3773,
+      token: 'secret-token',
+      networkInterfaces: LOOPBACK_ONLY_NETWORK_INTERFACES,
+    })
+
+    expect(snapshot.enabled).toBe(false)
+    expect(snapshot.endpoints).toEqual([])
+  })
+})

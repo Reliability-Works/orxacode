@@ -7,12 +7,16 @@
 
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from '../branding'
 import { isElectron } from '../env'
+import { useIsMobile } from '../hooks/useMediaQuery'
 import { cn } from '~/lib/utils'
 import { SidebarTrigger } from './ui/sidebar'
 
 export const APP_TOP_LEFT_BAR_WIDTH = '272px'
 
 export function AppTopLeftBar() {
+  const isMobile = useIsMobile()
+  if (isMobile) return null
+
   return (
     <div
       className={cn(
