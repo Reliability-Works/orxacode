@@ -4,6 +4,10 @@ Orxa Code is a desktop workspace for AI coding threads. Start a Claude, Codex, o
 
 ![New session picker](assets/readme/session_start.png)
 
+## Origins
+
+Orxa Code began as an independent project. During a later foundation refactor, parts of the application architecture and implementation were adapted from [T3 Code](https://github.com/pingdotgg/t3code), and have since been substantially extended and modified.
+
 ## Download
 
 Get the latest build from the [Releases page](https://github.com/Reliability-Works/orxacode/releases).
@@ -84,3 +88,5 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 ## License
 
 [MIT](LICENSE)
+
+Third-party attribution and license notices are collected in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

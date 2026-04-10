@@ -2,6 +2,8 @@
 
 Use these references when implementing or debugging provider-specific behavior in Orxa Code.
 
+For historical provenance: parts of Orxa Code's later foundation refactor were adapted from [pingdotgg/t3code](https://github.com/pingdotgg/t3code). That project is an architectural influence and attribution dependency, but it is not the canonical upstream for the provider protocol semantics documented below.
+
 ## OpenCode
 
 - Runtime / upstream repo: [anomalyco/opencode](https://github.com/anomalyco/opencode)
