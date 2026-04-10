@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.59",
+  "version": "0.1.0-beta.60",
   "description": "Orxa Code monorepo root",
   "author": "Reliability Works",
   "main": "apps/desktop/dist-electron/main.js",
@@ -71,6 +71,7 @@
     "lucide-react": "^0.575.0",
     "node-pty": "1.2.0-beta.12",
     "prismjs": "^1.30.0",
+    "pure-rand": "8.4.0",
     "react": "^19.2.4",
     "react-cytoscapejs": "^2.0.0",
     "react-dom": "^19.2.4",

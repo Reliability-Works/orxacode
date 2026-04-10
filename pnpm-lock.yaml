@@ -86,6 +86,9 @@ importers:
       prismjs:
         specifier: ^1.30.0
         version: 1.30.0
+      pure-rand:
+        specifier: 8.4.0
+        version: 8.4.0
       react:
         specifier: ^19.2.4
         version: 19.2.4
