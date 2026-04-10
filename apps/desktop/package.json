@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "effect": "4.0.0-beta.43",
-    "electron": "40.6.0",
+    "electron": "41.2.0",
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {
