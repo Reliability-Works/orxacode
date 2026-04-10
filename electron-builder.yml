@@ -14,5 +14,6 @@ publish:
   owner: Reliability-Works
   repo: orxacode
   releaseType: release
+generateUpdatesFilesForAllChannels: true
 extraMetadata:
   orxaCommitHash: ${env.GITHUB_SHA}

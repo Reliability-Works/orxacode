@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   createDesktopUpdatePreferencesStore,
   isPrereleaseVersion,
+  resolveDesktopUpdateFeedChannel,
   sanitizeReleaseChannel,
 } from './updatePreferences'
 
@@ -38,6 +39,16 @@ describe('isPrereleaseVersion', () => {
   it('detects semver prerelease suffixes', () => {
     expect(isPrereleaseVersion('1.0.0')).toBe(false)
     expect(isPrereleaseVersion('1.0.0-beta.1')).toBe(true)
+  })
+})
+
+describe('resolveDesktopUpdateFeedChannel', () => {
+  it('maps stable to latest feed files', () => {
+    expect(resolveDesktopUpdateFeedChannel('stable')).toBe('latest')
+  })
+
+  it('maps prerelease to beta feed files', () => {
+    expect(resolveDesktopUpdateFeedChannel('prerelease')).toBe('beta')
   })
 })
 

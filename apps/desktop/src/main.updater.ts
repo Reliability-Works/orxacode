@@ -45,7 +45,7 @@ function getAutoUpdater(): ElectronAutoUpdater | null {
 }
 
 export interface UpdaterConfig {
-  readonly channel: string
+  channel: string
   allowPrerelease: boolean
   readonly startupDelayMs: number
   readonly pollIntervalMs: number
@@ -67,6 +67,7 @@ export interface UpdaterController {
   getState(): DesktopUpdateState
   setState(patch: Partial<DesktopUpdateState>): void
   setAllowPrerelease(value: boolean): void
+  setChannel(value: string): void
   checkForUpdates(reason: string): Promise<boolean>
   downloadAvailable(): Promise<{ accepted: boolean; completed: boolean }>
   installDownloaded(): Promise<{ accepted: boolean; completed: boolean }>
@@ -347,6 +348,14 @@ function setAllowPrerelease(rt: UpdaterRuntime, value: boolean): void {
   autoUpdater.allowPrerelease = value
 }
 
+function setChannel(rt: UpdaterRuntime, value: string): void {
+  rt.config.channel = value
+  if (!rt.configured) return
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) return
+  autoUpdater.channel = value
+}
+
 function configure(rt: UpdaterRuntime): void {
   const enabled = shouldEnable(rt)
   setState(rt, {
@@ -402,6 +411,7 @@ export function createUpdaterController(
     getState: () => rt.state,
     setState: patch => setState(rt, patch),
     setAllowPrerelease: value => setAllowPrerelease(rt, value),
+    setChannel: value => setChannel(rt, value),
     checkForUpdates: reason => checkForUpdates(rt, reason),
     downloadAvailable: () => downloadAvailable(rt),
     installDownloaded: () => installDownloaded(rt),

@@ -22,6 +22,12 @@ export function sanitizeReleaseChannel(value: unknown): DesktopUpdateReleaseChan
   return value === 'prerelease' ? 'prerelease' : 'stable'
 }
 
+export function resolveDesktopUpdateFeedChannel(
+  releaseChannel: DesktopUpdateReleaseChannel
+): 'latest' | 'beta' {
+  return releaseChannel === 'prerelease' ? 'beta' : 'latest'
+}
+
 export function isPrereleaseVersion(value: string): boolean {
   return /-[0-9A-Za-z]/.test(value)
 }

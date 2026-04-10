@@ -28,7 +28,10 @@ import { createBackendController, type BackendHost } from './main.backend'
 import { runSmokeTest } from './main.smoke'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
-import { createDesktopUpdatePreferencesStore } from './updatePreferences'
+import {
+  createDesktopUpdatePreferencesStore,
+  resolveDesktopUpdateFeedChannel,
+} from './updatePreferences'
 
 const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
 
@@ -69,7 +72,6 @@ const LOG_FILE_MAX_FILES = 10
 const APP_RUN_ID = Crypto.randomBytes(6).toString('hex')
 const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000
-const DESKTOP_UPDATE_CHANNEL = 'latest'
 const AUTO_UPDATE_DISABLED_BY_ENV = process.env.ORXA_CODE_DISABLE_AUTO_UPDATE === '1'
 
 type LinuxDesktopNamedApp = Electron.App & {
@@ -97,7 +99,7 @@ const initialUpdatePreferences = updatePreferencesStore.syncInstalledVersion(app
 
 const updaterController = createUpdaterController(
   {
-    channel: DESKTOP_UPDATE_CHANNEL,
+    channel: resolveDesktopUpdateFeedChannel(initialUpdatePreferences.releaseChannel),
     allowPrerelease: initialUpdatePreferences.releaseChannel === 'prerelease',
     startupDelayMs: AUTO_UPDATE_STARTUP_DELAY_MS,
     pollIntervalMs: AUTO_UPDATE_POLL_INTERVAL_MS,
@@ -459,6 +461,7 @@ const ipcHost: IpcHost = {
   getUpdatePreferences: () => updatePreferencesStore.get(),
   setUpdatePreferences: input => {
     const next = updatePreferencesStore.set(input)
+    updaterController.setChannel(resolveDesktopUpdateFeedChannel(next.releaseChannel))
     updaterController.setAllowPrerelease(next.releaseChannel === 'prerelease')
     return next
   },
