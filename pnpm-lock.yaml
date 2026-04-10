@@ -53,9 +53,15 @@ importers:
       better-sqlite3:
         specifier: 12.8.0
         version: 12.8.0
+      ccount:
+        specifier: ^2.0.1
+        version: 2.0.1
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      comma-separated-tokens:
+        specifier: ^2.0.3
+        version: 2.0.3
       cytoscape:
         specifier: ^3.33.1
         version: 3.33.1
@@ -68,6 +74,15 @@ importers:
       electron-updater:
         specifier: ^6.6.2
         version: 6.8.3
+      hast-util-to-html:
+        specifier: ^9.0.5
+        version: 9.0.5
+      hast-util-whitespace:
+        specifier: ^3.0.0
+        version: 3.0.0
+      html-void-elements:
+        specifier: ^3.0.0
+        version: 3.0.0
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
@@ -80,12 +95,21 @@ importers:
       lucide-react:
         specifier: ^0.575.0
         version: 0.575.0(react@19.2.4)
+      mdast-util-to-hast:
+        specifier: ^13.2.1
+        version: 13.2.1
+      ms:
+        specifier: ^2.1.3
+        version: 2.1.3
       node-pty:
         specifier: 1.2.0-beta.12
         version: 1.2.0-beta.12
       prismjs:
         specifier: ^1.30.0
         version: 1.30.0
+      property-information:
+        specifier: ^7.1.0
+        version: 7.1.0
       pure-rand:
         specifier: 8.4.0
         version: 8.4.0
@@ -113,6 +137,12 @@ importers:
       simple-icons:
         specifier: ^16.9.0
         version: 16.9.0
+      space-separated-tokens:
+        specifier: ^2.0.2
+        version: 2.0.2
+      stringify-entities:
+        specifier: ^4.0.4
+        version: 4.0.4
       xterm:
         specifier: ^5.3.0
         version: 5.3.0
@@ -131,6 +161,9 @@ importers:
       zustand:
         specifier: ^5.0.12
         version: 5.0.12(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
+      zwitch:
+        specifier: ^2.0.4
+        version: 2.0.4
     devDependencies:
       '@actions/core':
         specifier: ^3.0.0

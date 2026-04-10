@@ -1,4 +1,5 @@
 import type React from 'react'
+import { useRef } from 'react'
 import { DownloadIcon, RefreshCwIcon, RotateCwIcon, SettingsIcon } from 'lucide-react'
 import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
@@ -22,13 +23,16 @@ function SidebarFooterIconButton({
   children: React.ReactNode
   disabled?: boolean
   isActive?: boolean
-  onClick: () => void
+  onClick: (anchor?: HTMLElement | null) => void
 }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
+            ref={buttonRef}
             type="button"
             className={cn(
               'inline-flex size-8 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground',
@@ -39,7 +43,7 @@ function SidebarFooterIconButton({
             aria-disabled={disabled || undefined}
             onClick={() => {
               if (disabled) return
-              onClick()
+              onClick(buttonRef.current)
             }}
           >
             {children}
@@ -56,8 +60,10 @@ function SidebarUpdateFooterButton({
   onClick,
 }: {
   state: DesktopUpdateState | null
-  onClick: () => void
+  onClick: (anchor?: HTMLElement | null) => void
 }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+
   if (!isElectron || !state || !state.enabled) {
     return (
       <SidebarFooterIconButton ariaLabel="Check for updates" onClick={onClick}>
@@ -93,6 +99,7 @@ function SidebarUpdateFooterButton({
       <TooltipTrigger
         render={
           <button
+            ref={buttonRef}
             type="button"
             className={cn(
               'relative inline-flex size-8 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground',
@@ -103,7 +110,7 @@ function SidebarUpdateFooterButton({
             aria-disabled={isBusy || undefined}
             onClick={() => {
               if (isBusy) return
-              onClick()
+              onClick(buttonRef.current)
             }}
           >
             {icon}
@@ -122,7 +129,7 @@ export function SidebarMainFooter({
 }: {
   desktopUpdateState: DesktopUpdateState | null
   onNavigateToSettings: () => void
-  onUpdateAction: () => void
+  onUpdateAction: (anchor?: HTMLElement | null) => void
 }) {
   return (
     <SidebarFooter className="p-2">

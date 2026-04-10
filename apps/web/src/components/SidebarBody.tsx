@@ -6,12 +6,7 @@
  * + wiring).
  */
 
-import {
-  LayoutDashboardIcon,
-  PlugZapIcon,
-  TriangleAlertIcon,
-  ZapIcon,
-} from 'lucide-react'
+import { LayoutDashboardIcon, PlugZapIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import type React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
@@ -79,7 +74,7 @@ export interface SidebarBodyProps {
   desktopUpdateState: DesktopUpdateState | null
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   desktopUpdateButtonDisabled: boolean
-  onDesktopUpdateButtonClick: () => void
+  onDesktopUpdateButtonClick: (anchor?: HTMLElement | null) => void
 
   // -- Projects --
   projects: Project[]
