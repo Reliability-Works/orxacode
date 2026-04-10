@@ -24,12 +24,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.77",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.98",
     "@effect/platform-node": "4.0.0-beta.43",
-    "@opencode-ai/sdk": "^1.4.0",
-    "@pierre/diffs": "^1.1.0-beta.16",
+    "@opencode-ai/sdk": "^1.4.3",
+    "@pierre/diffs": "^1.1.13",
     "effect": "4.0.0-beta.43",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.2.0-beta.12"
   },
   "devDependencies": {
     "@effect/language-service": "0.84.3",
