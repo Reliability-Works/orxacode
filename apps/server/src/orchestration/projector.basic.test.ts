@@ -26,6 +26,8 @@ it('applies thread.created events', async () => {
       interactionMode: 'default',
       branch: null,
       worktreePath: null,
+      handoff: null,
+      parentLink: null,
       latestTurn: null,
       createdAt: now,
       updatedAt: now,

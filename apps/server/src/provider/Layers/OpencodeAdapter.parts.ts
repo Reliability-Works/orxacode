@@ -47,7 +47,12 @@ function buildPartItemEvent(input: {
   readonly data: Record<string, unknown> | undefined
   readonly raw: ReturnType<typeof opencodeRawEvent>
 }): ProviderRuntimeEvent | null {
-  if (input.eventType === 'item.updated' && !input.detail && !input.data) {
+  if (
+    input.eventType === 'item.updated' &&
+    input.status === 'inProgress' &&
+    !input.detail &&
+    !input.data
+  ) {
     return null
   }
   return {

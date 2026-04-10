@@ -354,6 +354,8 @@ export const expectedHydratedThreads: OrchestrationReadModel['threads'] = [
       threadId: ThreadId.makeUnsafe('thread-1'),
       status: 'running',
       providerName: 'codex',
+      providerSessionId: 'provider-session-1',
+      providerThreadId: 'provider-thread-1',
       runtimeMode: 'approval-required',
       activeTurnId: asTurnId('turn-1'),
       lastError: null,

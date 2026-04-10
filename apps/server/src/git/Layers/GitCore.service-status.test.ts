@@ -138,11 +138,11 @@ it.effect('returns diff scope summaries and branch compare data', () =>
   withGitTestLayer(
     Effect.gen(function* () {
       const tmp = yield* makeTmpDir()
-      yield* initRepoWithCommit(tmp)
+      const { initialBranch } = yield* initRepoWithCommit(tmp)
       const core = yield* GitCore
       yield* core.createBranch({ cwd: tmp, branch: 'feature/scoped-diff' })
       yield* core.checkoutBranch({ cwd: tmp, branch: 'feature/scoped-diff' })
-      yield* git(tmp, ['config', 'branch.feature/scoped-diff.gh-merge-base', 'main'])
+      yield* git(tmp, ['config', 'branch.feature/scoped-diff.gh-merge-base', initialBranch])
       yield* writeTextFile(path.join(tmp, 'README.md'), 'updated\nwith more context\n')
       yield* git(tmp, ['add', 'README.md'])
       yield* git(tmp, ['commit', '-m', 'scoped diff change'])
@@ -155,8 +155,10 @@ it.effect('returns diff scope summaries and branch compare data', () =>
         'branch',
       ])
       expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.available).toBe(true)
-      expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.baseRef).toBe('main')
-      expect(diff.branch?.baseRef).toBe('main')
+      expect(diff.scopeSummaries.find(summary => summary.scope === 'branch')?.baseRef).toBe(
+        initialBranch
+      )
+      expect(diff.branch?.baseRef).toBe(initialBranch)
       expect(diff.branch?.files.some(file => file.path === 'README.md')).toBe(true)
       expect(diff.branch?.fileCount).toBeGreaterThan(0)
     })
@@ -167,11 +169,15 @@ it.effect('keeps local diff data available when branch compare output is oversiz
   withGitTestLayer(
     Effect.gen(function* () {
       const tmp = yield* makeTmpDir()
-      yield* initRepoWithCommit(tmp)
+      const { initialBranch } = yield* initRepoWithCommit(tmp)
       const core = yield* GitCore
       yield* core.createBranch({ cwd: tmp, branch: 'feature/oversized-branch-diff' })
       yield* core.checkoutBranch({ cwd: tmp, branch: 'feature/oversized-branch-diff' })
-      yield* git(tmp, ['config', 'branch.feature/oversized-branch-diff.gh-merge-base', 'main'])
+      yield* git(tmp, [
+        'config',
+        'branch.feature/oversized-branch-diff.gh-merge-base',
+        initialBranch,
+      ])
       yield* writeTextFile(path.join(tmp, 'big.txt'), `${'x'.repeat(1_200_000)}\n`)
       yield* git(tmp, ['add', 'big.txt'])
       yield* git(tmp, ['commit', '-m', 'oversized branch diff'])
