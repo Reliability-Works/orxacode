@@ -316,11 +316,17 @@ export function useChatViewOptimisticMessageEffect(
 // ---------------------------------------------------------------------------
 
 export function deriveEnvMode(
-  activeThread: { worktreePath?: string | null } | undefined,
+  activeThread: { worktreePath?: string | null; messages?: ReadonlyArray<unknown> } | undefined,
   isLocalDraftThread: boolean,
   draftThreadEnvMode: DraftThreadEnvMode | null | undefined
 ): DraftThreadEnvMode {
   if (activeThread?.worktreePath) return 'worktree'
+  if (
+    activeThread &&
+    draftThreadEnvMode === 'worktree' &&
+    (activeThread.messages?.length ?? 0) === 0
+  )
+    return 'worktree'
   if (isLocalDraftThread) return draftThreadEnvMode ?? 'local'
   return 'local'
 }

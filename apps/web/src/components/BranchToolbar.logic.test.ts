@@ -3,11 +3,34 @@ import { describe, expect, it } from 'vitest'
 import {
   dedupeRemoteBranchesWithLocalMatches,
   deriveLocalBranchNameFromRemoteRef,
+  resolveEffectiveEnvMode,
   resolveBranchSelectionTarget,
   resolveDraftEnvModeAfterBranchChange,
   resolveBranchToolbarValue,
   shouldIncludeBranchPickerItem,
 } from './BranchToolbar.logic'
+
+describe('resolveEffectiveEnvMode', () => {
+  it('allows draft worktree mode for an empty server-backed thread', () => {
+    expect(
+      resolveEffectiveEnvMode({
+        activeWorktreePath: null,
+        allowDraftThreadEnvMode: true,
+        draftThreadEnvMode: 'worktree',
+      })
+    ).toBe('worktree')
+  })
+
+  it('ignores draft worktree mode once the thread should be locked to local', () => {
+    expect(
+      resolveEffectiveEnvMode({
+        activeWorktreePath: null,
+        allowDraftThreadEnvMode: false,
+        draftThreadEnvMode: 'worktree',
+      })
+    ).toBe('local')
+  })
+})
 
 describe('resolveDraftEnvModeAfterBranchChange', () => {
   it('switches to local mode when returning from an existing worktree to the main worktree', () => {

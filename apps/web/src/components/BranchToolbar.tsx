@@ -6,6 +6,7 @@ import { newCommandId } from '../lib/utils'
 import { readNativeApi } from '../nativeApi'
 import { useComposerDraftStore } from '../composerDraftStore'
 import { useStore } from '../store'
+import type { Thread } from '../types'
 import {
   EnvMode,
   resolveDraftEnvModeAfterBranchChange,
@@ -39,9 +40,9 @@ function useBranchToolbarState(threadId: ThreadId) {
   const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null
   const branchCwd = activeWorktreePath ?? activeProject?.cwd ?? null
   const hasServerThread = serverThread !== undefined
-  const effectiveEnvMode = resolveEffectiveEnvMode({
+  const effectiveEnvMode = resolveEffectiveBranchToolbarEnvMode({
     activeWorktreePath,
-    hasServerThread,
+    serverThread,
     draftThreadEnvMode: draftThread?.envMode,
   })
   return {
@@ -54,6 +55,19 @@ function useBranchToolbarState(threadId: ThreadId) {
     hasServerThread,
     effectiveEnvMode,
   }
+}
+
+function resolveEffectiveBranchToolbarEnvMode(input: {
+  activeWorktreePath: string | null
+  serverThread: Thread | undefined
+  draftThreadEnvMode: EnvMode | undefined
+}): EnvMode {
+  return resolveEffectiveEnvMode({
+    activeWorktreePath: input.activeWorktreePath,
+    allowDraftThreadEnvMode:
+      input.serverThread === undefined || input.serverThread.messages.length === 0,
+    draftThreadEnvMode: input.draftThreadEnvMode,
+  })
 }
 
 function stopRunningThreadSession(

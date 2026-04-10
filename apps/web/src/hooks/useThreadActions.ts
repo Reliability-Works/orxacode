@@ -204,10 +204,7 @@ async function archiveThreadAction(
       })
       return
     }
-    useUiStateStore.getState().requestNewSessionModal({
-      projectId: thread.projectId,
-      mode: 'default',
-    })
+    useUiStateStore.getState().clearPendingNewSessionModal()
     await navigate({ to: '/', replace: true })
   }
 }

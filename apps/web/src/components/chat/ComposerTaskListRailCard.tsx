@@ -66,7 +66,7 @@ function TaskListSteps() {
                   ? 'text-foreground/90'
                   : step.status === 'paused'
                     ? 'text-sky-100/85'
-                  : 'text-muted-foreground/70'
+                    : 'text-muted-foreground/70'
             )}
           >
             {step.step}
@@ -82,11 +82,12 @@ function ProposedPlanPreview() {
   const plan = c.p.sidebarProposedPlan
   const [expanded, setExpanded] = useState(false)
   const title = useMemo(
-    () => (plan ? proposedPlanTitle(plan.planMarkdown) ?? 'Plan proposal' : null),
+    () => (plan ? (proposedPlanTitle(plan.planMarkdown) ?? 'Plan proposal') : null),
     [plan]
   )
   const preview = useMemo(
-    () => (plan ? buildCollapsedProposedPlanPreviewMarkdown(plan.planMarkdown, { maxLines: 6 }) : ''),
+    () =>
+      plan ? buildCollapsedProposedPlanPreviewMarkdown(plan.planMarkdown, { maxLines: 6 }) : '',
     [plan]
   )
   const fullMarkdown = useMemo(

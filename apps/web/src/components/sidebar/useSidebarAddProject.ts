@@ -12,6 +12,7 @@ import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
 import type { DraftThreadEnvMode } from '../../composerDraftStore'
 import { execAddProjectFromPath } from './projectActionHelpers'
+import { toastManager } from '../ui/toastState'
 
 export interface UseSidebarAddProjectParams {
   projects: Project[]
@@ -140,18 +141,25 @@ function buildPickFolderHandler(params: {
     const api = readNativeApi()
     if (!api || state.isPickingFolder) return
     state.setIsPickingFolder(true)
-    let picked: string | null = null
     try {
-      picked = await api.dialogs.pickFolder()
-    } catch {
-      /* ignore */
+      const picked = await api.dialogs.pickFolder()
+      if (picked) {
+        await addProjectFromPath(picked)
+      } else if (!shouldBrowseForProjectImmediately) {
+        state.addProjectInputRef.current?.focus()
+      }
+    } catch (error) {
+      const description =
+        error instanceof Error ? error.message : 'An error occurred while selecting a folder.'
+      if (shouldBrowseForProjectImmediately) {
+        toastManager.add({ type: 'error', title: 'Failed to add project', description })
+      } else {
+        state.setAddProjectError(description)
+        state.addProjectInputRef.current?.focus()
+      }
+    } finally {
+      state.setIsPickingFolder(false)
     }
-    if (picked) {
-      await addProjectFromPath(picked)
-    } else if (!shouldBrowseForProjectImmediately) {
-      state.addProjectInputRef.current?.focus()
-    }
-    state.setIsPickingFolder(false)
   }
 }
 

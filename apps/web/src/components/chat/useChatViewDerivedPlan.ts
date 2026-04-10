@@ -110,13 +110,10 @@ export function useChatViewDerivedPlan(td: ThreadDerived, ad: ActivityDerived) {
       activeThread?.messages ?? [],
       activeLatestTurn?.assistantMessageId ?? null
     )
-    return deriveDisplayActivePlanState(
-      derivedPlan,
-      {
-        orchestrationStatus: activeThread?.session?.orchestrationStatus ?? null,
-        latestTurnState: activeLatestTurn?.state ?? null,
-      }
-    )
+    return deriveDisplayActivePlanState(derivedPlan, {
+      orchestrationStatus: activeThread?.session?.orchestrationStatus ?? null,
+      latestTurnState: activeLatestTurn?.state ?? null,
+    })
   }, [
     activeLatestTurn?.assistantMessageId,
     activeLatestTurn?.state,

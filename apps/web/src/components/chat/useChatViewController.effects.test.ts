@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveComposerHighlightedItemId } from './useChatViewController.effects'
+import { deriveEnvMode, resolveComposerHighlightedItemId } from './useChatViewController.effects'
 
 describe('resolveComposerHighlightedItemId', () => {
   const items = [{ id: 'first' }, { id: 'second' }]
@@ -19,5 +19,33 @@ describe('resolveComposerHighlightedItemId', () => {
 
   it('returns null when the menu is open with no items', () => {
     expect(resolveComposerHighlightedItemId(true, [], 'missing')).toBeNull()
+  })
+})
+
+describe('deriveEnvMode', () => {
+  it('uses worktree mode for an empty server thread when the draft env mode requests it', () => {
+    expect(
+      deriveEnvMode(
+        {
+          worktreePath: null,
+          messages: [],
+        },
+        false,
+        'worktree'
+      )
+    ).toBe('worktree')
+  })
+
+  it('falls back to local mode once a server thread already has messages', () => {
+    expect(
+      deriveEnvMode(
+        {
+          worktreePath: null,
+          messages: [{}],
+        },
+        false,
+        'worktree'
+      )
+    ).toBe('local')
   })
 })
