@@ -8,14 +8,6 @@ import { cn } from '~/lib/utils'
 import { useServerProviders } from '~/rpc/serverState'
 import { ProviderLogo } from './ProviderLogos'
 
-// ── Provider descriptions ─────────────────────────────────────────────
-
-const PROVIDER_DESCRIPTIONS: Record<ProviderKind, string> = {
-  claudeAgent: "Anthropic's Claude via the Agent SDK",
-  codex: 'OpenAI Codex via JSON-RPC',
-  opencode: 'Opencode with user-authenticated providers',
-}
-
 // ── Status chip ───────────────────────────────────────────────────────
 
 type BadgeVariant = 'success' | 'warning' | 'error' | 'outline'
@@ -45,7 +37,6 @@ const CARD_CLASSNAME =
 interface CardBodyProps {
   readonly logo: React.ReactNode
   readonly label: string
-  readonly description: string
   readonly badge: React.ReactNode
 }
 
@@ -55,7 +46,6 @@ function CardBody(props: CardBodyProps): React.JSX.Element {
       {props.logo}
       <div className="flex w-full flex-col items-center gap-1">
         <span className="font-medium text-sm leading-none">{props.label}</span>
-        <span className="text-center text-muted-foreground text-xs">{props.description}</span>
       </div>
       {props.badge}
     </>
@@ -76,7 +66,6 @@ function ProviderCard(props: ProviderCardProps): React.JSX.Element {
   const enabled = isCardEnabled(liveProvider) && !pending
   const status = liveProvider?.status ?? 'disabled'
   const label = PROVIDER_DISPLAY_NAMES[provider]
-  const description = PROVIDER_DESCRIPTIONS[provider]
   const tooltipMessage = !enabled ? (liveProvider?.message ?? statusLabel(status)) : null
 
   function handleClick(): void {
@@ -107,7 +96,6 @@ function ProviderCard(props: ProviderCardProps): React.JSX.Element {
       <CardBody
         logo={<ProviderLogo provider={provider} size={40} />}
         label={label}
-        description={description}
         badge={
           <Badge size="sm" variant={statusVariant(status)}>
             {statusLabel(status)}
