@@ -7,6 +7,7 @@
 
 import React from 'react'
 import { cn } from '~/lib/utils'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import { ProviderModelPicker } from './ProviderModelPicker'
 import { CompactComposerControlsMenu } from './CompactComposerControlsMenu'
 import { ComposerPrimaryActions } from './ComposerPrimaryActions'
@@ -26,6 +27,8 @@ function ComposerFooterLeading({
   const { td } = c
   const { composerFooterLeadingRef } = c.scroll.refs
   const { isComposerFooterCompact } = c.scroll
+  const isMobile = useIsMobile()
+  const showCompactControls = isComposerFooterCompact && !isMobile
   const {
     runtimeMode,
     interactionMode,
@@ -41,13 +44,13 @@ function ComposerFooterLeading({
       ref={composerFooterLeadingRef}
       className={cn(
         'flex min-w-0 flex-1 items-center',
-        isComposerFooterCompact
-          ? 'gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-          : 'gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible'
+        showCompactControls
+          ? 'gap-2 overflow-x-auto pe-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-1'
+          : 'gap-2 overflow-x-auto pe-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:min-w-max sm:overflow-visible md:gap-1'
       )}
     >
       <ProviderModelPicker
-        compact={isComposerFooterCompact}
+        compact={showCompactControls}
         provider={selectedProvider}
         model={selectedModelForPickerWithCustomFallback}
         lockedProvider={lockedProvider}
@@ -58,7 +61,7 @@ function ComposerFooterLeading({
           : {})}
         onProviderModelChange={c.onProviderModelSelect}
       />
-      {isComposerFooterCompact ? (
+      {showCompactControls ? (
         <CompactComposerControlsMenu
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
@@ -85,7 +88,7 @@ function ComposerFooterActions() {
       data-chat-composer-primary-actions-compact={
         isComposerPrimaryActionsCompact ? 'true' : 'false'
       }
-      className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
+      className="flex shrink-0 flex-nowrap items-center justify-end gap-2.5 md:gap-2"
     >
       {ad.activeContextWindow ? <ContextWindowMeter usage={ad.activeContextWindow} /> : null}
       {ad.activeRateLimits ? (
@@ -151,8 +154,8 @@ export function ChatViewComposerFooterPanel({
       data-chat-composer-footer="true"
       data-chat-composer-footer-compact={isComposerFooterCompact ? 'true' : 'false'}
       className={cn(
-        'flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-hidden px-2.5 pb-2.5 sm:px-3 sm:pb-3',
-        isComposerFooterCompact ? 'gap-1.5' : 'gap-2 sm:gap-0'
+        'flex min-w-0 flex-nowrap items-center justify-between gap-3 overflow-hidden px-3 pb-3 sm:px-3 sm:pb-3',
+        isComposerFooterCompact ? 'gap-2.5 md:gap-1.5' : 'gap-3 sm:gap-0'
       )}
     >
       <ComposerFooterLeading

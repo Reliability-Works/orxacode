@@ -12,6 +12,7 @@ import type { SidebarThreadActionsReturn } from './useSidebarThreadActions'
 import type { SidebarProjectActionsReturn } from './useSidebarProjectActions'
 import type { ThreadPr } from './ProjectItem'
 import { useSidebarInteractionState } from './useSidebarInteractionState'
+import { useSidebar } from '../ui/sidebar.shared'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -209,6 +210,7 @@ function useGetProjectItemProps(params: ProjectItemPropsHookParams) {
 
 export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
   const { selectedThreadIds, clearSelection } = params
+  const { isMobile, setOpenMobile } = useSidebar()
   const {
     confirmingArchiveThreadId,
     setConfirmingArchiveThreadId,
@@ -216,8 +218,25 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
     openPrLink,
   } = useSidebarInteractionState({ selectedThreadIds, clearSelection })
 
+  const closeMobileSidebar = useCallback(() => {
+    if (!isMobile) return
+    setOpenMobile(false)
+  }, [isMobile, setOpenMobile])
+
   const getThreadRowProps = useGetThreadRowProps({
-    threadActions: params.threadActions,
+    threadActions: {
+      ...params.threadActions,
+      handleThreadClick: (event, threadId, orderedProjectThreadIds) => {
+        const isMac = navigator.platform.toLowerCase().includes('mac')
+        const isModClick = isMac ? event.metaKey : event.ctrlKey
+        if (!isModClick && !event.shiftKey) closeMobileSidebar()
+        params.threadActions.handleThreadClick(event, threadId, orderedProjectThreadIds)
+      },
+      navigateToThread: threadId => {
+        closeMobileSidebar()
+        params.threadActions.navigateToThread(threadId)
+      },
+    },
     confirmingArchiveThreadId,
     setConfirmingArchiveThreadId,
     confirmArchiveButtonRefs,

@@ -52,6 +52,16 @@ function useSidebarToggleShortcut(toggleSidebar: () => void) {
   }, [toggleSidebar])
 }
 
+function useAutoOpenMobileSidebar(isMobile: boolean, setOpenMobile: (open: boolean) => void) {
+  const hasAutoOpenedMobileRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!isMobile || hasAutoOpenedMobileRef.current) return
+    hasAutoOpenedMobileRef.current = true
+    setOpenMobile(true)
+  }, [isMobile, setOpenMobile])
+}
+
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -98,6 +108,7 @@ function SidebarProvider({
   }, [isMobile, setOpen])
 
   useSidebarToggleShortcut(toggleSidebar)
+  useAutoOpenMobileSidebar(isMobile, setOpenMobile)
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -391,7 +402,13 @@ function renderMobileSidebar(input: {
 }) {
   return (
     <SidebarInstanceContext.Provider value={input.instanceContextValue}>
-      <Sheet onOpenChange={input.setOpenMobile} open={input.openMobile} {...input.props}>
+      <Sheet
+        onOpenChange={nextOpen => {
+          if (nextOpen) input.setOpenMobile(true)
+        }}
+        open={input.openMobile}
+        {...input.props}
+      >
         <SheetPopup
           className={cn(
             'w-full max-w-none bg-sidebar p-0 text-sidebar-foreground',
@@ -400,7 +417,7 @@ function renderMobileSidebar(input: {
           data-mobile="true"
           data-sidebar="sidebar"
           data-slot="sidebar"
-          showCloseButton
+          showCloseButton={false}
           side={input.side}
         >
           <SheetHeader className="sr-only">

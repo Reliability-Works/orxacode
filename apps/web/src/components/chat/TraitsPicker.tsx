@@ -10,7 +10,7 @@ import {
   type SelectedTraits,
 } from './TraitsPicker.logic'
 import type { VariantProps } from 'class-variance-authority'
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronDownIcon, EllipsisIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { buttonVariants } from '../ui/buttonVariants'
 import {
@@ -26,6 +26,7 @@ import { useComposerDraftStore, useComposerThreadDraft } from '../../composerDra
 import { TraitsOpencodeAgentSection, TraitsOpencodeVariantSection } from './TraitsPicker.opencode'
 import { useOpencodePrimaryAgents } from './useOpencodePrimaryAgents'
 import { cn } from '~/lib/utils'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 
 type TraitsPersistence =
   | {
@@ -365,6 +366,10 @@ function useOpencodeAgentFallbackLabel(
 
 function TraitsPickerTriggerContent(props: { isCodexStyle: boolean; triggerLabel: string }) {
   const { isCodexStyle, triggerLabel } = props
+  const isMobile = useIsMobile()
+  if (isMobile) {
+    return <EllipsisIcon aria-hidden="true" className="size-4 opacity-70" />
+  }
   if (isCodexStyle) {
     return (
       <span className="flex min-w-0 w-full items-center gap-2 overflow-hidden">
@@ -409,10 +414,12 @@ export const TraitsPicker = memo(function TraitsPicker({
   const opencodeFallback = useOpencodeAgentFallbackLabel(provider, triggerThreadId, isPlanMode)
   const triggerLabel = getTraitsTriggerLabel(traits, provider, opencodeFallback)
   const isCodexStyle = provider === 'codex'
+  const isMobile = useIsMobile()
   const triggerButtonClassName = cn(
+    isMobile ? 'min-w-0 shrink-0 px-2 text-muted-foreground/70 hover:text-foreground/80' : '',
     isCodexStyle
-      ? 'min-w-0 max-w-40 shrink justify-start overflow-hidden whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:max-w-48 sm:px-3 [&_svg]:mx-0'
-      : 'shrink-0 whitespace-nowrap px-2 text-muted-foreground/70 hover:text-foreground/80 sm:px-3',
+      ? 'min-w-0 max-w-[11rem] shrink justify-start overflow-hidden whitespace-nowrap px-2.5 text-muted-foreground/70 hover:text-foreground/80 sm:max-w-48 sm:px-3 [&_svg]:mx-0'
+      : 'min-w-[5.75rem] shrink-0 whitespace-nowrap px-2.5 text-muted-foreground/70 hover:text-foreground/80 sm:px-3',
     triggerClassName
   )
 

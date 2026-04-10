@@ -11,6 +11,7 @@ import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger 
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { cn } from '~/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +49,9 @@ interface ProjectSortMenuProps {
   threadSortOrder: SidebarThreadSortOrder
   onProjectSortOrderChange: (sortOrder: SidebarProjectSortOrder) => void
   onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void
+  triggerClassName?: string
+  iconClassName?: string
+  tooltipSide?: React.ComponentProps<typeof TooltipPopup>['side']
 }
 
 export function ProjectSortMenu({
@@ -55,18 +59,26 @@ export function ProjectSortMenu({
   threadSortOrder,
   onProjectSortOrderChange,
   onThreadSortOrderChange,
+  triggerClassName,
+  iconClassName,
+  tooltipSide = 'right',
 }: ProjectSortMenuProps) {
   return (
     <Menu>
       <Tooltip>
         <TooltipTrigger
           render={
-            <MenuTrigger className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground" />
+            <MenuTrigger
+              className={cn(
+                'inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground',
+                triggerClassName
+              )}
+            />
           }
         >
-          <ArrowUpDownIcon className="size-3.5" />
+          <ArrowUpDownIcon className={cn('size-3.5', iconClassName)} />
         </TooltipTrigger>
-        <TooltipPopup side="right">Sort projects</TooltipPopup>
+        <TooltipPopup side={tooltipSide}>Sort projects</TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" side="bottom" className="min-w-44">
         <MenuGroup>

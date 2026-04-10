@@ -10,22 +10,33 @@ export function ChatHeaderToggleControl(props: {
   ariaLabel: string
   icon: React.ComponentType<{ className?: string }>
   tooltipLabel: string
+  className?: string
+  iconClassName?: string
 }) {
-  const { pressed, onToggle, disabled, ariaLabel, icon: Icon, tooltipLabel } = props
+  const {
+    pressed,
+    onToggle,
+    disabled,
+    ariaLabel,
+    icon: Icon,
+    tooltipLabel,
+    className,
+    iconClassName,
+  } = props
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Toggle
-            className="shrink-0"
+            className={className ?? 'shrink-0'}
             pressed={pressed}
             onPressedChange={onToggle}
             aria-label={ariaLabel}
             variant="outline"
-            size="xs"
+            size="sm"
             disabled={disabled}
           >
-            <Icon className="size-3" />
+            <Icon className={iconClassName ?? 'size-4'} />
           </Toggle>
         }
       />

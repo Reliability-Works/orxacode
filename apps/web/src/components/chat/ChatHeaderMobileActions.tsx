@@ -13,7 +13,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from '../ui/menu'
 import { Toggle } from '../ui/toggle'
 import { ChatHeaderToggleControl } from './ChatHeaderToggleControl'
 
-function ChatHeaderMobileViewMenu(props: {
+export function ChatHeaderMobileViewToggle(props: {
   activeView: 'threads' | 'chat' | 'files' | 'git'
   filesAvailable: boolean
   isGitRepo: boolean
@@ -26,8 +26,14 @@ function ChatHeaderMobileViewMenu(props: {
     <Menu>
       <MenuTrigger
         render={
-          <Toggle pressed={false} aria-label="Choose mobile view" variant="outline" size="xs">
-            <PanelLeftOpenIcon className="size-3" />
+          <Toggle
+            pressed={false}
+            aria-label="Choose mobile view"
+            variant="outline"
+            size="sm"
+            className="min-w-10 gap-2 px-2.5"
+          >
+            <PanelLeftOpenIcon className="size-4" />
           </Toggle>
         }
       />
@@ -66,29 +72,13 @@ function ChatHeaderMobileViewMenu(props: {
 }
 
 export function ChatHeaderMobileActions(props: {
-  activeView: 'threads' | 'chat' | 'files' | 'git'
-  filesAvailable: boolean
-  isGitRepo: boolean
   terminalAvailable: boolean
   terminalOpen: boolean
   terminalToggleLabel: string
-  onOpenThreads: () => void
-  onSelectChat: () => void
-  onSelectFiles: () => void
-  onSelectGit: () => void
   onToggleTerminal: () => void
 }) {
   return (
-    <div className="flex shrink-0 items-center justify-end gap-2">
-      <ChatHeaderMobileViewMenu
-        activeView={props.activeView}
-        filesAvailable={props.filesAvailable}
-        isGitRepo={props.isGitRepo}
-        onOpenThreads={props.onOpenThreads}
-        onSelectChat={props.onSelectChat}
-        onSelectFiles={props.onSelectFiles}
-        onSelectGit={props.onSelectGit}
-      />
+    <div className="flex shrink-0 items-center justify-end gap-3">
       <ChatHeaderToggleControl
         pressed={props.terminalOpen}
         onToggle={props.onToggleTerminal}
@@ -96,6 +86,8 @@ export function ChatHeaderMobileActions(props: {
         ariaLabel="Toggle terminal drawer"
         icon={TerminalSquareIcon}
         tooltipLabel={props.terminalToggleLabel}
+        className="min-w-10 gap-2 px-2.5"
+        iconClassName="size-4"
       />
     </div>
   )

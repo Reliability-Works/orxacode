@@ -2,52 +2,41 @@
  * SidebarBody — presentational return surface extracted from Sidebar().
  *
  * Receives all computed data and callbacks as props and renders the full
- * sidebar DOM tree.  Keeps Sidebar.tsx focused on orchestration (hook calls
- * + wiring).
+ * sidebar DOM tree. Keeps Sidebar.tsx focused on orchestration.
  */
 
 import { LayoutDashboardIcon, PlugZapIcon, TriangleAlertIcon, ZapIcon } from 'lucide-react'
 import type React from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { type CollisionDetection, type DragEndEvent } from '@dnd-kit/core'
 import type { DesktopUpdateState } from '@orxa-code/contracts'
+import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
+
 import { isElectron } from '../env'
 import type { Project } from '../types'
-import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
+import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
+import type { RenderedPinnedThreadData, RenderedProjectData } from './sidebar/ProjectItem'
+import { SidebarMobileThreadsView } from './SidebarMobileThreadsView'
+import {
+  SidebarProjectGroup,
+  type SidebarProjectGroupProps,
+  type SidebarProjectGroupSharedProps,
+} from './SidebarProjectGroup'
+import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
+import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
+import { Button } from './ui/button'
 import {
   SidebarContent,
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuItem,
   SidebarSeparator,
 } from './ui/sidebar'
-import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
-import { Button } from './ui/button'
-import { cn } from '~/lib/utils'
-import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
-import { ScrollArea } from './ui/scroll-area'
 import { useSidebar } from './ui/sidebar.shared'
-import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
-import { ProjectItem } from './sidebar/ProjectItem'
-import type {
-  ProjectItemProps,
-  RenderedPinnedThreadData,
-  RenderedProjectData,
-  ThreadPr,
-} from './sidebar/ProjectItem'
-import type { ThreadId } from '@orxa-code/contracts'
-import type { ThreadTerminalState } from '../terminalStateStore.logic'
+import { cn } from '~/lib/utils'
 import { type AddProjectFormProps } from './SidebarProjectList'
-import { SidebarProjectGroup, type SidebarProjectGroupProps } from './SidebarProjectGroup'
-import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
 
-// ---------------------------------------------------------------------------
-// Sub-components still defined in Sidebar.tsx and re-exported
-// ---------------------------------------------------------------------------
-
-/** Tiny brand badge rendered in the sidebar header. */
 export function AppBrandMark() {
   return (
     <span
@@ -59,40 +48,26 @@ export function AppBrandMark() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// SidebarBody props
-// ---------------------------------------------------------------------------
-
 export interface SidebarBodyProps {
   isOnSettings: boolean
   pathname: string
-
-  // -- Desktop / platform --
   shouldShowProjectPathEntry: boolean
-
-  // -- Desktop update --
   showArm64IntelBuildWarning: boolean
   arm64IntelBuildWarningDescription: string | null
   desktopUpdateState: DesktopUpdateState | null
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   desktopUpdateButtonDisabled: boolean
   onDesktopUpdateButtonClick: (anchor?: HTMLElement | null) => void
-
-  // -- Projects --
   projects: Project[]
   renderedPinnedThreads: RenderedPinnedThreadData[]
   renderedProjects: RenderedProjectData[]
   isManualProjectSorting: boolean
-
-  // -- Settings --
   appSettings: {
     sidebarProjectSortOrder: SidebarProjectSortOrder
     sidebarThreadSortOrder: SidebarThreadSortOrder
   }
   onUpdateProjectSortOrder: (sortOrder: string) => void
   onUpdateThreadSortOrder: (sortOrder: string) => void
-
-  // -- Add-project UI --
   newCwd: string
   isPickingFolder: boolean
   isAddingProject: boolean
@@ -104,43 +79,24 @@ export interface SidebarBodyProps {
   onStartAddProject: () => void
   onPickFolder: () => void
   onAddProjectKeyDown: (event: React.KeyboardEvent) => void
-
-  // -- Navigation --
   onNavigateToSettings: () => void
-
-  // -- Pinned thread rendering --
-  getThreadRowProps: ProjectItemProps['getThreadRowProps']
-  routeThreadId: ThreadId | null
-  selectedThreadIds: ReadonlySet<ThreadId>
-  threadJumpLabelById: Map<ThreadId, string>
-  terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>
-  prByThreadId: Map<ThreadId, ThreadPr | null>
-  confirmingArchiveThreadId: ThreadId | null
-
-  // -- Callbacks passed through to ProjectItem --
-  getProjectItemProps: () => {
-    dragHandleProps: SortableProjectHandleProps | null
-    projectItemProps: Omit<Parameters<typeof ProjectItem>[0], 'renderedProject' | 'dragHandleProps'>
-  }
-
-  // -- DnD --
-  projectDnDSensors: ReturnType<typeof import('@dnd-kit/core').useSensors>
-  projectCollisionDetection: CollisionDetection
-  onProjectDragStart: () => void
-  onProjectDragEnd: (event: DragEndEvent) => void
-  onProjectDragCancel: () => void
-
-  // -- Auto-animate --
-  attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void
+  getThreadRowProps: SidebarProjectGroupSharedProps['getThreadRowProps']
+  routeThreadId: SidebarProjectGroupSharedProps['routeThreadId']
+  selectedThreadIds: SidebarProjectGroupSharedProps['selectedThreadIds']
+  threadJumpLabelById: SidebarProjectGroupSharedProps['threadJumpLabelById']
+  terminalStateByThreadId: SidebarProjectGroupSharedProps['terminalStateByThreadId']
+  prByThreadId: SidebarProjectGroupSharedProps['prByThreadId']
+  confirmingArchiveThreadId: SidebarProjectGroupSharedProps['confirmingArchiveThreadId']
+  getProjectItemProps: SidebarProjectGroupSharedProps['getProjectItemProps']
+  projectDnDSensors: SidebarProjectGroupSharedProps['projectDnDSensors']
+  projectCollisionDetection: SidebarProjectGroupSharedProps['projectCollisionDetection']
+  onProjectDragStart: SidebarProjectGroupSharedProps['onProjectDragStart']
+  onProjectDragEnd: SidebarProjectGroupSharedProps['onProjectDragEnd']
+  onProjectDragCancel: SidebarProjectGroupSharedProps['onProjectDragCancel']
+  attachProjectListAutoAnimateRef: SidebarProjectGroupSharedProps['attachProjectListAutoAnimateRef']
 }
 
-// ---------------------------------------------------------------------------
-// SidebarProjectGroup — the project section content
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// SidebarArm64Warning — ARM/Intel build alert
-// ---------------------------------------------------------------------------
+type SidebarMainViewProps = Omit<SidebarBodyProps, 'isOnSettings'>
 
 function SidebarArm64Warning({
   description,
@@ -170,12 +126,6 @@ function SidebarArm64Warning({
     </SidebarGroup>
   )
 }
-
-// ---------------------------------------------------------------------------
-// SidebarMainView — non-settings main project/thread content
-// ---------------------------------------------------------------------------
-
-type SidebarMainViewProps = Omit<SidebarBodyProps, 'isOnSettings'>
 
 function SidebarTopNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate()
@@ -247,6 +197,30 @@ function buildAddFormProps(p: SidebarMainViewProps): AddProjectFormProps {
   }
 }
 
+function SidebarMainContent(
+  props: SidebarProjectGroupProps & {
+    showArm64IntelBuildWarning: boolean
+    arm64IntelBuildWarningDescription: string | null
+    desktopUpdateButtonAction: 'download' | 'install' | 'none'
+    desktopUpdateButtonDisabled: boolean
+    onDesktopUpdateButtonClick: () => void
+  }
+) {
+  return (
+    <>
+      {props.showArm64IntelBuildWarning && props.arm64IntelBuildWarningDescription ? (
+        <SidebarArm64Warning
+          description={props.arm64IntelBuildWarningDescription}
+          buttonAction={props.desktopUpdateButtonAction}
+          buttonDisabled={props.desktopUpdateButtonDisabled}
+          onButtonClick={props.onDesktopUpdateButtonClick}
+        />
+      ) : null}
+      <SidebarProjectGroup {...props} />
+    </>
+  )
+}
+
 function SidebarProjectSection(props: SidebarMainViewProps) {
   return (
     <SidebarMainContent
@@ -303,49 +277,6 @@ function SidebarMainView(props: SidebarMainViewProps) {
     </>
   )
 }
-
-function SidebarMobileThreadsView(props: SidebarMainViewProps) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-4 py-3">
-        <div className="text-sm font-medium text-sidebar-foreground">Threads</div>
-      </div>
-      <ScrollArea hideScrollbars scrollFade className="min-h-0 flex-1">
-        <div className="px-2 py-2">
-          <SidebarProjectSection {...props} />
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
-
-function SidebarMainContent(
-  props: SidebarProjectGroupProps & {
-    showArm64IntelBuildWarning: boolean
-    arm64IntelBuildWarningDescription: string | null
-    desktopUpdateButtonAction: 'download' | 'install' | 'none'
-    desktopUpdateButtonDisabled: boolean
-    onDesktopUpdateButtonClick: () => void
-  }
-) {
-  return (
-    <>
-      {props.showArm64IntelBuildWarning && props.arm64IntelBuildWarningDescription ? (
-        <SidebarArm64Warning
-          description={props.arm64IntelBuildWarningDescription}
-          buttonAction={props.desktopUpdateButtonAction}
-          buttonDisabled={props.desktopUpdateButtonDisabled}
-          onButtonClick={props.onDesktopUpdateButtonClick}
-        />
-      ) : null}
-      <SidebarProjectGroup {...props} />
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// SidebarBody component
-// ---------------------------------------------------------------------------
 
 export function SidebarBody({ isOnSettings, pathname, ...rest }: SidebarBodyProps) {
   const { isMobile } = useSidebar()
