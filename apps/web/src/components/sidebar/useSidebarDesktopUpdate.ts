@@ -7,6 +7,7 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
 import { toastManager } from '../ui/toastState'
 import {
+  beginDesktopUpdateCheckState,
   canAttemptDesktopUpdateCheck,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
@@ -38,6 +39,7 @@ function runDesktopUpdateCheck(input: {
   bridge: NonNullable<typeof window.desktopBridge>
   desktopUpdateState: DesktopUpdateState | null
   setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
+  setManualCheckInFlight: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   if (
     !canAttemptDesktopUpdateCheck(
@@ -47,14 +49,25 @@ function runDesktopUpdateCheck(input: {
   ) {
     return
   }
+  input.setManualCheckInFlight(true)
+  input.setDesktopUpdateState(current => beginDesktopUpdateCheckState(current))
   void input.bridge
     .checkForUpdate()
     .then(result => {
       input.setDesktopUpdateState(result.state)
-      if (result.checked) return
+      if (result.checked) {
+        if (result.state.status === 'up-to-date') {
+          toastManager.add({
+            type: 'success',
+            title: "You're up to date",
+            description: `${result.state.currentVersion} is currently the newest version available.`,
+          })
+        }
+        return
+      }
       toastManager.add({
-        type: 'error',
-        title: 'Could not check for updates',
+        type: 'warning',
+        title: 'Updates unavailable',
         description: result.state.message ?? 'Automatic updates are not available in this build.',
       })
     })
@@ -65,6 +78,9 @@ function runDesktopUpdateCheck(input: {
         description: error instanceof Error ? error.message : 'An unexpected error occurred.',
       })
     )
+    .finally(() => {
+      input.setManualCheckInFlight(false)
+    })
 }
 
 function execDesktopUpdateClick(opts: {
@@ -72,12 +88,14 @@ function execDesktopUpdateClick(opts: {
   desktopUpdateButtonDisabled: boolean
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
+  setManualCheckInFlight: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   const {
     desktopUpdateState,
     desktopUpdateButtonDisabled,
     desktopUpdateButtonAction,
     setDesktopUpdateState,
+    setManualCheckInFlight,
   } = opts
   const bridge = window.desktopBridge
   if (!bridge) return
@@ -132,7 +150,12 @@ function execDesktopUpdateClick(opts: {
     return
   }
 
-  runDesktopUpdateCheck({ bridge, desktopUpdateState, setDesktopUpdateState })
+  runDesktopUpdateCheck({
+    bridge,
+    desktopUpdateState,
+    setDesktopUpdateState,
+    setManualCheckInFlight,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -141,6 +164,7 @@ function execDesktopUpdateClick(opts: {
 
 export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
   const [desktopUpdateState, setDesktopUpdateState] = useState<DesktopUpdateState | null>(null)
+  const [manualCheckInFlight, setManualCheckInFlight] = useState(false)
 
   useEffect(() => {
     if (!isElectron) return
@@ -171,28 +195,34 @@ export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
     }
   }, [])
 
-  const desktopUpdateButtonDisabled = isDesktopUpdateButtonDisabled(desktopUpdateState)
-  const desktopUpdateButtonAction = desktopUpdateState
-    ? resolveDesktopUpdateButtonAction(desktopUpdateState)
+  const visibleDesktopUpdateState =
+    manualCheckInFlight && desktopUpdateState
+      ? beginDesktopUpdateCheckState(desktopUpdateState)
+      : desktopUpdateState
+  const desktopUpdateButtonDisabled =
+    manualCheckInFlight || isDesktopUpdateButtonDisabled(visibleDesktopUpdateState)
+  const desktopUpdateButtonAction = visibleDesktopUpdateState
+    ? resolveDesktopUpdateButtonAction(visibleDesktopUpdateState)
     : 'none'
   const showArm64IntelBuildWarning =
-    isElectron && shouldShowArm64IntelBuildWarning(desktopUpdateState)
+    isElectron && shouldShowArm64IntelBuildWarning(visibleDesktopUpdateState)
   const arm64IntelBuildWarningDescription =
-    desktopUpdateState && showArm64IntelBuildWarning
-      ? getArm64IntelBuildWarningDescription(desktopUpdateState)
+    visibleDesktopUpdateState && showArm64IntelBuildWarning
+      ? getArm64IntelBuildWarningDescription(visibleDesktopUpdateState)
       : null
 
   function handleDesktopUpdateButtonClick() {
     execDesktopUpdateClick({
-      desktopUpdateState,
+      desktopUpdateState: visibleDesktopUpdateState,
       desktopUpdateButtonDisabled,
       desktopUpdateButtonAction,
       setDesktopUpdateState,
+      setManualCheckInFlight,
     })
   }
 
   return {
-    desktopUpdateState,
+    desktopUpdateState: visibleDesktopUpdateState,
     desktopUpdateButtonDisabled,
     desktopUpdateButtonAction,
     showArm64IntelBuildWarning,

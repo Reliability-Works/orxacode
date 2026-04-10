@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ProjectId } from '@orxa-code/contracts'
 import type { SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
-import { readNativeApi, refreshNativeApi } from '../../nativeApi'
+import { readNativeApi } from '../../nativeApi'
 import { sortThreadsForSidebar } from '../Sidebar.logic'
 import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
@@ -162,10 +162,6 @@ function buildPickFolderHandler(params: {
         state.addProjectInputRef.current?.focus()
       }
       return
-    }
-
-    if (shouldBrowseForProjectImmediately) {
-      await refreshNativeApi().catch(() => undefined)
     }
 
     await addProjectFromPath(picked)

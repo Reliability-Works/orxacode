@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DesktopUpdateActionResult, DesktopUpdateState } from '@orxa-code/contracts'
 
 import {
+  beginDesktopUpdateCheckState,
   canAttemptDesktopUpdateCheck,
   canCheckForUpdate,
   getArm64IntelBuildWarningDescription,
@@ -31,7 +32,7 @@ const baseState: DesktopUpdateState = {
   canRetry: false,
 }
 
-describe('desktop update button state', () => {
+describe('desktop update actions', () => {
   it('shows a download action when an update is available', () => {
     const state: DesktopUpdateState = {
       ...baseState,
@@ -103,6 +104,24 @@ describe('desktop update button state', () => {
     expect(shouldShowDesktopUpdateButton(state)).toBe(true)
     expect(isDesktopUpdateButtonDisabled(state)).toBe(true)
     expect(getDesktopUpdateButtonTooltip(state)).toContain('42%')
+  })
+})
+
+describe('manual desktop update checks', () => {
+  it('allows manual update checks even when the current state is disabled', () => {
+    const state: DesktopUpdateState = {
+      ...baseState,
+      enabled: false,
+      status: 'disabled',
+    }
+    expect(canAttemptDesktopUpdateCheck(state, true)).toBe(true)
+  })
+
+  it('marks existing state as checking when a manual update check begins', () => {
+    const nextState = beginDesktopUpdateCheckState(baseState)
+    expect(nextState?.status).toBe('checking')
+    expect(nextState?.message).toBeNull()
+    expect(nextState?.errorContext).toBeNull()
   })
 })
 
@@ -291,11 +310,13 @@ describe('canAttemptDesktopUpdateCheck', () => {
     expect(canAttemptDesktopUpdateCheck(null, false)).toBe(false)
   })
 
-  it('delegates to canCheckForUpdate once state exists', () => {
+  it('keeps disabled state manually checkable while still blocking busy states', () => {
     expect(canAttemptDesktopUpdateCheck({ ...baseState, status: 'idle' }, true)).toBe(true)
     expect(
       canAttemptDesktopUpdateCheck({ ...baseState, enabled: false, status: 'disabled' }, true)
-    ).toBe(false)
+    ).toBe(true)
+    expect(canAttemptDesktopUpdateCheck({ ...baseState, status: 'checking' }, true)).toBe(false)
+    expect(canAttemptDesktopUpdateCheck({ ...baseState, status: 'downloading' }, true)).toBe(false)
   })
 })
 
@@ -303,5 +324,14 @@ describe('getDesktopUpdateButtonTooltip', () => {
   it("returns 'Up to date' for non-actionable states", () => {
     expect(getDesktopUpdateButtonTooltip({ ...baseState, status: 'idle' })).toBe('Up to date')
     expect(getDesktopUpdateButtonTooltip({ ...baseState, status: 'up-to-date' })).toBe('Up to date')
+  })
+
+  it('returns specific copy for checking and disabled states', () => {
+    expect(getDesktopUpdateButtonTooltip({ ...baseState, status: 'checking' })).toBe(
+      'Checking for updates…'
+    )
+    expect(
+      getDesktopUpdateButtonTooltip({ ...baseState, enabled: false, status: 'disabled' })
+    ).toBe('Automatic updates are not available in this build.')
   })
 })

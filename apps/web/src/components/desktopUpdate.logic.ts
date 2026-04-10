@@ -38,6 +38,21 @@ export function isDesktopUpdateButtonDisabled(state: DesktopUpdateState | null):
   return state?.status === 'downloading'
 }
 
+export function beginDesktopUpdateCheckState(
+  state: DesktopUpdateState | null
+): DesktopUpdateState | null {
+  if (!state) {
+    return null
+  }
+  return {
+    ...state,
+    status: 'checking',
+    message: null,
+    errorContext: null,
+    canRetry: false,
+  }
+}
+
 export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState): string {
   if (!shouldShowArm64IntelBuildWarning(state)) {
     return 'This install is using the correct architecture.'
@@ -54,6 +69,9 @@ export function getArm64IntelBuildWarningDescription(state: DesktopUpdateState):
 }
 
 export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string {
+  if (state.status === 'checking') {
+    return 'Checking for updates…'
+  }
   if (state.status === 'available') {
     return `Update ${state.availableVersion ?? 'available'} ready to download`
   }
@@ -73,6 +91,9 @@ export function getDesktopUpdateButtonTooltip(state: DesktopUpdateState): string
       return `Install failed for ${state.downloadedVersion}. Click to retry.`
     }
     return state.message ?? 'Update failed'
+  }
+  if (state.status === 'disabled') {
+    return state.message ?? 'Automatic updates are not available in this build.'
   }
   return 'Up to date'
 }
@@ -115,5 +136,6 @@ export function canAttemptDesktopUpdateCheck(
   bridgeAvailable: boolean
 ): boolean {
   if (!bridgeAvailable) return false
-  return state === null ? true : canCheckForUpdate(state)
+  if (state === null) return true
+  return state.status !== 'checking' && state.status !== 'downloading'
 }
