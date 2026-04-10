@@ -50,6 +50,7 @@ const STATE_DIR = Path.join(BASE_DIR, 'userdata')
 const DESKTOP_SCHEME = 'orxa'
 const ROOT_DIR = Path.resolve(__dirname, '../../..')
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
+const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
 const APP_DISPLAY_NAME = 'Orxa Code (Beta)'
 const APP_USER_MODEL_ID = 'com.orxa.code'
 const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? 'orxa-code-dev.desktop' : 'orxa-code.desktop'
@@ -470,7 +471,17 @@ const createWindowHost: CreateWindowHost = {
     isDevelopment,
   },
   resolveIconPath: ext => resolveIconPath(ext),
-  notifyDidFinishLoad: () => updaterController.setState({}),
+  notifyDidFinishLoad: () => {
+    updaterController.setState({})
+    if (isSmokeTest) {
+      setTimeout(() => {
+        if (isQuitting) return
+        isQuitting = true
+        writeDesktopLogHeader('smoke test load complete; quitting app')
+        app.quit()
+      }, 250).unref()
+    }
+  },
   setMainWindow: window => {
     mainWindow = window
   },
@@ -525,7 +536,9 @@ app
     configureAppIdentity()
     configureApplicationMenu()
     registerDesktopProtocol()
-    updaterController.configure()
+    if (!isSmokeTest) {
+      updaterController.configure()
+    }
     void bootstrap().catch(error => {
       handleFatalStartupError('bootstrap', error)
     })
