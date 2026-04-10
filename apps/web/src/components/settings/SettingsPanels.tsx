@@ -31,6 +31,8 @@ import type { ProviderCardData } from './ProviderCard'
 import type { ProviderKind } from '@orxa-code/contracts'
 import { useSettings } from '../../hooks/useSettings'
 import { useServerProviders } from '../../rpc/serverState'
+import { CursorIcon, Gemini, type Icon } from '../Icons'
+import { cn } from '../../lib/utils'
 
 function buildProviderCards(
   settings: ReturnType<typeof useSettings>,
@@ -148,6 +150,55 @@ function ProvidersSectionBlock({ panel, providerCards, lastCheckedAt }: Provider
   )
 }
 
+const COMING_SOON_PROVIDER_CARDS: ReadonlyArray<{
+  label: string
+  description: string
+  icon: Icon
+}> = [
+  {
+    label: 'Cursor',
+    description: 'Cursor Agent CLI integration.',
+    icon: CursorIcon,
+  },
+  {
+    label: 'Gemini',
+    description: 'Google Gemini provider integration.',
+    icon: Gemini,
+  },
+]
+
+function ComingSoonProvidersBlock() {
+  return (
+    <SettingsSection title="Coming Soon">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {COMING_SOON_PROVIDER_CARDS.map(entry => (
+          <div
+            key={entry.label}
+            aria-disabled
+            className={cn(
+              'rounded-xl border border-border/70 bg-card px-4 py-4 opacity-70',
+              'cursor-not-allowed'
+            )}
+          >
+            <div className="flex items-start gap-3">
+              <entry.icon aria-hidden className="mt-0.5 size-8 shrink-0 text-foreground/85" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-medium text-foreground">{entry.label}</h3>
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Coming soon
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{entry.description}</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </SettingsSection>
+  )
+}
+
 interface AdvancedSettingsProps {
   keybindingsConfigPath: string | null
   openKeybindingsError: string | null
@@ -253,6 +304,7 @@ export function ProvidersSettingsPanel() {
         providerCards={providerCards}
         lastCheckedAt={lastCheckedAt}
       />
+      <ComingSoonProvidersBlock />
     </SettingsPageContainer>
   )
 }

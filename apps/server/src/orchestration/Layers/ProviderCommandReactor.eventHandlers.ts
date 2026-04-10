@@ -280,6 +280,27 @@ function createProcessTurnInterruptRequested(deps: ProviderCommandReactorEventHa
       ...(controlRoute.providerThreadId ? { providerThreadId: controlRoute.providerThreadId } : {}),
     })
     if (controlRoute.isSubagentThread) {
+      const rootThread = controlRoute.parentThread ?? controlRoute.thread
+      if (controlRoute.thread.parentLink?.provider === 'claudeAgent') {
+        yield* deps.setThreadSession({
+          threadId: rootThread.id,
+          session: buildSessionStateSnapshot({
+            thread: rootThread,
+            status: 'interrupted',
+            createdAt: event.payload.createdAt,
+          }),
+          createdAt: event.payload.createdAt,
+        })
+        const readModel = yield* deps.orchestrationEngine.getReadModel()
+        yield* propagateSubagentSessionState({
+          threads: readModel.threads,
+          parentThreadId: rootThread.id,
+          status: 'interrupted',
+          createdAt: event.payload.createdAt,
+          setThreadSession: deps.setThreadSession,
+        })
+        return
+      }
       yield* deps.setThreadSession({
         threadId: controlRoute.thread.id,
         session: buildSessionStateSnapshot({

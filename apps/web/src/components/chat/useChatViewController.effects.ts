@@ -151,7 +151,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setIsRevertingCheckpoint,
     dragDepthRef,
     setIsDragOverComposer,
-    setQueuedFollowUpPending,
+    setQueuedComposerMessages,
     planSidebarOpenOnNextThreadRef,
     setPlanSidebarOpen,
   } = ls
@@ -162,7 +162,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setIsRevertingCheckpoint(false)
     dragDepthRef.current = 0
     setIsDragOverComposer(false)
-    setQueuedFollowUpPending(false)
+    setQueuedComposerMessages([])
     if (planSidebarOpenOnNextThreadRef.current) {
       planSidebarOpenOnNextThreadRef.current = false
       setPlanSidebarOpen(true)
@@ -177,7 +177,7 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
     setExpandedWorkGroups,
     setIsDragOverComposer,
     setIsRevertingCheckpoint,
-    setQueuedFollowUpPending,
+    setQueuedComposerMessages,
     setPlanSidebarOpen,
     setPullRequestDialogState,
   ])
@@ -200,12 +200,7 @@ function useMenuHighlightEffect(
       return
     }
     setComposerHighlightedItemId(nextHighlightedItemId)
-  }, [
-    composerHighlightedItemId,
-    composerMenuItems,
-    composerMenuOpen,
-    setComposerHighlightedItemId,
-  ])
+  }, [composerHighlightedItemId, composerMenuItems, composerMenuOpen, setComposerHighlightedItemId])
 }
 
 export function resolveComposerHighlightedItemId(

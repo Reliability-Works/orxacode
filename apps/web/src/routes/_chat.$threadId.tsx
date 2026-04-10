@@ -11,16 +11,14 @@ import { useStore } from '../store'
 import { type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
 import { ChatThreadInlineLayout } from './chatThreadLayout'
 import { useChatThreadRouteState } from './chatThreadRouteState'
+import { useComposerDraftStore } from '../composerDraftStore'
+import { useUiStateStore } from '../uiStateStore'
 
-function useSplitSearchState(
-  search: DiffRouteSearch,
-  threadId: ThreadId,
-  defaultSecondaryThreadId: ThreadId | null
-) {
+function useSplitSearchState(search: DiffRouteSearch, threadId: ThreadId) {
   const secondaryThreadId =
     search.secondaryThreadId && search.secondaryThreadId !== threadId
       ? search.secondaryThreadId
-      : defaultSecondaryThreadId
+      : null
   return {
     secondaryThreadId,
     splitOpen: search.split === '1' && secondaryThreadId !== null,
@@ -41,9 +39,10 @@ function useThreadRouteActions(params: {
   navigate: ReturnType<typeof useNavigate>
   threadId: ThreadId
   splitOpen: boolean
-  secondaryThreadId: ThreadId | null
+  projectId: import('@orxa-code/contracts').ProjectId | null
+  requestSplitNewSession: (projectId: import('@orxa-code/contracts').ProjectId) => void
 }) {
-  const { navigate, secondaryThreadId, splitOpen, threadId } = params
+  const { navigate, splitOpen, threadId, projectId, requestSplitNewSession } = params
 
   const closeSplit = useCallback(() => {
     void navigate({
@@ -54,19 +53,9 @@ function useThreadRouteActions(params: {
   }, [navigate, threadId])
 
   const openSplit = useCallback(() => {
-    if (!secondaryThreadId) return
-    void navigate({
-      to: '/$threadId',
-      params: { threadId },
-      search: previous => ({
-        ...previous,
-        split: '1',
-        secondaryThreadId,
-        focusedPane: 'secondary',
-        maximizedPane: undefined,
-      }),
-    })
-  }, [navigate, secondaryThreadId, threadId])
+    if (!projectId) return
+    requestSplitNewSession(projectId)
+  }, [projectId, requestSplitNewSession])
   const toggleSplit = useCallback(() => {
     if (splitOpen) {
       closeSplit()
@@ -109,14 +98,24 @@ function ChatThreadRouteView() {
   const bootstrapComplete = useStore(store => store.bootstrapComplete)
   const navigate = useNavigate()
   const threadId = Route.useParams({ select: params => ThreadId.makeUnsafe(params.threadId) })
+  const routeThread = useStore(store => store.threads.find(thread => thread.id === threadId))
+  const draftThread = useComposerDraftStore(store => store.draftThreadsByThreadId[threadId] ?? null)
   const search = Route.useSearch()
-  const { routeThreadExists, defaultSecondaryThreadId } = useChatThreadRouteState(threadId)
-  const splitState = useSplitSearchState(search, threadId, defaultSecondaryThreadId)
+  const requestNewSessionModal = useUiStateStore(store => store.requestNewSessionModal)
+  const { routeThreadExists } = useChatThreadRouteState(threadId)
+  const splitState = useSplitSearchState(search, threadId)
+  const activeProjectId = routeThread?.projectId ?? draftThread?.projectId ?? null
   const actions = useThreadRouteActions({
     navigate,
     threadId,
     splitOpen: splitState.splitOpen,
-    secondaryThreadId: splitState.secondaryThreadId,
+    projectId: activeProjectId,
+    requestSplitNewSession: projectId =>
+      requestNewSessionModal({
+        projectId,
+        mode: 'split-secondary',
+        primaryThreadId: threadId,
+      }),
   })
 
   useEffect(() => {

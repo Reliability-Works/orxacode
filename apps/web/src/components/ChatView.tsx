@@ -13,16 +13,17 @@ import type { ThreadId } from '@orxa-code/contracts'
 
 interface ChatViewProps {
   threadId: ThreadId
+  showHeader?: boolean
 }
 
-export default function ChatView({ threadId }: ChatViewProps) {
+export default function ChatView({ threadId, showHeader = true }: ChatViewProps) {
   const c = useChatViewController(threadId)
   if (!c.td.activeThread) {
     return <ChatViewEmpty />
   }
   return (
     <ChatViewCtx.Provider value={c}>
-      <ChatViewInner />
+      <ChatViewInner showHeader={showHeader} />
     </ChatViewCtx.Provider>
   )
 }

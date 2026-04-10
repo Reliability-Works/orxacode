@@ -22,6 +22,7 @@ function SplitAwareChatThreadShell(props: {
   threadId: ThreadId
   pane: ChatSplitPane
   splitOpen: boolean
+  showHeader: boolean
   focusedPane: ChatSplitPane
   maximizedPane: ChatSplitPane | null
   onToggleSplit: () => void
@@ -35,6 +36,7 @@ function SplitAwareChatThreadShell(props: {
     onToggleMaximize,
     onToggleSplit,
     pane,
+    showHeader,
     splitOpen,
     threadId,
   } = props
@@ -54,7 +56,7 @@ function SplitAwareChatThreadShell(props: {
   return (
     <ChatSplitPaneContext.Provider value={controls}>
       <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
-        <ChatView key={threadId} threadId={threadId} />
+        <ChatView key={threadId} threadId={threadId} showHeader={showHeader} />
       </SidebarInset>
     </ChatSplitPaneContext.Provider>
   )
@@ -102,6 +104,7 @@ function SplitThreadPane(props: {
   hidden: boolean
   pane: ChatSplitPane
   threadId: ThreadId | null
+  showHeader: boolean
   basis: string
   focusedPane: ChatSplitPane
   maximizedPane: ChatSplitPane | null
@@ -123,6 +126,7 @@ function SplitThreadPane(props: {
       <SplitAwareChatThreadShell
         threadId={props.threadId}
         pane={props.pane}
+        showHeader={props.showHeader}
         splitOpen
         focusedPane={props.focusedPane}
         maximizedPane={props.maximizedPane}
@@ -158,6 +162,7 @@ function ChatSplitInlineLayout(props: {
         threadId={props.primaryThreadId}
         pane="primary"
         splitOpen={false}
+        showHeader
         focusedPane="primary"
         maximizedPane={null}
         onToggleSplit={props.onToggleSplit}
@@ -178,6 +183,7 @@ function ChatSplitInlineLayout(props: {
         hidden={primaryHidden}
         pane="primary"
         threadId={props.primaryThreadId}
+        showHeader
         basis={primaryBasis}
         focusedPane={props.focusedPane}
         maximizedPane={props.maximizedPane}
@@ -198,6 +204,7 @@ function ChatSplitInlineLayout(props: {
         hidden={secondaryHidden}
         pane="secondary"
         threadId={props.secondaryThreadId}
+        showHeader={false}
         basis={secondaryBasis}
         focusedPane={props.focusedPane}
         maximizedPane={props.maximizedPane}

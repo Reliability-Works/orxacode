@@ -17,16 +17,11 @@ import { useSidebar } from '../ui/sidebar.shared'
 import { useChatSplitPaneContext } from './ChatSplitPaneContext'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
-import {
-  Columns2Icon,
-  Maximize2Icon,
-  Minimize2Icon,
-  PanelLeftCloseIcon,
-  PanelRightCloseIcon,
-} from 'lucide-react'
+import { Columns2Icon, Maximize2Icon } from 'lucide-react'
 import { ThreadHandoffMenu } from './ThreadHandoffMenu'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
+import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 
 function formatSubagentLabel(value: string | null | undefined): string | null {
   if (!value) {
@@ -62,48 +57,62 @@ function ChatHeaderSplitActions() {
   if (!split || !split.splitOpen) {
     if (!split) return null
     return (
-      <Button size="xs" variant="outline" onClick={split.toggleSplit} aria-label="Open split view">
-        <Columns2Icon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={split.toggleSplit}
+              aria-label="Open split view"
+            />
+          }
+        >
+          <Columns2Icon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">Open split view</TooltipPopup>
+      </Tooltip>
     )
   }
 
-  const closeIcon = split.pane === 'primary' ? PanelRightCloseIcon : PanelLeftCloseIcon
-  const CloseIcon = closeIcon
+  const isSplitMaximized = split.maximizedPane === split.pane
+
   return (
     <div className="flex items-center gap-1.5">
-      <Button
-        size="xs"
-        variant={split.focusedPane === split.pane ? 'secondary' : 'outline'}
-        onClick={split.focusPane}
-        aria-label={`Focus ${split.pane} pane`}
-      >
-        <Columns2Icon className="size-3.5" />
-      </Button>
-      <Button
-        size="xs"
-        variant="outline"
-        onClick={split.toggleMaximize}
-        aria-label={
-          split.maximizedPane === split.pane
-            ? `Restore ${split.pane} pane`
-            : `Maximize ${split.pane} pane`
-        }
-      >
-        {split.maximizedPane === split.pane ? (
-          <Minimize2Icon className="size-3.5" />
-        ) : (
-          <Maximize2Icon className="size-3.5" />
-        )}
-      </Button>
-      <Button
-        size="xs"
-        variant="outline"
-        onClick={split.toggleSplit}
-        aria-label={split.splitOpen ? 'Close split view' : 'Open split view'}
-      >
-        <CloseIcon className="size-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="xs"
+              variant={isSplitMaximized ? 'secondary' : 'outline'}
+              onClick={isSplitMaximized ? split.toggleMaximize : split.toggleSplit}
+              aria-label={isSplitMaximized ? 'Restore split view' : 'Close split view'}
+            />
+          }
+        >
+          <Columns2Icon className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">
+          {isSplitMaximized ? 'Restore split view' : 'Close split view'}
+        </TooltipPopup>
+      </Tooltip>
+      {!isSplitMaximized ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={split.toggleMaximize}
+                aria-label={`Maximize ${split.pane} pane`}
+              />
+            }
+          >
+            <Maximize2Icon className="size-3.5" />
+          </TooltipTrigger>
+          <TooltipPopup side="bottom">{`Maximize ${split.pane} pane`}</TooltipPopup>
+        </Tooltip>
+      ) : null}
     </div>
   )
 }

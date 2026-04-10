@@ -24,6 +24,9 @@ import {
   buildRemoveComposerImage,
 } from './useChatViewBehavior3'
 import type { ParsedStandaloneComposerSlashCommand } from '../../composer-logic'
+import { executeSend } from './useChatSendAction.execute'
+import { revokeQueuedComposerMessage, type QueuedComposerMessage } from './queuedComposerMessages'
+import { readNativeApi } from '~/nativeApi'
 
 type S = ReturnType<typeof useChatViewStoreSelectors>
 type L = ReturnType<typeof useChatViewLocalState>
@@ -127,7 +130,8 @@ function useSendActionWiring(
     isSendBusy: ld.isSendBusy,
     isTurnRunning: td.phase === 'running' || !ad.latestTurnSettled,
     isConnecting: false,
-    queueFollowUp: () => ls.setQueuedFollowUpPending(true),
+    queuedMessageCount: ls.queuedComposerMessages.length,
+    queueFollowUp: message => ls.setQueuedComposerMessages(existing => [...existing, message]),
     showPlanFollowUpPrompt: p.showPlanFollowUpPrompt,
     activeProposedPlan: p.activeProposedPlan,
     activePendingProgress: ad.activePendingProgress,
@@ -159,10 +163,73 @@ function useSendActionWiring(
   })
 }
 
+function useQueuedMessageSender(
+  args: PlanAndSendActionsInput,
+  sendInFlightRef: React.MutableRefObject<boolean>
+) {
+  const { store, ls, td, ld, envMode } = args
+  return useCallback(
+    async (message: QueuedComposerMessage) => {
+      const api = readNativeApi()
+      if (!api) {
+        revokeQueuedComposerMessage(message)
+        return
+      }
+      if (!td.activeThread || !td.activeProject) {
+        revokeQueuedComposerMessage(message)
+        return
+      }
+      await executeSend({
+        api,
+        activeThread: td.activeThread,
+        activeProject: td.activeProject,
+        isServerThread: td.isServerThread,
+        isLocalDraftThread: td.isLocalDraftThread,
+        envMode,
+        composerImages: message.images,
+        composerTerminalContexts: message.terminalContexts,
+        promptForSend: message.prompt,
+        trimmed: message.trimmed,
+        selectedProvider: message.selectedProvider,
+        selectedModel: message.selectedModel,
+        selectedProviderModels: td.selectedProviderModels,
+        selectedPromptEffort: message.selectedPromptEffort,
+        selectedModelSelection: message.selectedModelSelection,
+        runtimeMode: message.runtimeMode,
+        interactionMode: message.interactionMode,
+        expiredTerminalContextCount: 0,
+        sendInFlightRef,
+        shouldAutoScrollRef: args.scroll.refs.shouldAutoScrollRef,
+        composerImagesRef: ls.composerImagesRef,
+        composerTerminalContextsRef: ls.composerTerminalContextsRef,
+        promptRef: ls.promptRef,
+        beginLocalDispatch: ld.beginLocalDispatch,
+        resetLocalDispatch: ld.resetLocalDispatch,
+        setStoreThreadError: store.setStoreThreadError,
+        setStoreThreadBranch: store.setStoreThreadBranch,
+        setThreadError: args.setThreadError,
+        setOptimisticUserMessages: ls.setOptimisticUserMessages,
+        setComposerCursor: ls.setComposerCursor,
+        setComposerTrigger: ls.setComposerTrigger,
+        setComposerHighlightedItemId: ls.setComposerHighlightedItemId,
+        forceStickToBottom: args.scroll.forceStickToBottom,
+        clearComposerDraftContent: store.clearComposerDraftContent,
+        addComposerImagesToDraft: args.composerDraftCbs.addComposerImagesToDraft,
+        addComposerTerminalContextsToDraft:
+          args.composerDraftCbs.addComposerTerminalContextsToDraft,
+        setPrompt: args.setPrompt,
+        persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
+        runProjectScript: args.runProjectScript,
+        createWorktreeMutation: store.createWorktreeMutation,
+      })
+    },
+    [args, envMode, ld, ls, sendInFlightRef, store, td]
+  )
+}
+
 export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
   const sendInFlightRef = useChatSendInFlight()
-  const queuedFollowUpPending = args.ls.queuedFollowUpPending
-  const setQueuedFollowUpPending = args.ls.setQueuedFollowUpPending
+  const queuedComposerMessage = args.ls.queuedComposerMessages[0] ?? null
   const planActions = usePlanActions({
     store: args.store,
     ls: args.ls,
@@ -175,22 +242,23 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
     persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
   })
   const onSend = useSendActionWiring(args, sendInFlightRef, planActions.onSubmitPlanFollowUp)
+  const sendQueuedMessage = useQueuedMessageSender(args, sendInFlightRef)
   useEffect(() => {
-    if (!queuedFollowUpPending) {
+    if (!queuedComposerMessage) {
       return
     }
     if (args.ld.isSendBusy || args.td.phase === 'running' || !args.ad.latestTurnSettled) {
       return
     }
-    setQueuedFollowUpPending(false)
-    void onSend()
+    args.ls.setQueuedComposerMessages(messages => messages.slice(1))
+    void sendQueuedMessage(queuedComposerMessage)
   }, [
     args.ad.latestTurnSettled,
     args.ld.isSendBusy,
+    args.ls,
     args.td.phase,
-    onSend,
-    queuedFollowUpPending,
-    setQueuedFollowUpPending,
+    queuedComposerMessage,
+    sendQueuedMessage,
   ])
   return { sendInFlightRef, ...planActions, onSend }
 }

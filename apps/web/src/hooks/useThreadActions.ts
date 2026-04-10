@@ -5,7 +5,6 @@ import { useCallback } from 'react'
 
 import { getFallbackThreadIdAfterDelete } from '../components/Sidebar.logic'
 import { useComposerDraftStore } from '../composerDraftStore'
-import { useHandleNewThread } from './useHandleNewThread'
 import { gitRemoveWorktreeMutationOptions } from '../lib/gitReactQuery'
 import { newCommandId } from '../lib/utils'
 import { readNativeApi } from '../nativeApi'
@@ -14,6 +13,8 @@ import { useTerminalStateStore } from '../terminalStateStore'
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from '../worktreeCleanup'
 import { toastManager } from '../components/ui/toastState'
 import { useSettings } from './useSettings'
+import { useUiStateStore } from '../uiStateStore'
+import { getFallbackThreadIdAfterArchive } from './useThreadActions.logic'
 
 type NativeApi = NonNullable<ReturnType<typeof readNativeApi>>
 type ThreadStoreState = ReturnType<typeof useStore.getState>
@@ -169,11 +170,13 @@ async function removeOrphanedWorktreeIfNeeded(
 
 async function archiveThreadAction(
   {
-    handleNewThread,
+    navigate,
     routeThreadId,
+    sortOrder,
   }: {
-    handleNewThread: ReturnType<typeof useHandleNewThread>['handleNewThread']
+    navigate: ReturnType<typeof useNavigate>
     routeThreadId: ThreadId | null
+    sortOrder: ReturnType<typeof useSettings>['sidebarThreadSortOrder']
   },
   threadId: ThreadId
 ) {
@@ -188,7 +191,24 @@ async function archiveThreadAction(
     threadId,
   })
   if (routeThreadId === threadId) {
-    await handleNewThread(thread.projectId)
+    const fallbackThreadId = getFallbackThreadIdAfterArchive({
+      threads: useStore.getState().threads,
+      archivedThreadId: threadId,
+      sortOrder,
+    })
+    if (fallbackThreadId) {
+      await navigate({
+        to: '/$threadId',
+        params: { threadId: fallbackThreadId },
+        replace: true,
+      })
+      return
+    }
+    useUiStateStore.getState().requestNewSessionModal({
+      projectId: thread.projectId,
+      mode: 'default',
+    })
+    await navigate({ to: '/', replace: true })
   }
 }
 
@@ -284,13 +304,20 @@ export function useThreadActions() {
     select: params => (params.threadId ? ThreadId.makeUnsafe(params.threadId) : null),
   })
   const navigate = useNavigate()
-  const { handleNewThread } = useHandleNewThread()
   const queryClient = useQueryClient()
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }))
 
   const archiveThread = useCallback(
-    async (threadId: ThreadId) => archiveThreadAction({ handleNewThread, routeThreadId }, threadId),
-    [handleNewThread, routeThreadId]
+    async (threadId: ThreadId) =>
+      archiveThreadAction(
+        {
+          navigate,
+          routeThreadId,
+          sortOrder: appSettings.sidebarThreadSortOrder,
+        },
+        threadId
+      ),
+    [appSettings.sidebarThreadSortOrder, navigate, routeThreadId]
   )
   const unarchiveThread = useCallback(
     async (threadId: ThreadId) => unarchiveThreadAction(threadId),

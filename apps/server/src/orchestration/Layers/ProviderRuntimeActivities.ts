@@ -100,11 +100,16 @@ function formatAgentLabel(value: string | null): string | null {
 function extractSubagentLabel(payload: unknown): string | null {
   const data = asRecord(payload)
   const item = asRecord(data?.item) ?? data
+  const input = asRecord(item?.input)
   return formatAgentLabel(
     asTrimmedString(item?.subagent_type) ??
       asTrimmedString(item?.subagentType) ??
       asTrimmedString(item?.agent_label) ??
-      asTrimmedString(item?.agentLabel)
+      asTrimmedString(item?.agentLabel) ??
+      asTrimmedString(input?.subagent_type) ??
+      asTrimmedString(input?.subagentType) ??
+      asTrimmedString(input?.agent_label) ??
+      asTrimmedString(input?.agentLabel)
   )
 }
 

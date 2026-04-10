@@ -186,12 +186,12 @@ function ChatViewTerminalDrawerBlock() {
   )
 }
 
-export function ChatViewInner() {
+export function ChatViewInner({ showHeader = true }: { showHeader?: boolean }) {
   const c = useChatViewCtx()
   if (!c.td.activeThread) return null
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-      <ChatViewHeaderPanel />
+      {showHeader ? <ChatViewHeaderPanel /> : null}
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatViewMessagesPane />

@@ -6,7 +6,7 @@
  */
 
 import * as Schema from 'effect/Schema'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { GitDiffScopeKind, ThreadId } from '@orxa-code/contracts'
 import type { ExpandedImagePreview } from './ExpandedImagePreview'
 import type { PullRequestDialogState } from '../ChatView.logic'
@@ -21,6 +21,7 @@ import {
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
 } from '../ChatView.logic'
+import { revokeQueuedComposerMessage, type QueuedComposerMessage } from './queuedComposerMessages'
 import { useChatViewLocalRefs, useChatViewPendingInputState } from './useChatViewLocalState.refs'
 
 interface PendingPullRequestSetupRequest {
@@ -83,6 +84,26 @@ function useChatViewComposerUiState(prompt: string) {
   }
 }
 
+function useQueuedComposerMessagesState() {
+  const [queuedComposerMessages, setQueuedComposerMessages] = useState<QueuedComposerMessage[]>([])
+  const queuedComposerMessagesRef = useRef<QueuedComposerMessage[]>([])
+
+  useEffect(() => {
+    queuedComposerMessagesRef.current = queuedComposerMessages
+  }, [queuedComposerMessages])
+
+  useEffect(
+    () => () => {
+      for (const message of queuedComposerMessagesRef.current) {
+        revokeQueuedComposerMessage(message)
+      }
+    },
+    []
+  )
+
+  return { queuedComposerMessages, setQueuedComposerMessages }
+}
+
 export function useChatViewLocalState(prompt: string) {
   const refs = useChatViewLocalRefs(prompt)
   const pending = useChatViewPendingInputState()
@@ -103,9 +124,11 @@ export function useChatViewLocalState(prompt: string) {
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
-  const [queuedFollowUpPending, setQueuedFollowUpPending] = useState(false)
-  const [pullRequestDialogState, setPullRequestDialogState] = useState<PullRequestDialogState | null>(null)
-  const [pendingPullRequestSetupRequest, setPendingPullRequestSetupRequest] = useState<PendingPullRequestSetupRequest | null>(null)
+  const { queuedComposerMessages, setQueuedComposerMessages } = useQueuedComposerMessagesState()
+  const [pullRequestDialogState, setPullRequestDialogState] =
+    useState<PullRequestDialogState | null>(null)
+  const [pendingPullRequestSetupRequest, setPendingPullRequestSetupRequest] =
+    useState<PendingPullRequestSetupRequest | null>(null)
   const composerUi = useChatViewComposerUiState(prompt)
 
   return {
@@ -137,8 +160,8 @@ export function useChatViewLocalState(prompt: string) {
     setTerminalFocusRequestId,
     composerHighlightedItemId,
     setComposerHighlightedItemId,
-    queuedFollowUpPending,
-    setQueuedFollowUpPending,
+    queuedComposerMessages,
+    setQueuedComposerMessages,
     pullRequestDialogState,
     setPullRequestDialogState,
     pendingPullRequestSetupRequest,

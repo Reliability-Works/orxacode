@@ -22,6 +22,12 @@ export interface UiThreadState {
 
 export interface UiState extends UiProjectState, UiThreadState {}
 
+export interface PendingNewSessionModalRequest {
+  projectId: ProjectId
+  mode: 'default' | 'split-secondary'
+  primaryThreadId?: ThreadId
+}
+
 export interface SyncProjectInput {
   id: ProjectId
   cwd: string
@@ -286,7 +292,9 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       nextThreadLastVisitedAtById[thread.id] = thread.seedVisitedAt
     }
   }
-  const nextPinnedThreadIds = state.pinnedThreadIds.filter(threadId => retainedThreadIds.has(threadId))
+  const nextPinnedThreadIds = state.pinnedThreadIds.filter(threadId =>
+    retainedThreadIds.has(threadId)
+  )
   if (
     recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
     state.pinnedThreadIds.length === nextPinnedThreadIds.length &&
@@ -349,7 +357,9 @@ export function markThreadUnread(
 
 export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
   const hadVisitedAt = threadId in state.threadLastVisitedAtById
-  const nextPinnedThreadIds = state.pinnedThreadIds.filter(pinnedThreadId => pinnedThreadId !== threadId)
+  const nextPinnedThreadIds = state.pinnedThreadIds.filter(
+    pinnedThreadId => pinnedThreadId !== threadId
+  )
   if (!hadVisitedAt && nextPinnedThreadIds.length === state.pinnedThreadIds.length) {
     return state
   }
@@ -442,6 +452,7 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
+  pendingNewSessionModalRequest: PendingNewSessionModalRequest | null
   syncProjects: (projects: readonly SyncProjectInput[]) => void
   syncThreads: (threads: readonly SyncThreadInput[]) => void
   markThreadVisited: (threadId: ThreadId, visitedAt?: string) => void
@@ -453,11 +464,14 @@ interface UiStateStore extends UiState {
   toggleProject: (projectId: ProjectId) => void
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void
+  requestNewSessionModal: (request: PendingNewSessionModalRequest) => void
+  clearPendingNewSessionModal: () => void
 }
 
 export const useUiStateStore = create<UiStateStore>(set => ({
   ...readPersistedState(),
   pinnedThreadIds: persistedPinnedThreadIds,
+  pendingNewSessionModalRequest: null,
   syncProjects: projects => set(state => syncProjects(state, projects)),
   syncThreads: threads => set(state => syncThreads(state, threads)),
   markThreadVisited: (threadId, visitedAt) =>
@@ -473,6 +487,8 @@ export const useUiStateStore = create<UiStateStore>(set => ({
     set(state => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectId, targetProjectId) =>
     set(state => reorderProjects(state, draggedProjectId, targetProjectId)),
+  requestNewSessionModal: request => set({ pendingNewSessionModalRequest: request }),
+  clearPendingNewSessionModal: () => set({ pendingNewSessionModalRequest: null }),
 }))
 
 useUiStateStore.subscribe(state => debouncedPersistState.maybeExecute(state))

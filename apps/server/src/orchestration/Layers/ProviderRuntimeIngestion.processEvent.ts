@@ -8,6 +8,11 @@ import {
 import { Effect } from 'effect'
 import { readCodexChildThreadDescriptors } from '../../codexChildThreads.ts'
 import { readOpencodeChildThreadDescriptor } from '../../opencodeChildThreads.ts'
+import { syncClaudeSubagentThreadSessionForEvent } from './ProviderRuntimeIngestion.claudeSubagents.ts'
+import {
+  ensureClaudeChildThreadsForEvent,
+  resolveClaudeTargetThread,
+} from './ProviderRuntimeIngestion.claudeRouting.ts'
 import {
   createOpencodeSubagentThread,
   fillOpencodeDescriptorFromParentActivities,
@@ -336,6 +341,11 @@ function resolveTargetThread(
   readModel: OrchestrationReadModel,
   event: ProviderRuntimeEvent
 ): ReadModelThread | undefined {
+  const claudeThread = resolveClaudeTargetThread(readModel, event)
+  if (claudeThread) {
+    return claudeThread
+  }
+
   const providerSessionId = extractOpencodeEventSessionId(event)
   if (providerSessionId) {
     const routedThread = resolveThreadForProviderSessionId(readModel, providerSessionId)
@@ -481,7 +491,9 @@ const runTerminalSteps = (deps: ProcessRuntimeEventDeps, dispatchers: RuntimeEve
 export const createProcessRuntimeEvent = (deps: ProcessRuntimeEventDeps) => {
   const dispatchers = makeRuntimeEventDispatchers(deps)
   const ensureCodexChildThreads = ensureCodexChildThreadsForEvent(deps)
+  const ensureClaudeChildThreads = ensureClaudeChildThreadsForEvent(deps, resolveThreadProjectRoot)
   const ensureOpencodeChildThreads = ensureOpencodeChildThreadsForEvent(deps)
+  const syncClaudeSubagentSession = syncClaudeSubagentThreadSessionForEvent(deps)
   const lifecycleStep = runLifecycleStep(dispatchers)
   const assistantCompletionSteps = runAssistantCompletionSteps(dispatchers)
   const terminalSteps = runTerminalSteps(deps, dispatchers)
@@ -492,11 +504,21 @@ export const createProcessRuntimeEvent = (deps: ProcessRuntimeEventDeps) => {
     if (!initialThread) return
 
     yield* ensureCodexChildThreads(event, initialThread, initialReadModel)
+    yield* ensureClaudeChildThreads(event, initialThread, initialReadModel)
     yield* ensureOpencodeChildThreads(event, initialThread, initialReadModel)
 
     const readModel = yield* deps.orchestrationEngine.getReadModel()
     const thread = resolveTargetThread(readModel, event)
     if (!thread) return
+
+    if (thread.parentLink?.relationKind === 'subagent' && thread.parentLink.parentThreadId) {
+      const parentThread = readModel.threads.find(
+        entry => entry.id === thread.parentLink?.parentThreadId
+      )
+      if (parentThread) {
+        yield* syncClaudeSubagentSession(event, thread, parentThread)
+      }
+    }
 
     const ctx = buildLifecycleContext(event, thread)
 

@@ -7,6 +7,10 @@ import {
 } from '@orxa-code/contracts'
 
 import { isOpencodeStartupTelemetryActivity } from './opencodeStartupTelemetry'
+import {
+  deriveSubagentToolLifecycleCollapseKey,
+  isVisibleSubagentToolStartActivity,
+} from './session-logic.subagentWorklog'
 import type { ChatMessage, ProposedPlan, TurnDiffSummary } from './types'
 
 export interface WorkLogEntry {
@@ -240,9 +244,21 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
   return typeof payload?.detail === 'string' && payload.detail.startsWith('ExitPlanMode:')
 }
 
-function deriveToolLifecycleCollapseKey(entry: DerivedWorkLogEntry): string | undefined {
-  if (entry.activityKind !== 'tool.updated' && entry.activityKind !== 'tool.completed') {
+function deriveToolLifecycleCollapseKey(
+  entry: DerivedWorkLogEntry,
+  payload: Record<string, unknown> | null
+): string | undefined {
+  const subagentKey = deriveSubagentToolLifecycleCollapseKey(entry, payload)
+  const isCollapsibleStarted = subagentKey !== undefined && entry.activityKind === 'tool.started'
+  if (
+    !isCollapsibleStarted &&
+    entry.activityKind !== 'tool.updated' &&
+    entry.activityKind !== 'tool.completed'
+  ) {
     return undefined
+  }
+  if (subagentKey) {
+    return subagentKey
   }
   const normalizedLabel = (entry.toolTitle ?? entry.label)
     .replace(/\s+(?:complete|completed)\s*$/i, '')
@@ -291,7 +307,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (requestKind) {
     entry.requestKind = requestKind
   }
-  const collapseKey = deriveToolLifecycleCollapseKey(entry)
+  const collapseKey = deriveToolLifecycleCollapseKey(entry, payload)
   if (collapseKey) {
     entry.collapseKey = collapseKey
   }
@@ -304,11 +320,19 @@ function collapseDerivedWorkLogEntries(
   const collapsed: DerivedWorkLogEntry[] = []
   for (const entry of entries) {
     const previous = collapsed.at(-1)
+    const previousIsCollapsible =
+      previous?.activityKind === 'tool.updated' ||
+      previous?.activityKind === 'tool.completed' ||
+      (previous?.activityKind === 'tool.started' && previous?.itemType === 'collab_agent_tool_call')
+    const entryIsCollapsible =
+      entry.activityKind === 'tool.updated' ||
+      entry.activityKind === 'tool.completed' ||
+      (entry.activityKind === 'tool.started' && entry.itemType === 'collab_agent_tool_call')
     if (
       previous &&
       previous.activityKind !== 'tool.completed' &&
-      (previous.activityKind === 'tool.updated' || previous.activityKind === 'tool.completed') &&
-      (entry.activityKind === 'tool.updated' || entry.activityKind === 'tool.completed') &&
+      previousIsCollapsible &&
+      entryIsCollapsible &&
       previous.collapseKey !== undefined &&
       previous.collapseKey === entry.collapseKey
     ) {
@@ -421,7 +445,9 @@ export function deriveWorkLogEntries(
   const entries = [...activities]
     .toSorted(compareActivitiesByOrder)
     .filter(activity => (latestTurnId ? activity.turnId === latestTurnId : true))
-    .filter(activity => activity.kind !== 'tool.started')
+    .filter(
+      activity => activity.kind !== 'tool.started' || isVisibleSubagentToolStartActivity(activity)
+    )
     .filter(activity => activity.kind !== 'task.started' && activity.kind !== 'task.completed')
     .filter(activity => activity.kind !== 'context-window.updated')
     .filter(activity => activity.summary !== 'Checkpoint captured')

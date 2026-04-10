@@ -216,6 +216,85 @@ async function runFreshThreadSendDispatchesTurnStartTest(): Promise<void> {
   }
 }
 
+async function runQueuedMessageTrayRestoreTest(): Promise<void> {
+  const mounted = await mountChatView({
+    viewport: DEFAULT_VIEWPORT,
+    snapshot: createSnapshotForTargetUser({
+      targetMessageId: 'msg-user-queued-tray-target' as MessageId,
+      targetText: 'queued tray target',
+      sessionStatus: 'running',
+    }),
+  })
+  try {
+    await waitForComposerEditor()
+    await page.getByTestId('composer-editor').fill('queued follow up from tray')
+    const form = await waitForElement(
+      () => document.querySelector<HTMLFormElement>('[data-chat-composer-form="true"]'),
+      'Unable to find composer form.'
+    )
+    form.requestSubmit()
+    await vi.waitFor(
+      () => {
+        expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt ?? '').toBe('')
+        expect(document.querySelector('[data-testid="composer-queued-messages"]')).not.toBeNull()
+        expect(document.body.textContent).toContain('queued follow up from tray')
+      },
+      { timeout: 8_000, interval: 16 }
+    )
+    page.getByText('Restore').click()
+    await vi.waitFor(
+      () => {
+        expect(document.querySelector('[data-testid="composer-queued-messages"]')).toBeNull()
+        expect(useComposerDraftStore.getState().draftsByThreadId[THREAD_ID]?.prompt).toBe(
+          'queued follow up from tray'
+        )
+      },
+      { timeout: 8_000, interval: 16 }
+    )
+  } finally {
+    await mounted.cleanup()
+  }
+}
+
+async function runQueuedMessageInterruptsRunningTurnTest(): Promise<void> {
+  const mounted = await mountChatView({
+    viewport: DEFAULT_VIEWPORT,
+    snapshot: createSnapshotForTargetUser({
+      targetMessageId: 'msg-user-queued-interrupt-target' as MessageId,
+      targetText: 'queued interrupt target',
+      sessionStatus: 'running',
+    }),
+  })
+  try {
+    await waitForComposerEditor()
+    await page.getByTestId('composer-editor').fill('interrupt and steer this next')
+    const form = await waitForElement(
+      () => document.querySelector<HTMLFormElement>('[data-chat-composer-form="true"]'),
+      'Unable to find composer form.'
+    )
+    form.requestSubmit()
+    await vi.waitFor(
+      () => {
+        expect(
+          wsRequests.find(
+            request =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === 'thread.turn.interrupt' &&
+              request.threadId === THREAD_ID
+          )
+        ).toMatchObject({
+          _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+          type: 'thread.turn.interrupt',
+          threadId: THREAD_ID,
+        })
+      },
+      { timeout: 8_000, interval: 16 }
+    )
+  } finally {
+    await mounted.cleanup()
+  }
+}
+
 describe('ChatView composer behavior', () => {
   suiteHooks()
   it('toggles plan mode with Shift+Tab only while the composer is focused', runPlanModeHotkeyTest)
@@ -230,6 +309,14 @@ describe('ChatView composer behavior', () => {
   it(
     'dispatches a turn start when sending from an idle thread',
     runFreshThreadSendDispatchesTurnStartTest
+  )
+  it(
+    'moves queued messages into a tray above the composer and restores them on demand',
+    runQueuedMessageTrayRestoreTest
+  )
+  it(
+    'interrupts the running turn when the first queued message is added',
+    runQueuedMessageInterruptsRunningTurnTest
   )
 })
 

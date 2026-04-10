@@ -115,7 +115,6 @@ function ComposerFooterActions() {
         showPlanFollowUpPrompt={ad.pendingUserInputs.length === 0 && p.showPlanFollowUpPrompt}
         promptHasText={(store.prompt ?? '').trim().length > 0}
         isSendBusy={c.ld.isSendBusy}
-        hasQueuedFollowUp={c.ls.queuedFollowUpPending}
         isConnecting={false}
         isPreparingWorktree={c.ld.isPreparingWorktree}
         hasSendableContent={store.composerSendState.hasSendableContent}

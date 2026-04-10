@@ -13,8 +13,8 @@
  * - `SidebarBody.tsx`                        — presentational return surface
  */
 
-import { useState } from 'react'
-import type { ProjectId } from '@orxa-code/contracts'
+import { useEffect, useState } from 'react'
+import type { ProjectId, ThreadId } from '@orxa-code/contracts'
 import {
   type SidebarProjectSortOrder,
   type SidebarThreadSortOrder,
@@ -23,6 +23,7 @@ import { useSidebarStoreBindings } from './sidebar/useSidebarStoreBindings'
 import { useSidebarWiring } from './sidebar/useSidebarWiring'
 import { SidebarBody, type SidebarBodyProps } from './SidebarBody'
 import { NewSessionModal } from './session'
+import { useUiStateStore } from '../uiStateStore'
 
 // -- Re-exports for external consumers --
 
@@ -106,6 +107,11 @@ function buildSidebarBodyProps(
 export default function Sidebar() {
   const [modalOpen, setModalOpen] = useState(false)
   const [modalProjectId, setModalProjectId] = useState<ProjectId | null>(null)
+  const [modalPrimaryThreadId, setModalPrimaryThreadId] = useState<ThreadId | null>(null)
+  const pendingNewSessionModalRequest = useUiStateStore(
+    store => store.pendingNewSessionModalRequest
+  )
+  const clearPendingNewSessionModal = useUiStateStore(store => store.clearPendingNewSessionModal)
   const s = useSidebarStoreBindings()
   const sWithModal: typeof s = {
     ...s,
@@ -120,14 +126,51 @@ export default function Sidebar() {
   function handleCloseModal() {
     setModalOpen(false)
     setModalProjectId(null)
+    setModalPrimaryThreadId(null)
   }
+
+  useEffect(() => {
+    if (!pendingNewSessionModalRequest) {
+      return
+    }
+    setModalProjectId(pendingNewSessionModalRequest.projectId)
+    setModalPrimaryThreadId(
+      pendingNewSessionModalRequest.mode === 'split-secondary'
+        ? (pendingNewSessionModalRequest.primaryThreadId ?? null)
+        : null
+    )
+    setModalOpen(true)
+    clearPendingNewSessionModal()
+  }, [clearPendingNewSessionModal, pendingNewSessionModalRequest])
 
   const bodyProps = buildSidebarBodyProps(s, w)
 
   return (
     <>
       {modalOpen ? (
-        <NewSessionModal open onClose={handleCloseModal} projectId={modalProjectId} />
+        <NewSessionModal
+          open
+          onClose={handleCloseModal}
+          projectId={modalProjectId}
+          {...(modalPrimaryThreadId
+            ? {
+                onCreated: async threadId => {
+                  await s.navigate({
+                    to: '/$threadId',
+                    params: { threadId: modalPrimaryThreadId },
+                    search: previous => ({
+                      ...previous,
+                      split: '1',
+                      secondaryThreadId: threadId,
+                      focusedPane: 'secondary',
+                      maximizedPane: undefined,
+                    }),
+                    replace: true,
+                  })
+                },
+              }
+            : {})}
+        />
       ) : null}
       <SidebarBody {...bodyProps} />
     </>

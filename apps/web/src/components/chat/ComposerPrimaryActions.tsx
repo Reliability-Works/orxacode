@@ -19,7 +19,6 @@ interface ComposerPrimaryActionsProps {
   showPlanFollowUpPrompt: boolean
   promptHasText: boolean
   isSendBusy: boolean
-  hasQueuedFollowUp: boolean
   isConnecting: boolean
   isPreparingWorktree: boolean
   hasSendableContent: boolean
@@ -93,17 +92,9 @@ function renderPendingPrimaryActions(
   )
 }
 
-function renderRunningPrimaryAction(input: {
-  onInterrupt: () => void
-  hasQueuedFollowUp: boolean
-}) {
+function renderRunningPrimaryAction(input: { onInterrupt: () => void }) {
   return (
     <div className="flex items-center gap-2">
-      {input.hasQueuedFollowUp ? (
-        <span className="rounded-full border border-border/80 bg-muted px-2 py-1 text-[11px] text-muted-foreground">
-          Queued follow-up
-        </span>
-      ) : null}
       <button
         type="button"
         className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
@@ -246,7 +237,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   showPlanFollowUpPrompt,
   promptHasText,
   isSendBusy,
-  hasQueuedFollowUp,
   isConnecting,
   isPreparingWorktree,
   hasSendableContent,
@@ -259,7 +249,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   }
 
   if (isRunning) {
-    return renderRunningPrimaryAction({ onInterrupt, hasQueuedFollowUp })
+    return renderRunningPrimaryAction({ onInterrupt })
   }
 
   if (showPlanFollowUpPrompt) {

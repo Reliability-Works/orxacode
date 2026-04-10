@@ -15,6 +15,7 @@ import {
   type ProviderInteractionMode,
 } from '@orxa-code/contracts'
 import { type TerminalContextDraft } from '../../lib/terminalContext'
+import { newCommandId } from '~/lib/utils'
 import {
   parseStandaloneComposerSlashCommand,
   type ParsedStandaloneComposerSlashCommand,
@@ -26,6 +27,7 @@ import { readNativeApi } from '~/nativeApi'
 import { toastManager } from '../ui/toastState'
 import { resolvePlanFollowUpSubmission } from '../../proposedPlan'
 import { executeSend } from './useChatSendAction.execute'
+import { createQueuedComposerMessage, type QueuedComposerMessage } from './queuedComposerMessages'
 import type {
   CreateWorktreeMutation,
   PersistThreadSettingsForNextTurn,
@@ -70,7 +72,8 @@ export interface SendActionInput extends SendStateRefsAndCallbacks {
   isSendBusy: boolean
   isTurnRunning: boolean
   isConnecting: boolean
-  queueFollowUp: () => void
+  queuedMessageCount: number
+  queueFollowUp: (message: QueuedComposerMessage) => void
   showPlanFollowUpPrompt: boolean
   activeProposedPlan: { id: string; planMarkdown: string } | null
   activePendingProgress: {
@@ -106,6 +109,17 @@ interface PreSendContext {
 
 function clearComposerAfterShortcut(input: SendActionInput): void {
   if (!input.activeThread) return
+  input.promptRef.current = ''
+  input.clearComposerDraftContent(input.activeThread.id)
+  input.setComposerHighlightedItemId(null)
+  input.setComposerCursor(0)
+  input.setComposerTrigger(null)
+}
+
+function clearComposerAfterQueue(input: SendActionInput): void {
+  if (!input.activeThread) {
+    return
+  }
   input.promptRef.current = ''
   input.clearComposerDraftContent(input.activeThread.id)
   input.setComposerHighlightedItemId(null)
@@ -153,38 +167,63 @@ function handleEmptyContentIfNeeded(ctx: PreSendContext): boolean {
   return true
 }
 
-async function runSendFlow(input: SendActionInput): Promise<void> {
+function queueSendWhileTurnRunning(
+  input: SendActionInput,
+  promptForSend: string,
+  preCtx: PreSendContext
+): Promise<boolean> | boolean {
+  if (!input.isTurnRunning) {
+    return false
+  }
+  input.queueFollowUp(
+    createQueuedComposerMessage({
+      prompt: promptForSend,
+      trimmed: preCtx.trimmed,
+      images: input.composerImages,
+      terminalContexts: preCtx.sendableTerminalContexts,
+      selectedProvider: input.selectedProvider,
+      selectedModel: input.selectedModel,
+      selectedModelSelection: input.selectedModelSelection,
+      selectedPromptEffort: input.selectedPromptEffort,
+      runtimeMode: input.runtimeMode,
+      interactionMode: input.interactionMode,
+    })
+  )
+  clearComposerAfterQueue(input)
+  const activeThread = input.activeThread
+  if (!activeThread || !input.isServerThread || input.queuedMessageCount > 0) {
+    return true
+  }
   const api = readNativeApi()
-  if (!api || !input.activeThread || input.isSendBusy || input.isConnecting || input.sendInFlightRef.current)
-    return
-  if (input.activePendingProgress) {
-    input.onAdvanceActivePendingUserInput()
-    return
+  if (!api) {
+    return true
   }
-  const promptForSend = input.promptRef.current
-  const ctx = deriveComposerSendState({
-    prompt: promptForSend,
-    imageCount: input.composerImages.length,
-    terminalContexts: input.composerTerminalContexts,
-  }) as unknown as PreSendContext & { trimmedPrompt: string }
-  const preCtx: PreSendContext = {
-    trimmed: ctx.trimmedPrompt,
-    sendableTerminalContexts: ctx.sendableTerminalContexts,
-    expiredTerminalContextCount: ctx.expiredTerminalContextCount,
-    hasSendableContent: ctx.hasSendableContent,
-  }
-  if (await tryHandlePlanFollowUp(input, preCtx)) return
-  if (await tryHandleStandaloneSlashCommand(input, preCtx)) return
-  if (handleEmptyContentIfNeeded(preCtx)) return
-  if (!input.activeProject) return
-  if (input.isTurnRunning) {
-    input.queueFollowUp()
-    return
-  }
+  return api.orchestration
+    .dispatchCommand({
+      type: 'thread.turn.interrupt',
+      commandId: newCommandId(),
+      threadId: activeThread.id,
+      createdAt: new Date().toISOString(),
+    })
+    .catch(error => {
+      input.setThreadError(
+        activeThread.id,
+        error instanceof Error ? error.message : 'Failed to interrupt running turn.'
+      )
+    })
+    .then(() => true)
+}
+
+async function executeImmediateSend(
+  input: SendActionInput,
+  api: NonNullable<ReturnType<typeof readNativeApi>>,
+  promptForSend: string,
+  preCtx: PreSendContext
+): Promise<void> {
   await executeSend({
     api,
-    activeThread: input.activeThread,
-    activeProject: input.activeProject,
+    activeThread: input.activeThread!,
+    activeProject: input.activeProject!,
     isServerThread: input.isServerThread,
     isLocalDraftThread: input.isLocalDraftThread,
     envMode: input.envMode,
@@ -223,6 +262,42 @@ async function runSendFlow(input: SendActionInput): Promise<void> {
     runProjectScript: input.runProjectScript,
     createWorktreeMutation: input.createWorktreeMutation,
   })
+}
+
+async function runSendFlow(input: SendActionInput): Promise<void> {
+  const api = readNativeApi()
+  if (
+    !api ||
+    !input.activeThread ||
+    input.isSendBusy ||
+    input.isConnecting ||
+    input.sendInFlightRef.current
+  )
+    return
+  if (input.activePendingProgress) {
+    input.onAdvanceActivePendingUserInput()
+    return
+  }
+  const promptForSend = input.promptRef.current
+  const ctx = deriveComposerSendState({
+    prompt: promptForSend,
+    imageCount: input.composerImages.length,
+    terminalContexts: input.composerTerminalContexts,
+  }) as unknown as PreSendContext & { trimmedPrompt: string }
+  const preCtx: PreSendContext = {
+    trimmed: ctx.trimmedPrompt,
+    sendableTerminalContexts: ctx.sendableTerminalContexts,
+    expiredTerminalContextCount: ctx.expiredTerminalContextCount,
+    hasSendableContent: ctx.hasSendableContent,
+  }
+  if (await tryHandlePlanFollowUp(input, preCtx)) return
+  if (await tryHandleStandaloneSlashCommand(input, preCtx)) return
+  if (handleEmptyContentIfNeeded(preCtx)) return
+  if (!input.activeProject) return
+  if (await queueSendWhileTurnRunning(input, promptForSend, preCtx)) {
+    return
+  }
+  await executeImmediateSend(input, api, promptForSend, preCtx)
 }
 
 export function useChatSendAction(input: SendActionInput) {

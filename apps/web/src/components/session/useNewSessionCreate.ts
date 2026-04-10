@@ -1,6 +1,11 @@
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { type ModelSelection, type ProviderKind, DEFAULT_RUNTIME_MODE } from '@orxa-code/contracts'
+import {
+  type ModelSelection,
+  type ProviderKind,
+  type ThreadId,
+  DEFAULT_RUNTIME_MODE,
+} from '@orxa-code/contracts'
 import { newCommandId, newThreadId } from '~/lib/utils'
 import { ensureNativeApi } from '~/nativeApi'
 import { useStore } from '~/store'
@@ -11,10 +16,11 @@ interface CreateSessionInput {
   readonly model: string
   readonly agentId?: string | undefined
   readonly projectId?: ReturnType<typeof useStore.getState>['projects'][0]['id'] | null
+  readonly navigate?: boolean
 }
 
 interface UseNewSessionCreateReturn {
-  readonly create: (input: CreateSessionInput) => Promise<void>
+  readonly create: (input: CreateSessionInput) => Promise<ThreadId>
 }
 
 function buildModelSelection(input: CreateSessionInput): ModelSelection {
@@ -46,7 +52,7 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
   const navigate = useNavigate()
 
   const create = useCallback(
-    async (input: CreateSessionInput): Promise<void> => {
+    async (input: CreateSessionInput): Promise<ThreadId> => {
       const api = ensureNativeApi()
       const projectId = input.projectId ?? getDefaultProjectId()
       if (!projectId) throw new Error('No project available to create a session in.')
@@ -88,7 +94,10 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
         throw error
       }
 
-      await navigate({ to: '/$threadId', params: { threadId } })
+      if (input.navigate !== false) {
+        await navigate({ to: '/$threadId', params: { threadId } })
+      }
+      return threadId
     },
     [navigate]
   )

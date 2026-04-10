@@ -6,6 +6,7 @@ import { ChevronDownIcon, FolderClosedIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Group, GroupSeparator } from '../ui/group'
 import { Menu, MenuItem, MenuPopup, MenuShortcut, MenuTrigger } from '../ui/menu'
+import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { AntigravityIcon, CursorIcon, Icon, TraeIcon, VisualStudioCode, Zed } from '../Icons'
 import { isMacPlatform, isWindowsPlatform } from '~/lib/utils'
 import { readNativeApi } from '~/nativeApi'
@@ -63,16 +64,25 @@ const resolveOptions = (platform: string, availableEditors: ReadonlyArray<Editor
 function OpenInPrimaryButton(props: { disabled: boolean; Icon: Icon | null; onClick: () => void }) {
   const { disabled, Icon, onClick } = props
   return (
-    <Button
-      size="icon-xs"
-      variant="outline"
-      disabled={disabled}
-      onClick={onClick}
-      aria-label="Open in preferred editor"
-    >
-      {Icon && <Icon aria-hidden="true" className="size-3.5" />}
-      <span className="sr-only">Open</span>
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            size="icon-xs"
+            variant="outline"
+            disabled={disabled}
+            onClick={onClick}
+            aria-label="Open in preferred editor"
+          />
+        }
+      >
+        {Icon && <Icon aria-hidden="true" className="size-3.5" />}
+        <span className="sr-only">Open</span>
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">
+        {disabled ? 'Open in preferred editor unavailable' : 'Open in preferred editor'}
+      </TooltipPopup>
+    </Tooltip>
   )
 }
 
@@ -155,7 +165,14 @@ export const OpenInPicker = memo(function OpenInPicker({
       <GroupSeparator className="hidden @3xl/header-actions:block" />
       <Menu>
         <MenuTrigger
-          render={<Button aria-label="Open in editor options" size="icon-xs" variant="outline" />}
+          render={
+            <Button
+              aria-label="Open in editor options"
+              title="Open in editor options"
+              size="icon-xs"
+              variant="outline"
+            />
+          }
         >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>

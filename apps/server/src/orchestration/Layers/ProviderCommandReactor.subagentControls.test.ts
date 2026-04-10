@@ -156,6 +156,60 @@ const createOpencodeSubagentChildThread = async (
   )
 }
 
+const createClaudeSubagentChildThread = async (
+  harness: Awaited<ReturnType<typeof createHarness>>,
+  now: string
+) => {
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.create',
+      commandId: CommandId.makeUnsafe('cmd-claude-subagent-thread-create'),
+      threadId: ThreadId.makeUnsafe('claude-child:thread-1:tool-task-1'),
+      projectId: ProjectId.makeUnsafe('project-1'),
+      title: 'Explore',
+      modelSelection: {
+        provider: 'claudeAgent',
+        model: 'claude-haiku-4-5',
+      },
+      runtimeMode: 'approval-required',
+      interactionMode: 'default',
+      branch: null,
+      worktreePath: null,
+      parentLink: {
+        parentThreadId: ThreadId.makeUnsafe('thread-1'),
+        relationKind: 'subagent',
+        parentTurnId: asTurnId('turn-root'),
+        provider: 'claudeAgent',
+        providerTaskId: null,
+        providerChildThreadId: 'tool-task-1',
+        agentLabel: 'Explore',
+        createdAt: now,
+        completedAt: null,
+      },
+      createdAt: now,
+    })
+  )
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-claude-subagent-thread-session-set'),
+      threadId: ThreadId.makeUnsafe('claude-child:thread-1:tool-task-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('claude-child:thread-1:tool-task-1'),
+        status: 'running',
+        providerName: 'claudeAgent',
+        providerSessionId: 'sdk-session-root',
+        providerThreadId: 'tool-task-1',
+        runtimeMode: 'approval-required',
+        activeTurnId: null,
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+}
+
 it('marks subagent child sessions interrupted when the parent turn is interrupted', async () => {
   const harness = await createHarness()
   const now = new Date().toISOString()
@@ -413,4 +467,58 @@ it('fans out parent interrupts to running Opencode child sessions', async () => 
       },
     ],
   ])
+})
+
+it('treats Claude child-thread interrupts as parent-session interrupts', async () => {
+  const harness = await createHarness()
+  const now = new Date().toISOString()
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.session.set',
+      commandId: CommandId.makeUnsafe('cmd-claude-session-set'),
+      threadId: ThreadId.makeUnsafe('thread-1'),
+      session: {
+        threadId: ThreadId.makeUnsafe('thread-1'),
+        status: 'running',
+        providerName: 'claudeAgent',
+        providerSessionId: 'sdk-session-root',
+        providerThreadId: 'sdk-session-root',
+        runtimeMode: 'approval-required',
+        activeTurnId: asTurnId('turn-root'),
+        lastError: null,
+        updatedAt: now,
+      },
+      createdAt: now,
+    })
+  )
+  await createClaudeSubagentChildThread(harness, now)
+
+  await Effect.runPromise(
+    harness.engine.dispatch({
+      type: 'thread.turn.interrupt',
+      commandId: CommandId.makeUnsafe('cmd-claude-child-turn-interrupt'),
+      threadId: ThreadId.makeUnsafe('claude-child:thread-1:tool-task-1'),
+      createdAt: now,
+    })
+  )
+
+  await waitFor(() => harness.interruptTurn.mock.calls.length === 1)
+  expect(harness.interruptTurn.mock.calls[0]?.[0]).toEqual({
+    threadId: 'thread-1',
+    providerThreadId: 'tool-task-1',
+  })
+
+  await waitFor(async () => {
+    const parentThread = await findThread(harness)
+    const childThread = await findThreadById(harness, 'claude-child:thread-1:tool-task-1')
+    return (
+      parentThread?.session?.status === 'interrupted' &&
+      childThread?.session?.status === 'interrupted'
+    )
+  })
+  const parentThread = await findThread(harness)
+  const childThread = await findThreadById(harness, 'claude-child:thread-1:tool-task-1')
+  expect(parentThread?.session?.status).toBe('interrupted')
+  expect(childThread?.session?.status).toBe('interrupted')
 })

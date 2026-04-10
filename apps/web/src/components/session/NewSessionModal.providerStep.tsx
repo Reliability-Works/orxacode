@@ -6,7 +6,6 @@ import { Badge } from '~/components/ui/badge'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/utils'
 import { useServerProviders } from '~/rpc/serverState'
-import { CursorIcon, Gemini } from '../Icons'
 import { ProviderLogo } from './ProviderLogos'
 
 // ── Provider descriptions ─────────────────────────────────────────────
@@ -130,40 +129,9 @@ function ProviderCard(props: ProviderCardProps): React.JSX.Element {
   return card
 }
 
-// ── Coming soon card ──────────────────────────────────────────────────
-
-interface ComingSoonCardProps {
-  readonly label: string
-  readonly description: string
-  readonly icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
-}
-
-function ComingSoonCard(props: ComingSoonCardProps): React.JSX.Element {
-  const { label, description, icon: IconComponent } = props
-  return (
-    <div aria-disabled className={cn(CARD_CLASSNAME, 'cursor-not-allowed opacity-50')}>
-      <CardBody
-        logo={<IconComponent aria-hidden className="size-10" />}
-        label={label}
-        description={description}
-        badge={
-          <Badge size="sm" variant="outline">
-            Coming soon
-          </Badge>
-        }
-      />
-    </div>
-  )
-}
-
 // ── Step component ────────────────────────────────────────────────────
 
 const PROVIDER_KINDS: readonly ProviderKind[] = ['claudeAgent', 'codex', 'opencode']
-
-const COMING_SOON_ENTRIES: ReadonlyArray<ComingSoonCardProps> = [
-  { label: 'Cursor', description: 'Cursor Agent CLI', icon: CursorIcon },
-  { label: 'Gemini', description: 'Google Gemini', icon: Gemini },
-]
 
 interface NewSessionModalProviderStepProps {
   readonly pendingProvider: ProviderKind | null
@@ -181,7 +149,7 @@ export function NewSessionModalProviderStep(
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3 p-1 sm:grid-cols-5">
+    <div className="grid grid-cols-3 gap-3 p-1">
       {PROVIDER_KINDS.map(kind => (
         <ProviderCard
           key={kind}
@@ -189,14 +157,6 @@ export function NewSessionModalProviderStep(
           pending={pendingProvider !== null && pendingProvider !== kind}
           provider={kind}
           onSelect={onSelect}
-        />
-      ))}
-      {COMING_SOON_ENTRIES.map(entry => (
-        <ComingSoonCard
-          key={entry.label}
-          label={entry.label}
-          description={entry.description}
-          icon={entry.icon}
         />
       ))}
     </div>

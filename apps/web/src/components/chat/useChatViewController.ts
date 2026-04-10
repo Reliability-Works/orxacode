@@ -45,6 +45,7 @@ import {
   useChatViewRemainingCallbacks,
 } from './useChatViewController.plansend'
 import { toastManager } from '../ui/toastState'
+import { useQueuedComposerMessageCallbacks } from './useChatViewController.queued'
 import {
   buildWorktreeHandoffContext,
   resolveHandoffTargetProviderArgument,
@@ -347,7 +348,8 @@ function useStandaloneSlashCommandExecutor(args: {
 
 function useChatViewControllerActions(
   threadId: ThreadId,
-  state: ReturnType<typeof useChatViewControllerState>, utils: ReturnType<typeof useChatViewControllerUtilsAndDispatch>
+  state: ReturnType<typeof useChatViewControllerState>,
+  utils: ReturnType<typeof useChatViewControllerUtilsAndDispatch>
 ) {
   const { store, ls, td, ad, p, cd, scroll } = state
   const { setThreadError, focusComposer, scheduleComposerFocus, setPrompt, composerDraftCbs, ld } =
@@ -363,11 +365,6 @@ function useChatViewControllerActions(
     setThreadError,
     setPrompt,
     scheduleComposerFocus
-  )
-  const envMode = deriveEnvMode(
-    td.activeThread,
-    td.isLocalDraftThread,
-    store.draftThread?.envMode ?? null
   )
   const pullRequestCbs = usePullRequestCallbacks(threadId, store, ls, td)
   const onExecuteStandaloneSlashCommand = useStandaloneSlashCommandExecutor({
@@ -386,7 +383,11 @@ function useChatViewControllerActions(
     p,
     scroll,
     ld,
-    envMode,
+    envMode: deriveEnvMode(
+      td.activeThread,
+      td.isLocalDraftThread,
+      store.draftThread?.envMode ?? null
+    ),
     setThreadError,
     setPrompt,
     onExecuteStandaloneSlashCommand,
@@ -425,6 +426,7 @@ export function useChatViewController(threadId: ThreadId) {
   const state = useChatViewControllerState(threadId)
   const utils = useChatViewControllerUtilsAndDispatch(threadId, state)
   const actions = useChatViewControllerActions(threadId, state, utils)
+  const queuedMessageActions = useQueuedComposerMessageCallbacks(threadId, state, utils)
   useChatViewControllerEffectsWiring(state, utils.focusComposer, utils.handoffAttachmentPreviews)
   const { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar } =
     useThreadTerminalEnvAndCloseSidebar(state)
@@ -462,6 +464,7 @@ export function useChatViewController(threadId: ThreadId) {
     ...utils.composerDraftCbs,
     clearAttachmentPreviewHandoffs: utils.clearAttachmentPreviewHandoffs,
     handoffAttachmentPreviews: utils.handoffAttachmentPreviews,
+    ...queuedMessageActions,
     ...actions.callbacksCore,
     ...actions.planSendActions,
     ...actions.pullRequestCbs,

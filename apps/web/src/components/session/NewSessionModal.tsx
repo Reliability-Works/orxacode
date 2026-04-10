@@ -1,6 +1,6 @@
 import type * as React from 'react'
 import { useCallback, useState } from 'react'
-import type { ProjectId, ProviderKind, ServerProvider } from '@orxa-code/contracts'
+import type { ProjectId, ProviderKind, ServerProvider, ThreadId } from '@orxa-code/contracts'
 import { DEFAULT_MODEL_BY_PROVIDER } from '@orxa-code/contracts'
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from '~/components/ui/dialog'
 import { useSidebar } from '~/components/ui/sidebar.shared'
@@ -14,6 +14,7 @@ interface NewSessionModalProps {
   readonly open: boolean
   readonly onClose: () => void
   readonly projectId?: ProjectId | null
+  readonly onCreated?: (threadId: ThreadId) => Promise<void> | void
 }
 
 function resolveDefaultModel(
@@ -25,7 +26,7 @@ function resolveDefaultModel(
 }
 
 export function NewSessionModal(props: NewSessionModalProps): React.JSX.Element {
-  const { open, onClose, projectId } = props
+  const { open, onClose, projectId, onCreated } = props
   const { create } = useNewSessionCreate()
   const liveProviders = useServerProviders()
   const { state: sidebarState, isMobile: isSidebarMobile } = useSidebar()
@@ -55,7 +56,15 @@ export function NewSessionModal(props: NewSessionModalProps): React.JSX.Element 
       try {
         const liveProvider = liveProviders.find(p => p.provider === provider)
         const model = resolveDefaultModel(provider, liveProvider)
-        await create({ provider, model, projectId: targetProjectId })
+        const threadId = await create({
+          provider,
+          model,
+          projectId: targetProjectId,
+          navigate: onCreated === undefined,
+        })
+        if (onCreated) {
+          await onCreated(threadId)
+        }
         onClose()
       } catch (err) {
         setCreateError(err instanceof Error ? err.message : 'Failed to create session.')
@@ -63,7 +72,7 @@ export function NewSessionModal(props: NewSessionModalProps): React.JSX.Element 
         setPendingProvider(null)
       }
     },
-    [create, liveProviders, onClose, targetProjectId]
+    [create, liveProviders, onClose, onCreated, targetProjectId]
   )
 
   return (
