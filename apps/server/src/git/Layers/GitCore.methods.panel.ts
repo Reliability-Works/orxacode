@@ -11,8 +11,6 @@ import type {
   GitBranchDiff,
   GitDiffFile,
   GitDiffFileStatus,
-  GitDiffHunk,
-  GitDiffLine,
   GitDiffResult,
   GitDiffSectionKind,
   GitGetLogResult,
@@ -21,141 +19,11 @@ import type {
 import type { GitCoreShape } from '../Services/GitCore.ts'
 import type { GitCoreInternalDeps } from './GitCore.deps.ts'
 import { buildBranchCompareResult, makeScopeSummaries } from './GitCore.methods.panel.branch.ts'
+import { parsePatchText, type RawFilePatch } from './GitCore.methods.panel.patch.ts'
 
 // ── Unified-diff parser ──────────────────────────────────────────────
 
 const UNTRACKED_PREVIEW_MAX_BYTES = 64 * 1024
-
-function parseDiffLines(lines: string[]): GitDiffLine[] {
-  const result: GitDiffLine[] = []
-  let oldNum = 0
-  let newNum = 0
-  for (const line of lines) {
-    const ch = line[0]
-    if (ch === '-') {
-      result.push({ type: 'del', content: line.slice(1), oldLineNumber: oldNum })
-      oldNum++
-    } else if (ch === '+') {
-      result.push({ type: 'add', content: line.slice(1), newLineNumber: newNum })
-      newNum++
-    } else {
-      result.push({
-        type: 'context',
-        content: ch === '\\' ? line : line.slice(1),
-        oldLineNumber: oldNum,
-        newLineNumber: newNum,
-      })
-      oldNum++
-      newNum++
-    }
-  }
-  return result
-}
-
-const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)/
-
-function parseHunks(lines: string[]): GitDiffHunk[] {
-  const hunks: GitDiffHunk[] = []
-  let i = 0
-  while (i < lines.length) {
-    const m = HUNK_HEADER_RE.exec(lines[i]!)
-    if (!m) {
-      i++
-      continue
-    }
-    const oldStart = parseInt(m[1]!, 10)
-    const oldLines = m[2] !== undefined ? parseInt(m[2]!, 10) : 1
-    const newStart = parseInt(m[3]!, 10)
-    const newLines = m[4] !== undefined ? parseInt(m[4]!, 10) : 1
-    const header = lines[i]!
-    i++
-    const bodyLines: string[] = []
-    while (i < lines.length && !lines[i]!.startsWith('@@') && !lines[i]!.startsWith('diff ')) {
-      bodyLines.push(lines[i]!)
-      i++
-    }
-    const parsedLines = parseDiffLines(bodyLines)
-    hunks.push({ oldStart, oldLines, newStart, newLines, header, lines: parsedLines })
-  }
-  return hunks
-}
-
-function inferPatchStatus(status: GitDiffFileStatus, line: string): GitDiffFileStatus {
-  if (line.startsWith('rename from ')) return 'R'
-  if (line.startsWith('new file mode')) return 'A'
-  if (line.startsWith('deleted file mode')) return 'D'
-  if (line.startsWith('copy from ')) return 'C'
-  return status
-}
-
-interface RawFilePatch {
-  path: string
-  oldPath: string | undefined
-  status: GitDiffFileStatus
-  isBinary: boolean
-  patch: string
-  hunks: GitDiffHunk[]
-  additions: number
-  deletions: number
-}
-
-function parsePatchText(text: string): Map<string, RawFilePatch> {
-  const files = new Map<string, RawFilePatch>()
-  if (!text.trim()) return files
-
-  // Split on "diff --git" blocks
-  const blocks = text.split(/^(?=diff --git )/m)
-  for (const block of blocks) {
-    if (!block.startsWith('diff --git ')) continue
-    const lines = block.split('\n')
-    // Parse paths from "diff --git a/... b/..."
-    const gitDiffLine = lines[0] ?? ''
-    const headerMatch = /^diff --git a\/(.*?) b\/(.*)$/.exec(gitDiffLine)
-    if (!headerMatch) continue
-
-    let path = headerMatch[2] ?? ''
-    let oldPath: string | undefined
-    let status: GitDiffFileStatus = 'M'
-    const isBinary = block.includes('Binary files ')
-
-    // Check for rename
-    for (const l of lines) {
-      if (l.startsWith('rename from ')) {
-        oldPath = l.slice('rename from '.length).trim()
-      } else if (l.startsWith('rename to ')) {
-        path = l.slice('rename to '.length).trim()
-      } else if (l.startsWith('+++ b/')) {
-        path = l.slice('+++ b/'.length).trim()
-      }
-      status = inferPatchStatus(status, l)
-    }
-
-    // Find hunk body (lines after --- / +++, starting from @@)
-    let hunkStart = 0
-    for (let j = 0; j < lines.length; j++) {
-      if (lines[j]!.startsWith('@@')) {
-        hunkStart = j
-        break
-      }
-    }
-
-    const hunkLines = lines.slice(hunkStart)
-    const hunks = isBinary ? [] : parseHunks(hunkLines)
-    const patch = block.trimEnd()
-
-    let additions = 0
-    let deletions = 0
-    for (const h of hunks) {
-      for (const l of h.lines) {
-        if (l.type === 'add') additions++
-        else if (l.type === 'del') deletions++
-      }
-    }
-
-    files.set(path, { path, oldPath, status, isBinary, patch, hunks, additions, deletions })
-  }
-  return files
-}
 
 function hasBinaryBytes(value: string) {
   return value.includes('\0')
@@ -165,9 +33,7 @@ function buildUntrackedPatch(path: string, contents: string) {
   const normalized = contents.replace(/\r\n/g, '\n')
   const lines = normalized.split('\n')
   const bodyLines =
-    lines.at(-1) === ''
-      ? lines.slice(0, -1).map(line => `+${line}`)
-      : lines.map(line => `+${line}`)
+    lines.at(-1) === '' ? lines.slice(0, -1).map(line => `+${line}`) : lines.map(line => `+${line}`)
   const newLineCount = lines.at(-1) === '' ? lines.length - 1 : lines.length
   const patchLines = [
     `diff --git a/${path} b/${path}`,
@@ -180,10 +46,7 @@ function buildUntrackedPatch(path: string, contents: string) {
   return patchLines.join('\n')
 }
 
-function buildUntrackedRawPatch(input: {
-  path: string
-  contents: string
-}): RawFilePatch | null {
+function buildUntrackedRawPatch(input: { path: string; contents: string }): RawFilePatch | null {
   if (hasBinaryBytes(input.contents)) {
     return {
       path: input.path,
@@ -201,13 +64,16 @@ function buildUntrackedRawPatch(input: {
 }
 
 function buildLoadUntrackedPatches(deps: GitCoreInternalDeps) {
-  return Effect.fn('GitCore.loadUntrackedPatches')(function* (cwd: string, paths: ReadonlyArray<string>) {
+  return Effect.fn('GitCore.loadUntrackedPatches')(function* (
+    cwd: string,
+    paths: ReadonlyArray<string>
+  ) {
     const patches = new Map<string, RawFilePatch>()
     for (const relativePath of paths) {
       const absolutePath = deps.path.join(cwd, relativePath)
-      const contents = yield* deps.fileSystem.readFileString(absolutePath).pipe(
-        Effect.catch(() => Effect.succeed(null))
-      )
+      const contents = yield* deps.fileSystem
+        .readFileString(absolutePath)
+        .pipe(Effect.catch(() => Effect.succeed(null)))
       if (contents === null) continue
       if (Buffer.byteLength(contents) > UNTRACKED_PREVIEW_MAX_BYTES) {
         patches.set(relativePath, {
@@ -309,7 +175,12 @@ function buildDiffFiles(
     }
 
     if (y === '?') {
-      const raw = untrackedPatches.get(path) ?? { ...empty, path, oldPath: origPath, status: '?' as GitDiffFileStatus }
+      const raw = untrackedPatches.get(path) ?? {
+        ...empty,
+        path,
+        oldPath: origPath,
+        status: '?' as GitDiffFileStatus,
+      }
       const f: GitDiffFile = {
         path,
         status: '?' as GitDiffFileStatus,

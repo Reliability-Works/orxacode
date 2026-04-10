@@ -20,6 +20,12 @@ import { join as joinPath, basename, extname } from 'node:path'
 import { readdir, readFile } from 'node:fs/promises'
 
 import type { OpencodeAgent } from '@orxa-code/contracts'
+import {
+  describeAgentFileError,
+  extractAgentFrontmatter,
+  isAgentFileNotFoundError,
+  listFrontmatterEntries,
+} from './agentFileHelpers.ts'
 
 type OpencodeAgentMode = 'primary' | 'subagent'
 
@@ -198,10 +204,12 @@ async function scanAgentDir(
   try {
     entries = await input.readDir(input.dir)
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (isAgentFileNotFoundError(error)) {
       return []
     }
-    input.logWarning(`opencode agents read failed at ${input.dir}: ${describeError(error)}`)
+    input.logWarning(
+      `opencode agents read failed at ${input.dir}: ${describeAgentFileError(error)}`
+    )
     return []
   }
   const result: Array<DiscoveredOpencodeAgent> = []
@@ -245,12 +253,14 @@ async function parseAgentFile(input: ParseAgentFileInput): Promise<DiscoveredOpe
   try {
     content = await input.readFileText(input.fullPath)
   } catch (error) {
-    input.logWarning(`opencode agent read failed at ${input.fullPath}: ${describeError(error)}`)
+    input.logWarning(
+      `opencode agent read failed at ${input.fullPath}: ${describeAgentFileError(error)}`
+    )
     return null
   }
   let fields: ParsedAgentFields
   if (input.ext === '.md') {
-    const frontmatter = extractFrontmatter(content)
+    const frontmatter = extractAgentFrontmatter(content)
     if (frontmatter === null) {
       input.logWarning(`opencode agent missing frontmatter at ${input.fullPath}`)
       return null
@@ -269,10 +279,12 @@ async function scanConfigFile(
   try {
     content = await input.readFileText(input.filePath)
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (isAgentFileNotFoundError(error)) {
       return []
     }
-    input.logWarning(`opencode config read failed at ${input.filePath}: ${describeError(error)}`)
+    input.logWarning(
+      `opencode config read failed at ${input.filePath}: ${describeAgentFileError(error)}`
+    )
     return []
   }
   const fieldsById = parseConfigAgents(content, input.filePath, input.logWarning)
@@ -328,7 +340,7 @@ function parseConfigAgents(
       })
     )
   } catch (error) {
-    logWarning(`opencode config malformed at ${fullPath}: ${describeError(error)}`)
+    logWarning(`opencode config malformed at ${fullPath}: ${describeAgentFileError(error)}`)
     return {}
   }
 }
@@ -349,25 +361,9 @@ function parseJsonAgent(
       model: typeof record.model === 'string' ? record.model.trim() : undefined,
     }
   } catch (error) {
-    logWarning(`opencode agent json malformed at ${fullPath}: ${describeError(error)}`)
+    logWarning(`opencode agent json malformed at ${fullPath}: ${describeAgentFileError(error)}`)
     return {}
   }
-}
-
-const FRONTMATTER_DELIMITER = '---'
-
-function extractFrontmatter(content: string): string | null {
-  // Strip a leading BOM if present so the delimiter test still matches.
-  const stripped = content.startsWith('\uFEFF') ? content.slice(1) : content
-  if (!stripped.startsWith(FRONTMATTER_DELIMITER)) return null
-  const afterFirst = stripped.slice(FRONTMATTER_DELIMITER.length)
-  const newlineIndex = afterFirst.indexOf('\n')
-  if (newlineIndex === -1) return null
-  const body = afterFirst.slice(newlineIndex + 1)
-  const closingPattern = /\r?\n---\s*(?:\r?\n|$)/
-  const match = closingPattern.exec(body)
-  if (!match) return null
-  return body.slice(0, match.index)
 }
 
 function parseFrontmatterFields(block: string): ParsedAgentFields {
@@ -375,40 +371,11 @@ function parseFrontmatterFields(block: string): ParsedAgentFields {
   let name: string | undefined
   let description: string | undefined
   let model: string | undefined
-  for (const rawLine of block.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (line.length === 0 || line.startsWith('#')) continue
-    const colonIndex = line.indexOf(':')
-    if (colonIndex === -1) continue
-    const key = line.slice(0, colonIndex).trim()
-    const value = unquote(line.slice(colonIndex + 1).trim())
-    if (value.length === 0) continue
+  for (const [key, value] of listFrontmatterEntries(block)) {
     if (key === 'mode') mode = value
     else if (key === 'name') name = value
     else if (key === 'description') description = value
     else if (key === 'model') model = value
   }
   return { mode, name, description, model }
-}
-
-function unquote(value: string): string {
-  if (value.length >= 2) {
-    const first = value.charAt(0)
-    const last = value.charAt(value.length - 1)
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return value.slice(1, -1)
-    }
-  }
-  return value
-}
-
-function isFileNotFoundError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const code = (error as { code?: unknown }).code
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }

@@ -6,18 +6,12 @@ import type {
 } from '@orxa-code/contracts'
 import type { ReactNode } from 'react'
 
-import { Skeleton } from '../ui/skeleton'
-
-function relativeDate(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime()
-  const minutes = Math.floor(diffMs / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  return `${days}d`
-}
+import {
+  GitSidebarCenteredMessage,
+  GitSidebarLinkedCard,
+  GitSidebarSkeletonList,
+} from './GitSidebar.shared'
+import { relativeDate } from './GitSidebar.logic'
 
 function StatePill(props: { label: string; tone: 'neutral' | 'success' | 'accent' }) {
   return (
@@ -35,35 +29,61 @@ function StatePill(props: { label: string; tone: 'neutral' | 'success' | 'accent
   )
 }
 
+function TextTabEntryCard(props: {
+  href: string
+  number: number
+  title: string
+  stateLabel: string
+  stateTone: 'neutral' | 'success' | 'accent'
+  meta: ReactNode
+  footerLogin: string | null | undefined
+  footerUpdatedAt: string
+}) {
+  return (
+    <GitSidebarLinkedCard
+      href={props.href}
+      header={
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-foreground">#{props.number}</p>
+            <p className="mt-0.5 text-sm leading-5 text-foreground">{props.title}</p>
+          </div>
+          <StatePill label={props.stateLabel} tone={props.stateTone} />
+        </div>
+      }
+      meta={props.meta}
+      footer={
+        <p className="text-[11px] text-muted-foreground">
+          {props.footerLogin ?? 'unknown'} updated {relativeDate(props.footerUpdatedAt)}
+        </p>
+      }
+    />
+  )
+}
+
 function IssueCard({ entry }: { entry: GitIssueEntry }) {
   return (
-    <a
+    <TextTabEntryCard
       href={entry.url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card/70 px-3 py-3 transition-colors hover:bg-accent/30"
-    >
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-foreground">#{entry.number}</p>
-          <p className="mt-0.5 text-sm leading-5 text-foreground">{entry.title}</p>
+      number={entry.number}
+      title={entry.title}
+      stateLabel={entry.state}
+      stateTone={entry.state === 'OPEN' ? 'success' : 'neutral'}
+      meta={
+        <div className="flex flex-wrap gap-1">
+          {(entry.labels ?? []).slice(0, 4).map(label => (
+            <span
+              key={`${entry.number}:${label.name}`}
+              className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground"
+            >
+              {label.name}
+            </span>
+          ))}
         </div>
-        <StatePill label={entry.state} tone={entry.state === 'OPEN' ? 'success' : 'neutral'} />
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {(entry.labels ?? []).slice(0, 4).map(label => (
-          <span
-            key={`${entry.number}:${label.name}`}
-            className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground"
-          >
-            {label.name}
-          </span>
-        ))}
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        {entry.author?.login ?? 'unknown'} updated {relativeDate(entry.updatedAt)}
-      </p>
-    </a>
+      }
+      footerLogin={entry.author?.login}
+      footerUpdatedAt={entry.updatedAt}
+    />
   )
 }
 
@@ -71,45 +91,30 @@ function PullRequestCard({ entry }: { entry: GitPullRequestListEntry }) {
   const stateLabel = entry.isDraft ? 'Draft' : entry.state
 
   return (
-    <a
+    <TextTabEntryCard
       href={entry.url}
-      target="_blank"
-      rel="noreferrer"
-      className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card/70 px-3 py-3 transition-colors hover:bg-accent/30"
-    >
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold text-foreground">#{entry.number}</p>
-          <p className="mt-0.5 text-sm leading-5 text-foreground">{entry.title}</p>
+      number={entry.number}
+      title={entry.title}
+      stateLabel={stateLabel}
+      stateTone={entry.isDraft ? 'accent' : entry.state === 'OPEN' ? 'success' : 'neutral'}
+      meta={
+        <div className="flex flex-wrap gap-1">
+          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
+            {entry.headRefName}
+          </span>
+          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
+            into {entry.baseRefName}
+          </span>
         </div>
-        <StatePill
-          label={stateLabel}
-          tone={entry.isDraft ? 'accent' : entry.state === 'OPEN' ? 'success' : 'neutral'}
-        />
-      </div>
-      <div className="flex flex-wrap gap-1">
-        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
-          {entry.headRefName}
-        </span>
-        <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
-          into {entry.baseRefName}
-        </span>
-      </div>
-      <p className="text-[11px] text-muted-foreground">
-        {entry.author?.login ?? 'unknown'} updated {relativeDate(entry.updatedAt)}
-      </p>
-    </a>
+      }
+      footerLogin={entry.author?.login}
+      footerUpdatedAt={entry.updatedAt}
+    />
   )
 }
 
 export function GitSidebarSkeleton() {
-  return (
-    <div className="flex flex-col gap-2 p-3">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Skeleton key={i} className="h-16 rounded-xl" />
-      ))}
-    </div>
-  )
+  return <GitSidebarSkeletonList rows={5} itemClassName="h-16 rounded-xl" />
 }
 
 export interface GitTextTabProps {
@@ -128,21 +133,21 @@ export function GitTextTab(props: GitTextTabProps): ReactNode {
 
   if (props.isError) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <GitSidebarCenteredMessage>
         <p className="max-w-60 text-center text-xs text-muted-foreground">
           {props.errorMessage ??
             'GitHub CLI unavailable. Run `gh auth login` to enable issue and pull request views.'}
         </p>
-      </div>
+      </GitSidebarCenteredMessage>
     )
   }
 
   const entries = props.data?.entries ?? []
   if (entries.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <GitSidebarCenteredMessage>
         <p className="text-xs text-muted-foreground">{props.emptyMessage}</p>
-      </div>
+      </GitSidebarCenteredMessage>
     )
   }
 

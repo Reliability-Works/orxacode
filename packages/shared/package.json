@@ -51,6 +51,14 @@
     "./projectionEventPayloads": {
       "types": "./src/projectionEventPayloads.ts",
       "import": "./src/projectionEventPayloads.ts"
+    },
+    "./records": {
+      "types": "./src/records.ts",
+      "import": "./src/records.ts"
+    },
+    "./subagent": {
+      "types": "./src/subagent.ts",
+      "import": "./src/subagent.ts"
     }
   },
   "scripts": {

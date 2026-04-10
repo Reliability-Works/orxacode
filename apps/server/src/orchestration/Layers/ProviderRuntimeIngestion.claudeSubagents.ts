@@ -3,6 +3,7 @@ import type { ModelSelection, ProviderRuntimeEvent, ThreadId } from '@orxa-code/
 import { MessageId } from '@orxa-code/contracts'
 import { DEFAULT_MODEL_BY_PROVIDER } from '@orxa-code/contracts'
 import { resolveModelSlugForProvider } from '@orxa-code/shared/model'
+import { buildDelegatedPromptSeedText, buildSubagentThreadTitle } from '@orxa-code/shared/subagent'
 
 import { type ClaudeChildThreadDescriptor } from '../../claudeChildThreads.ts'
 import { findDiscoveredClaudeAgentById } from '../../provider/claudeAgents.ts'
@@ -11,25 +12,13 @@ import type {
   ProcessRuntimeEventDeps,
   ReadModelThread,
 } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
-
-function buildBaseSubagentThreadTitle(agentLabel: string | null): string {
-  const trimmed = agentLabel?.trim()
-  if (!trimmed) {
-    return 'Claude Subagent'
-  }
-  return trimmed
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
+import {
+  dispatchRunningSubagentSession,
+  dispatchSubagentSeedMessage,
+} from './ProviderRuntimeIngestion.subagents.shared.ts'
 
 function buildClaudeSeedMessageText(descriptor: ClaudeChildThreadDescriptor): string {
-  const prompt = descriptor.prompt?.trim() ?? descriptor.description?.trim() ?? ''
-  if (prompt.length > 0) {
-    return prompt
-  }
-  return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
+  return buildDelegatedPromptSeedText(descriptor.prompt, descriptor.description)
 }
 
 function claudeSeedMessageId(childThreadId: ThreadId): MessageId {
@@ -70,7 +59,7 @@ const enrichClaudeDescriptor = Effect.fn('enrichClaudeDescriptor')(function* (
   ).pipe(Effect.orElseSucceed(() => null))
   return {
     ...descriptor,
-    agentLabel: discoveredAgent?.name ?? buildBaseSubagentThreadTitle(rawAgentId),
+    agentLabel: discoveredAgent?.name ?? buildSubagentThreadTitle(rawAgentId, 'Claude Subagent'),
     model: descriptor.model ?? discoveredAgent?.model ?? null,
   }
 })
@@ -166,7 +155,7 @@ export const createClaudeSubagentThread = (deps: ProcessRuntimeEventDeps) =>
       ),
       threadId: descriptor.childThreadId,
       projectId: parentThread.projectId,
-      title: buildBaseSubagentThreadTitle(enrichedDescriptor.agentLabel),
+      title: buildSubagentThreadTitle(enrichedDescriptor.agentLabel, 'Claude Subagent'),
       modelSelection,
       runtimeMode: parentThread.runtimeMode,
       interactionMode: parentThread.interactionMode,
@@ -186,39 +175,23 @@ export const createClaudeSubagentThread = (deps: ProcessRuntimeEventDeps) =>
       createdAt: event.createdAt,
     })
 
-    yield* deps.orchestrationEngine.dispatch({
-      type: 'thread.session.set',
-      commandId: providerCommandId(
-        event,
-        `subagent-thread-session-set:${descriptor.providerChildThreadId}`
-      ),
+    yield* dispatchRunningSubagentSession({
+      deps,
+      event,
       threadId: descriptor.childThreadId,
-      session: {
-        threadId: descriptor.childThreadId,
-        status: 'running',
-        providerName: event.provider,
-        providerSessionId: parentThread.session?.providerSessionId ?? null,
-        providerThreadId: descriptor.providerChildThreadId,
-        runtimeMode: parentThread.runtimeMode,
-        activeTurnId: null,
-        lastError: null,
-        updatedAt: event.createdAt,
-      },
-      createdAt: event.createdAt,
+      providerChildThreadId: descriptor.providerChildThreadId,
+      providerSessionId: parentThread.session?.providerSessionId ?? null,
+      runtimeMode: parentThread.runtimeMode,
+      activeTurnId: null,
     })
 
-    yield* deps.orchestrationEngine.dispatch({
-      type: 'thread.message.seed',
-      commandId: providerCommandId(
-        event,
-        `subagent-thread-seed:${descriptor.providerChildThreadId}`
-      ),
+    yield* dispatchSubagentSeedMessage({
+      deps,
+      event,
       threadId: descriptor.childThreadId,
+      providerChildThreadId: descriptor.providerChildThreadId,
       messageId: claudeSeedMessageId(descriptor.childThreadId),
-      role: 'user',
       text: buildClaudeSeedMessageText(enrichedDescriptor),
-      turnId: null,
-      createdAt: event.createdAt,
     })
   })
 
@@ -231,7 +204,7 @@ export const syncClaudeSubagentThread = (deps: ProcessRuntimeEventDeps) =>
     projectRoot: string | null
   ) {
     const enrichedDescriptor = yield* enrichClaudeDescriptor(descriptor, projectRoot)
-    const nextTitle = buildBaseSubagentThreadTitle(enrichedDescriptor.agentLabel)
+    const nextTitle = buildSubagentThreadTitle(enrichedDescriptor.agentLabel, 'Claude Subagent')
     const modelSelection = resolveClaudeSubagentModelSelection({
       descriptor: enrichedDescriptor,
       parentThread,

@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ProjectId } from '@orxa-code/contracts'
 import type { SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
-import { readNativeApi } from '../../nativeApi'
+import { readNativeApi, refreshNativeApi } from '../../nativeApi'
 import { sortThreadsForSidebar } from '../Sidebar.logic'
 import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
@@ -141,13 +141,9 @@ function buildPickFolderHandler(params: {
     const api = readNativeApi()
     if (!api || state.isPickingFolder) return
     state.setIsPickingFolder(true)
+    let picked: string | null = null
     try {
-      const picked = await api.dialogs.pickFolder()
-      if (picked) {
-        await addProjectFromPath(picked)
-      } else if (!shouldBrowseForProjectImmediately) {
-        state.addProjectInputRef.current?.focus()
-      }
+      picked = await api.dialogs.pickFolder()
     } catch (error) {
       const description =
         error instanceof Error ? error.message : 'An error occurred while selecting a folder.'
@@ -160,6 +156,19 @@ function buildPickFolderHandler(params: {
     } finally {
       state.setIsPickingFolder(false)
     }
+
+    if (!picked) {
+      if (!shouldBrowseForProjectImmediately) {
+        state.addProjectInputRef.current?.focus()
+      }
+      return
+    }
+
+    if (shouldBrowseForProjectImmediately) {
+      await refreshNativeApi().catch(() => undefined)
+    }
+
+    await addProjectFromPath(picked)
   }
 }
 

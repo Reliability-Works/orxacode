@@ -6,6 +6,7 @@ import {
   TurnId,
 } from '@orxa-code/contracts'
 import { Effect } from 'effect'
+import { buildDelegatedPromptSeedText, buildSubagentThreadTitle } from '@orxa-code/shared/subagent'
 import { readCodexChildThreadDescriptors } from '../../codexChildThreads.ts'
 import { readOpencodeChildThreadDescriptor } from '../../opencodeChildThreads.ts'
 import { syncClaudeSubagentThreadSessionForEvent } from './ProviderRuntimeIngestion.claudeSubagents.ts'
@@ -25,6 +26,10 @@ import {
   toTurnId,
 } from './ProviderRuntimeIngestion.helpers.ts'
 import {
+  dispatchRunningSubagentSession,
+  dispatchSubagentSeedMessage,
+} from './ProviderRuntimeIngestion.subagents.shared.ts'
+import {
   type LifecycleContext,
   type ProcessRuntimeEventDeps,
   type ReadModelThread,
@@ -34,28 +39,14 @@ import {
   shouldApplyThreadLifecycle,
 } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
 export type { ProcessRuntimeEventDeps } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
-function buildSubagentThreadTitle(agentLabel: string | null): string {
-  const trimmed = agentLabel?.trim()
-  if (!trimmed) {
-    return 'Codex Subagent'
-  }
-  return trimmed
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
 function buildSeedMessageText(
   descriptor: ReturnType<typeof readCodexChildThreadDescriptors>[number],
   event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>
 ): string {
-  const prompt =
-    descriptor.prompt?.trim() ??
-    (typeof event.payload.detail === 'string' ? event.payload.detail.trim() : '')
-  if (prompt.length > 0) {
-    return prompt
-  }
-  return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
+  return buildDelegatedPromptSeedText(
+    descriptor.prompt,
+    typeof event.payload.detail === 'string' ? event.payload.detail : null
+  )
 }
 function isCodexCollabLifecycleEvent(
   event: ProviderRuntimeEvent
@@ -98,7 +89,7 @@ const createCodexSubagentThread = (deps: ProcessRuntimeEventDeps) =>
       ),
       threadId: descriptor.childThreadId,
       projectId: thread.projectId,
-      title: buildSubagentThreadTitle(descriptor.agentLabel),
+      title: buildSubagentThreadTitle(descriptor.agentLabel, 'Codex Subagent'),
       modelSelection: thread.modelSelection,
       runtimeMode: thread.runtimeMode,
       interactionMode: thread.interactionMode,
@@ -108,39 +99,23 @@ const createCodexSubagentThread = (deps: ProcessRuntimeEventDeps) =>
       createdAt: event.createdAt,
     })
 
-    yield* deps.orchestrationEngine.dispatch({
-      type: 'thread.session.set',
-      commandId: providerCommandId(
-        event,
-        `subagent-thread-session-set:${descriptor.providerChildThreadId}`
-      ),
+    yield* dispatchRunningSubagentSession({
+      deps,
+      event,
       threadId: descriptor.childThreadId,
-      session: {
-        threadId: descriptor.childThreadId,
-        status: 'running',
-        providerName: event.provider,
-        providerSessionId: thread.session?.providerSessionId ?? null,
-        providerThreadId: descriptor.providerChildThreadId,
-        runtimeMode: thread.runtimeMode,
-        activeTurnId: null,
-        lastError: null,
-        updatedAt: event.createdAt,
-      },
-      createdAt: event.createdAt,
+      providerChildThreadId: descriptor.providerChildThreadId,
+      providerSessionId: thread.session?.providerSessionId ?? null,
+      runtimeMode: thread.runtimeMode,
+      activeTurnId: null,
     })
 
-    yield* deps.orchestrationEngine.dispatch({
-      type: 'thread.message.seed',
-      commandId: providerCommandId(
-        event,
-        `subagent-thread-seed:${descriptor.providerChildThreadId}`
-      ),
+    yield* dispatchSubagentSeedMessage({
+      deps,
+      event,
       threadId: descriptor.childThreadId,
+      providerChildThreadId: descriptor.providerChildThreadId,
       messageId: MessageId.makeUnsafe(`seed:${descriptor.childThreadId}:delegated-prompt`),
-      role: 'user',
       text: buildSeedMessageText(descriptor, event),
-      turnId: null,
-      createdAt: event.createdAt,
     })
   })
 

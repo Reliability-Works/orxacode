@@ -315,20 +315,45 @@ export const OrchestrationThreadParentLink = Schema.Struct({
 })
 export type OrchestrationThreadParentLink = typeof OrchestrationThreadParentLink.Type
 
-export const threadCoreFields = {
+const threadIdentityFields = {
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
-  ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+} as const
+
+const threadInteractionModeField = ProviderInteractionMode.pipe(
+  Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
+)
+
+export const threadCoreFields = {
+  ...threadIdentityFields,
+  runtimeMode: RuntimeMode,
+  interactionMode: threadInteractionModeField,
   handoff: Schema.NullOr(OrchestrationThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
   parentLink: Schema.NullOr(OrchestrationThreadParentLink).pipe(
     Schema.withDecodingDefault(() => null)
   ),
+} as const
+
+export const threadCreateCommandFields = {
+  ...threadIdentityFields,
+  runtimeMode: RuntimeMode,
+  interactionMode: threadInteractionModeField,
+  handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
+  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
+  createdAt: IsoDateTime,
+} as const
+
+export const threadCreatedPayloadFields = {
+  ...threadIdentityFields,
+  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
+  interactionMode: threadInteractionModeField,
+  handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
+  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
 } as const
 
 export const OrchestrationThread = Schema.Struct({

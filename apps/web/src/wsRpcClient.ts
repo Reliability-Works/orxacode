@@ -125,7 +125,9 @@ export interface WsRpcClient {
   }
   readonly provider: {
     readonly listAgents: RpcUnaryMethod<typeof WS_METHODS.providerListAgents>
-    readonly getComposerCapabilities: RpcUnaryMethod<typeof WS_METHODS.providerGetComposerCapabilities>
+    readonly getComposerCapabilities: RpcUnaryMethod<
+      typeof WS_METHODS.providerGetComposerCapabilities
+    >
     readonly listCommands: RpcUnaryMethod<typeof WS_METHODS.providerListCommands>
     readonly listPlugins: RpcUnaryMethod<typeof WS_METHODS.providerListPlugins>
   }
@@ -164,9 +166,13 @@ export function getWsRpcClient(): WsRpcClient {
   return sharedWsRpcClient
 }
 
-export async function resetWsRpcClientForTests() {
+export async function resetWsRpcClient() {
   await sharedWsRpcClient?.dispose()
   sharedWsRpcClient = null
+}
+
+export async function resetWsRpcClientForTests() {
+  await resetWsRpcClient()
 }
 
 function createTerminalApi(transport: WsTransport): WsRpcClient['terminal'] {

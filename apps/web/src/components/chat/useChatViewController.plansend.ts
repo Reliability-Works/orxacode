@@ -103,12 +103,40 @@ export type PlanAndSendActionsInput = {
   onAdvanceActivePendingUserInput: () => void
 }
 
+function buildExecuteSendUiBindings(args: PlanAndSendActionsInput) {
+  const { store, ls, ld, scroll } = args
+  return {
+    shouldAutoScrollRef: scroll.refs.shouldAutoScrollRef,
+    composerImagesRef: ls.composerImagesRef,
+    composerTerminalContextsRef: ls.composerTerminalContextsRef,
+    promptRef: ls.promptRef,
+    beginLocalDispatch: ld.beginLocalDispatch,
+    resetLocalDispatch: ld.resetLocalDispatch,
+    setStoreThreadError: store.setStoreThreadError,
+    setStoreThreadBranch: store.setStoreThreadBranch,
+    setThreadError: args.setThreadError,
+    setOptimisticUserMessages: ls.setOptimisticUserMessages,
+    setComposerCursor: ls.setComposerCursor,
+    setComposerTrigger: ls.setComposerTrigger,
+    setComposerHighlightedItemId: ls.setComposerHighlightedItemId,
+    forceStickToBottom: scroll.forceStickToBottom,
+    clearComposerDraftContent: store.clearComposerDraftContent,
+    addComposerImagesToDraft: args.composerDraftCbs.addComposerImagesToDraft,
+    addComposerTerminalContextsToDraft: args.composerDraftCbs.addComposerTerminalContextsToDraft,
+    setPrompt: args.setPrompt,
+    persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
+    runProjectScript: args.runProjectScript,
+    createWorktreeMutation: store.createWorktreeMutation,
+  }
+}
+
 function useSendActionWiring(
   args: PlanAndSendActionsInput,
   sendInFlightRef: React.MutableRefObject<boolean>,
   onSubmitPlanFollowUp: ReturnType<typeof useChatSubmitPlanFollowUp>
 ) {
-  const { store, ls, td, ad, p, scroll, ld, envMode } = args
+  const { store, ls, td, ad, p, ld, envMode } = args
+
   return useChatSendAction({
     activeThread: td.activeThread ?? null,
     activeProject: td.activeProject ?? null,
@@ -133,30 +161,10 @@ function useSendActionWiring(
     activeProposedPlan: p.activeProposedPlan,
     activePendingProgress: ad.activePendingProgress,
     sendInFlightRef,
-    shouldAutoScrollRef: scroll.refs.shouldAutoScrollRef,
-    composerImagesRef: ls.composerImagesRef,
-    composerTerminalContextsRef: ls.composerTerminalContextsRef,
-    promptRef: ls.promptRef,
-    beginLocalDispatch: ld.beginLocalDispatch,
-    resetLocalDispatch: ld.resetLocalDispatch,
-    setStoreThreadError: store.setStoreThreadError,
-    setStoreThreadBranch: store.setStoreThreadBranch,
-    setThreadError: args.setThreadError,
-    setOptimisticUserMessages: ls.setOptimisticUserMessages,
-    setComposerCursor: ls.setComposerCursor,
-    setComposerTrigger: ls.setComposerTrigger,
-    setComposerHighlightedItemId: ls.setComposerHighlightedItemId,
-    forceStickToBottom: scroll.forceStickToBottom,
-    clearComposerDraftContent: store.clearComposerDraftContent,
-    addComposerImagesToDraft: args.composerDraftCbs.addComposerImagesToDraft,
-    addComposerTerminalContextsToDraft: args.composerDraftCbs.addComposerTerminalContextsToDraft,
-    setPrompt: args.setPrompt,
+    ...buildExecuteSendUiBindings(args),
     onExecuteStandaloneSlashCommand: args.onExecuteStandaloneSlashCommand,
     onSubmitPlanFollowUp,
     onAdvanceActivePendingUserInput: args.onAdvanceActivePendingUserInput,
-    persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
-    runProjectScript: args.runProjectScript,
-    createWorktreeMutation: store.createWorktreeMutation,
   })
 }
 
@@ -164,7 +172,7 @@ function useQueuedMessageSender(
   args: PlanAndSendActionsInput,
   sendInFlightRef: React.MutableRefObject<boolean>
 ) {
-  const { store, ls, td, ld, envMode } = args
+  const { td, envMode } = args
   return useCallback(
     async (message: QueuedComposerMessage) => {
       const api = readNativeApi()
@@ -196,31 +204,10 @@ function useQueuedMessageSender(
         interactionMode: message.interactionMode,
         expiredTerminalContextCount: 0,
         sendInFlightRef,
-        shouldAutoScrollRef: args.scroll.refs.shouldAutoScrollRef,
-        composerImagesRef: ls.composerImagesRef,
-        composerTerminalContextsRef: ls.composerTerminalContextsRef,
-        promptRef: ls.promptRef,
-        beginLocalDispatch: ld.beginLocalDispatch,
-        resetLocalDispatch: ld.resetLocalDispatch,
-        setStoreThreadError: store.setStoreThreadError,
-        setStoreThreadBranch: store.setStoreThreadBranch,
-        setThreadError: args.setThreadError,
-        setOptimisticUserMessages: ls.setOptimisticUserMessages,
-        setComposerCursor: ls.setComposerCursor,
-        setComposerTrigger: ls.setComposerTrigger,
-        setComposerHighlightedItemId: ls.setComposerHighlightedItemId,
-        forceStickToBottom: args.scroll.forceStickToBottom,
-        clearComposerDraftContent: store.clearComposerDraftContent,
-        addComposerImagesToDraft: args.composerDraftCbs.addComposerImagesToDraft,
-        addComposerTerminalContextsToDraft:
-          args.composerDraftCbs.addComposerTerminalContextsToDraft,
-        setPrompt: args.setPrompt,
-        persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
-        runProjectScript: args.runProjectScript,
-        createWorktreeMutation: store.createWorktreeMutation,
+        ...buildExecuteSendUiBindings(args),
       })
     },
-    [args, envMode, ld, ls, sendInFlightRef, store, td]
+    [args, envMode, sendInFlightRef, td]
   )
 }
 

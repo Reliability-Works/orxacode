@@ -1,23 +1,10 @@
 import type { OrchestrationThreadActivity, TurnId } from '@orxa-code/contracts'
+import { asPlainRecord, asTrimmedString } from '@orxa-code/shared/records'
 
 import { compareActivitiesByOrder } from './session-logic.activity'
 import type { ActivePlanState } from './session-logic.plan'
 
 type ParsedTaskListStep = ActivePlanState['steps'][number]
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
-
-function asTrimmedString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
 
 function cleanPlanStepText(step: string): string {
   return step
@@ -68,7 +55,7 @@ function parseToolTodoStep(todo: unknown): ParsedTaskListStep | null {
     return step.length > 0 ? { step, status: 'pending' } : null
   }
 
-  const record = asRecord(todo)
+  const record = asPlainRecord(todo)
   if (!record) {
     return null
   }
@@ -102,11 +89,11 @@ function toPlanPayloadRecord(
 }
 
 function readToolTodoEntriesFromPayload(payload: Record<string, unknown> | null): unknown[] {
-  const data = asRecord(payload?.data)
+  const data = asPlainRecord(payload?.data)
   const candidateContainers = [
-    asRecord(data?.input),
-    asRecord(data?.item),
-    asRecord(data?.result),
+    asPlainRecord(data?.input),
+    asPlainRecord(data?.item),
+    asPlainRecord(data?.result),
     data,
   ].filter((value): value is Record<string, unknown> => value !== null)
 

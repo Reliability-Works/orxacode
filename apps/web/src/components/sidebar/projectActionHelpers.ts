@@ -13,6 +13,24 @@ import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
 import type { DraftThreadEnvMode } from '../../composerDraftStore'
 
+const ADD_PROJECT_TIMEOUT_MS = 15_000
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs)
+    promise.then(
+      value => {
+        clearTimeout(timeout)
+        resolve(value)
+      },
+      error => {
+        clearTimeout(timeout)
+        reject(error)
+      }
+    )
+  })
+}
+
 export interface ExecAddProjectFromPathOpts {
   rawCwd: string
   isAddingProject: boolean
@@ -51,15 +69,19 @@ export async function execAddProjectFromPath(opts: ExecAddProjectFromPathOpts): 
   const projectId = newProjectId()
   const title = cwd.split(/[/\\]/).findLast(isNonEmptyString) ?? cwd
   try {
-    await api.orchestration.dispatchCommand({
-      type: 'project.create',
-      commandId: newCommandId(),
-      projectId,
-      title,
-      workspaceRoot: cwd,
-      defaultModelSelection: { provider: 'codex', model: DEFAULT_MODEL_BY_PROVIDER.codex },
-      createdAt: new Date().toISOString(),
-    })
+    await withTimeout(
+      api.orchestration.dispatchCommand({
+        type: 'project.create',
+        commandId: newCommandId(),
+        projectId,
+        title,
+        workspaceRoot: cwd,
+        defaultModelSelection: { provider: 'codex', model: DEFAULT_MODEL_BY_PROVIDER.codex },
+        createdAt: new Date().toISOString(),
+      }),
+      ADD_PROJECT_TIMEOUT_MS,
+      'Timed out while adding the project. Please try again.'
+    )
     await opts
       .handleNewThread(projectId, { envMode: opts.appSettings.defaultThreadEnvMode })
       .catch(() => undefined)

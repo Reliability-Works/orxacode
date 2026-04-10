@@ -1,18 +1,8 @@
 import type { GitGetLogResult, GitLogEntry } from '@orxa-code/contracts'
 import type { ReactNode } from 'react'
 
-import { Skeleton } from '../ui/skeleton'
-
-function relativeDate(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime()
-  const minutes = Math.floor(diffMs / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
-  const days = Math.floor(hours / 24)
-  return `${days}d`
-}
+import { GitSidebarCenteredMessage, GitSidebarSkeletonList } from './GitSidebar.shared'
+import { relativeDate } from './GitSidebar.logic'
 
 function LogEntryRow({ entry }: { entry: GitLogEntry }) {
   return (
@@ -45,30 +35,24 @@ export interface GitLogTabProps {
 
 export function GitLogTab({ data, isPending, isError, errorMessage }: GitLogTabProps): ReactNode {
   if (isPending) {
-    return (
-      <div className="flex flex-col gap-2 p-3">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 rounded" />
-        ))}
-      </div>
-    )
+    return <GitSidebarSkeletonList rows={8} itemClassName="h-10 rounded" />
   }
 
   if (isError) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <GitSidebarCenteredMessage>
         <p className="max-w-60 text-center text-xs text-muted-foreground">
           {errorMessage ?? 'Git log unavailable for this repository.'}
         </p>
-      </div>
+      </GitSidebarCenteredMessage>
     )
   }
 
   if (!data || data.entries.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
+      <GitSidebarCenteredMessage>
         <p className="text-xs text-muted-foreground">No commits found.</p>
-      </div>
+      </GitSidebarCenteredMessage>
     )
   }
 

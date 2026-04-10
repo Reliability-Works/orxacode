@@ -27,6 +27,7 @@ if [ -n "$LARGE_FILES" ]; then
 fi
 
 pnpm lint
+pnpm duplication
 pnpm typecheck
 
 STAGED_FORMAT_FILES=$(git diff --cached --name-only --diff-filter=ACM | while IFS= read -r file; do

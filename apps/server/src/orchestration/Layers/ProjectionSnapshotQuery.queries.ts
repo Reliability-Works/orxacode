@@ -4,8 +4,6 @@ import {
   MessageId,
   NonNegativeInt,
   OrchestrationCheckpointFile,
-  OrchestrationThreadParentLink,
-  OrchestrationThreadHandoff,
   OrchestrationProposedPlanId,
   ModelSelection,
   ProjectScript,
@@ -25,6 +23,7 @@ import { ProjectionThreadMessage } from '../../persistence/Services/ProjectionTh
 import { ProjectionThreadProposedPlan } from '../../persistence/Services/ProjectionThreadProposedPlans.ts'
 import { ProjectionThreadSession } from '../../persistence/Services/ProjectionThreadSessions.ts'
 import { ProjectionThread } from '../../persistence/Services/ProjectionThreads.ts'
+import { ProjectionThreadDbRow } from '../../persistence/Layers/ProjectionThreads.ts'
 
 const ProjectionProjectDbRowSchema = ProjectionProject.mapFields(
   Struct.assign({
@@ -39,13 +38,7 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
   })
 )
 const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan
-const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
-  Struct.assign({
-    modelSelection: Schema.fromJsonString(ModelSelection),
-    handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),
-    parentLink: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadParentLink)),
-  })
-)
+const ProjectionThreadDbRowSchema = ProjectionThreadDbRow
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
   Struct.assign({
     payload: Schema.fromJsonString(Schema.Unknown),

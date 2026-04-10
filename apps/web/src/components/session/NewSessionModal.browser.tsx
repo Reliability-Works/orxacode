@@ -187,15 +187,23 @@ async function testOpencodeCardClickUsesFirstLiveModel() {
 
 async function testCodexCardClickFallsBackToDefaultModel() {
   seedProviders('ready', 'ready', 'ready', { codexModels: [] })
+  await assertProviderCardCreatesSession('Codex', { provider: 'codex', model: 'gpt-5.4' })
+}
+
+async function assertProviderCardCreatesSession(
+  providerLabel: string,
+  expectedArgs: { provider: string; model: string; projectId?: ProjectId },
+  projectId?: ProjectId
+) {
   createMock.mockResolvedValueOnce(undefined)
-  const mounted = await mountModal(true)
+  const mounted = await mountModal(true, projectId)
   try {
     await vi.waitFor(() => {
-      expect(document.body.textContent).toContain('Codex')
+      expect(document.body.textContent).toContain(providerLabel)
     })
-    findProviderCard('Codex').click()
+    findProviderCard(providerLabel).click()
     await vi.waitFor(() => {
-      expect(createMock).toHaveBeenCalledWith({ provider: 'codex', model: 'gpt-5.4' })
+      expect(createMock).toHaveBeenCalledWith(expectedArgs)
     })
   } finally {
     await mounted.cleanup()
@@ -260,23 +268,15 @@ async function testCreateErrorSurfacesInline() {
 
 async function testExplicitProjectIdIsForwardedToCreate() {
   seedProviders('ready', 'ready', 'ready', { codexModels: [] })
-  createMock.mockResolvedValueOnce(undefined)
-  const mounted = await mountModal(true, 'project_orxacode' as ProjectId)
-  try {
-    await vi.waitFor(() => {
-      expect(document.body.textContent).toContain('Codex')
-    })
-    findProviderCard('Codex').click()
-    await vi.waitFor(() => {
-      expect(createMock).toHaveBeenCalledWith({
-        provider: 'codex',
-        model: 'gpt-5.4',
-        projectId: 'project_orxacode',
-      })
-    })
-  } finally {
-    await mounted.cleanup()
-  }
+  await assertProviderCardCreatesSession(
+    'Codex',
+    {
+      provider: 'codex',
+      model: 'gpt-5.4',
+      projectId: 'project_orxacode' as ProjectId,
+    },
+    'project_orxacode' as ProjectId
+  )
 }
 
 // ── Suite ──────────────────────────────────────────────────────────────

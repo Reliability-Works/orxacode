@@ -216,7 +216,7 @@ function ChatSplitInlineLayout(props: {
   )
 }
 
-export function ChatThreadInlineLayout(props: {
+type ChatThreadSplitLayoutProps = {
   threadId: ThreadId
   secondaryThreadId: ThreadId | null
   splitOpen: boolean
@@ -225,31 +225,17 @@ export function ChatThreadInlineLayout(props: {
   onToggleSplit: () => void
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
-}) {
-  return (
-    <ChatSplitInlineLayout
-      primaryThreadId={props.threadId}
-      secondaryThreadId={props.secondaryThreadId}
-      splitOpen={props.splitOpen}
-      focusedPane={props.focusedPane}
-      maximizedPane={props.maximizedPane}
-      onToggleSplit={props.onToggleSplit}
-      onFocusPane={props.onFocusPane}
-      onToggleMaximize={props.onToggleMaximize}
-    />
-  )
 }
 
-export function ChatThreadSheetLayout(props: {
-  threadId: ThreadId
-  secondaryThreadId: ThreadId | null
-  splitOpen: boolean
-  focusedPane: ChatSplitPane
-  maximizedPane: ChatSplitPane | null
-  onToggleSplit: () => void
-  onFocusPane: (pane: ChatSplitPane) => void
-  onToggleMaximize: (pane: ChatSplitPane) => void
-}) {
+export function ChatThreadInlineLayout(props: ChatThreadSplitLayoutProps) {
+  return <ChatThreadSplitLayoutContent {...props} />
+}
+
+export function ChatThreadSheetLayout(props: ChatThreadSplitLayoutProps) {
+  return <ChatThreadSplitLayoutContent {...props} />
+}
+
+function ChatThreadSplitLayoutContent(props: ChatThreadSplitLayoutProps) {
   return (
     <ChatSplitInlineLayout
       primaryThreadId={props.threadId}

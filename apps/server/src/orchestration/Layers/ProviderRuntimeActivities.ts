@@ -6,6 +6,8 @@ import {
   type ThreadTokenUsageSnapshot,
   TurnId,
 } from '@orxa-code/contracts'
+import { asObjectRecord, asTrimmedString } from '@orxa-code/shared/records'
+import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 
 function toTurnId(value: TurnId | string | undefined): TurnId | undefined {
   return value === undefined ? undefined : TurnId.makeUnsafe(String(value))
@@ -74,34 +76,11 @@ function buildActivity(
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
-}
-
-function asTrimmedString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-function formatAgentLabel(value: string | null): string | null {
-  if (!value) {
-    return null
-  }
-  return value
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
-
 function extractSubagentLabel(payload: unknown): string | null {
-  const data = asRecord(payload)
-  const item = asRecord(data?.item) ?? data
-  const input = asRecord(item?.input)
-  return formatAgentLabel(
+  const data = asObjectRecord(payload)
+  const item = asObjectRecord(data?.item) ?? data
+  const input = asObjectRecord(item?.input)
+  return formatSubagentLabel(
     asTrimmedString(item?.subagent_type) ??
       asTrimmedString(item?.subagentType) ??
       asTrimmedString(item?.agent_label) ??
@@ -399,18 +378,7 @@ function toolLifecycleActivities(
         return []
       }
       const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool'
-      return [
-        buildActivity(event, maybeSequence, {
-          tone: 'tool',
-          kind: 'tool.completed',
-          summary,
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-            ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-          },
-        }),
-      ]
+      return [buildToolLifecycleActivity(event, maybeSequence, 'tool.completed', summary)]
     }
 
     case 'item.started': {
@@ -418,18 +386,7 @@ function toolLifecycleActivities(
         return []
       }
       const summary = subagentLifecycleSummary(event) ?? `${event.payload.title ?? 'Tool'} started`
-      return [
-        buildActivity(event, maybeSequence, {
-          tone: 'tool',
-          kind: 'tool.started',
-          summary,
-          payload: {
-            itemType: event.payload.itemType,
-            ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-            ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-          },
-        }),
-      ]
+      return [buildToolLifecycleActivity(event, maybeSequence, 'tool.started', summary)]
     }
     default:
       return []
@@ -448,18 +405,43 @@ function toolUpdatedActivities(
   }
   const summary = subagentLifecycleSummary(event) ?? event.payload.title ?? 'Tool updated'
   return [
-    buildActivity(event, maybeSequence, {
-      tone: 'tool',
-      kind: 'tool.updated',
-      summary,
-      payload: {
-        itemType: event.payload.itemType,
-        ...(event.payload.status ? { status: event.payload.status } : {}),
-        ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
-        ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
-      },
+    buildToolLifecycleActivity(event, maybeSequence, 'tool.updated', summary, {
+      status: event.payload.status,
     }),
   ]
+}
+
+function buildToolLifecyclePayload(
+  event: Extract<
+    ProviderRuntimeEvent,
+    { type: 'item.started' | 'item.updated' | 'item.completed' }
+  >,
+  input?: { readonly status?: string | null | undefined }
+) {
+  return {
+    itemType: event.payload.itemType,
+    ...(input?.status ? { status: input.status } : {}),
+    ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
+    ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
+  }
+}
+
+function buildToolLifecycleActivity(
+  event: Extract<
+    ProviderRuntimeEvent,
+    { type: 'item.started' | 'item.updated' | 'item.completed' }
+  >,
+  maybeSequence: { sequence?: number },
+  kind: 'tool.started' | 'tool.updated' | 'tool.completed',
+  summary: string,
+  input?: { readonly status?: string | null | undefined }
+) {
+  return buildActivity(event, maybeSequence, {
+    tone: 'tool',
+    kind,
+    summary,
+    payload: buildToolLifecyclePayload(event, input),
+  })
 }
 
 export function runtimeEventToActivities(

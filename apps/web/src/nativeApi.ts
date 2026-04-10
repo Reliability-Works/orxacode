@@ -1,6 +1,6 @@
 import type { NativeApi } from '@orxa-code/contracts'
 
-import { createWsNativeApi, resetWsNativeApiForTests } from './wsNativeApi'
+import { createWsNativeApi, resetWsNativeApi, resetWsNativeApiForTests } from './wsNativeApi'
 
 let cachedApi: NativeApi | undefined
 
@@ -25,7 +25,13 @@ export function ensureNativeApi(): NativeApi {
   return api
 }
 
+export async function refreshNativeApi(): Promise<NativeApi | undefined> {
+  cachedApi = undefined
+  await resetWsNativeApi()
+  return readNativeApi()
+}
+
 export function resetNativeApiForTests() {
   cachedApi = undefined
-  resetWsNativeApiForTests()
+  void resetWsNativeApiForTests()
 }

@@ -1,5 +1,7 @@
 import vscodeIconsManifest from './vscode-icons-manifest.json'
 import languageAssociationsData from './vscode-icons-language-associations.json'
+import { basenameOfPath, extensionCandidates } from './pathValue'
+export { basenameOfPath } from './pathValue'
 
 const VSCODE_ICONS_VERSION = 'v12.17.0'
 const VSCODE_ICONS_BASE_URL = `https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons@${VSCODE_ICONS_VERSION}/icons`
@@ -69,12 +71,6 @@ function toLowercaseLookup(source: Record<string, string>): Record<string, strin
   return lookup
 }
 
-export function basenameOfPath(pathValue: string): string {
-  const slashIndex = pathValue.lastIndexOf('/')
-  if (slashIndex === -1) return pathValue
-  return pathValue.slice(slashIndex + 1)
-}
-
 export function inferEntryKindFromPath(pathValue: string): 'file' | 'directory' {
   const base = basenameOfPath(pathValue)
   if (base.startsWith('.') && !base.slice(1).includes('.')) {
@@ -84,22 +80,6 @@ export function inferEntryKindFromPath(pathValue: string): 'file' | 'directory' 
     return 'file'
   }
   return 'directory'
-}
-
-function extensionCandidates(fileName: string): string[] {
-  const candidates = new Set<string>()
-  if (fileName.includes('.')) {
-    candidates.add(fileName)
-  }
-  let dotIndex = fileName.indexOf('.')
-  while (dotIndex !== -1 && dotIndex < fileName.length - 1) {
-    const candidate = fileName.slice(dotIndex + 1)
-    if (candidate.length > 0) {
-      candidates.add(candidate)
-    }
-    dotIndex = fileName.indexOf('.', dotIndex + 1)
-  }
-  return [...candidates]
 }
 
 function resolveLanguageFallbackDefinition(

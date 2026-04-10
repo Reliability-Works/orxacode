@@ -2,6 +2,7 @@ import type {
   ChatAttachment,
   ModelSelection,
   OrchestrationEvent,
+  OrchestrationReadModel,
   ThreadId,
 } from '@orxa-code/contracts'
 import { Cause, Effect } from 'effect'
@@ -13,6 +14,7 @@ import type { ProviderCommandReactorSessionRuntime } from './ProviderCommandReac
 import {
   buildSessionStateSnapshot,
   listInterruptibleSubagentRoutes,
+  type ProviderControlRoute,
   resolveProviderControlRoute,
   propagateSubagentSessionState,
 } from './ProviderCommandReactor.subagentRouting.ts'
@@ -49,6 +51,10 @@ interface ProviderCommandReactorEventHandlerDeps extends ProviderCommandReactorS
   ) => string
   readonly defaultRuntimeMode: 'full-access'
 }
+
+type ProviderResponseEffect =
+  | ReturnType<ProviderServiceShape['respondToRequest']>
+  | ReturnType<ProviderServiceShape['respondToUserInput']>
 
 function interruptSubagentChildren(
   deps: ProviderCommandReactorEventHandlerDeps,
@@ -282,22 +288,10 @@ function createProcessTurnInterruptRequested(deps: ProviderCommandReactorEventHa
     if (controlRoute.isSubagentThread) {
       const rootThread = controlRoute.parentThread ?? controlRoute.thread
       if (controlRoute.thread.parentLink?.provider === 'claudeAgent') {
-        yield* deps.setThreadSession({
-          threadId: rootThread.id,
-          session: buildSessionStateSnapshot({
-            thread: rootThread,
-            status: 'interrupted',
-            createdAt: event.payload.createdAt,
-          }),
-          createdAt: event.payload.createdAt,
-        })
-        const readModel = yield* deps.orchestrationEngine.getReadModel()
-        yield* propagateSubagentSessionState({
-          threads: readModel.threads,
-          parentThreadId: rootThread.id,
+        yield* setRootThreadSessionAndPropagate(deps, {
+          thread: rootThread,
           status: 'interrupted',
           createdAt: event.payload.createdAt,
-          setThreadSession: deps.setThreadSession,
         })
         return
       }
@@ -331,39 +325,19 @@ function createProcessApprovalResponseRequested(deps: ProviderCommandReactorEven
   return Effect.fnUntraced(function* (
     event: Extract<ProviderIntentEvent, { type: 'thread.approval-response-requested' }>
   ) {
-    const guard = yield* ensureThreadWithActiveSession(deps, {
-      threadId: event.payload.threadId,
-      kind: 'provider.approval.respond.failed',
-      summary: 'Provider approval response failed',
-      requestId: event.payload.requestId,
-      createdAt: event.payload.createdAt,
+    yield* respondToPendingProviderRequest(deps, {
+      event,
+      failureKind: 'provider.approval.respond.failed',
+      failureSummary: 'Provider approval response failed',
+      staleKind: 'approval',
+      isUnknownRequestError: deps.isUnknownPendingApprovalRequestError,
+      respond: controlRoute =>
+        deps.providerService.respondToRequest({
+          threadId: controlRoute.sessionThreadId,
+          requestId: event.payload.requestId,
+          decision: event.payload.decision,
+        }),
     })
-    if (guard.handled) return
-    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
-    if (!controlRoute) {
-      return
-    }
-    yield* deps.providerService
-      .respondToRequest({
-        threadId: controlRoute.sessionThreadId,
-        requestId: event.payload.requestId,
-        decision: event.payload.decision,
-      })
-      .pipe(
-        Effect.catchCause(cause =>
-          deps.appendProviderFailureActivity({
-            threadId: event.payload.threadId,
-            kind: 'provider.approval.respond.failed',
-            summary: 'Provider approval response failed',
-            detail: deps.isUnknownPendingApprovalRequestError(cause)
-              ? deps.stalePendingRequestDetail('approval', event.payload.requestId)
-              : Cause.pretty(cause),
-            turnId: null,
-            createdAt: event.payload.createdAt,
-            requestId: event.payload.requestId,
-          })
-        )
-      )
   })
 }
 
@@ -371,39 +345,19 @@ function createProcessUserInputResponseRequested(deps: ProviderCommandReactorEve
   return Effect.fnUntraced(function* (
     event: Extract<ProviderIntentEvent, { type: 'thread.user-input-response-requested' }>
   ) {
-    const guard = yield* ensureThreadWithActiveSession(deps, {
-      threadId: event.payload.threadId,
-      kind: 'provider.user-input.respond.failed',
-      summary: 'Provider user input response failed',
-      requestId: event.payload.requestId,
-      createdAt: event.payload.createdAt,
+    yield* respondToPendingProviderRequest(deps, {
+      event,
+      failureKind: 'provider.user-input.respond.failed',
+      failureSummary: 'Provider user input response failed',
+      staleKind: 'user-input',
+      isUnknownRequestError: deps.isUnknownPendingUserInputRequestError,
+      respond: controlRoute =>
+        deps.providerService.respondToUserInput({
+          threadId: controlRoute.sessionThreadId,
+          requestId: event.payload.requestId,
+          answers: event.payload.answers,
+        }),
     })
-    if (guard.handled) return
-    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
-    if (!controlRoute) {
-      return
-    }
-    yield* deps.providerService
-      .respondToUserInput({
-        threadId: controlRoute.sessionThreadId,
-        requestId: event.payload.requestId,
-        answers: event.payload.answers,
-      })
-      .pipe(
-        Effect.catchCause(cause =>
-          deps.appendProviderFailureActivity({
-            threadId: event.payload.threadId,
-            kind: 'provider.user-input.respond.failed',
-            summary: 'Provider user input response failed',
-            detail: deps.isUnknownPendingUserInputRequestError(cause)
-              ? deps.stalePendingRequestDetail('user-input', event.payload.requestId)
-              : Cause.pretty(cause),
-            turnId: null,
-            createdAt: event.payload.createdAt,
-            requestId: event.payload.requestId,
-          })
-        )
-      )
   })
 }
 
@@ -420,24 +374,97 @@ function createProcessSessionStopRequested(deps: ProviderCommandReactorEventHand
       yield* deps.providerService.stopSession({ threadId: controlRoute.sessionThreadId })
     }
     const rootThread = controlRoute.parentThread ?? thread
-    yield* deps.setThreadSession({
-      threadId: rootThread.id,
-      session: buildSessionStateSnapshot({
-        thread: rootThread,
-        status: 'stopped',
-        createdAt: event.payload.createdAt,
-      }),
-      createdAt: event.payload.createdAt,
-    })
-    const readModel = yield* deps.orchestrationEngine.getReadModel()
-    yield* propagateSubagentSessionState({
-      threads: readModel.threads,
-      parentThreadId: rootThread.id,
+    yield* setRootThreadSessionAndPropagate(deps, {
+      thread: rootThread,
       status: 'stopped',
       createdAt: event.payload.createdAt,
-      setThreadSession: deps.setThreadSession,
     })
   })
+}
+
+function setRootThreadSessionAndPropagate(
+  deps: ProviderCommandReactorEventHandlerDeps,
+  input: {
+    readonly thread: OrchestrationReadModel['threads'][number]
+    readonly status: 'interrupted' | 'stopped'
+    readonly createdAt: string
+  }
+) {
+  return deps
+    .setThreadSession({
+      threadId: input.thread.id,
+      session: buildSessionStateSnapshot({
+        thread: input.thread,
+        status: input.status,
+        createdAt: input.createdAt,
+      }),
+      createdAt: input.createdAt,
+    })
+    .pipe(
+      Effect.flatMap(() => deps.orchestrationEngine.getReadModel()),
+      Effect.flatMap(readModel =>
+        propagateSubagentSessionState({
+          threads: readModel.threads,
+          parentThreadId: input.thread.id,
+          status: input.status,
+          createdAt: input.createdAt,
+          setThreadSession: deps.setThreadSession,
+        })
+      )
+    )
+}
+
+function respondToPendingProviderRequest(
+  deps: ProviderCommandReactorEventHandlerDeps,
+  input: {
+    readonly event: Extract<
+      ProviderIntentEvent,
+      { type: 'thread.approval-response-requested' | 'thread.user-input-response-requested' }
+    >
+    readonly failureKind: 'provider.approval.respond.failed' | 'provider.user-input.respond.failed'
+    readonly failureSummary:
+      | 'Provider approval response failed'
+      | 'Provider user input response failed'
+    readonly staleKind: 'approval' | 'user-input'
+    readonly isUnknownRequestError: (cause: Cause.Cause<ProviderServiceError>) => boolean
+    readonly respond: (controlRoute: ProviderControlRoute) => ProviderResponseEffect
+  }
+) {
+  return ensureThreadWithActiveSession(deps, {
+    threadId: input.event.payload.threadId,
+    kind: input.failureKind,
+    summary: input.failureSummary,
+    requestId: input.event.payload.requestId,
+    createdAt: input.event.payload.createdAt,
+  }).pipe(
+    Effect.flatMap(guard => {
+      if (guard.handled) {
+        return Effect.void
+      }
+      return resolveProviderControlRoute(deps, input.event.payload.threadId).pipe(
+        Effect.flatMap(controlRoute => {
+          if (!controlRoute) {
+            return Effect.void
+          }
+          return input.respond(controlRoute).pipe(
+            Effect.catchCause(cause =>
+              deps.appendProviderFailureActivity({
+                threadId: input.event.payload.threadId,
+                kind: input.failureKind,
+                summary: input.failureSummary,
+                detail: input.isUnknownRequestError(cause as Cause.Cause<ProviderServiceError>)
+                  ? deps.stalePendingRequestDetail(input.staleKind, input.event.payload.requestId)
+                  : Cause.pretty(cause),
+                turnId: null,
+                createdAt: input.event.payload.createdAt,
+                requestId: input.event.payload.requestId,
+              })
+            )
+          )
+        })
+      )
+    })
+  )
 }
 
 function createProcessDomainEvent(deps: ProviderCommandReactorEventHandlerDeps) {

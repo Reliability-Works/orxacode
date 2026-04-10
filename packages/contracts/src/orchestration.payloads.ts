@@ -12,22 +12,19 @@ import {
 } from './baseSchemas'
 import {
   DEFAULT_PROVIDER_INTERACTION_MODE,
-  DEFAULT_RUNTIME_MODE,
-  ModelSelection,
   OrchestrationProposedPlan,
   OrchestrationSession,
-  OrchestrationThreadParentLink,
-  OrchestrationThreadHandoff,
   OrchestrationThreadActivity,
-  ProjectScript,
   ProviderApprovalDecision,
   ProviderInteractionMode,
   ProviderUserInputAnswers,
   RuntimeMode,
+  threadCreatedPayloadFields,
 } from './orchestration.models'
 import {
   checkpointRowFields,
   orchestrationMessageContentFields,
+  projectCreatedCoreFields,
   projectMetaUpdatableFields,
   threadMetaUpdatableFields,
   threadTurnStartOptionsFields,
@@ -35,10 +32,7 @@ import {
 
 export const ProjectCreatedPayload = Schema.Struct({
   projectId: ProjectId,
-  title: TrimmedNonEmptyString,
-  workspaceRoot: TrimmedNonEmptyString,
-  defaultModelSelection: Schema.NullOr(ModelSelection),
-  scripts: Schema.Array(ProjectScript),
+  ...projectCreatedCoreFields,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 })
@@ -59,19 +53,7 @@ export type ProjectDeletedPayload = typeof ProjectDeletedPayload.Type
 
 export const ThreadCreatedPayload = Schema.Struct({
   threadId: ThreadId,
-  projectId: ProjectId,
-  title: TrimmedNonEmptyString,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
-  interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
-  ),
-  branch: Schema.NullOr(TrimmedNonEmptyString),
-  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
-  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
-  createdAt: IsoDateTime,
-  updatedAt: IsoDateTime,
+  ...threadCreatedPayloadFields,
 })
 export type ThreadCreatedPayload = typeof ThreadCreatedPayload.Type
 

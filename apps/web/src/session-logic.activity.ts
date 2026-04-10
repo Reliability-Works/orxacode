@@ -5,6 +5,7 @@ import {
   type ToolLifecycleItemType,
   type TurnId,
 } from '@orxa-code/contracts'
+import { asObjectRecord, asTrimmedString } from '@orxa-code/shared/records'
 
 import { isOpencodeStartupTelemetryActivity } from './opencodeStartupTelemetry'
 import {
@@ -66,18 +67,6 @@ function toWorkLogEntry(entry: DerivedWorkLogEntry): WorkLogEntry {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
-}
-
-function asTrimmedString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
 function normalizeCommandValue(value: unknown): string | null {
   const direct = asTrimmedString(value)
   if (direct) {
@@ -108,10 +97,10 @@ function requestKindFromRequestType(requestType: unknown): WorkLogEntry['request
 }
 
 function extractToolCommand(payload: Record<string, unknown> | null): string | null {
-  const data = asRecord(payload?.data)
-  const item = asRecord(data?.item)
-  const itemResult = asRecord(item?.result)
-  const itemInput = asRecord(item?.input)
+  const data = asObjectRecord(payload?.data)
+  const item = asObjectRecord(data?.item)
+  const itemResult = asObjectRecord(item?.result)
+  const itemInput = asObjectRecord(item?.input)
   const candidates = [
     normalizeCommandValue(item?.command),
     normalizeCommandValue(itemInput?.command),
@@ -189,7 +178,7 @@ function collectChangedFiles(value: unknown, target: string[], seen: Set<string>
     return
   }
 
-  const record = asRecord(value)
+  const record = asObjectRecord(value)
   if (!record) {
     return
   }
@@ -231,7 +220,7 @@ function extractChangedFiles(payload: Record<string, unknown> | null): string[] 
   }
   const changedFiles: string[] = []
   const seen = new Set<string>()
-  collectChangedFiles(asRecord(payload?.data), changedFiles, seen, 0)
+  collectChangedFiles(asObjectRecord(payload?.data), changedFiles, seen, 0)
   return changedFiles
 }
 
@@ -240,7 +229,7 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
     return false
   }
 
-  const payload = asRecord(activity.payload)
+  const payload = asObjectRecord(activity.payload)
   return typeof payload?.detail === 'string' && payload.detail.startsWith('ExitPlanMode:')
 }
 
@@ -272,7 +261,7 @@ function deriveToolLifecycleCollapseKey(
 }
 
 function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
-  const payload = asRecord(activity.payload)
+  const payload = asObjectRecord(activity.payload)
   const entry: DerivedWorkLogEntry = {
     id: activity.id,
     createdAt: activity.createdAt,

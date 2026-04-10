@@ -2,16 +2,16 @@
 
 import { type PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ResizePointerState,
+  usePointerResizeDownHandler,
+  usePointerResizeEndHandler,
+  useWindowResizeClampSync,
+} from '../resizePointer'
 
 const DEFAULT_CHAT_AUX_SIDEBAR_WIDTH = 384
 const MIN_CHAT_AUX_SIDEBAR_WIDTH = 320
 const MAX_CHAT_AUX_SIDEBAR_WIDTH_RATIO = 0.7
-
-interface ResizePointerState {
-  pointerId: number
-  startX: number
-  startWidth: number
-}
 
 function maxAuxSidebarWidth(): number {
   if (typeof window === 'undefined') return DEFAULT_CHAT_AUX_SIDEBAR_WIDTH
@@ -46,22 +46,13 @@ function usePointerDownHandler(
   resizeStateRef: React.MutableRefObject<ResizePointerState | null>,
   didResizeDuringDragRef: React.MutableRefObject<boolean>
 ) {
-  return useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return
-      event.preventDefault()
-      event.currentTarget.setPointerCapture(event.pointerId)
+  return usePointerResizeDownHandler(sidebarWidthRef, resizeStateRef, didResizeDuringDragRef, {
+    coordinateForEvent: event => event.clientX,
+    onStart: () => {
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
-      didResizeDuringDragRef.current = false
-      resizeStateRef.current = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startWidth: sidebarWidthRef.current,
-      }
     },
-    [didResizeDuringDragRef, resizeStateRef, sidebarWidthRef]
-  )
+  })
 }
 
 function usePointerMoveHandler(
@@ -76,7 +67,7 @@ function usePointerMoveHandler(
       if (!resizeState || resizeState.pointerId !== event.pointerId) return
       event.preventDefault()
       const clampedWidth = clampChatAuxSidebarWidth(
-        resizeState.startWidth + (resizeState.startX - event.clientX)
+        resizeState.startSize + (resizeState.startCoordinate - event.clientX)
       )
       if (clampedWidth === sidebarWidthRef.current) return
       didResizeDuringDragRef.current = true
@@ -93,46 +84,20 @@ function usePointerEndHandler(
   didResizeDuringDragRef: React.MutableRefObject<boolean>,
   syncWidth: (width: number) => void
 ) {
-  return useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const resizeState = resizeStateRef.current
-      if (!resizeState || resizeState.pointerId !== event.pointerId) return
-      resizeStateRef.current = null
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
+  return usePointerResizeEndHandler(
+    sidebarWidthRef,
+    resizeStateRef,
+    didResizeDuringDragRef,
+    nextWidth => {
       document.body.style.removeProperty('cursor')
       document.body.style.removeProperty('user-select')
-      if (!didResizeDuringDragRef.current) return
-      syncWidth(sidebarWidthRef.current)
+      syncWidth(nextWidth)
     },
-    [didResizeDuringDragRef, resizeStateRef, sidebarWidthRef, syncWidth]
-  )
-}
-
-function useWindowResizeSync(
-  sidebarWidthRef: React.MutableRefObject<number>,
-  resizeStateRef: React.MutableRefObject<ResizePointerState | null>,
-  setSidebarWidth: (width: number) => void,
-  syncWidth: (width: number) => void
-) {
-  useEffect(() => {
-    const onWindowResize = () => {
-      const clampedWidth = clampChatAuxSidebarWidth(sidebarWidthRef.current)
-      const changed = clampedWidth !== sidebarWidthRef.current
-      if (changed) {
-        setSidebarWidth(clampedWidth)
-        sidebarWidthRef.current = clampedWidth
-      }
-      if (!resizeStateRef.current) syncWidth(clampedWidth)
-    }
-    window.addEventListener('resize', onWindowResize)
-    return () => {
-      window.removeEventListener('resize', onWindowResize)
+    () => {
       document.body.style.removeProperty('cursor')
       document.body.style.removeProperty('user-select')
     }
-  }, [resizeStateRef, setSidebarWidth, sidebarWidthRef, syncWidth])
+  )
 }
 
 export function useChatAuxSidebarResize(
@@ -185,7 +150,17 @@ export function useChatAuxSidebarResize(
     syncWidth
   )
 
-  useWindowResizeSync(sidebarWidthRef, resizeStateRef, setSidebarWidth, syncWidth)
+  useWindowResizeClampSync({
+    sizeRef: sidebarWidthRef,
+    resizeStateRef,
+    setSize: setSidebarWidth,
+    syncSize: syncWidth,
+    clampSize: clampChatAuxSidebarWidth,
+    onCleanup: () => {
+      document.body.style.removeProperty('cursor')
+      document.body.style.removeProperty('user-select')
+    },
+  })
 
   return {
     sidebarWidth,

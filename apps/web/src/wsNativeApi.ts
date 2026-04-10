@@ -2,14 +2,19 @@ import { type ContextMenuItem, type NativeApi } from '@orxa-code/contracts'
 
 import { showContextMenuFallback } from './contextMenuFallback'
 import { resetServerStateForTests } from './rpc/serverState'
-import { getWsRpcClient, resetWsRpcClientForTests } from './wsRpcClient'
+import { getWsRpcClient, resetWsRpcClient, resetWsRpcClientForTests } from './wsRpcClient'
 
 let instance: { api: NativeApi } | null = null
 
-export function resetWsNativeApiForTests() {
+export async function resetWsNativeApi() {
   instance = null
-  resetWsRpcClientForTests()
+  await resetWsRpcClient()
   resetServerStateForTests()
+}
+
+export async function resetWsNativeApiForTests() {
+  await resetWsNativeApi()
+  await resetWsRpcClientForTests()
 }
 
 function createDialogsApi(): NativeApi['dialogs'] {

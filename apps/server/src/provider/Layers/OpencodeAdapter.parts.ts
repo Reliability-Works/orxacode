@@ -1,11 +1,8 @@
 import {
-  ProviderItemId,
+  type RuntimeItemId,
   type ProviderRuntimeEvent,
-  RuntimeItemId,
-  type TurnId,
+  type ToolLifecycleItemType,
 } from '@orxa-code/contracts'
-
-import { opencodeChildTurnId } from '../../opencodeChildThreads.ts'
 import {
   toolDataForPart,
   toolDetailForPart,
@@ -13,73 +10,14 @@ import {
   toolTitleForPart,
 } from './OpencodeAdapter.toolSummary.ts'
 import type { OpencodeMapperContext } from './OpencodeAdapter.pure.ts'
+import {
+  makeBaseForTurn,
+  matchesThread,
+  opencodeRawEvent,
+  runtimeItemIdFromPartId,
+  turnIdForSession,
+} from './OpencodeAdapter.shared.ts'
 import type { OpencodeEvent, OpencodePart } from './OpencodeAdapter.types.ts'
-import { PROVIDER } from './OpencodeAdapter.types.ts'
-
-interface BaseFields {
-  readonly eventId: OpencodeMapperContext['nextStamp'] extends () => infer T
-    ? T extends { eventId: infer E }
-      ? E
-      : never
-    : never
-  readonly provider: typeof PROVIDER
-  readonly threadId: OpencodeMapperContext['threadId']
-  readonly createdAt: string
-  readonly turnId?: TurnId
-  readonly providerRefs?: { readonly providerItemId?: ProviderItemId }
-}
-
-function makeBaseForTurn(
-  ctx: OpencodeMapperContext,
-  turnId: TurnId | undefined,
-  providerItemId?: string
-): BaseFields {
-  const stamp = ctx.nextStamp()
-  return {
-    eventId: stamp.eventId,
-    provider: PROVIDER,
-    threadId: ctx.threadId,
-    createdAt: stamp.createdAt,
-    ...(turnId !== undefined ? { turnId } : {}),
-    ...(providerItemId
-      ? { providerRefs: { providerItemId: ProviderItemId.makeUnsafe(providerItemId) } }
-      : {}),
-  }
-}
-
-function turnIdForSession(
-  ctx: OpencodeMapperContext,
-  sessionId: string | undefined
-): TurnId | undefined {
-  if (!sessionId || sessionId === ctx.providerSessionId) {
-    return ctx.turnId
-  }
-  return ctx.relatedSessionIds.has(sessionId) ? opencodeChildTurnId(sessionId) : ctx.turnId
-}
-
-function matchesThread(ctx: OpencodeMapperContext, sessionId: string | undefined): boolean {
-  if (sessionId && ctx.relatedSessionIds.has(sessionId)) {
-    return true
-  }
-  if (!ctx.providerSessionId) return true
-  return sessionId === ctx.providerSessionId
-}
-
-function opencodeRawEvent(event: OpencodeEvent): {
-  readonly source: 'opencode.sdk.event'
-  readonly messageType: string
-  readonly payload: unknown
-} {
-  return {
-    source: 'opencode.sdk.event',
-    messageType: event.type,
-    payload: event.properties,
-  }
-}
-
-function runtimeItemIdFromPartId(partId: string): RuntimeItemId {
-  return RuntimeItemId.makeUnsafe(`opencode-part-${partId}`)
-}
 
 function canonicalPartItemType(
   part: OpencodePart
@@ -96,81 +34,30 @@ function canonicalPartItemType(
   }
 }
 
-function buildToolLifecycleUpdateEvent(input: {
+function buildPartItemEvent(input: {
   readonly ctx: OpencodeMapperContext
   readonly partId: string
   readonly sessionId: string
   readonly itemId: RuntimeItemId
-  readonly itemType: ReturnType<typeof toolLifecycleItemTypeForTool>
-  readonly title: string
+  readonly itemType: ToolLifecycleItemType | ReturnType<typeof canonicalPartItemType>
+  readonly eventType: 'item.started' | 'item.updated' | 'item.completed'
+  readonly status: 'inProgress' | 'completed' | 'failed' | 'declined'
+  readonly title?: string
   readonly detail: string | undefined
   readonly data: Record<string, unknown> | undefined
   readonly raw: ReturnType<typeof opencodeRawEvent>
 }): ProviderRuntimeEvent | null {
-  if (!input.detail && !input.data) {
+  if (input.eventType === 'item.updated' && !input.detail && !input.data) {
     return null
   }
   return {
     ...makeBaseForTurn(input.ctx, turnIdForSession(input.ctx, input.sessionId), input.partId),
     itemId: input.itemId,
-    type: 'item.updated',
-    payload: {
-      itemType: input.itemType,
-      status: 'inProgress',
-      title: input.title,
-      ...(input.detail ? { detail: input.detail } : {}),
-      ...(input.data ? { data: input.data } : {}),
-    },
-    raw: input.raw,
-  }
-}
-
-function buildToolLifecycleStartedEvent(input: {
-  readonly ctx: OpencodeMapperContext
-  readonly partId: string
-  readonly sessionId: string
-  readonly itemId: RuntimeItemId
-  readonly itemType: ReturnType<typeof toolLifecycleItemTypeForTool>
-  readonly title: string
-  readonly detail: string | undefined
-  readonly data: Record<string, unknown> | undefined
-  readonly raw: ReturnType<typeof opencodeRawEvent>
-}): ProviderRuntimeEvent {
-  return {
-    ...makeBaseForTurn(input.ctx, turnIdForSession(input.ctx, input.sessionId), input.partId),
-    itemId: input.itemId,
-    type: 'item.started',
-    payload: {
-      itemType: input.itemType,
-      status: 'inProgress',
-      title: input.title,
-      ...(input.detail ? { detail: input.detail } : {}),
-      ...(input.data ? { data: input.data } : {}),
-    },
-    raw: input.raw,
-  }
-}
-
-function buildToolLifecycleCompletedEvent(input: {
-  readonly ctx: OpencodeMapperContext
-  readonly partId: string
-  readonly sessionId: string
-  readonly itemId: RuntimeItemId
-  readonly itemType: ReturnType<typeof toolLifecycleItemTypeForTool>
-  readonly status: 'completed' | 'failed'
-  readonly title: string
-  readonly detail: string | undefined
-  readonly data: Record<string, unknown> | undefined
-  readonly raw: ReturnType<typeof opencodeRawEvent>
-}): ProviderRuntimeEvent {
-  return {
-    ...makeBaseForTurn(input.ctx, turnIdForSession(input.ctx, input.sessionId), input.partId),
-    itemId: input.itemId,
-    type: 'item.completed',
+    type: input.eventType,
     payload: {
       itemType: input.itemType,
       status: input.status,
-      title: input.title,
+      ...(input.title ? { title: input.title } : {}),
       ...(input.detail ? { detail: input.detail } : {}),
       ...(input.data ? { data: input.data } : {}),
     },
@@ -203,19 +90,31 @@ function toolPartEvents(
   switch (part.state.status) {
     case 'pending':
     case 'running': {
-      const updateEvent = buildToolLifecycleUpdateEvent(base)
-      return [buildToolLifecycleStartedEvent(base), ...(updateEvent ? [updateEvent] : [])]
+      const updateEvent = buildPartItemEvent({
+        ...base,
+        eventType: 'item.updated',
+        status: 'inProgress',
+      })
+      const startedEvent = buildPartItemEvent({
+        ...base,
+        eventType: 'item.started',
+        status: 'inProgress',
+      })
+      return startedEvent ? [startedEvent, ...(updateEvent ? [updateEvent] : [])] : []
     }
     case 'completed':
-      return [buildToolLifecycleCompletedEvent({ ...base, status: 'completed' })]
+      return [
+        buildPartItemEvent({ ...base, eventType: 'item.completed', status: 'completed' }),
+      ].filter((event): event is ProviderRuntimeEvent => event !== null)
     case 'error':
       return [
-        buildToolLifecycleCompletedEvent({
+        buildPartItemEvent({
           ...base,
+          eventType: 'item.completed',
           status: 'failed',
           detail: part.state.error.length > 0 ? part.state.error : detail,
         }),
-      ]
+      ].filter((event): event is ProviderRuntimeEvent => event !== null)
     default:
       return []
   }
@@ -227,30 +126,29 @@ function subtaskPartEvents(
   event: Extract<OpencodeEvent, { type: 'message.part.updated' }>
 ): ReadonlyArray<ProviderRuntimeEvent> {
   const itemId = runtimeItemIdFromPartId(part.id)
-  const turnId = turnIdForSession(ctx, part.sessionID)
   return [
-    {
-      ...makeBaseForTurn(ctx, turnId, part.id),
+    buildPartItemEvent({
+      ctx,
+      partId: part.id,
+      sessionId: part.sessionID,
       itemId,
-      type: 'item.started',
-      payload: {
-        itemType: 'collab_agent_tool_call',
-        status: 'inProgress',
-        title: part.agent,
-        detail: part.description || part.prompt,
-        data: {
-          item: {
-            agent_label: part.agent,
-            prompt: part.prompt,
-            description: part.description,
-            ...(part.command ? { command: part.command } : {}),
-            ...(part.model ? { model: part.model } : {}),
-          },
+      itemType: 'collab_agent_tool_call',
+      eventType: 'item.started',
+      status: 'inProgress',
+      title: part.agent,
+      detail: part.description || part.prompt,
+      data: {
+        item: {
+          agent_label: part.agent,
+          prompt: part.prompt,
+          description: part.description,
+          ...(part.command ? { command: part.command } : {}),
+          ...(part.model ? { model: part.model } : {}),
         },
       },
       raw: opencodeRawEvent(event),
-    },
-  ]
+    }),
+  ].filter((runtimeEvent): runtimeEvent is ProviderRuntimeEvent => runtimeEvent !== null)
 }
 
 function textOrReasoningPartEvents(
@@ -261,21 +159,20 @@ function textOrReasoningPartEvents(
   const itemId = runtimeItemIdFromPartId(part.id)
   const itemType = canonicalPartItemType(part)
   const ended = part.time?.end !== undefined
-  const turnId = turnIdForSession(ctx, part.sessionID)
   return [
-    {
-      ...makeBaseForTurn(ctx, turnId, part.id),
+    buildPartItemEvent({
+      ctx,
+      partId: part.id,
+      sessionId: part.sessionID,
       itemId,
-      type: ended ? 'item.completed' : 'item.updated',
-      payload: {
-        itemType,
-        status: ended ? 'completed' : 'inProgress',
-        ...(part.type === 'text' && part.text.length > 0 ? { detail: part.text } : {}),
-        ...(part.type === 'reasoning' && part.text.length > 0 ? { detail: part.text } : {}),
-      },
+      itemType,
+      eventType: ended ? 'item.completed' : 'item.updated',
+      status: ended ? 'completed' : 'inProgress',
+      detail: part.text.length > 0 ? part.text : undefined,
+      data: undefined,
       raw: opencodeRawEvent(event),
-    },
-  ]
+    }),
+  ].filter((runtimeEvent): runtimeEvent is ProviderRuntimeEvent => runtimeEvent !== null)
 }
 
 export function mapMessagePartUpdated(
@@ -331,14 +228,18 @@ export function mapMessagePartRemoved(
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   if (!matchesThread(ctx, event.properties.sessionID)) return []
-  const turnId = turnIdForSession(ctx, event.properties.sessionID)
   return [
-    {
-      ...makeBaseForTurn(ctx, turnId, event.properties.partID),
+    buildPartItemEvent({
+      ctx,
+      partId: event.properties.partID,
+      sessionId: event.properties.sessionID,
       itemId: runtimeItemIdFromPartId(event.properties.partID),
-      type: 'item.updated',
-      payload: { itemType: 'unknown', status: 'declined' },
+      itemType: 'unknown',
+      eventType: 'item.updated',
+      status: 'declined',
+      detail: undefined,
+      data: undefined,
       raw: opencodeRawEvent(event),
-    },
-  ]
+    }),
+  ].filter((runtimeEvent): runtimeEvent is ProviderRuntimeEvent => runtimeEvent !== null)
 }

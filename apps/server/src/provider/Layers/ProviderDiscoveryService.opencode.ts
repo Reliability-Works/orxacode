@@ -1,56 +1,16 @@
-import fsPromises from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
 import type { ProviderListPluginsResult, ProviderPluginDescriptor } from '@orxa-code/contracts'
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function trimString(value: unknown): string | undefined {
-  return isNonEmptyString(value) ? value.trim() : undefined
-}
-
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter(isNonEmptyString).map(entry => entry.trim()) : []
-}
-
-function compactOptionalFields<T extends Record<string, unknown>>(record: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== undefined)
-  ) as Partial<T>
-}
-
-function uniqueById<T extends { id: string }>(items: ReadonlyArray<T>): ReadonlyArray<T> {
-  const seen = new Set<string>()
-  const result: T[] = []
-  for (const item of items) {
-    if (seen.has(item.id)) continue
-    seen.add(item.id)
-    result.push(item)
-  }
-  return result
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-async function safeReadJson(
-  filePath: string
-): Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly error: string }> {
-  try {
-    const content = await fsPromises.readFile(filePath, 'utf8')
-    return { ok: true, value: JSON.parse(content) }
-  } catch (error) {
-    return { ok: false, error: describeError(error) }
-  }
-}
+import {
+  compactOptionalFields,
+  finalizePluginResult,
+  nowIso,
+  readObjectManifest,
+  readStringArray,
+  safeReadJson,
+  trimString,
+} from './ProviderDiscoveryService.shared.ts'
 
 function opencodeConfigRoot(): string {
   return path.join(homedir(), '.config', 'opencode')
@@ -73,7 +33,9 @@ function opencodeAuthorName(record: Record<string, unknown>): string | undefined
 function isOpencodePluginPackage(record: Record<string, unknown>): boolean {
   const keywords = readStringArray(record.keywords).map(keyword => keyword.toLowerCase())
   const dependencies =
-    record.dependencies && typeof record.dependencies === 'object' && !Array.isArray(record.dependencies)
+    record.dependencies &&
+    typeof record.dependencies === 'object' &&
+    !Array.isArray(record.dependencies)
       ? (record.dependencies as Record<string, unknown>)
       : {}
   const peerDependencies =
@@ -141,36 +103,15 @@ async function collectOpencodePluginsFromRoot(input: {
   const warnings: Array<ProviderListPluginsResult['warnings'][number]> = []
   const plugins: ProviderPluginDescriptor[] = []
   const packageJsonPath = path.join(input.rootPath, 'package.json')
-  const manifest = await safeReadJson(packageJsonPath)
+  const manifest = await readObjectManifest({
+    manifestPath: packageJsonPath,
+    readErrorMessage: error => `Failed to read Opencode package manifest: ${error}`,
+    invalidMessage: 'Opencode package manifest did not decode to an object.',
+  })
   if (!manifest.ok) {
-    return {
-      plugins,
-      warnings: [
-        {
-          path: packageJsonPath,
-          message: `Failed to read Opencode package manifest: ${manifest.error}`,
-        },
-      ],
-      updatedAt: nowIso(),
-    }
+    return manifest.result
   }
-
-  const record =
-    manifest.value && typeof manifest.value === 'object' && !Array.isArray(manifest.value)
-      ? (manifest.value as Record<string, unknown>)
-      : null
-  if (!record) {
-    return {
-      plugins,
-      warnings: [
-        {
-          path: packageJsonPath,
-          message: 'Opencode package manifest did not decode to an object.',
-        },
-      ],
-      updatedAt: nowIso(),
-    }
-  }
+  const record = manifest.record
 
   const dependencyBlocks = [record.dependencies, record.devDependencies]
   const packageNames = new Set<string>()
@@ -225,13 +166,5 @@ export async function listOpencodePlugins(): Promise<ProviderListPluginsResult> 
     plugins.push(...result.plugins)
   }
 
-  return {
-    plugins: uniqueById(
-      plugins.toSorted((left, right) =>
-        left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
-      )
-    ),
-    warnings,
-    updatedAt: nowIso(),
-  }
+  return finalizePluginResult({ plugins, warnings })
 }

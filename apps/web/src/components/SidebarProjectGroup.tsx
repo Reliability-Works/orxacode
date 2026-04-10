@@ -112,18 +112,22 @@ function SidebarProjectGroupList(
     | 'addFormProps'
   >
 ) {
+  const sharedListProps = {
+    renderedPinnedThreads: props.renderedPinnedThreads,
+    renderedProjects: props.renderedProjects,
+    getProjectItemProps: props.getProjectItemProps,
+    getThreadRowProps: props.getThreadRowProps,
+    routeThreadId: props.routeThreadId,
+    selectedThreadIds: props.selectedThreadIds,
+    threadJumpLabelById: props.threadJumpLabelById,
+    terminalStateByThreadId: props.terminalStateByThreadId,
+    prByThreadId: props.prByThreadId,
+    confirmingArchiveThreadId: props.confirmingArchiveThreadId,
+  }
+
   return props.isManualProjectSorting ? (
     <SidebarDndProjectList
-      renderedPinnedThreads={props.renderedPinnedThreads}
-      renderedProjects={props.renderedProjects}
-      getProjectItemProps={props.getProjectItemProps}
-      getThreadRowProps={props.getThreadRowProps}
-      routeThreadId={props.routeThreadId}
-      selectedThreadIds={props.selectedThreadIds}
-      threadJumpLabelById={props.threadJumpLabelById}
-      terminalStateByThreadId={props.terminalStateByThreadId}
-      prByThreadId={props.prByThreadId}
-      confirmingArchiveThreadId={props.confirmingArchiveThreadId}
+      {...sharedListProps}
       projectDnDSensors={props.projectDnDSensors}
       projectCollisionDetection={props.projectCollisionDetection}
       onProjectDragStart={props.onProjectDragStart}
@@ -132,16 +136,7 @@ function SidebarProjectGroupList(
     />
   ) : (
     <SidebarStaticProjectList
-      renderedPinnedThreads={props.renderedPinnedThreads}
-      renderedProjects={props.renderedProjects}
-      getProjectItemProps={props.getProjectItemProps}
-      getThreadRowProps={props.getThreadRowProps}
-      routeThreadId={props.routeThreadId}
-      selectedThreadIds={props.selectedThreadIds}
-      threadJumpLabelById={props.threadJumpLabelById}
-      terminalStateByThreadId={props.terminalStateByThreadId}
-      prByThreadId={props.prByThreadId}
-      confirmingArchiveThreadId={props.confirmingArchiveThreadId}
+      {...sharedListProps}
       attachProjectListAutoAnimateRef={props.attachProjectListAutoAnimateRef}
     />
   )

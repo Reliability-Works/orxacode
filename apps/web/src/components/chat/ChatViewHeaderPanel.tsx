@@ -22,21 +22,7 @@ import { ThreadHandoffMenu } from './ThreadHandoffMenu'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
-
-function formatSubagentLabel(value: string | null | undefined): string | null {
-  if (!value) {
-    return null
-  }
-  const trimmed = value.trim()
-  if (trimmed.length === 0) {
-    return null
-  }
-  return trimmed
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
+import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()

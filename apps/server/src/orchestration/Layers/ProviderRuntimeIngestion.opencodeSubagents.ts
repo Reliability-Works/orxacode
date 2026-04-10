@@ -12,22 +12,15 @@ import {
 } from '../../opencodeChildThreads.ts'
 import { findDiscoveredOpencodeAgentById } from '../../provider/opencodeAgents.ts'
 import { providerCommandId } from './ProviderRuntimeIngestion.helpers.ts'
+import { buildDelegatedPromptSeedText, buildSubagentThreadTitle } from '@orxa-code/shared/subagent'
 import type {
   ProcessRuntimeEventDeps,
   ReadModelThread,
 } from './ProviderRuntimeIngestion.processEvent.handlers.ts'
-
-function buildBaseSubagentThreadTitle(agentLabel: string | null): string {
-  const trimmed = agentLabel?.trim()
-  if (!trimmed) {
-    return 'Opencode Subagent'
-  }
-  return trimmed
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
+import {
+  dispatchRunningSubagentSession,
+  dispatchSubagentSeedMessage,
+} from './ProviderRuntimeIngestion.subagents.shared.ts'
 
 export function buildOpencodeSubagentThreadTitle(
   title: string | null,
@@ -35,13 +28,13 @@ export function buildOpencodeSubagentThreadTitle(
 ): string {
   const trimmedAgentLabel = agentLabel?.trim()
   if (trimmedAgentLabel) {
-    return buildBaseSubagentThreadTitle(trimmedAgentLabel)
+    return buildSubagentThreadTitle(trimmedAgentLabel, 'Opencode Subagent')
   }
   const trimmedTitle = title?.trim()
   if (trimmedTitle) {
     return trimmedTitle
   }
-  return buildBaseSubagentThreadTitle(agentLabel)
+  return buildSubagentThreadTitle(agentLabel, 'Opencode Subagent')
 }
 
 export function opencodeSeedMessageId(childThreadId: ThreadId): MessageId {
@@ -52,13 +45,9 @@ export function buildOpencodeSeedMessageText(
   descriptor: OpencodeChildThreadDescriptor | null
 ): string {
   if (!descriptor) {
-    return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
+    return buildDelegatedPromptSeedText()
   }
-  const prompt = descriptor.prompt?.trim() ?? descriptor.description?.trim() ?? ''
-  if (prompt.length > 0) {
-    return prompt
-  }
-  return 'Delegated task from parent thread. Exact provider prompt was not exposed.'
+  return buildDelegatedPromptSeedText(descriptor.prompt, descriptor.description)
 }
 
 function readOpencodeActivityDelegation(payload: unknown) {
@@ -271,25 +260,14 @@ const dispatchCreatedThreadSession = (
   parentThread: ReadModelThread,
   descriptor: OpencodeChildThreadDescriptor
 ) =>
-  deps.orchestrationEngine.dispatch({
-    type: 'thread.session.set',
-    commandId: providerCommandId(
-      event,
-      `subagent-thread-session-set:${descriptor.providerChildThreadId}`
-    ),
+  dispatchRunningSubagentSession({
+    deps,
+    event,
     threadId: descriptor.childThreadId,
-    session: {
-      threadId: descriptor.childThreadId,
-      status: 'running',
-      providerName: event.provider,
-      providerSessionId: descriptor.providerChildThreadId,
-      providerThreadId: descriptor.providerChildThreadId,
-      runtimeMode: parentThread.runtimeMode,
-      activeTurnId: opencodeChildTurnId(descriptor.providerChildThreadId),
-      lastError: null,
-      updatedAt: event.createdAt,
-    },
-    createdAt: event.createdAt,
+    providerChildThreadId: descriptor.providerChildThreadId,
+    providerSessionId: descriptor.providerChildThreadId,
+    runtimeMode: parentThread.runtimeMode,
+    activeTurnId: opencodeChildTurnId(descriptor.providerChildThreadId),
   })
 
 const dispatchSeededPrompt = (
@@ -299,15 +277,13 @@ const dispatchSeededPrompt = (
   providerChildThreadId: string,
   text: string
 ) =>
-  deps.orchestrationEngine.dispatch({
-    type: 'thread.message.seed',
-    commandId: providerCommandId(event, `subagent-thread-seed:${providerChildThreadId}`),
+  dispatchSubagentSeedMessage({
+    deps,
+    event,
     threadId,
+    providerChildThreadId,
     messageId: opencodeSeedMessageId(threadId),
-    role: 'user',
     text,
-    turnId: null,
-    createdAt: event.createdAt,
   })
 
 const maybeDispatchThreadMetaUpdate = (

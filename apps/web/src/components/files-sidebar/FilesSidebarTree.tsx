@@ -20,7 +20,7 @@ function FilesSidebarSkeleton() {
   )
 }
 
-function FilesTreeDirectoryRow(props: {
+type FilesTreeRowProps = {
   node: FilesTreeNode
   depth: number
   expandedFolders: Record<string, boolean>
@@ -29,7 +29,9 @@ function FilesTreeDirectoryRow(props: {
   onOpenFile: (path: string) => void
   onInsertPath: (path: string) => void
   resolvedTheme: 'light' | 'dark'
-}) {
+}
+
+function FilesTreeDirectoryRow(props: FilesTreeRowProps) {
   const isExpanded = props.expandedFolders[props.node.path] === true
 
   return (
@@ -102,16 +104,7 @@ function FilesTreeFileRow(props: {
   )
 }
 
-function FilesTreeRow(props: {
-  node: FilesTreeNode
-  depth: number
-  expandedFolders: Record<string, boolean>
-  setExpandedFolders: Dispatch<SetStateAction<Record<string, boolean>>>
-  selectedFilePath: string | null
-  onOpenFile: (path: string) => void
-  onInsertPath: (path: string) => void
-  resolvedTheme: 'light' | 'dark'
-}) {
+function FilesTreeRow(props: FilesTreeRowProps) {
   if (props.node.kind === 'directory') {
     return <FilesTreeDirectoryRow {...props} />
   }
@@ -147,6 +140,9 @@ function FilesSidebarTreeToolbar(props: {
   directoryPaths: readonly string[]
   setExpandedFolders: Dispatch<SetStateAction<Record<string, boolean>>>
 }) {
+  const setAllFoldersExpanded = (expanded: boolean) =>
+    props.setExpandedFolders(Object.fromEntries(props.directoryPaths.map(path => [path, expanded])))
+
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
       <Input
@@ -163,11 +159,7 @@ function FilesSidebarTreeToolbar(props: {
           className="h-7 w-7 p-0"
           aria-label="Collapse all folders"
           title="Collapse all folders"
-          onClick={() =>
-            props.setExpandedFolders(
-              Object.fromEntries(props.directoryPaths.map(path => [path, false]))
-            )
-          }
+          onClick={() => setAllFoldersExpanded(false)}
           disabled={props.directoryPaths.length === 0}
         >
           <FolderIcon className="size-3" />
@@ -179,11 +171,7 @@ function FilesSidebarTreeToolbar(props: {
           className="h-7 w-7 p-0"
           aria-label="Expand all folders"
           title="Expand all folders"
-          onClick={() =>
-            props.setExpandedFolders(
-              Object.fromEntries(props.directoryPaths.map(path => [path, true]))
-            )
-          }
+          onClick={() => setAllFoldersExpanded(true)}
           disabled={props.directoryPaths.length === 0}
         >
           <FolderOpenIcon className="size-3" />

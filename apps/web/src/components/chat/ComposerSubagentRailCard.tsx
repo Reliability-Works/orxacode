@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUiStateStore } from '../../uiStateStore'
 import { useChatViewCtx } from './ChatViewContext'
 import { cn } from '~/lib/utils'
+import { ComposerRailSectionCard } from './ComposerRailSectionCard'
 import {
   type RailSubagentItem,
   type SubagentStatus,
@@ -88,33 +88,18 @@ export function ComposerSubagentRailCard() {
   }
 
   return (
-    <div className="px-3 py-2" data-testid="composer-subagent-card">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-1 text-left"
-        onClick={() => setCollapsed(value => !value)}
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
-            <span className="rounded-full border border-border/70 bg-background/50 px-2 py-0.5 font-medium text-foreground/85">
-              Subagents
-            </span>
-            <span className="truncate">{items.length} active</span>
-          </div>
-        </div>
-        {collapsed ? (
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground/60" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground/60" />
-        )}
-      </button>
-      {!collapsed ? (
-        <div className="mt-2 space-y-1">
-          {items.map(item => (
-            <SubagentRow key={item.threadId} item={item} />
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <ComposerRailSectionCard
+      testId="composer-subagent-card"
+      badgeLabel="Subagents"
+      summary={`${items.length} active`}
+      collapsed={collapsed}
+      onToggle={() => setCollapsed(value => !value)}
+    >
+      <div className="mt-2 space-y-1">
+        {items.map(item => (
+          <SubagentRow key={item.threadId} item={item} />
+        ))}
+      </div>
+    </ComposerRailSectionCard>
   )
 }

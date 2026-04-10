@@ -1,4 +1,5 @@
 import type { ThreadId } from '@orxa-code/contracts'
+import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 
 import type { Thread } from '../../types'
 
@@ -11,18 +12,6 @@ export type RailSubagentItem = {
   prompt: string | null
   modelLabel: string
   status: SubagentStatus
-}
-
-function formatAgentLabel(value: string | null | undefined): string | null {
-  const trimmed = value?.trim()
-  if (!trimmed) {
-    return null
-  }
-  return trimmed
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
 }
 
 function deriveSubagentStatus(thread: Thread): SubagentStatus {
@@ -66,7 +55,7 @@ export function deriveRailSubagentItems(
         left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
     )
     .map(thread => {
-      const agentLabel = formatAgentLabel(
+      const agentLabel = formatSubagentLabel(
         thread.parentLink?.agentLabel ??
           (thread.modelSelection.provider === 'opencode' ? thread.modelSelection.agentId : null)
       )

@@ -4,6 +4,12 @@ import { type PointerEvent as ReactPointerEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type ThreadId } from '@orxa-code/contracts'
 import { DEFAULT_THREAD_TERMINAL_HEIGHT } from '../types'
+import {
+  ResizePointerState,
+  usePointerResizeDownHandler,
+  usePointerResizeEndHandler,
+  useWindowResizeClampSync,
+} from './resizePointer'
 
 const MIN_DRAWER_HEIGHT = 180
 const MAX_DRAWER_HEIGHT_RATIO = 0.75
@@ -27,31 +33,14 @@ export interface TerminalDrawerResizeState {
   handleResizePointerEnd: (event: ReactPointerEvent<HTMLDivElement>) => void
 }
 
-interface ResizePointerState {
-  pointerId: number
-  startY: number
-  startHeight: number
-}
-
 function usePointerDownHandler(
   drawerHeightRef: React.MutableRefObject<number>,
   resizeStateRef: React.MutableRefObject<ResizePointerState | null>,
   didResizeDuringDragRef: React.MutableRefObject<boolean>
 ) {
-  return useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return
-      event.preventDefault()
-      event.currentTarget.setPointerCapture(event.pointerId)
-      didResizeDuringDragRef.current = false
-      resizeStateRef.current = {
-        pointerId: event.pointerId,
-        startY: event.clientY,
-        startHeight: drawerHeightRef.current,
-      }
-    },
-    [didResizeDuringDragRef, drawerHeightRef, resizeStateRef]
-  )
+  return usePointerResizeDownHandler(drawerHeightRef, resizeStateRef, didResizeDuringDragRef, {
+    coordinateForEvent: event => event.clientY,
+  })
 }
 
 function usePointerMoveHandler(
@@ -66,7 +55,7 @@ function usePointerMoveHandler(
       if (!resizeState || resizeState.pointerId !== event.pointerId) return
       event.preventDefault()
       const clampedHeight = clampDrawerHeight(
-        resizeState.startHeight + (resizeState.startY - event.clientY)
+        resizeState.startSize + (resizeState.startCoordinate - event.clientY)
       )
       if (clampedHeight === drawerHeightRef.current) return
       didResizeDuringDragRef.current = true
@@ -84,45 +73,15 @@ function usePointerEndHandler(
   setResizeEpoch: React.Dispatch<React.SetStateAction<number>>,
   syncHeight: (nextHeight: number) => void
 ) {
-  return useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      const resizeState = resizeStateRef.current
-      if (!resizeState || resizeState.pointerId !== event.pointerId) return
-      resizeStateRef.current = null
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
-      if (!didResizeDuringDragRef.current) return
-      syncHeight(drawerHeightRef.current)
+  return usePointerResizeEndHandler(
+    drawerHeightRef,
+    resizeStateRef,
+    didResizeDuringDragRef,
+    nextHeight => {
+      syncHeight(nextHeight)
       setResizeEpoch(value => value + 1)
-    },
-    [didResizeDuringDragRef, drawerHeightRef, resizeStateRef, setResizeEpoch, syncHeight]
+    }
   )
-}
-
-function useWindowResizeSync(
-  drawerHeightRef: React.MutableRefObject<number>,
-  resizeStateRef: React.MutableRefObject<ResizePointerState | null>,
-  setDrawerHeight: (height: number) => void,
-  setResizeEpoch: React.Dispatch<React.SetStateAction<number>>,
-  syncHeight: (nextHeight: number) => void
-) {
-  useEffect(() => {
-    const onWindowResize = () => {
-      const clampedHeight = clampDrawerHeight(drawerHeightRef.current)
-      const changed = clampedHeight !== drawerHeightRef.current
-      if (changed) {
-        setDrawerHeight(clampedHeight)
-        drawerHeightRef.current = clampedHeight
-      }
-      if (!resizeStateRef.current) syncHeight(clampedHeight)
-      setResizeEpoch(value => value + 1)
-    }
-    window.addEventListener('resize', onWindowResize)
-    return () => {
-      window.removeEventListener('resize', onWindowResize)
-    }
-  }, [drawerHeightRef, resizeStateRef, setDrawerHeight, setResizeEpoch, syncHeight])
 }
 
 function useSyncHeight(
@@ -183,7 +142,14 @@ export function useTerminalDrawerResize(
     setResizeEpoch,
     syncHeight
   )
-  useWindowResizeSync(drawerHeightRef, resizeStateRef, setDrawerHeight, setResizeEpoch, syncHeight)
+  useWindowResizeClampSync({
+    sizeRef: drawerHeightRef,
+    resizeStateRef,
+    setSize: setDrawerHeight,
+    syncSize: syncHeight,
+    clampSize: clampDrawerHeight,
+    onResize: () => setResizeEpoch(value => value + 1),
+  })
   useEffect(() => () => syncHeight(drawerHeightRef.current), [syncHeight])
   return {
     drawerHeight,

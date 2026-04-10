@@ -1,4 +1,5 @@
 import languageAssociationsData from '../../vscode-icons-language-associations.json'
+import { basenameOfPath, extensionCandidates } from '../../pathValue'
 
 interface LanguageAssociations {
   version: string
@@ -51,28 +52,6 @@ const MONACO_LANGUAGE_OVERRIDES: Record<string, string> = {
   vb: 'vb',
   xml: 'xml',
   yaml: 'yaml',
-}
-
-function basenameOfPath(pathValue: string): string {
-  const slashIndex = pathValue.lastIndexOf('/')
-  if (slashIndex === -1) return pathValue
-  return pathValue.slice(slashIndex + 1)
-}
-
-function extensionCandidates(fileName: string): string[] {
-  const candidates = new Set<string>()
-  if (fileName.includes('.')) {
-    candidates.add(fileName)
-  }
-  let dotIndex = fileName.indexOf('.')
-  while (dotIndex !== -1 && dotIndex < fileName.length - 1) {
-    const candidate = fileName.slice(dotIndex + 1)
-    if (candidate.length > 0) {
-      candidates.add(candidate)
-    }
-    dotIndex = fileName.indexOf('.', dotIndex + 1)
-  }
-  return [...candidates]
 }
 
 function resolveVscodeLanguageId(pathValue: string): string | null {

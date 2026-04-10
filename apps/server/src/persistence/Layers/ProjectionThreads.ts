@@ -17,7 +17,7 @@ import {
   OrchestrationThreadParentLink,
 } from '@orxa-code/contracts'
 
-const ProjectionThreadDbRow = ProjectionThread.mapFields(
+export const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
     handoff: Schema.NullOr(Schema.fromJsonString(OrchestrationThreadHandoff)),

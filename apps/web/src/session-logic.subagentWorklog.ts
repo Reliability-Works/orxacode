@@ -1,4 +1,5 @@
 import type { OrchestrationThreadActivity, ToolLifecycleItemType } from '@orxa-code/contracts'
+import { asObjectRecord, asTrimmedString } from '@orxa-code/shared/records'
 
 type MinimalWorkLogEntry = {
   readonly activityKind: OrchestrationThreadActivity['kind']
@@ -6,18 +7,6 @@ type MinimalWorkLogEntry = {
   readonly label: string
   readonly toolTitle?: string
   readonly detail?: string
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
-}
-
-function asTrimmedString(value: unknown): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
 }
 
 function isSubagentToolLifecycleEntry(entry: MinimalWorkLogEntry): boolean {
@@ -30,9 +19,9 @@ function isSubagentToolLifecycleEntry(entry: MinimalWorkLogEntry): boolean {
 }
 
 function readSubagentData(payload: Record<string, unknown> | null) {
-  const data = asRecord(payload?.data)
-  const item = asRecord(data?.item) ?? data
-  const input = asRecord(item?.input)
+  const data = asObjectRecord(payload?.data)
+  const item = asObjectRecord(data?.item) ?? data
+  const input = asObjectRecord(item?.input)
   return { item, input }
 }
 
@@ -80,7 +69,7 @@ export function isVisibleSubagentToolStartActivity(activity: OrchestrationThread
   if (activity.kind !== 'tool.started') {
     return false
   }
-  const payload = asRecord(activity.payload)
+  const payload = asObjectRecord(activity.payload)
   return payload?.itemType === 'collab_agent_tool_call'
 }
 

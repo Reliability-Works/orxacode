@@ -19,7 +19,6 @@
  */
 import {
   type EventId,
-  ProviderItemId,
   type ProviderRuntimeEvent,
   RuntimeItemId,
   type ThreadId,
@@ -32,13 +31,18 @@ import type {
   OpencodeMessage,
   OpencodeSession,
 } from './OpencodeAdapter.types.ts'
-import { PROVIDER } from './OpencodeAdapter.types.ts'
-import { opencodeChildTurnId } from '../../opencodeChildThreads.ts'
 import {
   mapMessagePartDelta,
   mapMessagePartRemoved,
   mapMessagePartUpdated,
 } from './OpencodeAdapter.parts.ts'
+import {
+  makeBaseForTurn,
+  matchesThread,
+  opencodeRawEvent,
+  turnIdForSession,
+  type BaseFields,
+} from './OpencodeAdapter.shared.ts'
 
 export interface OpencodeEventStamp {
   readonly eventId: EventId
@@ -54,69 +58,12 @@ export interface OpencodeMapperContext {
   readonly nextStamp: () => OpencodeEventStamp
 }
 
-interface BaseFields {
-  readonly eventId: EventId
-  readonly provider: typeof PROVIDER
-  readonly threadId: ThreadId
-  readonly createdAt: string
-  readonly turnId?: TurnId
-  readonly providerRefs?: { readonly providerItemId?: ProviderItemId }
-}
-
-function makeBaseForTurn(
-  ctx: OpencodeMapperContext,
-  turnId: TurnId | undefined,
-  providerItemId?: string
-): BaseFields {
-  const stamp = ctx.nextStamp()
-  return {
-    eventId: stamp.eventId,
-    provider: PROVIDER,
-    threadId: ctx.threadId,
-    createdAt: stamp.createdAt,
-    ...(turnId !== undefined ? { turnId } : {}),
-    ...(providerItemId
-      ? { providerRefs: { providerItemId: ProviderItemId.makeUnsafe(providerItemId) } }
-      : {}),
-  }
-}
-
 function makeBase(ctx: OpencodeMapperContext, providerItemId?: string): BaseFields {
   return makeBaseForTurn(ctx, ctx.turnId, providerItemId)
 }
 
 function runtimeItemIdFromMessageId(messageId: string): RuntimeItemId {
   return RuntimeItemId.makeUnsafe(`opencode-message-${messageId}`)
-}
-
-function matchesThread(ctx: OpencodeMapperContext, sessionId: string | undefined): boolean {
-  if (sessionId && ctx.relatedSessionIds.has(sessionId)) {
-    return true
-  }
-  if (!ctx.providerSessionId) return true
-  return sessionId === ctx.providerSessionId
-}
-
-function turnIdForSession(
-  ctx: OpencodeMapperContext,
-  sessionId: string | undefined
-): TurnId | undefined {
-  if (!sessionId || sessionId === ctx.providerSessionId) {
-    return ctx.turnId
-  }
-  return ctx.relatedSessionIds.has(sessionId) ? opencodeChildTurnId(sessionId) : ctx.turnId
-}
-
-function opencodeRawEvent(event: OpencodeEvent): {
-  readonly source: 'opencode.sdk.event'
-  readonly messageType: string
-  readonly payload: unknown
-} {
-  return {
-    source: 'opencode.sdk.event',
-    messageType: event.type,
-    payload: event.properties,
-  }
 }
 
 export function mapSessionCreated(

@@ -49,6 +49,20 @@ export const projectMetaUpdatableFields = {
   scripts: Schema.optional(Schema.Array(ProjectScript)),
 } as const
 
+export const projectCreatedCoreFields = {
+  title: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
+  defaultModelSelection: Schema.NullOr(ModelSelection),
+  scripts: Schema.Array(ProjectScript),
+} as const
+
+export const projectCreateCommandFields = {
+  title: TrimmedNonEmptyString,
+  workspaceRoot: TrimmedNonEmptyString,
+  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
+  createdAt: IsoDateTime,
+} as const
+
 export const threadMetaUpdatableFields = {
   title: Schema.optional(TrimmedNonEmptyString),
   modelSelection: Schema.optional(ModelSelection),

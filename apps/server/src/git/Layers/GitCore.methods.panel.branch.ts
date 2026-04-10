@@ -1,86 +1,8 @@
 import { Effect } from 'effect'
 
 import type { GitCoreInternalDeps } from './GitCore.deps.ts'
-import type {
-  GitDiffFile,
-  GitDiffFileStatus,
-  GitDiffHunk,
-  GitDiffLine,
-  GitDiffScopeSummary,
-} from '@orxa-code/contracts'
-
-interface RawFilePatch {
-  path: string
-  oldPath: string | undefined
-  status: GitDiffFileStatus
-  isBinary: boolean
-  patch: string
-  hunks: GitDiffHunk[]
-  additions: number
-  deletions: number
-}
-
-function parseDiffLines(lines: string[]): GitDiffLine[] {
-  const result: GitDiffLine[] = []
-  let oldNum = 0
-  let newNum = 0
-  for (const line of lines) {
-    const ch = line[0]
-    if (ch === '-') {
-      result.push({ type: 'del', content: line.slice(1), oldLineNumber: oldNum })
-      oldNum++
-    } else if (ch === '+') {
-      result.push({ type: 'add', content: line.slice(1), newLineNumber: newNum })
-      newNum++
-    } else {
-      result.push({
-        type: 'context',
-        content: ch === '\\' ? line : line.slice(1),
-        oldLineNumber: oldNum,
-        newLineNumber: newNum,
-      })
-      oldNum++
-      newNum++
-    }
-  }
-  return result
-}
-
-const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)/
-
-function parseHunks(lines: string[]): GitDiffHunk[] {
-  const hunks: GitDiffHunk[] = []
-  let i = 0
-  while (i < lines.length) {
-    const m = HUNK_HEADER_RE.exec(lines[i]!)
-    if (!m) {
-      i++
-      continue
-    }
-    const oldStart = parseInt(m[1]!, 10)
-    const oldLines = m[2] !== undefined ? parseInt(m[2]!, 10) : 1
-    const newStart = parseInt(m[3]!, 10)
-    const newLines = m[4] !== undefined ? parseInt(m[4]!, 10) : 1
-    const header = lines[i]!
-    i++
-    const bodyLines: string[] = []
-    while (i < lines.length && !lines[i]!.startsWith('@@') && !lines[i]!.startsWith('diff ')) {
-      bodyLines.push(lines[i]!)
-      i++
-    }
-    const parsedLines = parseDiffLines(bodyLines)
-    hunks.push({ oldStart, oldLines, newStart, newLines, header, lines: parsedLines })
-  }
-  return hunks
-}
-
-function inferPatchStatus(status: GitDiffFileStatus, line: string): GitDiffFileStatus {
-  if (line.startsWith('rename from ')) return 'R'
-  if (line.startsWith('new file mode')) return 'A'
-  if (line.startsWith('deleted file mode')) return 'D'
-  if (line.startsWith('copy from ')) return 'C'
-  return status
-}
+import type { GitDiffFile, GitDiffScopeSummary } from '@orxa-code/contracts'
+import { parsePatchText, type RawFilePatch } from './GitCore.methods.panel.patch.ts'
 
 function parseRemoteNames(stdout: string): string[] {
   return stdout
@@ -143,65 +65,8 @@ function toCompareFile(raw: RawFilePatch): GitDiffFile {
   }
 }
 
-function parsePatchText(text: string): Map<string, RawFilePatch> {
-  const files = new Map<string, RawFilePatch>()
-  if (!text.trim()) return files
-
-  const blocks = text.split(/^(?=diff --git )/m)
-  for (const block of blocks) {
-    if (!block.startsWith('diff --git ')) continue
-    const lines = block.split('\n')
-    const gitDiffLine = lines[0] ?? ''
-    const headerMatch = /^diff --git a\/(.*?) b\/(.*)$/.exec(gitDiffLine)
-    if (!headerMatch) continue
-
-    let path = headerMatch[2] ?? ''
-    let oldPath: string | undefined
-    let status: GitDiffFileStatus = 'M'
-    const isBinary = block.includes('Binary files ')
-
-    for (const l of lines) {
-      if (l.startsWith('rename from ')) {
-        oldPath = l.slice('rename from '.length).trim()
-      } else if (l.startsWith('rename to ')) {
-        path = l.slice('rename to '.length).trim()
-      } else if (l.startsWith('+++ b/')) {
-        path = l.slice('+++ b/'.length).trim()
-      }
-      status = inferPatchStatus(status, l)
-    }
-
-    let hunkStart = 0
-    for (let j = 0; j < lines.length; j++) {
-      if (lines[j]!.startsWith('@@')) {
-        hunkStart = j
-        break
-      }
-    }
-
-    const hunkLines = lines.slice(hunkStart)
-    const hunks: RawFilePatch['hunks'] = isBinary ? [] : parseHunks(hunkLines)
-    const patch = block.trimEnd()
-
-    let additions = 0
-    let deletions = 0
-    for (const h of hunks) {
-      for (const l of h.lines) {
-        if (l.type === 'add') additions++
-        else if (l.type === 'del') deletions++
-      }
-    }
-
-    files.set(path, { path, oldPath, status, isBinary, patch, hunks, additions, deletions })
-  }
-  return files
-}
-
 function buildResolveBranchCompareBaseRef(deps: GitCoreInternalDeps) {
-  return Effect.fn('GitCore.resolveBranchCompareBaseRef')(function* (
-    cwd: string,
-    branch: string
-  ) {
+  return Effect.fn('GitCore.resolveBranchCompareBaseRef')(function* (cwd: string, branch: string) {
     const upstreamRef = yield* deps
       .runGitStdout(
         'GitCore.resolveBranchCompareBaseRef.upstream',
@@ -229,7 +94,7 @@ function buildResolveBranchCompareBaseRef(deps: GitCoreInternalDeps) {
     const remoteNames = yield* deps
       .runGitStdout('GitCore.resolveBranchCompareBaseRef.remotes', cwd, ['remote'], true)
       .pipe(Effect.map(parseRemoteNames))
-    const primaryRemote = remoteNames.includes('origin') ? 'origin' : remoteNames[0] ?? null
+    const primaryRemote = remoteNames.includes('origin') ? 'origin' : (remoteNames[0] ?? null)
     if (!primaryRemote) return null
 
     const remoteHead = yield* deps
@@ -289,13 +154,11 @@ export function makeScopeSummaries(input: {
   unstaged: ReadonlyArray<{ additions: number; deletions: number }>
   untracked?: ReadonlyArray<{ additions: number; deletions: number }>
   staged: ReadonlyArray<{ additions: number; deletions: number }>
-  branch:
-    | {
-        baseRef: string
-        compareLabel: string
-        files: ReadonlyArray<{ additions: number; deletions: number }>
-      }
-    | null
+  branch: {
+    baseRef: string
+    compareLabel: string
+    files: ReadonlyArray<{ additions: number; deletions: number }>
+  } | null
 }): GitDiffScopeSummary[] {
   return [
     buildScopeSummary({

@@ -1,5 +1,12 @@
 import os from 'node:os'
 import path from 'node:path'
+import { formatSubagentLabel } from '@orxa-code/shared/subagent'
+import {
+  describeAgentFileError,
+  extractAgentFrontmatter,
+  isAgentFileNotFoundError,
+  listFrontmatterEntries,
+} from './agentFileHelpers.ts'
 
 export interface DiscoveredClaudeAgent {
   readonly id: string
@@ -116,10 +123,10 @@ async function scanDirForAgent(
   try {
     entries = await readDir(dirPath)
   } catch (error) {
-    if (isFileNotFoundError(error)) {
+    if (isAgentFileNotFoundError(error)) {
       return null
     }
-    logWarning(`claude agent dir read failed at ${dirPath}: ${describeError(error)}`)
+    logWarning(`claude agent dir read failed at ${dirPath}: ${describeAgentFileError(error)}`)
     return null
   }
 
@@ -137,7 +144,7 @@ async function scanDirForAgent(
     }
     return {
       id: parsed.id ?? path.basename(entry, '.md'),
-      name: formatDisplayName(parsed.id ?? path.basename(entry, '.md')),
+      name: formatSubagentLabel(parsed.id ?? path.basename(entry, '.md')) ?? 'Claude Subagent',
       source,
       ...(parsed.description ? { description: parsed.description } : {}),
       ...(parsed.model ? { model: parsed.model } : {}),
@@ -156,10 +163,10 @@ async function parseClaudeAgentFile(
   try {
     content = await readFileText(fullPath)
   } catch (error) {
-    logWarning(`claude agent read failed at ${fullPath}: ${describeError(error)}`)
+    logWarning(`claude agent read failed at ${fullPath}: ${describeAgentFileError(error)}`)
     return null
   }
-  const frontmatter = extractFrontmatter(content)
+  const frontmatter = extractAgentFrontmatter(content)
   if (frontmatter === null) {
     logWarning(`claude agent missing frontmatter at ${fullPath}`)
     return null
@@ -167,45 +174,11 @@ async function parseClaudeAgentFile(
   return parseFrontmatterFields(frontmatter)
 }
 
-const FRONTMATTER_DELIMITER = '---'
-
-function extractFrontmatter(content: string): string | null {
-  const stripped = content.startsWith('\uFEFF') ? content.slice(1) : content
-  if (!stripped.startsWith(FRONTMATTER_DELIMITER)) {
-    return null
-  }
-  const afterFirst = stripped.slice(FRONTMATTER_DELIMITER.length)
-  const newlineIndex = afterFirst.indexOf('\n')
-  if (newlineIndex === -1) {
-    return null
-  }
-  const body = afterFirst.slice(newlineIndex + 1)
-  const closingPattern = /\r?\n---\s*(?:\r?\n|$)/
-  const match = closingPattern.exec(body)
-  if (!match) {
-    return null
-  }
-  return body.slice(0, match.index)
-}
-
 function parseFrontmatterFields(block: string): ParsedClaudeAgentFields {
   let id: string | undefined
   let description: string | undefined
   let model: string | undefined
-  for (const rawLine of block.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (line.length === 0 || line.startsWith('#')) {
-      continue
-    }
-    const colonIndex = line.indexOf(':')
-    if (colonIndex === -1) {
-      continue
-    }
-    const key = line.slice(0, colonIndex).trim()
-    const value = unquote(line.slice(colonIndex + 1).trim())
-    if (!value) {
-      continue
-    }
+  for (const [key, value] of listFrontmatterEntries(block)) {
     if (key === 'name') {
       id = value
     } else if (key === 'description') {
@@ -221,46 +194,12 @@ function parseFrontmatterFields(block: string): ParsedClaudeAgentFields {
   }
 }
 
-function unquote(value: string): string {
-  if (value.length >= 2) {
-    const first = value.charAt(0)
-    const last = value.charAt(value.length - 1)
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return value.slice(1, -1)
-    }
-  }
-  return value
-}
-
 function normalizeId(value: string | null | undefined): string | null {
   if (typeof value !== 'string') {
     return null
   }
   const trimmed = value.trim().toLowerCase()
   return trimmed.length > 0 ? trimmed : null
-}
-
-function formatDisplayName(value: string): string {
-  return value
-    .split(/[\s_-]+/)
-    .filter(part => part.length > 0)
-    .map(part => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(' ')
-}
-
-function isFileNotFoundError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-  const code = (error as { code?: unknown }).code
-  return code === 'ENOENT' || code === 'ENOTDIR'
-}
-
-function describeError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-  return String(error)
 }
 
 async function readDirFs(dirPath: string): Promise<ReadonlyArray<string>> {

@@ -4,48 +4,15 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 
 import type { ProviderListPluginsResult, ProviderPluginDescriptor } from '@orxa-code/contracts'
-
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-function uniqueById<T extends { id: string }>(items: ReadonlyArray<T>): ReadonlyArray<T> {
-  const seen = new Set<string>()
-  const result: T[] = []
-  for (const item of items) {
-    if (seen.has(item.id)) continue
-    seen.add(item.id)
-    result.push(item)
-  }
-  return result
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function trimString(value: unknown): string | undefined {
-  return isNonEmptyString(value) ? value.trim() : undefined
-}
-
-function readStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter(isNonEmptyString).map(entry => entry.trim()) : []
-}
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-async function safeReadJson(
-  filePath: string
-): Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly error: string }> {
-  try {
-    const content = await fsPromises.readFile(filePath, 'utf8')
-    return { ok: true, value: JSON.parse(content) }
-  } catch (error) {
-    return { ok: false, error: describeError(error) }
-  }
-}
+import {
+  compactOptionalFields,
+  finalizePluginResult,
+  nowIso,
+  readObjectManifest,
+  readStringArray,
+  safeReadJson,
+  trimString,
+} from './ProviderDiscoveryService.shared.ts'
 
 async function safeReadDir(dirPath: string): Promise<ReadonlyArray<Dirent>> {
   try {
@@ -64,14 +31,10 @@ async function safeExists(filePath: string): Promise<boolean> {
   }
 }
 
-function compactOptionalFields<T extends Record<string, unknown>>(record: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== undefined)
-  ) as Partial<T>
-}
-
 function codexInterfaceRecord(record: Record<string, unknown>): Record<string, unknown> | null {
-  return record.interface && typeof record.interface === 'object' && !Array.isArray(record.interface)
+  return record.interface &&
+    typeof record.interface === 'object' &&
+    !Array.isArray(record.interface)
     ? (record.interface as Record<string, unknown>)
     : null
 }
@@ -93,7 +56,8 @@ function toCodexPluginDescriptor(input: {
   const iface = codexInterfaceRecord(input.record)
   const author = codexAuthorRecord(input.record)
   const displayName = trimString(iface?.displayName)
-  const shortDescription = trimString(iface?.shortDescription) ?? trimString(input.record.description)
+  const shortDescription =
+    trimString(iface?.shortDescription) ?? trimString(input.record.description)
   const developerName = trimString(iface?.developerName) ?? trimString(author?.name)
   const homepage = trimString(iface?.websiteURL) ?? trimString(input.record.homepage)
   const name = trimString(iface?.displayName) ?? trimString(input.record.name) ?? input.pluginName
@@ -116,7 +80,9 @@ function toCodexPluginDescriptor(input: {
     installed: true,
     enabled: true,
     ...compactOptionalFields({
-      defaultPrompt: Array.isArray(iface?.defaultPrompt) ? readStringArray(iface.defaultPrompt) : undefined,
+      defaultPrompt: Array.isArray(iface?.defaultPrompt)
+        ? readStringArray(iface.defaultPrompt)
+        : undefined,
     }),
     tags: readStringArray(input.record.keywords),
   }
@@ -195,15 +161,7 @@ export async function listCodexPlugins(): Promise<ProviderListPluginsResult> {
     plugins.push(...result.plugins)
   }
 
-  return {
-    plugins: uniqueById(
-      plugins.toSorted((left, right) =>
-        left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
-      )
-    ),
-    warnings,
-    updatedAt: nowIso(),
-  }
+  return finalizePluginResult({ plugins, warnings })
 }
 
 function claudePluginMarketplaceRoot(): string {
@@ -234,7 +192,10 @@ function normalizeClaudeSourcePath(marketplacePath: string, source: unknown): st
   )
 }
 
-async function isClaudePluginInstalled(marketplaceName: string, pluginName: string): Promise<boolean> {
+async function isClaudePluginInstalled(
+  marketplaceName: string,
+  pluginName: string
+): Promise<boolean> {
   const candidates = [
     path.join(claudePluginCacheRoot(), marketplaceName, pluginName),
     path.join(claudePluginCacheRoot(), pluginName),
@@ -274,17 +235,22 @@ function toClaudePluginDescriptor(input: {
     marketplaceName: input.marketplaceName,
     marketplacePath: input.marketplacePath,
     name,
-    ...(trimString(input.plugin.displayName) ? { displayName: trimString(input.plugin.displayName) } : {}),
-    ...(trimString(input.plugin.description) ? { shortDescription: trimString(input.plugin.description) } : {}),
+    ...(trimString(input.plugin.displayName)
+      ? { displayName: trimString(input.plugin.displayName) }
+      : {}),
+    ...(trimString(input.plugin.description)
+      ? { shortDescription: trimString(input.plugin.description) }
+      : {}),
     ...(trimString(input.plugin.longDescription)
       ? { longDescription: trimString(input.plugin.longDescription) }
       : {}),
-    ...(trimString(author?.name) ?? trimString(input.owner?.name)
+    ...((trimString(author?.name) ?? trimString(input.owner?.name))
       ? { developerName: trimString(author?.name) ?? trimString(input.owner?.name) }
       : {}),
     ...(trimString(input.plugin.category) ? { category: trimString(input.plugin.category) } : {}),
     ...(trimString(input.plugin.homepage) ? { homepage: trimString(input.plugin.homepage) } : {}),
-    sourcePath: normalizeClaudeSourcePath(input.marketplacePath, input.plugin.source) ?? input.manifestPath,
+    sourcePath:
+      normalizeClaudeSourcePath(input.marketplacePath, input.plugin.source) ?? input.manifestPath,
     installed: input.installed,
     enabled: input.installed,
     tags: readStringArray(input.plugin.tags),
@@ -299,35 +265,15 @@ async function collectClaudeMarketplacePlugins(input: {
   const plugins: ProviderPluginDescriptor[] = []
   const marketplacePath = path.join(input.marketplacesRoot, input.marketplaceEntry.name)
   const manifestPath = path.join(marketplacePath, '.claude-plugin', 'marketplace.json')
-  const manifest = await safeReadJson(manifestPath)
+  const manifest = await readObjectManifest({
+    manifestPath,
+    readErrorMessage: error => `Failed to read Claude marketplace manifest: ${error}`,
+    invalidMessage: 'Claude marketplace manifest did not decode to an object.',
+  })
   if (!manifest.ok) {
-    return {
-      plugins,
-      warnings: [
-        {
-          path: manifestPath,
-          message: `Failed to read Claude marketplace manifest: ${manifest.error}`,
-        },
-      ],
-      updatedAt: nowIso(),
-    }
+    return manifest.result
   }
-  const record =
-    manifest.value && typeof manifest.value === 'object' && !Array.isArray(manifest.value)
-      ? (manifest.value as Record<string, unknown>)
-      : null
-  if (!record) {
-    return {
-      plugins,
-      warnings: [
-        {
-          path: manifestPath,
-          message: 'Claude marketplace manifest did not decode to an object.',
-        },
-      ],
-      updatedAt: nowIso(),
-    }
-  }
+  const record = manifest.record
 
   const marketplaceName = trimString(record.name) ?? input.marketplaceEntry.name
   const owner =
@@ -373,11 +319,5 @@ export async function listClaudePlugins(): Promise<ProviderListPluginsResult> {
     plugins.push(...result.plugins)
   }
 
-  return {
-    plugins: plugins.toSorted((left, right) =>
-      left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
-    ),
-    warnings,
-    updatedAt: nowIso(),
-  }
+  return finalizePluginResult({ plugins, warnings })
 }

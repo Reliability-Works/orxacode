@@ -8,6 +8,7 @@ import {
   stripDisplayedPlanMarkdown,
 } from '../../proposedPlan'
 import ChatMarkdown from '../ChatMarkdown'
+import { ComposerRailSectionCard } from './ComposerRailSectionCard'
 
 function stepStatusIcon(status: string): React.ReactNode {
   if (status === 'completed') {
@@ -152,38 +153,21 @@ export function ComposerTaskListRailCard() {
   const completedSteps = activePlan?.steps.filter(step => step.status === 'completed').length ?? 0
 
   return (
-    <div className="px-3 py-2" data-testid="composer-task-list">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-3 rounded-xl px-1 py-1 text-left"
-        onClick={() => setCollapsed(value => !value)}
-      >
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
-            <span className="rounded-full border border-border/70 bg-background/50 px-2 py-0.5 font-medium text-foreground/85">
-              Task list
-            </span>
-            <span className="truncate">
-              {taskListSummary({
-                totalSteps,
-                completedSteps,
-                hasProposal: Boolean(sidebarProposedPlan),
-              })}
-            </span>
-          </div>
-        </div>
-        {collapsed ? (
-          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground/60" />
-        ) : (
-          <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground/60" />
-        )}
-      </button>
-      {!collapsed ? (
-        <div className="mt-2 space-y-3">
-          <TaskListSteps />
-          <ProposedPlanPreview />
-        </div>
-      ) : null}
-    </div>
+    <ComposerRailSectionCard
+      testId="composer-task-list"
+      badgeLabel="Task list"
+      summary={taskListSummary({
+        totalSteps,
+        completedSteps,
+        hasProposal: Boolean(sidebarProposedPlan),
+      })}
+      collapsed={collapsed}
+      onToggle={() => setCollapsed(value => !value)}
+    >
+      <div className="mt-2 space-y-3">
+        <TaskListSteps />
+        <ProposedPlanPreview />
+      </div>
+    </ComposerRailSectionCard>
   )
 }

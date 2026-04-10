@@ -13,10 +13,7 @@ import {
 } from './baseSchemas'
 import {
   ChatAttachment,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
   ModelSelection,
-  OrchestrationThreadParentLink,
-  OrchestrationThreadHandoff,
   OrchestrationCheckpointFile,
   OrchestrationCheckpointStatus,
   OrchestrationProposedPlan,
@@ -27,9 +24,11 @@ import {
   ProviderUserInputAnswers,
   RuntimeMode,
   SourceProposedPlanReference,
+  threadCreateCommandFields,
   UploadChatAttachment,
 } from './orchestration.models'
 import {
+  projectCreateCommandFields,
   projectMetaUpdatableFields,
   threadMetaUpdatableFields,
   threadTurnStartOptionsFields,
@@ -40,10 +39,7 @@ export const ProjectCreateCommand = Schema.Struct({
   type: Schema.Literal('project.create'),
   commandId: CommandId,
   projectId: ProjectId,
-  title: TrimmedNonEmptyString,
-  workspaceRoot: TrimmedNonEmptyString,
-  defaultModelSelection: Schema.optional(Schema.NullOr(ModelSelection)),
-  createdAt: IsoDateTime,
+  ...projectCreateCommandFields,
 })
 export type ProjectCreateCommand = typeof ProjectCreateCommand.Type
 
@@ -66,18 +62,7 @@ export const ThreadCreateCommand = Schema.Struct({
   type: Schema.Literal('thread.create'),
   commandId: CommandId,
   threadId: ThreadId,
-  projectId: ProjectId,
-  title: TrimmedNonEmptyString,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode.pipe(
-    Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
-  ),
-  branch: Schema.NullOr(TrimmedNonEmptyString),
-  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-  handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
-  parentLink: Schema.optional(Schema.NullOr(OrchestrationThreadParentLink)),
-  createdAt: IsoDateTime,
+  ...threadCreateCommandFields,
 })
 export type ThreadCreateCommand = typeof ThreadCreateCommand.Type
 

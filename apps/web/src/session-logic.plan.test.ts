@@ -134,6 +134,49 @@ const assistantRestartRecoveryMessages = [
   },
 ]
 
+const opencodeTodoToolActivity = makeActivity({
+  id: 'tool-todo-opencode',
+  createdAt: '2026-02-23T00:00:03.500Z',
+  kind: 'tool.updated',
+  summary: 'Todos',
+  tone: 'tool',
+  turnId: 'turn-opencode-1',
+  payload: {
+    itemType: 'mcp_tool_call',
+    data: {
+      input: {
+        todos: [
+          { content: 'Audit provider routing.', status: 'in_progress' },
+          { content: 'Summarize findings.', status: 'pending' },
+          { content: 'Write validation prompt.', status: 'completed' },
+        ],
+      },
+    },
+  },
+})
+
+const claudeTodoToolActivity = makeActivity({
+  id: 'tool-todo-claude',
+  createdAt: '2026-02-23T00:00:03.750Z',
+  kind: 'tool.completed',
+  summary: 'TodoWrite',
+  tone: 'tool',
+  turnId: 'turn-claude-1',
+  payload: {
+    itemType: 'builtin_tool_call',
+    data: {
+      item: {
+        tool_name: 'TodoWrite',
+        todos: [
+          { content: 'Audit the Claude ingestion path.', status: 'in_progress' },
+          { content: 'Summarize the renderer behavior.', status: 'pending' },
+          { content: 'Capture the validation prompt.', status: 'completed' },
+        ],
+      },
+    },
+  },
+})
+
 describe('deriveActivePlanState', () => {
   it('returns the latest plan update for the active turn', () => {
     expect(deriveActivePlanState(activePlanActivities, TurnId.makeUnsafe('turn-1'))).toEqual({
@@ -209,31 +252,7 @@ describe('deriveActivePlanState text fallback', () => {
 describe('deriveActivePlanState tool todo fallback', () => {
   it('parses persisted todo-tool activity payloads when no structured plan event exists', () => {
     expect(
-      deriveActivePlanState(
-        [
-          makeActivity({
-            id: 'tool-todo-opencode',
-            createdAt: '2026-02-23T00:00:03.500Z',
-            kind: 'tool.updated',
-            summary: 'Todos',
-            tone: 'tool',
-            turnId: 'turn-opencode-1',
-            payload: {
-              itemType: 'mcp_tool_call',
-              data: {
-                input: {
-                  todos: [
-                    { content: 'Audit provider routing.', status: 'in_progress' },
-                    { content: 'Summarize findings.', status: 'pending' },
-                    { content: 'Write validation prompt.', status: 'completed' },
-                  ],
-                },
-              },
-            },
-          }),
-        ],
-        TurnId.makeUnsafe('turn-opencode-1')
-      )
+      deriveActivePlanState([opencodeTodoToolActivity], TurnId.makeUnsafe('turn-opencode-1'))
     ).toEqual({
       createdAt: '2026-02-23T00:00:03.500Z',
       turnId: 'turn-opencode-1',
@@ -241,6 +260,20 @@ describe('deriveActivePlanState tool todo fallback', () => {
         { step: 'Audit provider routing.', status: 'inProgress' },
         { step: 'Summarize findings.', status: 'pending' },
         { step: 'Write validation prompt.', status: 'completed' },
+      ],
+    })
+  })
+
+  it('parses Claude TodoWrite-style payloads from built-in tool activity data', () => {
+    expect(
+      deriveActivePlanState([claudeTodoToolActivity], TurnId.makeUnsafe('turn-claude-1'))
+    ).toEqual({
+      createdAt: '2026-02-23T00:00:03.750Z',
+      turnId: 'turn-claude-1',
+      steps: [
+        { step: 'Audit the Claude ingestion path.', status: 'inProgress' },
+        { step: 'Summarize the renderer behavior.', status: 'pending' },
+        { step: 'Capture the validation prompt.', status: 'completed' },
       ],
     })
   })
