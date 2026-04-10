@@ -75,7 +75,7 @@ function ComposerEditorSurface(
       contentEditable={
         <ContentEditable
           className={cn(
-            'block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none',
+            'block max-h-[200px] min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap break-words bg-transparent text-[14px] leading-relaxed text-foreground focus:outline-none max-sm:text-[16px]',
             props.className
           )}
           data-testid="composer-editor"
@@ -86,7 +86,7 @@ function ComposerEditorSurface(
       }
       placeholder={
         props.terminalContexts.length > 0 ? null : (
-          <div className="pointer-events-none absolute inset-0 text-[14px] leading-relaxed text-muted-foreground/35">
+          <div className="pointer-events-none absolute inset-0 text-[14px] leading-relaxed text-muted-foreground/35 max-sm:text-[16px]">
             {props.placeholder}
           </div>
         )

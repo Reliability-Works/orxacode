@@ -229,6 +229,16 @@ input {
   font-family: 'SF Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 }
 
+@media (max-width: 767px) {
+  input,
+  textarea,
+  select,
+  [contenteditable='true'],
+  [role='textbox'] {
+    font-size: 16px !important;
+  }
+}
+
 /* Window drag region (frameless titlebar) */
 .drag-region {
   -webkit-app-region: drag;

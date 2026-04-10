@@ -148,9 +148,11 @@ function useEditorScrollSync() {
 }
 
 function FilesEditorGutter({
+  isMobile,
   lineNumbers,
   lineNumbersRef,
 }: {
+  isMobile: boolean
   lineNumbers: string
   lineNumbersRef: RefObject<HTMLPreElement | null>
 }) {
@@ -158,7 +160,11 @@ function FilesEditorGutter({
     <div className="relative w-12 shrink-0 overflow-hidden border-r border-border bg-muted/20">
       <pre
         ref={lineNumbersRef}
-        className="m-0 px-2 py-3 text-right font-mono text-[12px] leading-5 text-muted-foreground will-change-transform"
+        className="m-0 px-2 py-3 text-right font-mono text-muted-foreground will-change-transform"
+        style={{
+          fontSize: isMobile ? '16px' : '12px',
+          lineHeight: isMobile ? '24px' : '20px',
+        }}
       >
         {lineNumbers}
       </pre>
@@ -169,10 +175,12 @@ function FilesEditorGutter({
 function HighlightedCodeLayer({
   contents,
   highlightRef,
+  isMobile,
   syntaxLanguage,
 }: {
   contents: string
   highlightRef: RefObject<HTMLDivElement | null>
+  isMobile: boolean
   syntaxLanguage: string
 }) {
   const { resolvedTheme } = useTheme()
@@ -198,8 +206,8 @@ function HighlightedCodeLayer({
             style: {
               display: 'block',
               fontFamily: EDITOR_FONT_FAMILY,
-              fontSize: '12px',
-              lineHeight: '20px',
+              fontSize: isMobile ? '16px' : '12px',
+              lineHeight: isMobile ? '24px' : '20px',
               minHeight: '100%',
               whiteSpace: 'pre',
             },
@@ -214,12 +222,14 @@ function HighlightedCodeLayer({
 
 function EditorTextarea({
   contents,
+  isMobile,
   onChange,
   onSave,
   syncScrollOffsets,
   textareaRef,
 }: {
   contents: string
+  isMobile: boolean
   onChange: (nextContents: string) => void
   onSave: () => void
   syncScrollOffsets: (input: HTMLTextAreaElement | null) => void
@@ -240,9 +250,11 @@ function EditorTextarea({
           onSave()
         }
       }}
-      className="absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent px-3 py-3 font-mono text-[12px] leading-5 text-transparent caret-foreground outline-none selection:bg-primary/25"
+      className="absolute inset-0 h-full w-full resize-none overflow-auto bg-transparent px-3 py-3 font-mono text-transparent caret-foreground outline-none selection:bg-primary/25"
       style={{
         fontFamily: EDITOR_FONT_FAMILY,
+        fontSize: isMobile ? '16px' : '12px',
+        lineHeight: isMobile ? '24px' : '20px',
         WebkitTextFillColor: 'transparent',
       }}
     />
@@ -256,6 +268,7 @@ function CodeEditorSurface(props: {
   onChange: (nextContents: string) => void
   onSave: () => void
 }) {
+  const isMobile = useIsMobile()
   const { highlightRef, lineNumbersRef, syncScrollOffsets, textareaRef } = useEditorScrollSync()
   const syntaxLanguage = useMemo(
     () => resolveSyntaxHighlightLanguage(props.filePath),
@@ -273,15 +286,21 @@ function CodeEditorSurface(props: {
   return (
     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
       <div className="flex h-full min-w-0 bg-background">
-        <FilesEditorGutter lineNumbers={lineNumbers} lineNumbersRef={lineNumbersRef} />
+        <FilesEditorGutter
+          isMobile={isMobile}
+          lineNumbers={lineNumbers}
+          lineNumbersRef={lineNumbersRef}
+        />
         <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
           <HighlightedCodeLayer
             contents={props.contents}
             highlightRef={highlightRef}
+            isMobile={isMobile}
             syntaxLanguage={syntaxLanguage}
           />
           <EditorTextarea
             contents={props.contents}
+            isMobile={isMobile}
             onChange={props.onChange}
             onSave={props.onSave}
             syncScrollOffsets={syncScrollOffsets}
