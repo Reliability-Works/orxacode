@@ -2,10 +2,8 @@ import * as Crypto from 'node:crypto'
 import * as FS from 'node:fs'
 import * as OS from 'node:os'
 import * as Path from 'node:path'
-
 import { app, BrowserWindow, dialog, protocol } from 'electron'
 import * as Effect from 'effect/Effect'
-
 import { NetService } from '@orxa-code/shared/Net'
 import {
   createDesktopLoggingState,
@@ -19,40 +17,26 @@ import {
   configureApplicationMenu as configureApplicationMenuImpl,
   type MenuHost,
 } from './main.menu'
-import {
-  registerIpcHandlers as registerIpcHandlersImpl,
-  type IpcChannels,
-  type IpcHost,
-} from './main.ipc'
+import { registerIpcHandlers as registerIpcHandlersImpl, type IpcHost } from './main.ipc'
+import { IPC_CHANNELS, MENU_ACTION_CHANNEL, UPDATE_STATE_CHANNEL } from './main.ipc.config'
 import { createBackendController, type BackendHost } from './main.backend'
 import { runSmokeTest } from './main.smoke'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
+import { resolveRemoteAccessSnapshot } from './remoteAccess'
+import { createDesktopRemoteAccessPreferencesStore } from './remoteAccessPreferences'
+import {
+  applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl,
+  resolveRemoteAccessToken,
+} from './remoteAccessRuntime'
 import {
   createDesktopUpdatePreferencesStore,
   resolveDesktopUpdateFeedChannel,
 } from './updatePreferences'
-
 const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
-
 if (!isSmokeTest) {
   syncShellEnvironment()
 }
-
-const PICK_FOLDER_CHANNEL = 'desktop:pick-folder'
-const CONFIRM_CHANNEL = 'desktop:confirm'
-const SET_THEME_CHANNEL = 'desktop:set-theme'
-const CONTEXT_MENU_CHANNEL = 'desktop:context-menu'
-const OPEN_EXTERNAL_CHANNEL = 'desktop:open-external'
-const MENU_ACTION_CHANNEL = 'desktop:menu-action'
-const UPDATE_STATE_CHANNEL = 'desktop:update-state'
-const UPDATE_GET_STATE_CHANNEL = 'desktop:update-get-state'
-const UPDATE_GET_PREFERENCES_CHANNEL = 'desktop:update-get-preferences'
-const UPDATE_DOWNLOAD_CHANNEL = 'desktop:update-download'
-const UPDATE_INSTALL_CHANNEL = 'desktop:update-install'
-const UPDATE_CHECK_CHANNEL = 'desktop:update-check'
-const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
-const GET_WS_URL_CHANNEL = 'desktop:get-ws-url'
 const BASE_DIR = process.env.ORXA_HOME?.trim() || Path.join(OS.homedir(), '.orxa')
 const STATE_DIR = Path.join(BASE_DIR, 'userdata')
 const DESKTOP_SCHEME = 'orxa'
@@ -77,16 +61,15 @@ const AUTO_UPDATE_DISABLED_BY_ENV = process.env.ORXA_CODE_DISABLE_AUTO_UPDATE ==
 type LinuxDesktopNamedApp = Electron.App & {
   setDesktopName?: (desktopName: string) => void
 }
-
 let mainWindow: BrowserWindow | null = null
 let backendPort = 0
 let backendAuthToken = ''
+let remoteAccessToken: string | undefined
 let backendWsUrl = ''
 let isQuitting = false
 let desktopProtocolRegistered = false
 let aboutCommitHashCache: string | null | undefined
 const loggingState = createDesktopLoggingState()
-
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
   platform: process.platform,
   processArch: process.arch,
@@ -95,8 +78,10 @@ const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
 const updatePreferencesStore = createDesktopUpdatePreferencesStore(
   Path.join(STATE_DIR, 'update-preferences.json')
 )
+const remoteAccessPreferencesStore = createDesktopRemoteAccessPreferencesStore(
+  Path.join(STATE_DIR, 'remote-access-preferences.json')
+)
 const initialUpdatePreferences = updatePreferencesStore.syncInstalledVersion(app.getVersion())
-
 const updaterController = createUpdaterController(
   {
     channel: resolveDesktopUpdateFeedChannel(initialUpdatePreferences.releaseChannel),
@@ -116,7 +101,6 @@ const updaterController = createUpdaterController(
     stopBackendAndWaitForExit: () => stopBackendAndWaitForExit(),
   }
 )
-
 function writeDesktopLogHeader(message: string): void {
   writeDesktopLogHeaderImpl(loggingState, APP_RUN_ID, message)
 }
@@ -430,31 +414,35 @@ const backendHost: BackendHost = {
   resolveBackendCwd: () => resolveBackendCwd(),
   getBackendPort: () => backendPort,
   getBackendAuthToken: () => backendAuthToken,
+  getRemoteAccessToken: () => remoteAccessToken,
 }
 const backendController = createBackendController(backendHost)
 const startBackend = (): void => backendController.start()
 const stopBackend = (): void => backendController.stop()
 const stopBackendAndWaitForExit = (timeoutMs?: number): Promise<void> =>
   backendController.stopAndWaitForExit(timeoutMs)
-
-const ipcChannels: IpcChannels = {
-  getWsUrl: GET_WS_URL_CHANNEL,
-  pickFolder: PICK_FOLDER_CHANNEL,
-  confirm: CONFIRM_CHANNEL,
-  setTheme: SET_THEME_CHANNEL,
-  contextMenu: CONTEXT_MENU_CHANNEL,
-  openExternal: OPEN_EXTERNAL_CHANNEL,
-  updateGetState: UPDATE_GET_STATE_CHANNEL,
-  updateGetPreferences: UPDATE_GET_PREFERENCES_CHANNEL,
-  updateDownload: UPDATE_DOWNLOAD_CHANNEL,
-  updateInstall: UPDATE_INSTALL_CHANNEL,
-  updateCheck: UPDATE_CHECK_CHANNEL,
-  updateSetPreferences: UPDATE_SET_PREFERENCES_CHANNEL,
+const remoteAccessRuntimeHost = {
+  store: remoteAccessPreferencesStore,
+  writeLog: writeDesktopLogHeader,
+  restartBackend: async () => {
+    await stopBackendAndWaitForExit()
+    if (!isQuitting) startBackend()
+  },
+  setRemoteAccessToken: (token: string | undefined) => {
+    remoteAccessToken = token
+  },
 }
-
 const ipcHost: IpcHost = {
-  channels: ipcChannels,
+  channels: IPC_CHANNELS,
   backendWsUrl: () => backendWsUrl,
+  setRemoteAccessPreferences: input =>
+    applyRemoteAccessPreferencesImpl(remoteAccessRuntimeHost, input),
+  getRemoteAccessSnapshot: () =>
+    resolveRemoteAccessSnapshot({
+      enabled: remoteAccessPreferencesStore.get().enabled,
+      port: backendPort,
+      token: remoteAccessToken ?? '',
+    }),
   mainWindow: () => mainWindow,
   isQuitting: () => isQuitting,
   updater: updaterController,
@@ -470,7 +458,6 @@ const ipcHost: IpcHost = {
 function registerIpcHandlers(): void {
   registerIpcHandlersImpl(ipcHost)
 }
-
 const createWindowHost: CreateWindowHost = {
   config: {
     displayName: APP_DISPLAY_NAME,
@@ -500,11 +487,8 @@ function quitFromSignal(signal: 'SIGINT' | 'SIGTERM'): void {
   loggingState.restoreStdIoCapture?.()
   app.quit()
 }
-
 app.setPath('userData', resolveUserDataPath())
-
 configureAppIdentity()
-
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap start')
   backendPort = await Effect.service(NetService).pipe(
@@ -514,10 +498,10 @@ async function bootstrap(): Promise<void> {
   )
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`)
   backendAuthToken = Crypto.randomBytes(24).toString('hex')
+  remoteAccessToken = resolveRemoteAccessToken(remoteAccessPreferencesStore.get().enabled)
   const baseUrl = `ws://127.0.0.1:${backendPort}`
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`)
-
   registerIpcHandlers()
   writeDesktopLogHeader('bootstrap ipc handlers registered')
   startBackend()
@@ -534,7 +518,6 @@ app.on('before-quit', () => {
   stopBackend()
   loggingState.restoreStdIoCapture?.()
 })
-
 app
   .whenReady()
   .then(() => {

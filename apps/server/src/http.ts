@@ -23,6 +23,26 @@ const requireRequestUrl = Effect.fn('http.requireRequestUrl')(function* () {
   return { ok: true as const, url: url.value }
 })
 
+const proxyDevServerRequest = (requestUrl: URL, devUrl: URL) =>
+  Effect.tryPromise(async () => {
+    const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, devUrl)
+    const response = await fetch(targetUrl)
+    const body = new Uint8Array(await response.arrayBuffer())
+    return { response, body }
+  }).pipe(
+    Effect.map(({ response, body }) =>
+      HttpServerResponse.uint8Array(body, {
+        status: response.status,
+        contentType: response.headers.get('content-type') ?? 'application/octet-stream',
+      })
+    ),
+    Effect.catch(() =>
+      Effect.succeed(
+        HttpServerResponse.text('Unable to reach the development web server.', { status: 502 })
+      )
+    )
+  )
+
 export const attachmentsRouteLayer = HttpRouter.add(
   'GET',
   `${ATTACHMENTS_ROUTE_PREFIX}/*`,
@@ -122,7 +142,7 @@ export const staticAndDevRouteLayer = HttpRouter.add(
 
     const config = yield* ServerConfig
     if (config.devUrl) {
-      return HttpServerResponse.redirect(config.devUrl.href, { status: 302 })
+      return yield* proxyDevServerRequest(url, config.devUrl)
     }
 
     if (!config.staticDir) {

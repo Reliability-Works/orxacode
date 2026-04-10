@@ -26,6 +26,7 @@ const BootstrapEnvelopeSchema = Schema.Struct({
   devUrl: Schema.optional(Schema.URLFromString),
   noBrowser: Schema.optional(Schema.Boolean),
   authToken: Schema.optional(Schema.String),
+  remoteAccessToken: Schema.optional(Schema.String),
   autoBootstrapProjectFromCwd: Schema.optional(Schema.Boolean),
   logWebSocketEvents: Schema.optional(Schema.Boolean),
 })
@@ -98,6 +99,10 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined)
   ),
+  remoteAccessToken: Config.string('ORXA_REMOTE_ACCESS_TOKEN').pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined)
+  ),
   bootstrapFd: Config.int('ORXA_BOOTSTRAP_FD').pipe(
     Config.option,
     Config.map(Option.getOrUndefined)
@@ -134,6 +139,7 @@ interface ResolvedCliEnvConfig {
   readonly devUrl: URL | undefined
   readonly noBrowser: boolean | undefined
   readonly authToken: string | undefined
+  readonly remoteAccessToken: string | undefined
   readonly bootstrapFd: number | undefined
   readonly autoBootstrapProjectFromCwd: boolean | undefined
   readonly logWebSocketEvents: boolean | undefined
@@ -147,6 +153,7 @@ interface BootstrapEnvelope {
   readonly devUrl?: URL | undefined
   readonly noBrowser?: boolean | undefined
   readonly authToken?: string | undefined
+  readonly remoteAccessToken?: string | undefined
   readonly autoBootstrapProjectFromCwd?: boolean | undefined
   readonly logWebSocketEvents?: boolean | undefined
 }
@@ -264,6 +271,17 @@ const resolveAuthToken = (
     )
   )
 
+const resolveRemoteAccessToken = (
+  env: ResolvedCliEnvConfig,
+  bootstrapEnvelope: Option.Option<BootstrapEnvelope>
+) =>
+  Option.getOrUndefined(
+    resolveOptionPrecedence(
+      envOption(env.remoteAccessToken),
+      bootstrapOption(bootstrapEnvelope, bootstrap => bootstrap.remoteAccessToken)
+    )
+  )
+
 const resolveAutoBootstrapProjectFromCwd = (
   flags: CliServerFlags,
   env: ResolvedCliEnvConfig,
@@ -339,6 +357,7 @@ const buildServerConfig = (input: {
   devUrl: URL | undefined
   noBrowser: boolean
   authToken: string | undefined
+  remoteAccessToken: string | undefined
   autoBootstrapProjectFromCwd: boolean
   logWebSocketEvents: boolean
 }): ServerConfigShape => ({
@@ -353,6 +372,7 @@ const buildServerConfig = (input: {
   devUrl: input.devUrl,
   noBrowser: input.noBrowser,
   authToken: input.authToken,
+  remoteAccessToken: input.remoteAccessToken,
   autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
   logWebSocketEvents: input.logWebSocketEvents,
 })
@@ -381,6 +401,7 @@ export const resolveServerConfig = (
     yield* ensureServerDirectories(derivedPaths)
     const noBrowser = resolveNoBrowser(flags, env, bootstrapEnvelope, mode)
     const authToken = resolveAuthToken(flags, env, bootstrapEnvelope)
+    const remoteAccessToken = resolveRemoteAccessToken(env, bootstrapEnvelope)
     const autoBootstrapProjectFromCwd = resolveAutoBootstrapProjectFromCwd(
       flags,
       env,
@@ -403,6 +424,7 @@ export const resolveServerConfig = (
       devUrl,
       noBrowser,
       authToken,
+      remoteAccessToken,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     })

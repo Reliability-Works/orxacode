@@ -6,12 +6,14 @@
  */
 
 import { cn } from '~/lib/utils'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import BranchToolbar from '../BranchToolbar'
 import { FilesSidebar } from '../files-sidebar/FilesSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
 import { PullRequestThreadDialog } from '../PullRequestThreadDialog'
 import { GitSidebar } from '../git-sidebar/GitSidebar'
 import { BrowserSidebar } from '../browser-sidebar/BrowserSidebar'
+import { Sheet, SheetPopup } from '../ui/sheet'
 import { ChatViewHeaderPanel } from './ChatViewHeaderPanel'
 import { ChatViewMessagesPane } from './ChatViewMessagesPane'
 import { ChatViewComposerBody } from './ChatViewComposerBody'
@@ -101,40 +103,55 @@ function ChatViewAuxSidebarShell(props: { children: React.ReactNode }) {
 
 function ChatViewAuxSidebarBlock() {
   const c = useChatViewCtx()
+  const isMobile = useIsMobile()
   const { gitCwd, td } = c
   if (c.ls.auxSidebarMode === 'none') return null
+
+  let content: React.ReactNode = null
+
   if (c.ls.auxSidebarMode === 'browser') {
     if (!td.activeProject) return null
-    return (
-      <ChatViewAuxSidebarShell>
-        <BrowserSidebar onClose={c.closeAuxSidebar} />
-      </ChatViewAuxSidebarShell>
-    )
-  }
-  if (!gitCwd) return null
-  if (c.ls.auxSidebarMode === 'files') {
-    return (
-      <ChatViewAuxSidebarShell>
+    content = <BrowserSidebar onClose={c.closeAuxSidebar} />
+  } else {
+    if (!gitCwd) return null
+    if (c.ls.auxSidebarMode === 'files') {
+      content = (
         <FilesSidebar
           cwd={gitCwd}
           onClose={c.closeAuxSidebar}
           onInsertPath={c.insertComposerPathReference}
         />
-      </ChatViewAuxSidebarShell>
+      )
+    } else {
+      if (!c.cd.isGitRepo) return null
+      content = (
+        <GitSidebar
+          cwd={gitCwd}
+          diffQueryResult={c.panelDiffQuery}
+          diffScope={c.ls.gitDiffScope}
+          onDiffScopeChange={c.ls.setGitDiffScope}
+          onClose={c.closeAuxSidebar}
+        />
+      )
+    }
+  }
+
+  if (isMobile) {
+    return (
+      <Sheet
+        open
+        onOpenChange={open => {
+          if (!open) c.closeAuxSidebar()
+        }}
+      >
+        <SheetPopup side="right" showCloseButton={false} className="w-full max-w-none border-s-0">
+          <div className="min-h-0 flex-1">{content}</div>
+        </SheetPopup>
+      </Sheet>
     )
   }
-  if (!c.cd.isGitRepo) return null
-  return (
-    <ChatViewAuxSidebarShell>
-      <GitSidebar
-        cwd={gitCwd}
-        diffQueryResult={c.panelDiffQuery}
-        diffScope={c.ls.gitDiffScope}
-        onDiffScopeChange={c.ls.setGitDiffScope}
-        onClose={c.closeAuxSidebar}
-      />
-    </ChatViewAuxSidebarShell>
-  )
+
+  return <ChatViewAuxSidebarShell>{content}</ChatViewAuxSidebarShell>
 }
 
 function ChatViewTerminalDrawerBlock() {
@@ -170,6 +187,7 @@ function ChatViewTerminalDrawerBlock() {
 
 export function ChatViewInner({ showHeader = true }: { showHeader?: boolean }) {
   const c = useChatViewCtx()
+  const isMobile = useIsMobile()
   if (!c.td.activeThread) return null
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
@@ -181,8 +199,9 @@ export function ChatViewInner({ showHeader = true }: { showHeader?: boolean }) {
           <ChatViewBranchToolbarBlock />
           <ChatViewPullRequestDialogBlock />
         </div>
-        <ChatViewAuxSidebarBlock />
+        {!isMobile ? <ChatViewAuxSidebarBlock /> : null}
       </div>
+      {isMobile ? <ChatViewAuxSidebarBlock /> : null}
       <ChatViewTerminalDrawerBlock />
       <ChatViewImageOverlayCtx />
     </div>

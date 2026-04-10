@@ -28,6 +28,7 @@ import { type SortableProjectHandleProps } from './SidebarHelpers'
 
 import type { Project } from '../../types'
 import type { DraftThreadEnvMode } from '../../composerDraftStore'
+import { useSidebar } from '../ui/sidebar.shared'
 
 export type SidebarProjectSnapshot = Project & {
   expanded: boolean
@@ -194,12 +195,13 @@ function ProjectHeader({
   onProjectContextMenu,
   onNewThread,
 }: ProjectHeaderProps) {
+  const { isMobile } = useSidebar()
   return (
     <div className="group/project-header relative">
       <SidebarMenuButton
         ref={isManualProjectSorting ? dragHandleProps?.setActivatorNodeRef : undefined}
-        size="sm"
-        className={`gap-2 px-2 py-1.5 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground ${isManualProjectSorting ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
+        size={isMobile ? 'default' : 'sm'}
+        className={`gap-2.5 px-3 py-2 text-left hover:bg-accent group-hover/project-header:bg-accent group-hover/project-header:text-sidebar-accent-foreground md:gap-2 md:px-2 md:py-1.5 ${isManualProjectSorting ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
         {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.attributes : {})}
         {...(isManualProjectSorting && dragHandleProps ? dragHandleProps.listeners : {})}
         onPointerDownCapture={() => {
@@ -214,7 +216,7 @@ function ProjectHeader({
       >
         <ProjectStatusIcon expanded={project.expanded} projectStatus={projectStatus} />
         <ProjectFavicon cwd={project.cwd} />
-        <span className="flex-1 truncate text-xs font-medium text-foreground/90">
+        <span className="flex-1 truncate text-sm font-medium text-foreground/90 md:text-xs">
           {project.name}
         </span>
       </SidebarMenuButton>
@@ -230,7 +232,7 @@ function ProjectHeader({
                 />
               }
               showOnHover
-              className="top-1 right-1.5 size-5 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground"
+              className="top-1.5 right-2 size-7 rounded-md p-0 text-muted-foreground/70 hover:bg-secondary hover:text-foreground md:top-1 md:right-1.5 md:size-5"
               onClick={event => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -239,7 +241,7 @@ function ProjectHeader({
                 })
               }}
             >
-              <SquarePenIcon className="size-3.5" />
+              <SquarePenIcon className="size-4 md:size-3.5" />
             </SidebarMenuAction>
           }
         />

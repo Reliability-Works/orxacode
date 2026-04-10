@@ -23,19 +23,7 @@ import {
   type AddProjectFormProps,
 } from './SidebarProjectList'
 
-export interface SidebarProjectGroupProps {
-  projects: Project[]
-  renderedPinnedThreads: RenderedPinnedThreadData[]
-  renderedProjects: RenderedProjectData[]
-  isManualProjectSorting: boolean
-  shouldShowProjectPathEntry: boolean
-  appSettings: {
-    sidebarProjectSortOrder: SidebarProjectSortOrder
-    sidebarThreadSortOrder: SidebarThreadSortOrder
-  }
-  onUpdateProjectSortOrder: (sortOrder: string) => void
-  onUpdateThreadSortOrder: (sortOrder: string) => void
-  onStartAddProject: () => void
+export interface SidebarProjectGroupSharedProps {
   getThreadRowProps: ProjectItemProps['getThreadRowProps']
   routeThreadId: ThreadId | null
   selectedThreadIds: ReadonlySet<ThreadId>
@@ -53,6 +41,21 @@ export interface SidebarProjectGroupProps {
   onProjectDragEnd: (event: DragEndEvent) => void
   onProjectDragCancel: () => void
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void
+}
+
+export interface SidebarProjectGroupProps extends SidebarProjectGroupSharedProps {
+  projects: Project[]
+  renderedPinnedThreads: RenderedPinnedThreadData[]
+  renderedProjects: RenderedProjectData[]
+  isManualProjectSorting: boolean
+  shouldShowProjectPathEntry: boolean
+  appSettings: {
+    sidebarProjectSortOrder: SidebarProjectSortOrder
+    sidebarThreadSortOrder: SidebarThreadSortOrder
+  }
+  onUpdateProjectSortOrder: (sortOrder: string) => void
+  onUpdateThreadSortOrder: (sortOrder: string) => void
+  onStartAddProject: () => void
   addFormProps: AddProjectFormProps
 }
 

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
 
 import { ensureNativeApi } from '../../nativeApi'
 import { openInPreferredEditor } from '../../editorPreferences'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useTheme } from '../../hooks/useTheme'
 import { resolveFileEditorLanguage } from './fileLanguage'
 import { Button } from '../ui/button'
@@ -38,6 +39,7 @@ function FilesEditorHeader(props: {
   isSaving: boolean
   onSave: () => void
 }) {
+  const isMobile = useIsMobile()
   const { resolvedTheme } = useTheme()
 
   const handleOpenExternally = async () => {
@@ -59,15 +61,17 @@ function FilesEditorHeader(props: {
         <div className="truncate text-xs font-medium text-foreground">{props.filePath}</div>
       </div>
       {props.isDirty ? <span className="size-2 rounded-full bg-primary" /> : null}
-      <Button
-        size="xs"
-        variant="ghost"
-        onClick={handleOpenExternally}
-        aria-label="Open in preferred editor"
-        className="h-6 w-6 p-0"
-      >
-        <ExternalLinkIcon className="size-3.5" />
-      </Button>
+      {!isMobile ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={handleOpenExternally}
+          aria-label="Open in preferred editor"
+          className="h-6 w-6 p-0"
+        >
+          <ExternalLinkIcon className="size-3.5" />
+        </Button>
+      ) : null}
       <Button
         size="xs"
         variant={props.isDirty ? 'default' : 'outline'}

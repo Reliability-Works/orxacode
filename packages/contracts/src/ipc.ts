@@ -147,6 +147,26 @@ export interface DesktopBrowserState {
   bounds: DesktopBrowserBounds | null
 }
 
+export interface DesktopRemoteAccessEndpoint {
+  id: string
+  label: string
+  address: string
+  url: string
+}
+
+export type DesktopRemoteAccessStatus = 'disabled' | 'available' | 'unavailable'
+
+export interface DesktopRemoteAccessPreferences {
+  enabled: boolean
+}
+
+export interface DesktopRemoteAccessSnapshot {
+  enabled: boolean
+  status: DesktopRemoteAccessStatus
+  port: number
+  endpoints: DesktopRemoteAccessEndpoint[]
+}
+
 export interface DesktopBrowserBridge {
   getState: () => Promise<DesktopBrowserState>
   navigate: (url: string) => Promise<DesktopBrowserState>
@@ -172,6 +192,10 @@ export interface DesktopUpdateCheckResult {
 
 export interface DesktopBridge {
   getWsUrl: () => string | null
+  setRemoteAccessPreferences: (
+    input: Partial<DesktopRemoteAccessPreferences>
+  ) => Promise<DesktopRemoteAccessPreferences>
+  getRemoteAccessSnapshot: () => Promise<DesktopRemoteAccessSnapshot>
   pickFolder: () => Promise<string | null>
   confirm: (message: string) => Promise<boolean>
   setTheme: (theme: DesktopTheme) => Promise<void>

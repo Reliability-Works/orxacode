@@ -12,6 +12,9 @@ import ChatView from '../components/ChatView'
 import { ChatSplitPaneContext, type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { SidebarInset } from '~/components/ui/sidebar'
+import { useSidebar } from '~/components/ui/sidebar.shared'
+import { useIsMobile } from '~/hooks/useMediaQuery'
+import { cn } from '~/lib/utils'
 const CHAT_SPLIT_RATIO_STORAGE_KEY = 'orxa:chat-split-ratio'
 const CHAT_SPLIT_DEFAULT_RATIO = 0.5
 const CHAT_SPLIT_MIN_RATIO = 0.28
@@ -29,6 +32,8 @@ function SplitAwareChatThreadShell(props: {
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
 }) {
+  const isMobile = useIsMobile()
+  const { openMobile } = useSidebar()
   const {
     focusedPane,
     maximizedPane,
@@ -55,7 +60,12 @@ function SplitAwareChatThreadShell(props: {
 
   return (
     <ChatSplitPaneContext.Provider value={controls}>
-      <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground">
+      <SidebarInset
+        className={cn(
+          'h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground',
+          isMobile && openMobile && 'invisible pointer-events-none'
+        )}
+      >
         <ChatView key={threadId} threadId={threadId} showHeader={showHeader} />
       </SidebarInset>
     </ChatSplitPaneContext.Provider>

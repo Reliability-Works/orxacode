@@ -6,12 +6,7 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import {
-  FolderTreeIcon,
-  GitBranchIcon,
-  GlobeIcon,
-  TerminalSquareIcon,
-} from 'lucide-react'
+import { FolderTreeIcon, GitBranchIcon, GlobeIcon, TerminalSquareIcon } from 'lucide-react'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import ProjectScriptsControl, { type NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
@@ -19,6 +14,10 @@ import { OpenInPicker } from './OpenInPicker'
 import type { ChatAuxSidebarMode } from './useChatViewLocalState'
 import { cn } from '~/lib/utils'
 import type { ReactNode } from 'react'
+import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useSidebar } from '../ui/sidebar.shared'
+import { ChatHeaderMobileActions, ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
+import { ChatHeaderToggleControl } from './ChatHeaderToggleControl'
 
 interface ProjectActionProps {
   activeThreadId: ThreadId
@@ -54,6 +53,7 @@ interface ChatHeaderProps extends ProjectActionProps {
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
+  onSelectChatView: () => void
   splitActions?: ReactNode
   handoffAction?: ReactNode
   threadActionsMenu?: ReactNode
@@ -64,10 +64,13 @@ function ChatHeaderTitle(props: {
   activeProjectName: string | undefined
   isGitRepo: boolean
   threadActionsMenu?: ReactNode
+  leadingControl?: ReactNode
 }) {
-  const { activeThreadTitle, activeProjectName, isGitRepo, threadActionsMenu } = props
+  const { activeThreadTitle, activeProjectName, isGitRepo, threadActionsMenu, leadingControl } =
+    props
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
+      {leadingControl}
       <h2
         className="min-w-0 shrink truncate text-sm font-medium text-foreground"
         title={activeThreadTitle}
@@ -81,37 +84,6 @@ function ChatHeaderTitle(props: {
         </span>
       ) : null}
     </div>
-  )
-}
-
-function HeaderToggleControl(props: {
-  pressed: boolean
-  onToggle: () => void
-  disabled: boolean
-  ariaLabel: string
-  icon: React.ComponentType<{ className?: string }>
-  tooltipLabel: string
-}) {
-  const { pressed, onToggle, disabled, ariaLabel, icon: Icon, tooltipLabel } = props
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            className="shrink-0"
-            pressed={pressed}
-            onPressedChange={onToggle}
-            aria-label={ariaLabel}
-            variant="outline"
-            size="xs"
-            disabled={disabled}
-          >
-            <Icon className="size-3" />
-          </Toggle>
-        }
-      />
-      <TooltipPopup side="bottom">{tooltipLabel}</TooltipPopup>
-    </Tooltip>
   )
 }
 
@@ -213,11 +185,7 @@ function GitSidebarToggle(props: {
       <TooltipTrigger
         render={
           <Toggle
-            className={cn(
-              'shrink-0',
-              hasDiff && 'px-2.5',
-              !isGitRepo && 'opacity-50'
-            )}
+            className={cn('shrink-0', hasDiff && 'px-2.5', !isGitRepo && 'opacity-50')}
             pressed={gitSidebarOpen}
             onPressedChange={onToggleGitSidebar}
             aria-label="Toggle git sidebar"
@@ -323,148 +291,201 @@ interface ChatHeaderActionsProps extends ProjectActionProps {
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
+  onSelectChatView: () => void
   splitActions?: ReactNode
 }
 
-function ChatHeaderActions(props: ChatHeaderActionsProps) {
-  const {
-    activeThreadId,
-    activeProjectName,
-    activeProjectScripts,
-    preferredScriptId,
-    keybindings,
-    availableEditors,
-    openInCwd,
-    gitCwd,
-    browserAvailable,
-    terminalAvailable,
-    terminalOpen,
-    terminalToggleLabel,
-    auxSidebarMode,
-    diffStats,
-    isGitRepo,
-    onRunProjectScript,
-    onAddProjectScript,
-    onUpdateProjectScript,
-    onDeleteProjectScript,
-    onToggleTerminal,
-    onToggleGitSidebar,
-    onToggleFilesSidebar,
-    onToggleBrowserSidebar,
-    splitActions,
-    handoffAction,
-  } = props
-
+function ChatHeaderDesktopActions(
+  props: Omit<ChatHeaderActionsProps, 'splitActions'> & {
+    splitActions?: ReactNode
+  }
+) {
   return (
     <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
-      <HeaderToggleControl
-        pressed={terminalOpen}
-        onToggle={onToggleTerminal}
-        disabled={!terminalAvailable}
+      <ChatHeaderToggleControl
+        pressed={props.terminalOpen}
+        onToggle={props.onToggleTerminal}
+        disabled={!props.terminalAvailable}
         ariaLabel="Toggle terminal drawer"
         icon={TerminalSquareIcon}
-        tooltipLabel={terminalToggleLabel}
+        tooltipLabel={props.terminalToggleLabel}
       />
-      {splitActions}
+      {props.splitActions}
       <ChatHeaderProjectActions
-        activeThreadId={activeThreadId}
-        activeProjectName={activeProjectName}
-        activeProjectScripts={activeProjectScripts}
-        preferredScriptId={preferredScriptId}
-        keybindings={keybindings}
-        availableEditors={availableEditors}
-        openInCwd={openInCwd}
-        gitCwd={gitCwd}
-        onRunProjectScript={onRunProjectScript}
-        onAddProjectScript={onAddProjectScript}
-        onUpdateProjectScript={onUpdateProjectScript}
-        onDeleteProjectScript={onDeleteProjectScript}
-        handoffAction={handoffAction}
+        activeThreadId={props.activeThreadId}
+        activeProjectName={props.activeProjectName}
+        activeProjectScripts={props.activeProjectScripts}
+        preferredScriptId={props.preferredScriptId}
+        keybindings={props.keybindings}
+        availableEditors={props.availableEditors}
+        openInCwd={props.openInCwd}
+        gitCwd={props.gitCwd}
+        onRunProjectScript={props.onRunProjectScript}
+        onAddProjectScript={props.onAddProjectScript}
+        onUpdateProjectScript={props.onUpdateProjectScript}
+        onDeleteProjectScript={props.onDeleteProjectScript}
+        handoffAction={props.handoffAction}
       />
       <ChatHeaderSidebarActions
-        auxSidebarMode={auxSidebarMode}
-        onToggleGitSidebar={onToggleGitSidebar}
-        onToggleFilesSidebar={onToggleFilesSidebar}
-        onToggleBrowserSidebar={onToggleBrowserSidebar}
-        isGitRepo={isGitRepo}
-        filesAvailable={openInCwd !== null}
-        browserAvailable={browserAvailable}
-        diffStats={diffStats}
+        auxSidebarMode={props.auxSidebarMode}
+        onToggleGitSidebar={props.onToggleGitSidebar}
+        onToggleFilesSidebar={props.onToggleFilesSidebar}
+        onToggleBrowserSidebar={props.onToggleBrowserSidebar}
+        isGitRepo={props.isGitRepo}
+        filesAvailable={props.openInCwd !== null}
+        browserAvailable={props.browserAvailable}
+        diffStats={props.diffStats}
       />
     </div>
   )
 }
 
-export const ChatHeader = memo(function ChatHeader({
-  activeThreadId,
-  activeThreadTitle,
-  activeProjectName,
-  isGitRepo,
-  openInCwd,
-  browserAvailable,
-  activeProjectScripts,
-  preferredScriptId,
-  keybindings,
-  availableEditors,
-  terminalAvailable,
-  terminalOpen,
-  terminalToggleShortcutLabel,
-  gitCwd,
-  auxSidebarMode,
-  diffStats,
-  onRunProjectScript,
-  onAddProjectScript,
-  onUpdateProjectScript,
-  onDeleteProjectScript,
-  onToggleTerminal,
-  onToggleGitSidebar,
-  onToggleFilesSidebar,
-  onToggleBrowserSidebar,
-  splitActions,
-  handoffAction,
-  threadActionsMenu,
-}: ChatHeaderProps) {
-  const terminalToggleLabel = !terminalAvailable
-    ? 'Terminal is unavailable until this thread has an active project.'
-    : terminalToggleShortcutLabel
-      ? `Toggle terminal drawer (${terminalToggleShortcutLabel})`
-      : 'Toggle terminal drawer'
+function ChatHeaderActions(props: ChatHeaderActionsProps) {
+  const isMobile = useIsMobile()
 
+  if (isMobile) {
+    return (
+      <ChatHeaderMobileActions
+        terminalAvailable={props.terminalAvailable}
+        terminalOpen={props.terminalOpen}
+        terminalToggleLabel={props.terminalToggleLabel}
+        onToggleTerminal={props.onToggleTerminal}
+      />
+    )
+  }
+
+  return <ChatHeaderDesktopActions {...props} />
+}
+
+function useMobileHeaderNavigationControl(params: {
+  isMobile: boolean
+  auxSidebarMode: ChatAuxSidebarMode
+  openInCwd: string | null
+  isGitRepo: boolean
+  onSelectChatView: () => void
+  onToggleFilesSidebar: () => void
+  onToggleGitSidebar: () => void
+}) {
+  const { openMobile, setOpenMobile } = useSidebar()
+  const activeMobileView = openMobile
+    ? 'threads'
+    : params.auxSidebarMode === 'files' || params.auxSidebarMode === 'git'
+      ? params.auxSidebarMode
+      : 'chat'
+
+  if (!params.isMobile) return null
+
+  return (
+    <ChatHeaderMobileViewToggle
+      activeView={activeMobileView}
+      filesAvailable={params.openInCwd !== null}
+      isGitRepo={params.isGitRepo}
+      onOpenThreads={() => setOpenMobile(true)}
+      onSelectChat={params.onSelectChatView}
+      onSelectFiles={params.onToggleFilesSidebar}
+      onSelectGit={params.onToggleGitSidebar}
+    />
+  )
+}
+
+function buildChatHeaderActionsProps(
+  props: ChatHeaderProps,
+  terminalToggleLabel: string
+): ChatHeaderActionsProps {
+  return {
+    activeThreadId: props.activeThreadId,
+    activeProjectName: props.activeProjectName,
+    activeProjectScripts: props.activeProjectScripts,
+    preferredScriptId: props.preferredScriptId,
+    keybindings: props.keybindings,
+    availableEditors: props.availableEditors,
+    openInCwd: props.openInCwd,
+    gitCwd: props.gitCwd,
+    browserAvailable: props.browserAvailable,
+    terminalAvailable: props.terminalAvailable,
+    terminalOpen: props.terminalOpen,
+    terminalToggleLabel,
+    auxSidebarMode: props.auxSidebarMode,
+    diffStats: props.diffStats,
+    isGitRepo: props.isGitRepo,
+    onRunProjectScript: props.onRunProjectScript,
+    onAddProjectScript: props.onAddProjectScript,
+    onUpdateProjectScript: props.onUpdateProjectScript,
+    onDeleteProjectScript: props.onDeleteProjectScript,
+    onToggleTerminal: props.onToggleTerminal,
+    onToggleGitSidebar: props.onToggleGitSidebar,
+    onToggleFilesSidebar: props.onToggleFilesSidebar,
+    onToggleBrowserSidebar: props.onToggleBrowserSidebar,
+    onSelectChatView: props.onSelectChatView,
+    splitActions: props.splitActions,
+    handoffAction: props.handoffAction,
+  }
+}
+
+function ChatHeaderBody(props: {
+  activeThreadTitle: string
+  activeProjectName: string | undefined
+  isGitRepo: boolean
+  isMobile: boolean
+  threadActionsMenu?: ReactNode
+  mobileNavigationControl: ReactNode
+  actionCluster: ReactNode
+}) {
   return (
     <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2">
       <ChatHeaderTitle
-        activeThreadTitle={activeThreadTitle}
-        activeProjectName={activeProjectName}
-        isGitRepo={isGitRepo}
-        threadActionsMenu={threadActionsMenu}
+        activeThreadTitle={props.activeThreadTitle}
+        activeProjectName={props.activeProjectName}
+        isGitRepo={props.isGitRepo}
+        threadActionsMenu={!props.isMobile ? props.threadActionsMenu : undefined}
+        leadingControl={props.mobileNavigationControl}
       />
-      <ChatHeaderActions
-        activeThreadId={activeThreadId}
-        activeProjectName={activeProjectName}
-        activeProjectScripts={activeProjectScripts}
-        preferredScriptId={preferredScriptId}
-        keybindings={keybindings}
-        availableEditors={availableEditors}
-        openInCwd={openInCwd}
-        gitCwd={gitCwd}
-        browserAvailable={browserAvailable}
-        terminalAvailable={terminalAvailable}
-        terminalOpen={terminalOpen}
-        terminalToggleLabel={terminalToggleLabel}
-        auxSidebarMode={auxSidebarMode}
-        diffStats={diffStats}
-        isGitRepo={isGitRepo}
-        onRunProjectScript={onRunProjectScript}
-        onAddProjectScript={onAddProjectScript}
-        onUpdateProjectScript={onUpdateProjectScript}
-        onDeleteProjectScript={onDeleteProjectScript}
-        onToggleTerminal={onToggleTerminal}
-        onToggleGitSidebar={onToggleGitSidebar}
-        onToggleFilesSidebar={onToggleFilesSidebar}
-        onToggleBrowserSidebar={onToggleBrowserSidebar}
-        splitActions={splitActions}
-        handoffAction={handoffAction}
-      />
+      {props.isMobile ? props.threadActionsMenu : null}
+      {props.actionCluster}
     </div>
+  )
+}
+
+function resolveTerminalToggleLabel(
+  terminalAvailable: boolean,
+  terminalToggleShortcutLabel: string | null
+) {
+  if (!terminalAvailable) {
+    return 'Terminal is unavailable until this thread has an active project.'
+  }
+  if (terminalToggleShortcutLabel) {
+    return `Toggle terminal drawer (${terminalToggleShortcutLabel})`
+  }
+  return 'Toggle terminal drawer'
+}
+
+export const ChatHeader = memo(function ChatHeader(props: ChatHeaderProps) {
+  const terminalToggleLabel = resolveTerminalToggleLabel(
+    props.terminalAvailable,
+    props.terminalToggleShortcutLabel
+  )
+  const isMobile = useIsMobile()
+  const mobileNavigationControl = useMobileHeaderNavigationControl({
+    isMobile,
+    auxSidebarMode: props.auxSidebarMode,
+    openInCwd: props.openInCwd,
+    isGitRepo: props.isGitRepo,
+    onSelectChatView: props.onSelectChatView,
+    onToggleFilesSidebar: props.onToggleFilesSidebar,
+    onToggleGitSidebar: props.onToggleGitSidebar,
+  })
+  const actionProps = buildChatHeaderActionsProps(props, terminalToggleLabel)
+  const actionCluster = <ChatHeaderActions {...actionProps} />
+
+  return (
+    <ChatHeaderBody
+      activeThreadTitle={props.activeThreadTitle}
+      activeProjectName={props.activeProjectName}
+      isGitRepo={props.isGitRepo}
+      isMobile={isMobile}
+      threadActionsMenu={props.threadActionsMenu}
+      mobileNavigationControl={mobileNavigationControl}
+      actionCluster={actionCluster}
+    />
   )
 })

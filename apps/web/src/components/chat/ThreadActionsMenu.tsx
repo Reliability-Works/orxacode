@@ -13,6 +13,7 @@ import { Button } from '../ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '../ui/menu'
 import { toastManager } from '../ui/toastState'
 import { getHandoffTargetProviders, startThreadHandoff } from './ThreadHandoffMenu.helpers'
+import { useIsMobile } from '~/hooks/useMediaQuery'
 
 function showActionError(title: string, error: unknown) {
   toastManager.add({
@@ -58,9 +59,9 @@ function useThreadActionClipboard() {
 
 function useThreadActionHandoff(thread: Thread, project: Project | null) {
   const navigate = useNavigate()
-  const [pendingProvider, setPendingProvider] = useState<Thread['modelSelection']['provider'] | null>(
-    null
-  )
+  const [pendingProvider, setPendingProvider] = useState<
+    Thread['modelSelection']['provider'] | null
+  >(null)
   const targetProviders = useMemo(
     () => getHandoffTargetProviders(thread.modelSelection.provider),
     [thread.modelSelection.provider]
@@ -110,7 +111,9 @@ function ThreadActionsMenuItems(props: {
       <MenuItem onClick={onPinToggle}>{isPinned ? 'Unpin thread' : 'Pin thread'}</MenuItem>
       <MenuItem
         onClick={() => {
-          void renameThread(thread).catch(error => showActionError('Failed to rename thread', error))
+          void renameThread(thread).catch(error =>
+            showActionError('Failed to rename thread', error)
+          )
         }}
       >
         Rename thread
@@ -129,7 +132,11 @@ function ThreadActionsMenuItems(props: {
       </MenuItem>
       {targetProviders.length > 0 ? <MenuSeparator /> : null}
       {targetProviders.map(provider => (
-        <MenuItem key={provider} disabled={pendingProvider !== null} onClick={() => onHandoff(provider)}>
+        <MenuItem
+          key={provider}
+          disabled={pendingProvider !== null}
+          onClick={() => onHandoff(provider)}
+        >
           {pendingProvider === provider
             ? 'Starting...'
             : `Handoff to ${PROVIDER_DISPLAY_NAMES[provider]}`}
@@ -139,10 +146,8 @@ function ThreadActionsMenuItems(props: {
   )
 }
 
-export function ThreadActionsMenu(props: {
-  thread: Thread
-  project: Project | null
-}) {
+export function ThreadActionsMenu(props: { thread: Thread; project: Project | null }) {
+  const isMobile = useIsMobile()
   const { archiveThread } = useThreadActions()
   const pinnedThreadIds = useUiStateStore(store => store.pinnedThreadIds)
   const pinThread = useUiStateStore(store => store.pinThread)
@@ -161,14 +166,14 @@ export function ThreadActionsMenu(props: {
         render={
           <Button
             type="button"
-            size="icon-xs"
+            size={isMobile ? 'icon-sm' : 'icon-xs'}
             variant="ghost"
             className="shrink-0 translate-y-px gap-0 [&_svg]:mx-0"
             aria-label="Thread actions"
           />
         }
       >
-        <PanelTopOpenIcon className="size-3.5" />
+        <PanelTopOpenIcon className={isMobile ? 'size-4' : 'size-3.5'} />
       </MenuTrigger>
       <MenuPopup align="start" className="min-w-56">
         <ThreadActionsMenuItems

@@ -3,6 +3,7 @@ import type { MouseEvent } from 'react'
 import { ThreadId } from '@orxa-code/contracts'
 import type { Thread } from '../../types'
 import { formatRelativeTimeLabel } from '../../timestampFormat'
+import { useIsMobile } from '~/hooks/useMediaQuery'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar'
 import type { ThreadStatusPill } from '../Sidebar.logic'
@@ -108,6 +109,7 @@ function ThreadRowActionArea({
   showThreadJumpHints: boolean
   archive: ThreadRowArchiveState
 }) {
+  const isMobile = useIsMobile()
   const isHighlighted = isActive || isSelected
   const threadMetaClassName = isConfirmingArchive
     ? 'pointer-events-none opacity-0'
@@ -116,7 +118,7 @@ function ThreadRowActionArea({
       : 'pointer-events-none'
 
   return (
-    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+    <div className="ml-auto flex shrink-0 items-center gap-2 md:gap-1.5">
       {terminalStatus && (
         <span
           role="img"
@@ -124,10 +126,12 @@ function ThreadRowActionArea({
           title={terminalStatus.label}
           className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
         >
-          <TerminalIcon className={`size-3 ${terminalStatus.pulse ? 'animate-pulse' : ''}`} />
+          <TerminalIcon
+            className={`${isMobile ? 'size-3.5' : 'size-3'} ${terminalStatus.pulse ? 'animate-pulse' : ''}`}
+          />
         </span>
       )}
-      <div className="flex min-w-12 justify-end">
+      <div className="flex min-w-14 justify-end md:min-w-12">
         <ThreadRowArchiveArea
           thread={thread}
           isThreadRunning={isThreadRunning}
@@ -144,7 +148,7 @@ function ThreadRowActionArea({
             </span>
           ) : (
             <span
-              className={`text-[10px] ${isHighlighted ? 'text-foreground/72 dark:text-foreground/82' : 'text-muted-foreground/40'}`}
+              className={`text-xs md:text-[10px] ${isHighlighted ? 'text-foreground/72 dark:text-foreground/82' : 'text-muted-foreground/40'}`}
             >
               {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
             </span>
@@ -267,6 +271,7 @@ function createContextMenuHandler(opts: {
 function ThreadRowButton(
   props: ThreadRowProps & { handleContextMenu: (e: React.MouseEvent) => void }
 ) {
+  const isMobile = useIsMobile()
   const {
     thread,
     isActive,
@@ -294,11 +299,15 @@ function ThreadRowButton(
   return (
     <SidebarMenuSubButton
       render={<div role="button" tabIndex={0} />}
-      size="sm"
+      size={isMobile ? 'md' : 'sm'}
       isActive={isActive}
       data-testid={`thread-row-${thread.id}`}
       className={`${rowClassName} relative isolate`}
-      style={nestingLevel > 0 ? { paddingLeft: `${8 + nestingLevel * 14}px` } : undefined}
+      style={
+        nestingLevel > 0
+          ? { paddingLeft: `${(isMobile ? 10 : 8) + nestingLevel * (isMobile ? 16 : 14)}px` }
+          : undefined
+      }
       onClick={event => {
         onThreadClick(event, thread.id, orderedProjectThreadIds)
       }}

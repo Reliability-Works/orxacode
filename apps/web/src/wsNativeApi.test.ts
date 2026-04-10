@@ -118,6 +118,13 @@ function getWindowForTest(): Window & typeof globalThis & { desktopBridge?: unkn
 function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
   return {
     getWsUrl: () => null,
+    setRemoteAccessPreferences: async () => ({ enabled: false }),
+    getRemoteAccessSnapshot: async () => ({
+      enabled: false,
+      status: 'disabled',
+      port: 0,
+      endpoints: [],
+    }),
     pickFolder: async () => null,
     confirm: async () => true,
     setTheme: async () => undefined,

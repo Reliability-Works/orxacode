@@ -15,7 +15,6 @@ import {
   SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH,
   SIDEBAR_WIDTH,
   SIDEBAR_WIDTH_ICON,
-  SIDEBAR_WIDTH_MOBILE,
   SidebarContext,
   SidebarInstanceContext,
   type SidebarContextProps,
@@ -51,6 +50,16 @@ function useSidebarToggleShortcut(toggleSidebar: () => void) {
       window.removeEventListener('keydown', handleKey)
     }
   }, [toggleSidebar])
+}
+
+function useAutoOpenMobileSidebar(isMobile: boolean, setOpenMobile: (open: boolean) => void) {
+  const hasAutoOpenedMobileRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!isMobile || hasAutoOpenedMobileRef.current) return
+    hasAutoOpenedMobileRef.current = true
+    setOpenMobile(true)
+  }, [isMobile, setOpenMobile])
 }
 
 function SidebarProvider({
@@ -99,6 +108,7 @@ function SidebarProvider({
   }, [isMobile, setOpen])
 
   useSidebarToggleShortcut(toggleSidebar)
+  useAutoOpenMobileSidebar(isMobile, setOpenMobile)
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
   // This makes it easier to style the sidebar with Tailwind classes.
@@ -392,10 +402,16 @@ function renderMobileSidebar(input: {
 }) {
   return (
     <SidebarInstanceContext.Provider value={input.instanceContextValue}>
-      <Sheet onOpenChange={input.setOpenMobile} open={input.openMobile} {...input.props}>
+      <Sheet
+        onOpenChange={nextOpen => {
+          if (nextOpen) input.setOpenMobile(true)
+        }}
+        open={input.openMobile}
+        {...input.props}
+      >
         <SheetPopup
           className={cn(
-            'w-(--sidebar-width) max-w-none bg-sidebar p-0 text-sidebar-foreground',
+            'w-full max-w-none bg-sidebar p-0 text-sidebar-foreground',
             input.className
           )}
           data-mobile="true"
@@ -403,11 +419,6 @@ function renderMobileSidebar(input: {
           data-slot="sidebar"
           showCloseButton={false}
           side={input.side}
-          style={
-            {
-              '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-            } as React.CSSProperties
-          }
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>

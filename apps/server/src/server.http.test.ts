@@ -1,8 +1,9 @@
 import { assert, it } from '@effect/vitest'
 import { Effect, FileSystem, Path } from 'effect'
 import { HttpClient } from 'effect/unstable/http'
+import * as Http from 'node:http'
 
-import { buildAppUnderTest, getHttpServerUrl, provideServerTest } from './server.test.helpers.ts'
+import { buildAppUnderTest, provideServerTest } from './server.test.helpers.ts'
 
 it.effect('serves static index content for GET / when staticDir is configured', () =>
   provideServerTest(
@@ -22,18 +23,57 @@ it.effect('serves static index content for GET / when staticDir is configured', 
   )
 )
 
-it.effect('redirects to dev URL when configured', () =>
+it.effect('proxies to the dev URL when configured', () =>
   provideServerTest(
     Effect.gen(function* () {
+      const upstream = yield* Effect.acquireRelease(
+        Effect.promise(
+          () =>
+            new Promise<{ server: Http.Server; baseUrl: URL }>((resolve, reject) => {
+              const server = Http.createServer((request, response) => {
+                response.statusCode = 200
+                response.setHeader('content-type', 'text/html; charset=utf-8')
+                response.end(`<html>dev-proxy-ok ${request.url ?? '/'}</html>`)
+              })
+
+              server.listen(0, '127.0.0.1', () => {
+                const address = server.address()
+                if (!address || typeof address === 'string') {
+                  reject(new Error('Failed to resolve upstream server address.'))
+                  return
+                }
+                resolve({
+                  server,
+                  baseUrl: new URL(`http://127.0.0.1:${address.port}`),
+                })
+              })
+
+              server.on('error', reject)
+            })
+        ),
+        ({ server }) =>
+          Effect.promise(
+            () =>
+              new Promise<void>((resolve, reject) => {
+                server.close(error => {
+                  if (error) {
+                    reject(error)
+                    return
+                  }
+                  resolve()
+                })
+              })
+          )
+      )
+
       yield* buildAppUnderTest({
-        config: { devUrl: new URL('http://127.0.0.1:5173') },
+        config: { devUrl: upstream.baseUrl },
       })
 
-      const url = yield* getHttpServerUrl('/foo/bar')
-      const response = yield* Effect.promise(() => fetch(url, { redirect: 'manual' }))
+      const response = yield* HttpClient.get('/foo/bar?x=1')
 
-      assert.equal(response.status, 302)
-      assert.equal(response.headers.get('location'), 'http://127.0.0.1:5173/')
+      assert.equal(response.status, 200)
+      assert.include(yield* response.text, 'dev-proxy-ok /foo/bar?x=1')
     })
   )
 )

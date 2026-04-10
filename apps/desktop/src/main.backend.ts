@@ -23,6 +23,7 @@ export interface BackendHost {
   resolveBackendCwd(): string
   getBackendPort(): number
   getBackendAuthToken(): string
+  getRemoteAccessToken(): string | undefined
 }
 
 export interface BackendController {
@@ -38,6 +39,18 @@ interface BackendRuntime {
   restartAttempt: number
 }
 
+export function createDesktopBootstrapPayload(rt: BackendRuntime) {
+  return {
+    mode: 'desktop',
+    host: '0.0.0.0',
+    noBrowser: true,
+    port: rt.host.getBackendPort(),
+    orxaHome: rt.host.config.baseDir,
+    authToken: rt.host.getBackendAuthToken(),
+    remoteAccessToken: rt.host.getRemoteAccessToken(),
+  }
+}
+
 function scheduleRestart(rt: BackendRuntime, reason: string): void {
   if (rt.host.isQuitting() || rt.restartTimer) return
   const delayMs = Math.min(500 * 2 ** rt.restartAttempt, 10_000)
@@ -50,15 +63,7 @@ function scheduleRestart(rt: BackendRuntime, reason: string): void {
 }
 
 function writeBootstrapPayload(bootstrapStream: NodeJS.WritableStream, rt: BackendRuntime): void {
-  bootstrapStream.write(
-    `${JSON.stringify({
-      mode: 'desktop',
-      noBrowser: true,
-      port: rt.host.getBackendPort(),
-      orxaHome: rt.host.config.baseDir,
-      authToken: rt.host.getBackendAuthToken(),
-    })}\n`
-  )
+  bootstrapStream.write(`${JSON.stringify(createDesktopBootstrapPayload(rt))}\n`)
   bootstrapStream.end()
 }
 

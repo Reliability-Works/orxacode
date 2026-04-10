@@ -106,20 +106,20 @@ function ProviderModelPickerTrigger(props: {
   return (
     <span
       className={cn(
-        'flex min-w-0 w-full box-border items-center gap-2 overflow-hidden',
-        props.compact ? 'max-w-36 sm:pl-1' : undefined
+        'flex min-w-0 w-full box-border items-center gap-2.5 overflow-hidden md:gap-2',
+        props.compact ? 'max-w-[13rem] sm:pl-1 md:max-w-36' : undefined
       )}
     >
       <ProviderIcon
         aria-hidden="true"
         className={cn(
-          'size-4 shrink-0',
+          'size-4.5 shrink-0 md:size-4',
           providerIconClassName(props.activeProvider, 'text-muted-foreground/70'),
           props.activeProviderIconClassName
         )}
       />
       <span className="min-w-0 flex-1 truncate">{props.selectedModelLabel}</span>
-      <ChevronDownIcon aria-hidden="true" className="size-3 shrink-0 opacity-60" />
+      <ChevronDownIcon aria-hidden="true" className="size-3.5 shrink-0 opacity-60 md:size-3" />
     </span>
   )
 }

@@ -4,6 +4,8 @@ import type {
   DesktopBrowserInspectPoint,
   DesktopBrowserBounds,
   ContextMenuItem,
+  DesktopRemoteAccessPreferences,
+  DesktopRemoteAccessSnapshot,
   DesktopUpdateActionResult,
   DesktopUpdateCheckResult,
   DesktopUpdatePreferences,
@@ -32,6 +34,8 @@ import { getDestructiveMenuIcon } from './main.menu'
 
 export interface IpcChannels {
   readonly getWsUrl: string
+  readonly setRemoteAccessPreferences: string
+  readonly getRemoteAccessSnapshot: string
   readonly pickFolder: string
   readonly confirm: string
   readonly setTheme: string
@@ -56,6 +60,10 @@ export interface IpcUpdaterAdapter {
 export interface IpcHost {
   readonly channels: IpcChannels
   readonly backendWsUrl: () => string
+  readonly setRemoteAccessPreferences: (
+    input: Partial<DesktopRemoteAccessPreferences>
+  ) => Promise<DesktopRemoteAccessPreferences>
+  readonly getRemoteAccessSnapshot: () => DesktopRemoteAccessSnapshot
   readonly mainWindow: () => BrowserWindow | null
   readonly isQuitting: () => boolean
   readonly updater: IpcUpdaterAdapter
@@ -199,6 +207,18 @@ function registerCoreIpcHandlers(host: IpcHost): void {
   ipcMain.removeAllListeners(channels.getWsUrl)
   ipcMain.on(channels.getWsUrl, event => {
     event.returnValue = host.backendWsUrl()
+  })
+
+  ipcMain.removeHandler(channels.getRemoteAccessSnapshot)
+  ipcMain.handle(channels.getRemoteAccessSnapshot, async () => host.getRemoteAccessSnapshot())
+
+  ipcMain.removeHandler(channels.setRemoteAccessPreferences)
+  ipcMain.handle(channels.setRemoteAccessPreferences, async (_event, rawInput: unknown) => {
+    const input =
+      rawInput && typeof rawInput === 'object'
+        ? (rawInput as Partial<DesktopRemoteAccessPreferences>)
+        : {}
+    return host.setRemoteAccessPreferences(input)
   })
 
   ipcMain.removeHandler(channels.pickFolder)
