@@ -63,10 +63,8 @@ function useSidebarCoreActions(s: StoreBindings) {
     appSettings: {
       sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder,
       sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder,
-      defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
       confirmThreadDelete: s.appSettings.confirmThreadDelete,
     },
-    handleNewThread: s.handleNewThread,
     reorderProjects: s.reorderProjects,
     toggleProject: s.toggleProject,
     navigate: s.navigate,

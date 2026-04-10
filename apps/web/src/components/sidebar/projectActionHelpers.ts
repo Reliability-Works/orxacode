@@ -11,7 +11,6 @@ import { readNativeApi } from '../../nativeApi'
 import { toastManager } from '../ui/toastState'
 import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
-import type { DraftThreadEnvMode } from '../../composerDraftStore'
 
 const ADD_PROJECT_TIMEOUT_MS = 15_000
 
@@ -36,11 +35,6 @@ export interface ExecAddProjectFromPathOpts {
   isAddingProject: boolean
   projects: Project[]
   shouldBrowseForProjectImmediately: boolean
-  appSettings: { defaultThreadEnvMode: DraftThreadEnvMode }
-  handleNewThread: (
-    projectId: ProjectId,
-    options?: { envMode?: DraftThreadEnvMode }
-  ) => Promise<void>
   focusMostRecentThreadForProject: (projectId: ProjectId) => void
   setIsAddingProject: React.Dispatch<React.SetStateAction<boolean>>
   setNewCwd: React.Dispatch<React.SetStateAction<string>>
@@ -82,9 +76,6 @@ export async function execAddProjectFromPath(opts: ExecAddProjectFromPathOpts): 
       ADD_PROJECT_TIMEOUT_MS,
       'Timed out while adding the project. Please try again.'
     )
-    await opts
-      .handleNewThread(projectId, { envMode: opts.appSettings.defaultThreadEnvMode })
-      .catch(() => undefined)
   } catch (error) {
     const description =
       error instanceof Error ? error.message : 'An error occurred while adding the project.'

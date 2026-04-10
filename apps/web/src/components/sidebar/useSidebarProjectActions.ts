@@ -15,7 +15,6 @@ import { useSidebarProjectDnD } from './useSidebarProjectDnD'
 import { useSidebarProjectTitleHandlers } from './useSidebarProjectTitleHandlers'
 import type { SidebarThreadSnapshot } from './ThreadRow'
 import type { Project } from '../../types'
-import type { DraftThreadEnvMode } from '../../composerDraftStore'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,13 +59,8 @@ export interface SidebarProjectActionsParams {
   appSettings: {
     sidebarProjectSortOrder: string
     sidebarThreadSortOrder: string
-    defaultThreadEnvMode: DraftThreadEnvMode
     confirmThreadDelete?: boolean
   }
-  handleNewThread: (
-    projectId: ProjectId,
-    options?: { envMode?: DraftThreadEnvMode }
-  ) => Promise<void>
   reorderProjects: (activeId: ProjectId, overId: ProjectId) => void
   toggleProject: (projectId: ProjectId) => void
   navigate: ReturnType<typeof import('@tanstack/react-router').useNavigate>
@@ -137,7 +131,6 @@ export function useSidebarProjectActions(
   const addProject = useSidebarAddProject({
     projects: params.projects,
     appSettings: params.appSettings,
-    handleNewThread: params.handleNewThread,
     navigate: params.navigate,
     threads: params.threads,
     shouldBrowseForProjectImmediately,

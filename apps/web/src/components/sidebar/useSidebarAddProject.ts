@@ -10,7 +10,6 @@ import { readNativeApi } from '../../nativeApi'
 import { sortThreadsForSidebar } from '../Sidebar.logic'
 import type { Project } from '../../types'
 import type { SidebarThreadSnapshot } from './ThreadRow'
-import type { DraftThreadEnvMode } from '../../composerDraftStore'
 import { execAddProjectFromPath } from './projectActionHelpers'
 import { toastManager } from '../ui/toastState'
 
@@ -18,12 +17,7 @@ export interface UseSidebarAddProjectParams {
   projects: Project[]
   appSettings: {
     sidebarThreadSortOrder: string
-    defaultThreadEnvMode: DraftThreadEnvMode
   }
-  handleNewThread: (
-    projectId: ProjectId,
-    options?: { envMode?: DraftThreadEnvMode }
-  ) => Promise<void>
   navigate: ReturnType<typeof import('@tanstack/react-router').useNavigate>
   threads: SidebarThreadSnapshot[]
   shouldBrowseForProjectImmediately: boolean
@@ -86,18 +80,10 @@ function useAddProjectFromPath(params: {
   state: AddProjectState
   projects: Project[]
   shouldBrowseForProjectImmediately: boolean
-  appSettings: UseSidebarAddProjectParams['appSettings']
-  handleNewThread: UseSidebarAddProjectParams['handleNewThread']
   focusMostRecentThreadForProject: (projectId: ProjectId) => void
 }) {
-  const {
-    state,
-    projects,
-    shouldBrowseForProjectImmediately,
-    appSettings,
-    handleNewThread,
-    focusMostRecentThreadForProject,
-  } = params
+  const { state, projects, shouldBrowseForProjectImmediately, focusMostRecentThreadForProject } =
+    params
   const { isAddingProject, setIsAddingProject, setNewCwd, setAddProjectError, setAddingProject } =
     state
   return useCallback(
@@ -107,8 +93,6 @@ function useAddProjectFromPath(params: {
         isAddingProject,
         projects,
         shouldBrowseForProjectImmediately,
-        appSettings,
-        handleNewThread,
         focusMostRecentThreadForProject,
         setIsAddingProject,
         setNewCwd,
@@ -117,9 +101,7 @@ function useAddProjectFromPath(params: {
       })
     },
     [
-      appSettings,
       focusMostRecentThreadForProject,
-      handleNewThread,
       isAddingProject,
       projects,
       setAddProjectError,
@@ -169,14 +151,7 @@ function buildPickFolderHandler(params: {
 }
 
 export function useSidebarAddProject(params: UseSidebarAddProjectParams) {
-  const {
-    projects,
-    appSettings,
-    handleNewThread,
-    navigate,
-    threads,
-    shouldBrowseForProjectImmediately,
-  } = params
+  const { projects, appSettings, navigate, threads, shouldBrowseForProjectImmediately } = params
   const state = useAddProjectState()
 
   const focusMostRecentThreadForProject = useFocusMostRecentThreadForProject(
@@ -189,8 +164,6 @@ export function useSidebarAddProject(params: UseSidebarAddProjectParams) {
     state,
     projects,
     shouldBrowseForProjectImmediately,
-    appSettings,
-    handleNewThread,
     focusMostRecentThreadForProject,
   })
 
