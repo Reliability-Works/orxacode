@@ -23,6 +23,7 @@ export interface BackendHost {
   resolveBackendCwd(): string
   getBackendPort(): number
   getBackendAuthToken(): string
+  getRemoteAccessToken(): string | undefined
 }
 
 export interface BackendController {
@@ -46,6 +47,7 @@ export function createDesktopBootstrapPayload(rt: BackendRuntime) {
     port: rt.host.getBackendPort(),
     orxaHome: rt.host.config.baseDir,
     authToken: rt.host.getBackendAuthToken(),
+    remoteAccessToken: rt.host.getRemoteAccessToken(),
   }
 }
 

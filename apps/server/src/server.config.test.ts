@@ -116,6 +116,41 @@ it.effect('accepts websocket rpc handshake when auth token is provided', () =>
   )
 )
 
+it.effect('accepts websocket rpc handshake when remote access token is provided', () =>
+  provideServerTest(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: 'orxa-ws-remote-auth-' })
+      yield* fs.writeFileString(
+        path.join(workspaceDir, 'needle-file.ts'),
+        'export const needle = 1;'
+      )
+
+      yield* buildAppUnderTest({
+        config: {
+          authToken: 'desktop-token',
+          remoteAccessToken: 'remote-token',
+        },
+      })
+
+      const wsUrl = yield* getWsServerUrl('/ws?token=remote-token')
+      const response = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, client =>
+          client[WS_METHODS.projectsSearchEntries]({
+            cwd: workspaceDir,
+            query: 'needle',
+            limit: 10,
+          })
+        )
+      )
+
+      assert.isAtLeast(response.entries.length, 1)
+      assert.equal(response.truncated, false)
+    })
+  )
+)
+
 it.effect('routes websocket rpc subscribeServerConfig streams snapshot then update', () =>
   provideServerTest(
     Effect.gen(function* () {

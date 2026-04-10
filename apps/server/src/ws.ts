@@ -477,13 +477,17 @@ export const websocketRpcRouteLayer = Layer.unwrap(
       Effect.gen(function* () {
         const request = yield* HttpServerRequest.HttpServerRequest
         const config = yield* ServerConfig
-        if (config.authToken) {
+        if (config.authToken || config.remoteAccessToken) {
           const url = HttpServerRequest.toURL(request)
           if (Option.isNone(url)) {
             return HttpServerResponse.text('Invalid WebSocket URL', { status: 400 })
           }
           const token = url.value.searchParams.get('token')
-          if (token !== config.authToken) {
+          const matchesDesktopToken = config.authToken ? token === config.authToken : false
+          const matchesRemoteToken = config.remoteAccessToken
+            ? token === config.remoteAccessToken
+            : false
+          if (!matchesDesktopToken && !matchesRemoteToken) {
             return HttpServerResponse.text('Unauthorized WebSocket connection', { status: 401 })
           }
         }

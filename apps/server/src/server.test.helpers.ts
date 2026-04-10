@@ -162,6 +162,7 @@ const makeServerConfig = (
       devUrl,
       noBrowser: true,
       authToken: undefined,
+      remoteAccessToken: undefined,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       ...config,

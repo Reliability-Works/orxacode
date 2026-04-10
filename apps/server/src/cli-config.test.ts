@@ -72,6 +72,7 @@ it.layer(NodeServices.layer)('cli config resolution env fallback', it => {
         devUrl: new URL('http://127.0.0.1:5173'),
         noBrowser: true,
         authToken: 'env-token',
+        remoteAccessToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
       })
@@ -135,6 +136,7 @@ it.layer(NodeServices.layer)('cli config resolution flags', it => {
         devUrl: new URL('http://127.0.0.1:4173'),
         noBrowser: true,
         authToken: 'flag-token',
+        remoteAccessToken: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
       })
@@ -155,6 +157,7 @@ it.layer(NodeServices.layer)('cli config resolution bootstrap envelope', it => {
         devUrl: 'http://127.0.0.1:5173',
         noBrowser: true,
         authToken: 'bootstrap-token',
+        remoteAccessToken: undefined,
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
       })
@@ -318,6 +321,7 @@ it.layer(NodeServices.layer)('cli config resolution precedence', it => {
         devUrl: new URL('http://127.0.0.1:4173'),
         noBrowser: true,
         authToken: 'flag-token',
+        remoteAccessToken: undefined,
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
       })

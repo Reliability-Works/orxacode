@@ -31,6 +31,7 @@ const UPDATE_DOWNLOAD_CHANNEL = 'desktop:update-download'
 const UPDATE_INSTALL_CHANNEL = 'desktop:update-install'
 const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
 const GET_WS_URL_CHANNEL = 'desktop:get-ws-url'
+const SET_REMOTE_ACCESS_PREFERENCES_CHANNEL = 'desktop:set-remote-access-preferences'
 const GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL = 'desktop:get-remote-access-snapshot'
 
 const browserApi = {
@@ -56,6 +57,8 @@ contextBridge.exposeInMainWorld('desktopBridge', {
     const result = ipcRenderer.sendSync(GET_WS_URL_CHANNEL)
     return typeof result === 'string' ? result : null
   },
+  setRemoteAccessPreferences: input =>
+    ipcRenderer.invoke(SET_REMOTE_ACCESS_PREFERENCES_CHANNEL, input),
   getRemoteAccessSnapshot: () => ipcRenderer.invoke(GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL),
   pickFolder: () => ipcRenderer.invoke(PICK_FOLDER_CHANNEL),
   confirm: message => ipcRenderer.invoke(CONFIRM_CHANNEL, message),

@@ -247,6 +247,7 @@ function makeFakeServerConfig(): ServerConfigShape {
     devUrl: undefined,
     noBrowser: true,
     authToken: undefined,
+    remoteAccessToken: undefined,
     autoBootstrapProjectFromCwd: false,
     logWebSocketEvents: false,
     stateDir: '/tmp/opencode-adapter-test/state',

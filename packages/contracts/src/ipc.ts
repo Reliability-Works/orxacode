@@ -154,8 +154,15 @@ export interface DesktopRemoteAccessEndpoint {
   url: string
 }
 
+export type DesktopRemoteAccessStatus = 'disabled' | 'available' | 'unavailable'
+
+export interface DesktopRemoteAccessPreferences {
+  enabled: boolean
+}
+
 export interface DesktopRemoteAccessSnapshot {
   enabled: boolean
+  status: DesktopRemoteAccessStatus
   port: number
   endpoints: DesktopRemoteAccessEndpoint[]
 }
@@ -185,6 +192,9 @@ export interface DesktopUpdateCheckResult {
 
 export interface DesktopBridge {
   getWsUrl: () => string | null
+  setRemoteAccessPreferences: (
+    input: Partial<DesktopRemoteAccessPreferences>
+  ) => Promise<DesktopRemoteAccessPreferences>
   getRemoteAccessSnapshot: () => Promise<DesktopRemoteAccessSnapshot>
   pickFolder: () => Promise<string | null>
   confirm: (message: string) => Promise<boolean>

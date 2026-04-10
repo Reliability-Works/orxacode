@@ -24,16 +24,19 @@ import { runSmokeTest } from './main.smoke'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
 import { resolveRemoteAccessSnapshot } from './remoteAccess'
+import { createDesktopRemoteAccessPreferencesStore } from './remoteAccessPreferences'
+import {
+  applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl,
+  resolveRemoteAccessToken,
+} from './remoteAccessRuntime'
 import {
   createDesktopUpdatePreferencesStore,
   resolveDesktopUpdateFeedChannel,
 } from './updatePreferences'
 const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
-
 if (!isSmokeTest) {
   syncShellEnvironment()
 }
-
 const BASE_DIR = process.env.ORXA_HOME?.trim() || Path.join(OS.homedir(), '.orxa')
 const STATE_DIR = Path.join(BASE_DIR, 'userdata')
 const DESKTOP_SCHEME = 'orxa'
@@ -58,16 +61,15 @@ const AUTO_UPDATE_DISABLED_BY_ENV = process.env.ORXA_CODE_DISABLE_AUTO_UPDATE ==
 type LinuxDesktopNamedApp = Electron.App & {
   setDesktopName?: (desktopName: string) => void
 }
-
 let mainWindow: BrowserWindow | null = null
 let backendPort = 0
 let backendAuthToken = ''
+let remoteAccessToken: string | undefined
 let backendWsUrl = ''
 let isQuitting = false
 let desktopProtocolRegistered = false
 let aboutCommitHashCache: string | null | undefined
 const loggingState = createDesktopLoggingState()
-
 const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
   platform: process.platform,
   processArch: process.arch,
@@ -76,8 +78,10 @@ const desktopRuntimeInfo = resolveDesktopRuntimeInfo({
 const updatePreferencesStore = createDesktopUpdatePreferencesStore(
   Path.join(STATE_DIR, 'update-preferences.json')
 )
+const remoteAccessPreferencesStore = createDesktopRemoteAccessPreferencesStore(
+  Path.join(STATE_DIR, 'remote-access-preferences.json')
+)
 const initialUpdatePreferences = updatePreferencesStore.syncInstalledVersion(app.getVersion())
-
 const updaterController = createUpdaterController(
   {
     channel: resolveDesktopUpdateFeedChannel(initialUpdatePreferences.releaseChannel),
@@ -97,7 +101,6 @@ const updaterController = createUpdaterController(
     stopBackendAndWaitForExit: () => stopBackendAndWaitForExit(),
   }
 )
-
 function writeDesktopLogHeader(message: string): void {
   writeDesktopLogHeaderImpl(loggingState, APP_RUN_ID, message)
 }
@@ -411,17 +414,35 @@ const backendHost: BackendHost = {
   resolveBackendCwd: () => resolveBackendCwd(),
   getBackendPort: () => backendPort,
   getBackendAuthToken: () => backendAuthToken,
+  getRemoteAccessToken: () => remoteAccessToken,
 }
 const backendController = createBackendController(backendHost)
 const startBackend = (): void => backendController.start()
 const stopBackend = (): void => backendController.stop()
 const stopBackendAndWaitForExit = (timeoutMs?: number): Promise<void> =>
   backendController.stopAndWaitForExit(timeoutMs)
+const remoteAccessRuntimeHost = {
+  store: remoteAccessPreferencesStore,
+  writeLog: writeDesktopLogHeader,
+  restartBackend: async () => {
+    await stopBackendAndWaitForExit()
+    if (!isQuitting) startBackend()
+  },
+  setRemoteAccessToken: (token: string | undefined) => {
+    remoteAccessToken = token
+  },
+}
 const ipcHost: IpcHost = {
   channels: IPC_CHANNELS,
   backendWsUrl: () => backendWsUrl,
+  setRemoteAccessPreferences: input =>
+    applyRemoteAccessPreferencesImpl(remoteAccessRuntimeHost, input),
   getRemoteAccessSnapshot: () =>
-    resolveRemoteAccessSnapshot({ port: backendPort, token: backendAuthToken }),
+    resolveRemoteAccessSnapshot({
+      enabled: remoteAccessPreferencesStore.get().enabled,
+      port: backendPort,
+      token: remoteAccessToken ?? '',
+    }),
   mainWindow: () => mainWindow,
   isQuitting: () => isQuitting,
   updater: updaterController,
@@ -477,6 +498,7 @@ async function bootstrap(): Promise<void> {
   )
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`)
   backendAuthToken = Crypto.randomBytes(24).toString('hex')
+  remoteAccessToken = resolveRemoteAccessToken(remoteAccessPreferencesStore.get().enabled)
   const baseUrl = `ws://127.0.0.1:${backendPort}`
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`)

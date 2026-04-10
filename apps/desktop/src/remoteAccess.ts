@@ -4,9 +4,17 @@ import type { DesktopRemoteAccessEndpoint, DesktopRemoteAccessSnapshot } from '@
 
 interface ResolveRemoteAccessSnapshotInput {
   cacheKey?: string
+  enabled: boolean
   port: number
   token: string
   networkInterfaces?: typeof OS.networkInterfaces
+}
+
+function isTailnetIpv4(address: string): boolean {
+  if (!address.startsWith('100.')) return false
+  const parts = address.split('.')
+  const secondOctet = Number(parts[1] ?? '')
+  return Number.isInteger(secondOctet) && secondOctet >= 64 && secondOctet <= 127
 }
 
 function isPrivateIpv4(address: string): boolean {
@@ -20,7 +28,7 @@ function isPrivateIpv4(address: string): boolean {
 
 function endpointPriority(address: string): number {
   if (isPrivateIpv4(address)) return 0
-  if (address.startsWith('100.')) return 1
+  if (isTailnetIpv4(address)) return 1
   return 2
 }
 
@@ -32,7 +40,11 @@ function buildEndpoint(
 ): DesktopRemoteAccessEndpoint {
   return {
     id: address,
-    label: isPrivateIpv4(address) ? 'Local network' : 'Network address',
+    label: isPrivateIpv4(address)
+      ? 'Local network'
+      : isTailnetIpv4(address)
+        ? 'Tailnet / VPN'
+        : 'Network address',
     address,
     url: `http://${address}:${port}/?token=${encodeURIComponent(token)}&mobile=1&v=${encodeURIComponent(cacheKey)}`,
   }
@@ -41,6 +53,15 @@ function buildEndpoint(
 export function resolveRemoteAccessSnapshot(
   input: ResolveRemoteAccessSnapshotInput
 ): DesktopRemoteAccessSnapshot {
+  if (!input.enabled) {
+    return {
+      enabled: false,
+      status: 'disabled',
+      port: input.port,
+      endpoints: [],
+    }
+  }
+
   const networkInterfaces = input.networkInterfaces ?? OS.networkInterfaces
   const cacheKey = input.cacheKey ?? Date.now().toString(36)
   const addresses = new Set<string>()
@@ -61,7 +82,8 @@ export function resolveRemoteAccessSnapshot(
     .map(address => buildEndpoint(address, input.port, input.token, cacheKey))
 
   return {
-    enabled: endpoints.length > 0,
+    enabled: true,
+    status: endpoints.length > 0 ? 'available' : 'unavailable',
     port: input.port,
     endpoints,
   }

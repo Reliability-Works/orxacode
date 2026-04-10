@@ -58,30 +58,48 @@ describe('resolveRemoteAccessSnapshot', () => {
   it('returns sorted LAN endpoints and skips internal or link-local interfaces', () => {
     const snapshot = resolveRemoteAccessSnapshot({
       cacheKey: 'fresh-view',
+      enabled: true,
       port: 3773,
       token: 'secret-token',
       networkInterfaces: LAN_NETWORK_INTERFACES,
     })
 
     expect(snapshot.enabled).toBe(true)
+    expect(snapshot.status).toBe('available')
     expect(snapshot.endpoints.map(endpoint => endpoint.address)).toEqual([
       '10.0.0.15',
       '192.168.1.24',
       '100.80.4.7',
     ])
+    expect(snapshot.endpoints[2]?.label).toBe('Tailnet / VPN')
     expect(snapshot.endpoints[0]?.url).toBe(
       'http://10.0.0.15:3773/?token=secret-token&mobile=1&v=fresh-view'
     )
   })
 
-  it('reports disabled when no external IPv4 interfaces are available', () => {
+  it('reports unavailable when remote access is enabled without external IPv4 interfaces', () => {
     const snapshot = resolveRemoteAccessSnapshot({
+      enabled: true,
       port: 3773,
       token: 'secret-token',
       networkInterfaces: LOOPBACK_ONLY_NETWORK_INTERFACES,
     })
 
+    expect(snapshot.enabled).toBe(true)
+    expect(snapshot.status).toBe('unavailable')
+    expect(snapshot.endpoints).toEqual([])
+  })
+
+  it('reports disabled when remote access is turned off', () => {
+    const snapshot = resolveRemoteAccessSnapshot({
+      enabled: false,
+      port: 3773,
+      token: 'secret-token',
+      networkInterfaces: LAN_NETWORK_INTERFACES,
+    })
+
     expect(snapshot.enabled).toBe(false)
+    expect(snapshot.status).toBe('disabled')
     expect(snapshot.endpoints).toEqual([])
   })
 })
