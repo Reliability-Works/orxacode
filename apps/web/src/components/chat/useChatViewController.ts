@@ -169,7 +169,7 @@ function useChatViewControllerEffectsWiring(
 }
 
 function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatViewControllerState>) {
-  const { td, ls, p } = state
+  const { td, ls } = state
   const threadTerminalRuntimeEnv = useMemo(() => {
     if (!td.activeProject?.cwd) return {}
     return projectScriptRuntimeEnv({
@@ -177,11 +177,6 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
       worktreePath: td.activeThread?.worktreePath ?? null,
     })
   }, [td.activeProject, td.activeThread])
-  const closePlanSidebar = useCallback(() => {
-    ls.setPlanSidebarOpen(false)
-    const turnKey = p.activePlan?.turnId ?? p.sidebarProposedPlan?.turnId ?? null
-    if (turnKey) ls.setPlanSidebarDismissedForTurn(turnKey)
-  }, [ls, p.activePlan, p.sidebarProposedPlan])
   const toggleAuxSidebar = useCallback(
     (mode: 'git' | 'files' | 'browser') => {
       ls.setAuxSidebarMode(current => (current === mode ? 'none' : mode))
@@ -191,7 +186,7 @@ function useThreadTerminalEnvAndCloseSidebar(state: ReturnType<typeof useChatVie
   const closeAuxSidebar = useCallback(() => {
     ls.setAuxSidebarMode('none')
   }, [ls])
-  return { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar }
+  return { threadTerminalRuntimeEnv, toggleAuxSidebar, closeAuxSidebar }
 }
 
 function showPullRequestHandoffUnavailableToast() {
@@ -360,7 +355,6 @@ function useChatViewControllerActions(
     ls,
     td,
     ad,
-    p,
     cd,
     setThreadError,
     setPrompt,
@@ -428,7 +422,7 @@ export function useChatViewController(threadId: ThreadId) {
   const actions = useChatViewControllerActions(threadId, state, utils)
   const queuedMessageActions = useQueuedComposerMessageCallbacks(threadId, state, utils)
   useChatViewControllerEffectsWiring(state, utils.focusComposer, utils.handoffAttachmentPreviews)
-  const { threadTerminalRuntimeEnv, closePlanSidebar, toggleAuxSidebar, closeAuxSidebar } =
+  const { threadTerminalRuntimeEnv, toggleAuxSidebar, closeAuxSidebar } =
     useThreadTerminalEnvAndCloseSidebar(state)
   const { store, ls, td, ad, p, cd, gitCwd, branchesQuery, panelDiffQuery, scroll } = state
   const insertComposerPathReference = useCallback(
@@ -470,7 +464,6 @@ export function useChatViewController(threadId: ThreadId) {
     ...actions.pullRequestCbs,
     addComposerImages: actions.addComposerImages,
     ...actions.remainingCbs,
-    closePlanSidebar,
     closeAuxSidebar,
     toggleGitSidebar: () => toggleAuxSidebar('git'),
     toggleFilesSidebar: () => toggleAuxSidebar('files'),

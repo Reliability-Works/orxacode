@@ -43,6 +43,7 @@ export interface CallbackFactoriesParams {
   defaultThreadEnvMode: import('../Sidebar.logic').SidebarNewThreadEnvMode
   confirmThreadArchive: boolean | undefined
   showThreadJumpHints: boolean
+  setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,7 @@ interface ThreadRowPropsHookParams {
   confirmThreadArchive: boolean | undefined
   openPrLink: ReturnType<typeof useSidebarInteractionState>['openPrLink']
   showThreadJumpHints: boolean
+  setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
 }
 
 function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
@@ -76,10 +78,12 @@ function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
     confirmThreadArchive,
     openPrLink,
     showThreadJumpHints,
+    setParentThreadExpanded,
   } = params
   return useCallback(
     (thread: SidebarThreadSnapshot) => ({
       onThreadClick: threadActions.handleThreadClick,
+      onToggleChildren: setParentThreadExpanded,
       onThreadNavigate: threadActions.navigateToThread,
       onThreadContextMenu: threadActions.handleThreadContextMenu,
       onMultiSelectContextMenu: threadActions.handleMultiSelectContextMenu,
@@ -116,6 +120,7 @@ function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
       confirmThreadArchive,
       openPrLink,
       showThreadJumpHints,
+      setParentThreadExpanded,
     ]
   )
 }
@@ -221,6 +226,7 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
     confirmThreadArchive: params.confirmThreadArchive,
     openPrLink,
     showThreadJumpHints: params.showThreadJumpHints,
+    setParentThreadExpanded: params.setParentThreadExpanded,
   })
 
   const getProjectItemProps = useGetProjectItemProps({

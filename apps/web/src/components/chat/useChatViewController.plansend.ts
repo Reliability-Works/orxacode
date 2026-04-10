@@ -67,8 +67,6 @@ function usePlanActions(args: {
     setThreadError,
     setOptimisticUserMessages: ls.setOptimisticUserMessages,
     forceStickToBottom: scroll.forceStickToBottom,
-    setPlanSidebarOpen: ls.setPlanSidebarOpen,
-    planSidebarDismissedForTurnRef: ls.planSidebarDismissedForTurnRef,
     setComposerDraftInteractionMode: store.setComposerDraftInteractionMode,
     persistThreadSettingsForNextTurn: args.persistThreadSettingsForNextTurn,
   })
@@ -76,7 +74,6 @@ function usePlanActions(args: {
     ...planActionBase,
     activeThread: td.activeThread ?? null,
     activeProject: td.activeProject ?? null,
-    planSidebarOpenOnNextThreadRef: ls.planSidebarOpenOnNextThreadRef,
     navigate: store.navigate,
   })
   return { onSubmitPlanFollowUp, onImplementPlanInNewThread }

@@ -55,8 +55,6 @@ export interface SubmitPlanFollowUpInput extends PlanActionInputBase {
     React.SetStateAction<import('../../types').ChatMessage[]>
   >
   forceStickToBottom: () => void
-  setPlanSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>
-  planSidebarDismissedForTurnRef: React.MutableRefObject<string | null>
   setComposerDraftInteractionMode: (threadId: ThreadId, mode: ProviderInteractionMode) => void
   persistThreadSettingsForNextTurn: (input: {
     threadId: ThreadId
@@ -69,7 +67,6 @@ export interface SubmitPlanFollowUpInput extends PlanActionInputBase {
 
 export interface ImplementPlanInNewThreadInput extends PlanActionInputBase {
   activeProject: { id: ProjectId; cwd: string } | null
-  planSidebarOpenOnNextThreadRef: React.MutableRefObject<boolean>
   beginLocalDispatch: (opts?: { preparingWorktree?: boolean }) => void
   resetLocalDispatch: () => void
   navigate: (opts: { to: string; params: { threadId: string } }) => Promise<void>
@@ -140,10 +137,6 @@ async function executeSubmitPlanFollowUp(
         : {}),
       createdAt: messageCreatedAt,
     })
-    if (nextInteractionMode === 'default') {
-      p.planSidebarDismissedForTurnRef.current = null
-      p.setPlanSidebarOpen(true)
-    }
     p.sendInFlightRef.current = false
   } catch (err) {
     p.setOptimisticUserMessages(existing => existing.filter(m => m.id !== messageIdForSend))
@@ -211,10 +204,7 @@ async function executeImplementPlanInNewThread(p: ImplementPlanInNewThreadInput)
       })
     )
     .then(() => waitForStartedServerThread(nextThreadId))
-    .then(() => {
-      p.planSidebarOpenOnNextThreadRef.current = true
-      return p.navigate({ to: '/$threadId', params: { threadId: nextThreadId } })
-    })
+    .then(() => p.navigate({ to: '/$threadId', params: { threadId: nextThreadId } }))
     .catch(async err => {
       await api.orchestration
         .dispatchCommand({
@@ -271,8 +261,6 @@ export function useChatSubmitPlanFollowUp(p: SubmitPlanFollowUpInput) {
     setThreadError,
     setOptimisticUserMessages,
     forceStickToBottom,
-    setPlanSidebarOpen,
-    planSidebarDismissedForTurnRef,
     setComposerDraftInteractionMode,
     persistThreadSettingsForNextTurn,
   } = p
@@ -296,8 +284,6 @@ export function useChatSubmitPlanFollowUp(p: SubmitPlanFollowUpInput) {
         setThreadError,
         setOptimisticUserMessages,
         forceStickToBottom,
-        setPlanSidebarOpen,
-        planSidebarDismissedForTurnRef,
         setComposerDraftInteractionMode,
         persistThreadSettingsForNextTurn,
       }),
@@ -319,8 +305,6 @@ export function useChatSubmitPlanFollowUp(p: SubmitPlanFollowUpInput) {
       setThreadError,
       setOptimisticUserMessages,
       forceStickToBottom,
-      setPlanSidebarOpen,
-      planSidebarDismissedForTurnRef,
       setComposerDraftInteractionMode,
       persistThreadSettingsForNextTurn,
     ]
@@ -342,7 +326,6 @@ export function useChatImplementPlanInNewThread(p: ImplementPlanInNewThreadInput
     selectedModelSelection,
     runtimeMode,
     sendInFlightRef,
-    planSidebarOpenOnNextThreadRef,
     beginLocalDispatch,
     resetLocalDispatch,
     navigate,
@@ -373,7 +356,6 @@ export function useChatImplementPlanInNewThread(p: ImplementPlanInNewThreadInput
       selectedModelSelection,
       runtimeMode,
       sendInFlightRef,
-      planSidebarOpenOnNextThreadRef,
       beginLocalDispatch,
       resetLocalDispatch,
       navigate,
@@ -392,7 +374,6 @@ export function useChatImplementPlanInNewThread(p: ImplementPlanInNewThreadInput
     selectedModelSelection,
     runtimeMode,
     sendInFlightRef,
-    planSidebarOpenOnNextThreadRef,
     beginLocalDispatch,
     resetLocalDispatch,
     navigate,

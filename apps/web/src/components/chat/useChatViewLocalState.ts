@@ -120,7 +120,6 @@ export function useChatViewLocalState(prompt: string) {
   >({})
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false)
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({})
-  const [planSidebarOpen, setPlanSidebarOpen] = useState(false)
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0)
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null)
@@ -146,8 +145,6 @@ export function useChatViewLocalState(prompt: string) {
     setIsRevertingCheckpoint,
     expandedWorkGroups,
     setExpandedWorkGroups,
-    planSidebarOpen,
-    setPlanSidebarOpen,
     auxSidebarMode,
     setAuxSidebarMode,
     auxSidebarWidth,

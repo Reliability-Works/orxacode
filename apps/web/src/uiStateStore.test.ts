@@ -6,9 +6,11 @@ import {
   markThreadUnread,
   pinThread,
   reorderProjects,
+  setParentThreadExpanded,
   setProjectExpanded,
   syncProjects,
   syncThreads,
+  toggleParentThreadExpanded,
   togglePinnedThread,
   unpinThread,
   type UiState,
@@ -20,6 +22,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     projectOrder: [],
     threadLastVisitedAtById: {},
     pinnedThreadIds: [],
+    expandedParentThreadIds: [],
     ...overrides,
   }
 }
@@ -183,6 +186,18 @@ describe('syncThreads', () => {
 
     expect(next.pinnedThreadIds).toEqual([thread2])
   })
+
+  it('syncThreads prunes expanded parent-thread state for deleted threads', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+    const thread2 = ThreadId.makeUnsafe('thread-2')
+    const initialState = makeUiState({
+      expandedParentThreadIds: [thread1, thread2],
+    })
+
+    const next = syncThreads(initialState, [{ id: thread2 }])
+
+    expect(next.expandedParentThreadIds).toEqual([thread2])
+  })
 })
 
 describe('setProjectExpanded', () => {
@@ -210,12 +225,34 @@ describe('clearThreadUi', () => {
         [thread1]: '2026-02-25T12:35:00.000Z',
       },
       pinnedThreadIds: [thread1],
+      expandedParentThreadIds: [thread1],
     })
 
     const next = clearThreadUi(initialState, thread1)
 
     expect(next.threadLastVisitedAtById).toEqual({})
     expect(next.pinnedThreadIds).toEqual([])
+    expect(next.expandedParentThreadIds).toEqual([])
+  })
+})
+
+describe('parent thread expansion', () => {
+  it('setParentThreadExpanded stores expanded parent thread ids', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+
+    const next = setParentThreadExpanded(makeUiState(), thread1, true)
+
+    expect(next.expandedParentThreadIds).toEqual([thread1])
+  })
+
+  it('toggleParentThreadExpanded flips expanded parent state', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+
+    const expanded = toggleParentThreadExpanded(makeUiState(), thread1)
+    expect(expanded.expandedParentThreadIds).toEqual([thread1])
+
+    const collapsed = toggleParentThreadExpanded(expanded, thread1)
+    expect(collapsed.expandedParentThreadIds).toEqual([])
   })
 })
 

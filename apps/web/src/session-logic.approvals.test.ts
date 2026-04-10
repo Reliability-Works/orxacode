@@ -1,11 +1,7 @@
-import { TurnId, type OrchestrationThreadActivity } from '@orxa-code/contracts'
+import { type OrchestrationThreadActivity } from '@orxa-code/contracts'
 import { describe, expect, it } from 'vitest'
 
-import {
-  deriveActivePlanState,
-  derivePendingApprovals,
-  derivePendingUserInputs,
-} from './session-logic'
+import { derivePendingApprovals, derivePendingUserInputs } from './session-logic'
 import { makeActivity } from './session-logic.test.helpers'
 
 const sandboxQuestion = {
@@ -252,43 +248,5 @@ describe('derivePendingUserInputs stale cleanup', () => {
     ]
 
     expect(derivePendingUserInputs(activities)).toEqual([])
-  })
-})
-
-describe('deriveActivePlanState', () => {
-  it('returns the latest plan update for the active turn', () => {
-    const activities: OrchestrationThreadActivity[] = [
-      makeActivity({
-        id: 'plan-old',
-        createdAt: '2026-02-23T00:00:01.000Z',
-        kind: 'turn.plan.updated',
-        summary: 'Plan updated',
-        tone: 'info',
-        turnId: 'turn-1',
-        payload: {
-          explanation: 'Initial plan',
-          plan: [{ step: 'Inspect code', status: 'pending' }],
-        },
-      }),
-      makeActivity({
-        id: 'plan-latest',
-        createdAt: '2026-02-23T00:00:02.000Z',
-        kind: 'turn.plan.updated',
-        summary: 'Plan updated',
-        tone: 'info',
-        turnId: 'turn-1',
-        payload: {
-          explanation: 'Refined plan',
-          plan: [{ step: 'Implement Codex user input', status: 'inProgress' }],
-        },
-      }),
-    ]
-
-    expect(deriveActivePlanState(activities, TurnId.makeUnsafe('turn-1'))).toEqual({
-      createdAt: '2026-02-23T00:00:02.000Z',
-      turnId: 'turn-1',
-      explanation: 'Refined plan',
-      steps: [{ step: 'Implement Codex user input', status: 'inProgress' }],
-    })
   })
 })

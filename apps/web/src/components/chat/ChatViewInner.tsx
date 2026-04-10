@@ -8,7 +8,6 @@
 import { cn } from '~/lib/utils'
 import BranchToolbar from '../BranchToolbar'
 import { FilesSidebar } from '../files-sidebar/FilesSidebar'
-import PlanSidebar from '../PlanSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
 import { PullRequestThreadDialog } from '../PullRequestThreadDialog'
 import { GitSidebar } from '../git-sidebar/GitSidebar'
@@ -71,23 +70,6 @@ function ChatViewPullRequestDialogBlock() {
         if (!open) c.closePullRequestDialog()
       }}
       onPrepared={c.handlePreparedPullRequestThread}
-    />
-  )
-}
-
-function ChatViewPlanSidebarBlock() {
-  const c = useChatViewCtx()
-  const { p, store, gitCwd } = c
-  const { activeProject } = c.td
-  if (!c.ls.planSidebarOpen) return null
-  return (
-    <PlanSidebar
-      activePlan={p.activePlan}
-      activeProposedPlan={p.sidebarProposedPlan}
-      markdownCwd={gitCwd ?? undefined}
-      workspaceRoot={activeProject?.cwd ?? undefined}
-      timestampFormat={store.settings.timestampFormat}
-      onClose={c.closePlanSidebar}
     />
   )
 }
@@ -199,7 +181,6 @@ export function ChatViewInner({ showHeader = true }: { showHeader?: boolean }) {
           <ChatViewBranchToolbarBlock />
           <ChatViewPullRequestDialogBlock />
         </div>
-        <ChatViewPlanSidebarBlock />
         <ChatViewAuxSidebarBlock />
       </div>
       <ChatViewTerminalDrawerBlock />

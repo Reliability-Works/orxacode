@@ -5,7 +5,7 @@
  * max-lines-per-function budget. Refs only — no useState/useEffect.
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ApprovalRequestId } from '@orxa-code/contracts'
 import type { ComposerPromptEditorHandle } from '../ComposerPromptEditor'
 import type { ComposerCommandItem } from './ComposerCommandMenu'
@@ -40,14 +40,6 @@ export function useChatViewLocalRefs(prompt: string) {
   const promptRef = useRef(prompt)
   const optimisticUserMessagesRef = useRef<ChatMessage[]>([])
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([])
-  const planSidebarDismissedForTurnRef = useRef<string | null>(null)
-  const setPlanSidebarDismissedForTurn = useCallback((turnKey: string) => {
-    planSidebarDismissedForTurnRef.current = turnKey
-  }, [])
-  const clearPlanSidebarDismissedForTurn = useCallback(() => {
-    planSidebarDismissedForTurnRef.current = null
-  }, [])
-  const planSidebarOpenOnNextThreadRef = useRef(false)
   const composerEditorRef = useRef<ComposerPromptEditorHandle | null>(null)
   const composerImagesRef = useRef<ComposerImageAttachment[]>([])
   const composerSelectLockRef = useRef(false)
@@ -62,10 +54,6 @@ export function useChatViewLocalRefs(prompt: string) {
     promptRef,
     optimisticUserMessagesRef,
     composerTerminalContextsRef,
-    planSidebarDismissedForTurnRef,
-    setPlanSidebarDismissedForTurn,
-    clearPlanSidebarDismissedForTurn,
-    planSidebarOpenOnNextThreadRef,
     composerEditorRef,
     composerImagesRef,
     composerSelectLockRef,

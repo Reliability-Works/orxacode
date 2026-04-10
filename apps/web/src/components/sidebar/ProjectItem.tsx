@@ -45,7 +45,12 @@ export interface RenderedProjectData {
   projectStatus: ThreadStatusPill | null
   projectThreads: SidebarThreadSnapshot[]
   threadStatuses: Map<ThreadId, ThreadStatusPill | null>
-  renderedThreadEntries: Array<{ thread: SidebarThreadSnapshot; nestingLevel: number }>
+  renderedThreadEntries: Array<{
+    thread: SidebarThreadSnapshot
+    nestingLevel: number
+    hasChildren: boolean
+    childrenExpanded: boolean
+  }>
   showEmptyThreadState: boolean
   shouldShowThreadPanel: boolean
   isThreadListExpanded: boolean
@@ -279,6 +284,8 @@ function renderThreadRowItem(
     threadStatuses: Map<ThreadId, ThreadStatusPill | null>
     orderedProjectThreadIds: readonly ThreadId[]
     nestingLevel: number
+    hasChildren: boolean
+    childrenExpanded: boolean
   }
 ) {
   const isActive = opts.routeThreadId === thread.id
@@ -306,6 +313,8 @@ function renderThreadRowItem(
       isConfirmingArchive={isConfirmingArchive}
       orderedProjectThreadIds={opts.orderedProjectThreadIds}
       nestingLevel={opts.nestingLevel}
+      hasChildren={opts.hasChildren}
+      childrenExpanded={opts.childrenExpanded}
       rowClassName={resolveThreadRowClassName({ isActive, isSelected })}
       {...opts.getThreadRowProps(thread)}
     />
@@ -407,8 +416,8 @@ function ProjectThreadList({
         </SidebarMenuSubItem>
       ) : null}
       {shouldShowThreadPanel &&
-        renderedThreadEntries.map(({ thread, nestingLevel }) =>
-          renderThreadRowItem(thread, { ...rowOpts, nestingLevel })
+        renderedThreadEntries.map(({ thread, nestingLevel, hasChildren, childrenExpanded }) =>
+          renderThreadRowItem(thread, { ...rowOpts, nestingLevel, hasChildren, childrenExpanded })
         )}
       {showExpand && (
         <ThreadListExpandButton

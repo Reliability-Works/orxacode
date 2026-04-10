@@ -147,38 +147,25 @@ function useResetOnThreadChangeEffect(ls: L, activeThreadId: string | null) {
   const {
     setExpandedWorkGroups,
     setPullRequestDialogState,
-    planSidebarDismissedForTurnRef,
     setIsRevertingCheckpoint,
     dragDepthRef,
     setIsDragOverComposer,
     setQueuedComposerMessages,
-    planSidebarOpenOnNextThreadRef,
-    setPlanSidebarOpen,
   } = ls
   useEffect(() => {
     setExpandedWorkGroups({})
     setPullRequestDialogState(null)
-    planSidebarDismissedForTurnRef.current = null
     setIsRevertingCheckpoint(false)
     dragDepthRef.current = 0
     setIsDragOverComposer(false)
     setQueuedComposerMessages([])
-    if (planSidebarOpenOnNextThreadRef.current) {
-      planSidebarOpenOnNextThreadRef.current = false
-      setPlanSidebarOpen(true)
-    } else {
-      setPlanSidebarOpen(false)
-    }
   }, [
     activeThreadId,
     dragDepthRef,
-    planSidebarDismissedForTurnRef,
-    planSidebarOpenOnNextThreadRef,
     setExpandedWorkGroups,
     setIsDragOverComposer,
     setIsRevertingCheckpoint,
     setQueuedComposerMessages,
-    setPlanSidebarOpen,
     setPullRequestDialogState,
   ])
 }

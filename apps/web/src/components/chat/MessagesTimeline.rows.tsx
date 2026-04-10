@@ -3,6 +3,7 @@ import { type TimestampFormat } from '@orxa-code/contracts/settings'
 import { Undo2Icon } from 'lucide-react'
 
 import { formatElapsed } from '../../session-logic'
+import { stripPromotedTaskListFromMessage } from '../../session-logic.plan'
 import { type TurnDiffSummary } from '../../types'
 import { summarizeTurnDiffStats } from '../../lib/turnDiffTree'
 import { formatTimestamp } from '../../timestampFormat'
@@ -269,8 +270,8 @@ function AssistantTimelineRow(
     timestampFormat: TimestampFormat
   }
 ) {
-  const messageText =
-    props.row.message.text || (props.row.message.streaming ? '' : '(empty response)')
+  const promotedMessageText = stripPromotedTaskListFromMessage(props.row.message.text)
+  const messageText = promotedMessageText || (props.row.message.streaming ? '' : '(empty response)')
 
   return (
     <>

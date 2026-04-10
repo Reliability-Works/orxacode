@@ -1,12 +1,9 @@
 /**
- * Expanded (non-compact) composer footer controls: traits, chat/plan, runtime, plan sidebar.
- *
- * Extracted from ChatView.tsx.
+ * Expanded (non-compact) composer footer controls: traits, chat/plan, runtime.
  */
 
 import React from 'react'
-import { cn } from '~/lib/utils'
-import { BotIcon, ListTodoIcon, LockIcon, LockOpenIcon } from 'lucide-react'
+import { BotIcon, LockIcon, LockOpenIcon } from 'lucide-react'
 import { Button } from '../ui/button'
 import { Separator } from '../ui/separator'
 import { useChatViewCtx } from './ChatViewContext'
@@ -61,39 +58,11 @@ function RuntimeModeButton() {
   )
 }
 
-function PlanSidebarToggleButton() {
-  const c = useChatViewCtx()
-  const planSidebarOpen = c.ls.planSidebarOpen
-  return (
-    <Button
-      variant="ghost"
-      className={cn(
-        'shrink-0 whitespace-nowrap px-2 sm:px-3',
-        planSidebarOpen
-          ? 'text-blue-400 hover:text-blue-300'
-          : 'text-muted-foreground/70 hover:text-foreground/80'
-      )}
-      size="sm"
-      type="button"
-      onClick={c.togglePlanSidebar}
-      title={planSidebarOpen ? 'Hide plan sidebar' : 'Show plan sidebar'}
-    >
-      <ListTodoIcon />
-      <span className="sr-only sm:not-sr-only">Plan</span>
-    </Button>
-  )
-}
-
 export function ChatViewComposerControlsExpanded({
   providerTraitsPicker,
 }: {
   providerTraitsPicker: React.ReactNode
 }) {
-  const c = useChatViewCtx()
-  const { p } = c
-  const { activePlan, sidebarProposedPlan } = p
-  const planSidebarOpen = c.ls.planSidebarOpen
-  const showPlanButton = Boolean(activePlan || sidebarProposedPlan || planSidebarOpen)
   return (
     <>
       {providerTraitsPicker ? (
@@ -106,12 +75,6 @@ export function ChatViewComposerControlsExpanded({
       <InteractionModeButton />
       <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
       <RuntimeModeButton />
-      {showPlanButton ? (
-        <>
-          <Separator orientation="vertical" className="mx-0.5 hidden h-4 sm:block" />
-          <PlanSidebarToggleButton />
-        </>
-      ) : null}
     </>
   )
 }

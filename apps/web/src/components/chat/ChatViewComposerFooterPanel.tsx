@@ -23,7 +23,7 @@ function ComposerFooterLeading({
   providerTraitsPicker: React.ReactNode
 }) {
   const c = useChatViewCtx()
-  const { td, p } = c
+  const { td } = c
   const { composerFooterLeadingRef } = c.scroll.refs
   const { isComposerFooterCompact } = c.scroll
   const {
@@ -36,7 +36,6 @@ function ComposerFooterLeading({
     modelOptionsByProvider,
     composerProviderState,
   } = td
-  const planSidebarOpen = c.ls.planSidebarOpen
   return (
     <div
       ref={composerFooterLeadingRef}
@@ -61,13 +60,10 @@ function ComposerFooterLeading({
       />
       {isComposerFooterCompact ? (
         <CompactComposerControlsMenu
-          activePlan={Boolean(p.activePlan || p.sidebarProposedPlan || planSidebarOpen)}
           interactionMode={interactionMode}
-          planSidebarOpen={planSidebarOpen}
           runtimeMode={runtimeMode}
           traitsMenuContent={providerTraitsMenuContent}
           onToggleInteractionMode={c.toggleInteractionMode}
-          onTogglePlanSidebar={c.togglePlanSidebar}
           onToggleRuntimeMode={c.toggleRuntimeMode}
         />
       ) : (

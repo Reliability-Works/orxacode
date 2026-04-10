@@ -28,7 +28,6 @@ import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
 import type { useChatViewDerivedActivities } from './useChatViewDerivedActivities'
-import type { useChatViewDerivedPlan } from './useChatViewDerivedPlan'
 import type { useChatViewDerivedComposer } from './useChatViewDerivedComposer'
 
 export {
@@ -42,32 +41,7 @@ type S = ReturnType<typeof useChatViewStoreSelectors>
 type L = ReturnType<typeof useChatViewLocalState>
 type T = ReturnType<typeof useChatViewDerivedThread>
 type A = ReturnType<typeof useChatViewDerivedActivities>
-type P = ReturnType<typeof useChatViewDerivedPlan>
 type C = ReturnType<typeof useChatViewDerivedComposer>
-
-export function usePlanSidebarCallbacks(ls: L, p: P) {
-  const { setPlanSidebarOpen, planSidebarDismissedForTurnRef } = ls
-  const { activePlan, sidebarProposedPlan } = p
-
-  const togglePlanSidebar = useCallback(() => {
-    setPlanSidebarOpen(open => {
-      if (open) {
-        const turnKey = activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? null
-        if (turnKey) planSidebarDismissedForTurnRef.current = turnKey
-      } else {
-        planSidebarDismissedForTurnRef.current = null
-      }
-      return !open
-    })
-  }, [
-    activePlan?.turnId,
-    sidebarProposedPlan?.turnId,
-    planSidebarDismissedForTurnRef,
-    setPlanSidebarOpen,
-  ])
-
-  return { togglePlanSidebar }
-}
 
 // ---------------------------------------------------------------------------
 // Persist thread settings

@@ -13,7 +13,6 @@ import {
   useApprovalCallbacks,
   usePendingUserInputCallbacks,
   useProviderModeCallbacks,
-  usePlanSidebarCallbacks,
   usePersistThreadSettings,
   useProjectScriptCallbacks,
   useApplyPromptReplacement,
@@ -30,14 +29,12 @@ import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'
 import type { useChatViewDerivedActivities } from './useChatViewDerivedActivities'
-import type { useChatViewDerivedPlan } from './useChatViewDerivedPlan'
 import type { useChatViewDerivedComposer } from './useChatViewDerivedComposer'
 
 type S = ReturnType<typeof useChatViewStoreSelectors>
 type L = ReturnType<typeof useChatViewLocalState>
 type T = ReturnType<typeof useChatViewDerivedThread>
 type A = ReturnType<typeof useChatViewDerivedActivities>
-type P = ReturnType<typeof useChatViewDerivedPlan>
 type C = ReturnType<typeof useChatViewDerivedComposer>
 
 function useTerminalAndScriptCallbacks(
@@ -90,11 +87,9 @@ function useProviderAndScriptCallbacks(
   store: S,
   ls: L,
   td: T,
-  p: P,
   scheduleComposerFocus: () => void
 ) {
   const provider = useProviderModeCallbacks(threadId, store, ls, td, scheduleComposerFocus)
-  const { togglePlanSidebar } = usePlanSidebarCallbacks(ls, p)
   const persistThreadSettingsForNextTurn = usePersistThreadSettings(store)
   const { saveProjectScript, updateProjectScript, deleteProjectScript } = useProjectScriptCallbacks(
     store,
@@ -102,7 +97,6 @@ function useProviderAndScriptCallbacks(
   )
   return {
     ...provider,
-    togglePlanSidebar,
     persistThreadSettingsForNextTurn,
     saveProjectScript,
     updateProjectScript,
@@ -193,7 +187,6 @@ export function useChatViewCallbacksCore(
   ls: L,
   td: T,
   ad: A,
-  p: P,
   cd: C,
   setThreadError: (id: ThreadId | null, error: string | null) => void,
   setPrompt: (s: string) => void,
@@ -205,7 +198,6 @@ export function useChatViewCallbacksCore(
     store,
     ls,
     td,
-    p,
     scheduleComposerFocus
   )
   const composerInteraction = useComposerInteractionCallbacks(

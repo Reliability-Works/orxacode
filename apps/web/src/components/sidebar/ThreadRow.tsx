@@ -1,19 +1,15 @@
-import { ArchiveIcon, GitPullRequestIcon, TerminalIcon } from 'lucide-react'
+import { ArchiveIcon, TerminalIcon } from 'lucide-react'
 import type { MouseEvent } from 'react'
-import { ThreadId, type ProviderKind } from '@orxa-code/contracts'
+import { ThreadId } from '@orxa-code/contracts'
 import type { Thread } from '../../types'
 import { formatRelativeTimeLabel } from '../../timestampFormat'
-import { ProviderLogo } from '../session'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar'
 import type { ThreadStatusPill } from '../Sidebar.logic'
 import type { TerminalStatusIndicator, PrStatusIndicator, ThreadPr } from './threadRowUtils'
+import { ThreadRowTitleContent } from './ThreadRowTitle'
 
 export type { TerminalStatusIndicator, PrStatusIndicator, ThreadPr }
-
-// ---------------------------------------------------------------------------
-// Shared types (previously inline in Sidebar.tsx)
-// ---------------------------------------------------------------------------
 
 export type SidebarThreadSnapshot = Pick<
   Thread,
@@ -37,54 +33,9 @@ export type SidebarThreadSnapshot = Pick<
   latestUserMessageAt: string | null
 }
 
-export type SidebarProjectSnapshot = Pick<Thread, 'id' | 'projectId'> & {
-  expanded: boolean
-}
+export type SidebarProjectSnapshot = Pick<Thread, 'id' | 'projectId'> & { expanded: boolean }
 
-function resolveThreadProvider(thread: SidebarThreadSnapshot): ProviderKind | null {
-  return thread.session?.provider ?? thread.modelSelection.provider ?? null
-}
-
-// ---------------------------------------------------------------------------
-// ThreadStatusLabel (moved from Sidebar.tsx)
-// ---------------------------------------------------------------------------
-
-export function ThreadStatusLabel({
-  status,
-  compact = false,
-}: {
-  status: NonNullable<ReturnType<typeof import('../Sidebar.logic').resolveThreadStatusPill>>
-  compact?: boolean
-}) {
-  if (compact) {
-    return (
-      <span
-        title={status.label}
-        className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
-      >
-        <span
-          className={`size-[9px] rounded-full ${status.dotClass} ${status.pulse ? 'animate-pulse' : ''}`}
-        />
-        <span className="sr-only">{status.label}</span>
-      </span>
-    )
-  }
-  return (
-    <span
-      title={status.label}
-      className={`inline-flex items-center gap-1 text-[10px] ${status.colorClass}`}
-    >
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${status.pulse ? 'animate-pulse' : ''}`}
-      />
-      <span className="hidden md:inline">{status.label}</span>
-    </span>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Rename / Archive state shapes passed as prop bundles
-// ---------------------------------------------------------------------------
+export { ThreadStatusLabel } from './ThreadRowTitle'
 
 export interface ThreadRowRenameState {
   isRenaming: boolean
@@ -104,13 +55,11 @@ export interface ThreadRowArchiveState {
   confirmThreadArchive: boolean
 }
 
-// ---------------------------------------------------------------------------
-// ThreadRow props
-// ---------------------------------------------------------------------------
-
 export interface ThreadRowProps {
   thread: SidebarThreadSnapshot
   nestingLevel?: number
+  hasChildren?: boolean
+  childrenExpanded?: boolean
   isActive: boolean
   isSelected: boolean
   jumpLabel: string | null
@@ -120,137 +69,23 @@ export interface ThreadRowProps {
   terminalStatus: TerminalStatusIndicator | null
   isConfirmingArchive: boolean
   orderedProjectThreadIds: readonly ThreadId[]
-
-  /** Derived class name for the row (already computed by parent). */
   rowClassName: string
-
-  // -- Callbacks --
   onThreadClick: (
     event: MouseEvent,
     threadId: ThreadId,
     orderedProjectThreadIds: readonly ThreadId[]
   ) => void
+  onToggleChildren?: (threadId: ThreadId, expanded: boolean) => void
   onThreadNavigate: (threadId: ThreadId) => void
   onThreadContextMenu: (threadId: ThreadId, position: { x: number; y: number }) => void
   onMultiSelectContextMenu: (position: { x: number; y: number }) => void
   onOpenPrLink: (event: MouseEvent<HTMLElement>, prUrl: string) => void
-
-  // -- Rename --
   rename: ThreadRowRenameState
-
-  // -- Archive --
   archive: ThreadRowArchiveState
-
-  // -- Display --
   showThreadJumpHints: boolean
   selectedThreadIds: ReadonlySet<ThreadId>
   clearSelection: () => void
 }
-
-// ---------------------------------------------------------------------------
-// ThreadRowTitleContent — left-side content (PR icon, status, title or rename)
-// ---------------------------------------------------------------------------
-
-function ThreadRowRenameInput({
-  thread,
-  rename,
-}: {
-  thread: SidebarThreadSnapshot
-  rename: ThreadRowRenameState
-}) {
-  const {
-    inputRef: renameInputRef,
-    committedRef: renamingCommittedRef,
-    title: renamingTitle,
-    onTitleChange,
-    onCommit,
-    onCancel,
-  } = rename
-  return (
-    <input
-      ref={el => {
-        if (el && renameInputRef.current !== el) {
-          renameInputRef.current = el
-          el.focus()
-          el.select()
-        }
-      }}
-      className="min-w-0 flex-1 truncate text-xs bg-transparent outline-none border border-ring rounded px-0.5"
-      value={renamingTitle}
-      onChange={e => onTitleChange(e.target.value)}
-      onKeyDown={e => {
-        e.stopPropagation()
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          renamingCommittedRef.current = true
-          void onCommit(thread.id, renamingTitle, thread.title)
-        } else if (e.key === 'Escape') {
-          e.preventDefault()
-          renamingCommittedRef.current = true
-          onCancel()
-        }
-      }}
-      onBlur={() => {
-        if (!renamingCommittedRef.current) void onCommit(thread.id, renamingTitle, thread.title)
-      }}
-      onClick={e => e.stopPropagation()}
-    />
-  )
-}
-
-function ThreadRowTitleContent({
-  thread,
-  prStatus,
-  threadStatus,
-  rename,
-  onOpenPrLink,
-}: {
-  thread: SidebarThreadSnapshot
-  prStatus: PrStatusIndicator | null
-  threadStatus: ThreadStatusPill | null
-  rename: ThreadRowRenameState
-  onOpenPrLink: ThreadRowProps['onOpenPrLink']
-}) {
-  const provider = resolveThreadProvider(thread)
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-      {provider ? (
-        <span className="inline-flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
-          <ProviderLogo provider={provider} size={14} />
-        </span>
-      ) : null}
-      {prStatus && (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={prStatus.tooltip}
-                className={`inline-flex items-center justify-center ${prStatus.colorClass} cursor-pointer rounded-sm outline-hidden focus-visible:ring-1 focus-visible:ring-ring`}
-                onClick={event => {
-                  onOpenPrLink(event, prStatus.url)
-                }}
-              >
-                <GitPullRequestIcon className="size-3" />
-              </button>
-            }
-          />
-          <TooltipPopup side="top">{prStatus.tooltip}</TooltipPopup>
-        </Tooltip>
-      )}
-      {threadStatus && <ThreadStatusLabel status={threadStatus} />}
-      {rename.isRenaming ? (
-        <ThreadRowRenameInput thread={thread} rename={rename} />
-      ) : (
-        <span className="min-w-0 flex-1 truncate text-xs">{thread.title}</span>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// ThreadRowActionArea — right-side actions (terminal, archive, meta)
-// ---------------------------------------------------------------------------
 
 function ThreadRowActionArea({
   thread,
@@ -319,10 +154,6 @@ function ThreadRowActionArea({
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// ThreadRowArchiveArea — archive button states
-// ---------------------------------------------------------------------------
 
 function ThreadRowArchiveConfirmButton({
   thread,
@@ -414,10 +245,6 @@ function ThreadRowArchiveArea({
   )
 }
 
-// ---------------------------------------------------------------------------
-// ThreadRow component
-// ---------------------------------------------------------------------------
-
 function createContextMenuHandler(opts: {
   threadId: ThreadId
   selectedThreadIds: ReadonlySet<ThreadId>
@@ -452,8 +279,11 @@ function ThreadRowButton(
     isConfirmingArchive,
     orderedProjectThreadIds,
     nestingLevel = 0,
+    hasChildren = false,
+    childrenExpanded = false,
     rowClassName,
     onThreadClick,
+    onToggleChildren,
     onThreadNavigate,
     onOpenPrLink,
     rename,
@@ -481,10 +311,13 @@ function ThreadRowButton(
     >
       <ThreadRowTitleContent
         thread={thread}
+        hasChildren={hasChildren}
+        childrenExpanded={childrenExpanded}
         prStatus={prStatus}
         threadStatus={threadStatus}
         rename={rename}
         onOpenPrLink={onOpenPrLink}
+        {...(onToggleChildren ? { onToggleChildren } : {})}
       />
       <ThreadRowActionArea
         thread={thread}

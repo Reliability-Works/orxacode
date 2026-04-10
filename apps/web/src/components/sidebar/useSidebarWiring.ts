@@ -94,6 +94,7 @@ function useSidebarRenderedAndKeyboardNav(
     sidebarProjects: derived.sidebarProjects,
     threads: derived.threads,
     pinnedThreadIds: s.pinnedThreadIds,
+    expandedParentThreadIds: s.expandedParentThreadIds,
     routeThreadId: s.routeThreadId,
     sidebarProjectSortOrder: s.appSettings.sidebarProjectSortOrder as SidebarProjectSortOrder,
     sidebarThreadSortOrder: s.appSettings.sidebarThreadSortOrder as SidebarThreadSortOrder,
@@ -144,6 +145,7 @@ export function useSidebarWiring(s: StoreBindings) {
       defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
       confirmThreadArchive: s.appSettings.confirmThreadArchive,
       showThreadJumpHints,
+      setParentThreadExpanded: s.setParentThreadExpanded,
     })
 
   return {

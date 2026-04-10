@@ -11,7 +11,7 @@ import { ComposerCommandMenu } from './ComposerCommandMenu'
 import { ChatViewComposerAttachments } from './ChatViewComposerAttachments'
 import { ChatViewComposerHeaderPanel } from './ChatViewComposerHeaderPanel'
 import { ChatViewComposerFooterPanel } from './ChatViewComposerFooterPanel'
-import { ComposerQueuedMessagesTray } from './ComposerQueuedMessagesTray'
+import { ComposerLiveRail } from './ComposerLiveRail'
 import { TraitsMenuContent, TraitsPicker } from './TraitsPicker'
 import { deriveComposerPlaceholder } from './ChatViewComposerBody.helpers'
 import { useChatViewCtx } from './ChatViewContext'
@@ -129,7 +129,7 @@ export function ChatViewComposerBody() {
       onDragLeave={onComposerDragLeave}
       onDrop={onComposerDrop}
     >
-      <ComposerQueuedMessagesTray />
+      <ComposerLiveRail />
       <div
         className={cn(
           'rounded-[20px] border bg-card transition-colors duration-200 has-focus-visible:border-ring/45',

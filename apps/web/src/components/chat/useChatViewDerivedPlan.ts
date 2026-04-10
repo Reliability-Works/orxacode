@@ -9,6 +9,7 @@ import {
   findSidebarProposedPlan,
   findLatestProposedPlan,
   deriveActivePlanState,
+  deriveDisplayActivePlanState,
   hasActionableProposedPlan,
 } from '../../session-logic'
 import { LRUCache } from '../../lib/lruCache'
@@ -102,10 +103,28 @@ export function useChatViewDerivedPlan(td: ThreadDerived, ad: ActivityDerived) {
     [activeLatestTurn, activeThread?.id, latestTurnSettled, threadPlanCatalog]
   )
 
-  const activePlan = useMemo(
-    () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
-    [activeLatestTurn?.turnId, threadActivities]
-  )
+  const activePlan = useMemo(() => {
+    const derivedPlan = deriveActivePlanState(
+      threadActivities,
+      activeLatestTurn?.turnId ?? undefined,
+      activeThread?.messages ?? [],
+      activeLatestTurn?.assistantMessageId ?? null
+    )
+    return deriveDisplayActivePlanState(
+      derivedPlan,
+      {
+        orchestrationStatus: activeThread?.session?.orchestrationStatus ?? null,
+        latestTurnState: activeLatestTurn?.state ?? null,
+      }
+    )
+  }, [
+    activeLatestTurn?.assistantMessageId,
+    activeLatestTurn?.state,
+    activeLatestTurn?.turnId,
+    activeThread?.messages,
+    activeThread?.session?.orchestrationStatus,
+    threadActivities,
+  ])
 
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&

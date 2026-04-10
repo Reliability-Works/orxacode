@@ -1,7 +1,14 @@
+import type React from 'react'
 import { Button } from '../ui/button'
 import { cn } from '~/lib/utils'
 import { useChatViewCtx } from './ChatViewContext'
 import { summarizeQueuedComposerMessage } from './queuedComposerMessages'
+
+export interface ComposerLiveRailCardProps {
+  readonly children: React.ReactNode
+  readonly className?: string
+  readonly testId?: string
+}
 
 function ComposerQueuedMessageRow(props: {
   queueIndex: number
@@ -59,7 +66,7 @@ function ComposerQueuedMessageRow(props: {
   )
 }
 
-export function ComposerQueuedMessagesTray() {
+export function ComposerQueuedMessagesRailCard() {
   const c = useChatViewCtx()
   const queuedMessages = c.ls.queuedComposerMessages
   if (queuedMessages.length === 0) {
@@ -67,12 +74,10 @@ export function ComposerQueuedMessagesTray() {
   }
 
   return (
-    <div className="mx-4 -mb-px sm:mx-6" data-testid="composer-queued-messages">
-      <div className="rounded-t-[18px] border border-b-0 border-border/80 bg-muted/55 px-3 py-2 backdrop-blur-sm">
-        {queuedMessages.map((message, index) => (
-          <ComposerQueuedMessageRow key={message.id} queueIndex={index} message={message} />
-        ))}
-      </div>
+    <div className="px-3 py-2">
+      {queuedMessages.map((message, index) => (
+        <ComposerQueuedMessageRow key={message.id} queueIndex={index} message={message} />
+      ))}
     </div>
   )
 }

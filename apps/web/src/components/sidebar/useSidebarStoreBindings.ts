@@ -18,22 +18,41 @@ import { useThreadSelectionStore } from '../../threadSelectionStore'
 import { useSettings, useUpdateSettings } from '~/hooks/useSettings'
 import { useServerKeybindings } from '../../rpc/serverState'
 
-export function useSidebarStoreBindings() {
-  const projects = useStore(store => store.projects)
-  const serverThreads = useStore(store => store.threads)
-
-  const { projectExpandedById, projectOrder, threadLastVisitedAtById, pinnedThreadIds } = useUiStateStore(
+function useSidebarUiBindings() {
+  const state = useUiStateStore(
     useShallow(store => ({
       projectExpandedById: store.projectExpandedById,
       projectOrder: store.projectOrder,
       threadLastVisitedAtById: store.threadLastVisitedAtById,
       pinnedThreadIds: store.pinnedThreadIds,
+      expandedParentThreadIds: store.expandedParentThreadIds,
     }))
   )
 
-  const markThreadUnread = useUiStateStore(store => store.markThreadUnread)
-  const toggleProject = useUiStateStore(store => store.toggleProject)
-  const reorderProjects = useUiStateStore(store => store.reorderProjects)
+  return {
+    ...state,
+    markThreadUnread: useUiStateStore(store => store.markThreadUnread),
+    toggleProject: useUiStateStore(store => store.toggleProject),
+    setParentThreadExpanded: useUiStateStore(store => store.setParentThreadExpanded),
+    reorderProjects: useUiStateStore(store => store.reorderProjects),
+  }
+}
+
+function useThreadSelectionBindings() {
+  return {
+    selectedThreadIds: useThreadSelectionStore(s => s.selectedThreadIds),
+    toggleThreadSelection: useThreadSelectionStore(s => s.toggleThread),
+    rangeSelectTo: useThreadSelectionStore(s => s.rangeSelectTo),
+    clearSelection: useThreadSelectionStore(s => s.clearSelection),
+    removeFromSelection: useThreadSelectionStore(s => s.removeFromSelection),
+    setSelectionAnchor: useThreadSelectionStore(s => s.setAnchor),
+  }
+}
+
+export function useSidebarStoreBindings() {
+  const projects = useStore(store => store.projects)
+  const serverThreads = useStore(store => store.threads)
+  const uiBindings = useSidebarUiBindings()
   const clearComposerDraftForThread = useComposerDraftStore(store => store.clearDraftThread)
   const getDraftThreadByProjectId = useComposerDraftStore(store => store.getDraftThreadByProjectId)
   const terminalStateByThreadId = useTerminalStateStore(state => state.terminalStateByThreadId)
@@ -52,12 +71,7 @@ export function useSidebarStoreBindings() {
   })
 
   const keybindings = useServerKeybindings()
-  const selectedThreadIds = useThreadSelectionStore(s => s.selectedThreadIds)
-  const toggleThreadSelection = useThreadSelectionStore(s => s.toggleThread)
-  const rangeSelectTo = useThreadSelectionStore(s => s.rangeSelectTo)
-  const clearSelection = useThreadSelectionStore(s => s.clearSelection)
-  const removeFromSelection = useThreadSelectionStore(s => s.removeFromSelection)
-  const setSelectionAnchor = useThreadSelectionStore(s => s.setAnchor)
+  const selectionBindings = useThreadSelectionBindings()
 
   const isLinuxDesktop = isElectron && isLinuxPlatform(navigator.platform)
   const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop
@@ -65,13 +79,7 @@ export function useSidebarStoreBindings() {
   return {
     projects,
     serverThreads,
-    projectExpandedById,
-    projectOrder,
-    threadLastVisitedAtById,
-    pinnedThreadIds,
-    markThreadUnread,
-    toggleProject,
-    reorderProjects,
+    ...uiBindings,
     clearComposerDraftForThread,
     getDraftThreadByProjectId,
     terminalStateByThreadId,
@@ -85,12 +93,7 @@ export function useSidebarStoreBindings() {
     deleteThread,
     routeThreadId,
     keybindings,
-    selectedThreadIds,
-    toggleThreadSelection,
-    rangeSelectTo,
-    clearSelection,
-    removeFromSelection,
-    setSelectionAnchor,
+    ...selectionBindings,
     shouldBrowseForProjectImmediately,
   }
 }

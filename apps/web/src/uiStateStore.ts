@@ -1,53 +1,28 @@
 import { Debouncer } from '@tanstack/react-pacer'
 import { type ProjectId, type ThreadId } from '@orxa-code/contracts'
 import { create } from 'zustand'
+import {
+  type PendingNewSessionModalRequest,
+  type PersistedUiState,
+  type SyncProjectInput,
+  type SyncThreadInput,
+  type UiState,
+  initialState,
+} from './uiStateStore.types'
+export type {
+  PendingNewSessionModalRequest,
+  PersistedUiState,
+  SyncProjectInput,
+  SyncThreadInput,
+  UiState,
+} from './uiStateStore.types'
 
 const PERSISTED_STATE_KEY = 'orxa:ui-state:v1'
-
-interface PersistedUiState {
-  expandedProjectCwds?: string[]
-  projectOrderCwds?: string[]
-  pinnedThreadIds?: string[]
-}
-
-export interface UiProjectState {
-  projectExpandedById: Record<string, boolean>
-  projectOrder: ProjectId[]
-}
-
-export interface UiThreadState {
-  threadLastVisitedAtById: Record<string, string>
-  pinnedThreadIds: ThreadId[]
-}
-
-export interface UiState extends UiProjectState, UiThreadState {}
-
-export interface PendingNewSessionModalRequest {
-  projectId: ProjectId
-  mode: 'default' | 'split-secondary'
-  primaryThreadId?: ThreadId
-}
-
-export interface SyncProjectInput {
-  id: ProjectId
-  cwd: string
-}
-
-export interface SyncThreadInput {
-  id: ThreadId
-  seedVisitedAt?: string | undefined
-}
-
-const initialState: UiState = {
-  projectExpandedById: {},
-  projectOrder: [],
-  threadLastVisitedAtById: {},
-  pinnedThreadIds: [],
-}
 
 const persistedExpandedProjectCwds = new Set<string>()
 const persistedProjectOrderCwds: string[] = []
 const persistedPinnedThreadIds: ThreadId[] = []
+const persistedExpandedParentThreadIds: ThreadId[] = []
 const currentProjectCwdById = new Map<ProjectId, string>()
 
 function readPersistedState(): UiState {
@@ -70,6 +45,7 @@ function hydratePersistedProjectState(parsed: PersistedUiState): void {
   persistedExpandedProjectCwds.clear()
   persistedProjectOrderCwds.length = 0
   persistedPinnedThreadIds.length = 0
+  persistedExpandedParentThreadIds.length = 0
   for (const cwd of parsed.expandedProjectCwds ?? []) {
     if (typeof cwd === 'string' && cwd.length > 0) {
       persistedExpandedProjectCwds.add(cwd)
@@ -87,6 +63,15 @@ function hydratePersistedProjectState(parsed: PersistedUiState): void {
       !persistedPinnedThreadIds.includes(threadId as ThreadId)
     ) {
       persistedPinnedThreadIds.push(threadId as ThreadId)
+    }
+  }
+  for (const threadId of parsed.expandedParentThreadIds ?? []) {
+    if (
+      typeof threadId === 'string' &&
+      threadId.length > 0 &&
+      !persistedExpandedParentThreadIds.includes(threadId as ThreadId)
+    ) {
+      persistedExpandedParentThreadIds.push(threadId as ThreadId)
     }
   }
 }
@@ -112,14 +97,13 @@ function persistState(state: UiState): void {
         expandedProjectCwds,
         projectOrderCwds,
         pinnedThreadIds: state.pinnedThreadIds,
+        expandedParentThreadIds: state.expandedParentThreadIds,
       } satisfies PersistedUiState)
     )
   } catch {
     // Ignore quota/storage errors to avoid breaking chat UX.
   }
 }
-
-const debouncedPersistState = new Debouncer(persistState, { wait: 500 })
 
 function recordsEqual<T>(left: Record<string, T>, right: Record<string, T>): boolean {
   const leftEntries = Object.entries(left)
@@ -134,6 +118,8 @@ function recordsEqual<T>(left: Record<string, T>, right: Record<string, T>): boo
   }
   return true
 }
+
+const debouncedPersistState = new Debouncer(persistState, { wait: 500 })
 
 function projectOrdersEqual(left: readonly ProjectId[], right: readonly ProjectId[]): boolean {
   return (
@@ -295,10 +281,17 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
   const nextPinnedThreadIds = state.pinnedThreadIds.filter(threadId =>
     retainedThreadIds.has(threadId)
   )
+  const nextExpandedParentThreadIds = state.expandedParentThreadIds.filter(threadId =>
+    retainedThreadIds.has(threadId)
+  )
   if (
     recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
     state.pinnedThreadIds.length === nextPinnedThreadIds.length &&
-    state.pinnedThreadIds.every((threadId, index) => threadId === nextPinnedThreadIds[index])
+    state.pinnedThreadIds.every((threadId, index) => threadId === nextPinnedThreadIds[index]) &&
+    state.expandedParentThreadIds.length === nextExpandedParentThreadIds.length &&
+    state.expandedParentThreadIds.every(
+      (threadId, index) => threadId === nextExpandedParentThreadIds[index]
+    )
   ) {
     return state
   }
@@ -306,6 +299,7 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     pinnedThreadIds: nextPinnedThreadIds,
+    expandedParentThreadIds: nextExpandedParentThreadIds,
   }
 }
 
@@ -360,7 +354,14 @@ export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
   const nextPinnedThreadIds = state.pinnedThreadIds.filter(
     pinnedThreadId => pinnedThreadId !== threadId
   )
-  if (!hadVisitedAt && nextPinnedThreadIds.length === state.pinnedThreadIds.length) {
+  const nextExpandedParentThreadIds = state.expandedParentThreadIds.filter(
+    expandedThreadId => expandedThreadId !== threadId
+  )
+  if (
+    !hadVisitedAt &&
+    nextPinnedThreadIds.length === state.pinnedThreadIds.length &&
+    nextExpandedParentThreadIds.length === state.expandedParentThreadIds.length
+  ) {
     return state
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById }
@@ -369,6 +370,7 @@ export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     pinnedThreadIds: nextPinnedThreadIds,
+    expandedParentThreadIds: nextExpandedParentThreadIds,
   }
 }
 
@@ -396,6 +398,27 @@ export function togglePinnedThread(state: UiState, threadId: ThreadId): UiState 
   return state.pinnedThreadIds.includes(threadId)
     ? unpinThread(state, threadId)
     : pinThread(state, threadId)
+}
+
+export function setParentThreadExpanded(
+  state: UiState,
+  threadId: ThreadId,
+  expanded: boolean
+): UiState {
+  const alreadyExpanded = state.expandedParentThreadIds.includes(threadId)
+  if (alreadyExpanded === expanded) {
+    return state
+  }
+  return {
+    ...state,
+    expandedParentThreadIds: expanded
+      ? [...state.expandedParentThreadIds, threadId]
+      : state.expandedParentThreadIds.filter(parentThreadId => parentThreadId !== threadId),
+  }
+}
+
+export function toggleParentThreadExpanded(state: UiState, threadId: ThreadId): UiState {
+  return setParentThreadExpanded(state, threadId, !state.expandedParentThreadIds.includes(threadId))
 }
 
 export function toggleProject(state: UiState, projectId: ProjectId): UiState {
@@ -461,6 +484,8 @@ interface UiStateStore extends UiState {
   pinThread: (threadId: ThreadId) => void
   unpinThread: (threadId: ThreadId) => void
   togglePinnedThread: (threadId: ThreadId) => void
+  setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
+  toggleParentThreadExpanded: (threadId: ThreadId) => void
   toggleProject: (projectId: ProjectId) => void
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void
@@ -471,6 +496,7 @@ interface UiStateStore extends UiState {
 export const useUiStateStore = create<UiStateStore>(set => ({
   ...readPersistedState(),
   pinnedThreadIds: persistedPinnedThreadIds,
+  expandedParentThreadIds: persistedExpandedParentThreadIds,
   pendingNewSessionModalRequest: null,
   syncProjects: projects => set(state => syncProjects(state, projects)),
   syncThreads: threads => set(state => syncThreads(state, threads)),
@@ -482,6 +508,9 @@ export const useUiStateStore = create<UiStateStore>(set => ({
   pinThread: threadId => set(state => pinThread(state, threadId)),
   unpinThread: threadId => set(state => unpinThread(state, threadId)),
   togglePinnedThread: threadId => set(state => togglePinnedThread(state, threadId)),
+  setParentThreadExpanded: (threadId, expanded) =>
+    set(state => setParentThreadExpanded(state, threadId, expanded)),
+  toggleParentThreadExpanded: threadId => set(state => toggleParentThreadExpanded(state, threadId)),
   toggleProject: projectId => set(state => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set(state => setProjectExpanded(state, projectId, expanded)),
