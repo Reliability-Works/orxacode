@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.77",
-    "@effect/platform-node": "4.0.0-beta.43",
+    "@effect/platform-node": "4.0.0-beta.46",
     "@opencode-ai/sdk": "^1.4.0",
     "@pierre/diffs": "^1.1.0-beta.16",
     "effect": "4.0.0-beta.43",
