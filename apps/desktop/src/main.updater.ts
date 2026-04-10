@@ -1,8 +1,8 @@
 import * as FS from 'node:fs'
+import { createRequire } from 'node:module'
 import * as Path from 'node:path'
 
 import { app, BrowserWindow } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import type { DesktopUpdateState } from '@orxa-code/contracts'
 
 import {
@@ -23,6 +23,26 @@ import type { DesktopRuntimeInfo } from '@orxa-code/contracts'
 import { formatErrorMessage } from './main.logging'
 
 type DesktopUpdateErrorContext = DesktopUpdateState['errorContext']
+type ElectronAutoUpdater = typeof import('electron-updater').autoUpdater
+
+let cachedAutoUpdater: ElectronAutoUpdater | null | undefined
+const nodeRequire = createRequire(import.meta.url)
+
+function getAutoUpdater(): ElectronAutoUpdater | null {
+  if (cachedAutoUpdater !== undefined) {
+    return cachedAutoUpdater
+  }
+
+  try {
+    cachedAutoUpdater = (nodeRequire('electron-updater') as typeof import('electron-updater'))
+      .autoUpdater
+  } catch (error) {
+    cachedAutoUpdater = null
+    console.error(`[desktop-updater] Failed to load electron-updater: ${formatErrorMessage(error)}`)
+  }
+
+  return cachedAutoUpdater
+}
 
 export interface UpdaterConfig {
   readonly channel: string
@@ -126,6 +146,8 @@ function shouldEnable(rt: UpdaterRuntime): boolean {
 }
 
 async function checkForUpdates(rt: UpdaterRuntime, reason: string): Promise<boolean> {
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) return false
   if (rt.host.isQuitting() || !rt.configured || rt.checkInFlight) return false
   if (rt.state.status === 'downloading' || rt.state.status === 'downloaded') {
     console.info(
@@ -155,6 +177,10 @@ async function checkForUpdates(rt: UpdaterRuntime, reason: string): Promise<bool
 async function downloadAvailable(
   rt: UpdaterRuntime
 ): Promise<{ accepted: boolean; completed: boolean }> {
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) {
+    return { accepted: false, completed: false }
+  }
   if (!rt.configured || rt.downloadInFlight || rt.state.status !== 'available') {
     return { accepted: false, completed: false }
   }
@@ -178,6 +204,10 @@ async function downloadAvailable(
 async function installDownloaded(
   rt: UpdaterRuntime
 ): Promise<{ accepted: boolean; completed: boolean }> {
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) {
+    return { accepted: false, completed: false }
+  }
   if (rt.host.isQuitting() || !rt.configured || rt.state.status !== 'downloaded') {
     return { accepted: false, completed: false }
   }
@@ -201,7 +231,7 @@ async function installDownloaded(
   }
 }
 
-function configureGitHubFeed(githubToken: string): void {
+function configureGitHubFeed(autoUpdater: ElectronAutoUpdater, githubToken: string): void {
   const appUpdateYml = readAppUpdateYml()
   if (appUpdateYml?.provider !== 'github') {
     return
@@ -214,7 +244,7 @@ function configureGitHubFeed(githubToken: string): void {
   })
 }
 
-function configureMockFeed(): void {
+function configureMockFeed(autoUpdater: ElectronAutoUpdater): void {
   if (!process.env.ORXA_DESKTOP_MOCK_UPDATES) {
     return
   }
@@ -246,7 +276,7 @@ function handleUpdaterError(rt: UpdaterRuntime, error: unknown): void {
   console.error(`[desktop-updater] Updater error: ${message}`)
 }
 
-function registerEventHandlers(rt: UpdaterRuntime): void {
+function registerEventHandlers(rt: UpdaterRuntime, autoUpdater: ElectronAutoUpdater): void {
   let lastLoggedDownloadMilestone = -1
   autoUpdater.on('checking-for-update', () => {
     console.info('[desktop-updater] Looking for updates...')
@@ -295,7 +325,7 @@ function scheduleChecks(rt: UpdaterRuntime): void {
   rt.pollTimer.unref()
 }
 
-function applyAutoUpdaterDefaults(rt: UpdaterRuntime): void {
+function applyAutoUpdaterDefaults(rt: UpdaterRuntime, autoUpdater: ElectronAutoUpdater): void {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
   autoUpdater.channel = rt.config.channel
@@ -312,6 +342,8 @@ function applyAutoUpdaterDefaults(rt: UpdaterRuntime): void {
 function setAllowPrerelease(rt: UpdaterRuntime, value: boolean): void {
   rt.config.allowPrerelease = value
   if (!rt.configured) return
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) return
   autoUpdater.allowPrerelease = value
 }
 
@@ -325,15 +357,26 @@ function configure(rt: UpdaterRuntime): void {
   if (!enabled) {
     return
   }
+  const autoUpdater = getAutoUpdater()
+  if (!autoUpdater) {
+    setState(rt, {
+      enabled: false,
+      status: 'disabled',
+      message: 'Auto-updates unavailable in this build.',
+      errorContext: 'check',
+      canRetry: false,
+    })
+    return
+  }
   rt.configured = true
   const githubToken =
     process.env.ORXA_DESKTOP_UPDATE_GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || ''
   if (githubToken) {
-    configureGitHubFeed(githubToken)
+    configureGitHubFeed(autoUpdater, githubToken)
   }
-  configureMockFeed()
-  applyAutoUpdaterDefaults(rt)
-  registerEventHandlers(rt)
+  configureMockFeed(autoUpdater)
+  applyAutoUpdaterDefaults(rt, autoUpdater)
+  registerEventHandlers(rt, autoUpdater)
   scheduleChecks(rt)
 }
 
