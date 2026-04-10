@@ -380,7 +380,8 @@ function useChatViewControllerActions(
     envMode: deriveEnvMode(
       td.activeThread,
       td.isLocalDraftThread,
-      store.draftThread?.envMode ?? null
+      store.draftThread?.envMode ?? null,
+      store.threadEnvModeOverride
     ),
     setThreadError,
     setPrompt,

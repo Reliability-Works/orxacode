@@ -109,3 +109,11 @@ export function canCheckForUpdate(state: DesktopUpdateState | null): boolean {
     state.status !== 'disabled'
   )
 }
+
+export function canAttemptDesktopUpdateCheck(
+  state: DesktopUpdateState | null,
+  bridgeAvailable: boolean
+): boolean {
+  if (!bridgeAvailable) return false
+  return state === null ? true : canCheckForUpdate(state)
+}

@@ -13,7 +13,6 @@ import { useTheme } from '../../hooks/useTheme'
 import { useSettings } from '../../hooks/useSettings'
 import { useStore } from '../../store'
 import { useProjectById, useThreadById } from '../../storeSelectors'
-import { useUiStateStore } from '../../uiStateStore'
 import { useComposerDraftStore, useComposerThreadDraft } from '../../composerDraftStore'
 import { useTerminalStateStore, selectThreadTerminalState } from '../../terminalStateStore'
 import { useServerConfig, useServerKeybindings, useServerAvailableEditors } from '~/rpc/serverState'
@@ -22,17 +21,56 @@ import { parseDiffRouteSearch } from '../../diffRouteSearch'
 import { deriveComposerSendState } from '../ChatView.logic'
 import type { ThreadId } from '@orxa-code/contracts'
 import { useChatViewComposerDraftActions } from './useChatViewStoreSelectors.composer'
+import { useChatViewUiThreadSelectors } from './useChatViewStoreSelectors.ui'
+
+function useChatViewAmbientSelectors() {
+  const settings = useSettings()
+  const navigate = useNavigate()
+  const rawSearch = useSearch({ strict: false, select: params => parseDiffRouteSearch(params) })
+  const { resolvedTheme } = useTheme()
+  const serverConfig = useServerConfig()
+  const keybindings = useServerKeybindings()
+  const availableEditors = useServerAvailableEditors()
+
+  return {
+    settings,
+    navigate,
+    rawSearch,
+    resolvedTheme,
+    serverConfig,
+    keybindings,
+    availableEditors,
+  }
+}
+
+function useChatViewTerminalSelectors(threadId: ThreadId) {
+  const terminalState = useTerminalStateStore(s =>
+    selectThreadTerminalState(s.terminalStateByThreadId, threadId)
+  )
+  const storeSetTerminalOpen = useTerminalStateStore(s => s.setTerminalOpen)
+  const storeSetTerminalHeight = useTerminalStateStore(s => s.setTerminalHeight)
+  const storeSplitTerminal = useTerminalStateStore(s => s.splitTerminal)
+  const storeNewTerminal = useTerminalStateStore(s => s.newTerminal)
+  const storeSetActiveTerminal = useTerminalStateStore(s => s.setActiveTerminal)
+  const storeCloseTerminal = useTerminalStateStore(s => s.closeTerminal)
+
+  return {
+    terminalState,
+    storeSetTerminalOpen,
+    storeSetTerminalHeight,
+    storeSplitTerminal,
+    storeNewTerminal,
+    storeSetActiveTerminal,
+    storeCloseTerminal,
+  }
+}
 
 export function useChatViewStoreSelectors(threadId: ThreadId) {
   const serverThread = useThreadById(threadId)
   const setStoreThreadError = useStore(s => s.setError)
   const setStoreThreadBranch = useStore(s => s.setThreadBranch)
-  const markThreadVisited = useUiStateStore(s => s.markThreadVisited)
-  const activeThreadLastVisitedAt = useUiStateStore(s => s.threadLastVisitedAtById[threadId])
-  const settings = useSettings()
-  const navigate = useNavigate()
-  const rawSearch = useSearch({ strict: false, select: params => parseDiffRouteSearch(params) })
-  const { resolvedTheme } = useTheme()
+  const uiThreadSelectors = useChatViewUiThreadSelectors(threadId)
+  const ambient = useChatViewAmbientSelectors()
   const queryClient = useQueryClient()
   const createWorktreeMutation = useMutation(gitCreateWorktreeMutationOptions({ queryClient }))
   const composerDraft = useComposerThreadDraft(threadId)
@@ -52,29 +90,14 @@ export function useChatViewStoreSelectors(threadId: ThreadId) {
   const composerDraftActions = useChatViewComposerDraftActions()
   const draftThread = useComposerDraftStore(s => s.draftThreadsByThreadId[threadId] ?? null)
   const fallbackDraftProject = useProjectById(draftThread?.projectId ?? null)
-  const terminalState = useTerminalStateStore(s =>
-    selectThreadTerminalState(s.terminalStateByThreadId, threadId)
-  )
-  const storeSetTerminalOpen = useTerminalStateStore(s => s.setTerminalOpen)
-  const storeSetTerminalHeight = useTerminalStateStore(s => s.setTerminalHeight)
-  const storeSplitTerminal = useTerminalStateStore(s => s.splitTerminal)
-  const storeNewTerminal = useTerminalStateStore(s => s.newTerminal)
-  const storeSetActiveTerminal = useTerminalStateStore(s => s.setActiveTerminal)
-  const storeCloseTerminal = useTerminalStateStore(s => s.closeTerminal)
-  const serverConfig = useServerConfig()
-  const keybindings = useServerKeybindings()
-  const availableEditors = useServerAvailableEditors()
+  const terminalSelectors = useChatViewTerminalSelectors(threadId)
 
   return {
     serverThread,
     setStoreThreadError,
     setStoreThreadBranch,
-    markThreadVisited,
-    activeThreadLastVisitedAt,
-    settings,
-    navigate,
-    rawSearch,
-    resolvedTheme,
+    ...uiThreadSelectors,
+    ...ambient,
     createWorktreeMutation,
     composerDraft,
     prompt,
@@ -85,15 +108,6 @@ export function useChatViewStoreSelectors(threadId: ThreadId) {
     ...composerDraftActions,
     draftThread,
     fallbackDraftProject,
-    terminalState,
-    storeSetTerminalOpen,
-    storeSetTerminalHeight,
-    storeSplitTerminal,
-    storeNewTerminal,
-    storeSetActiveTerminal,
-    storeCloseTerminal,
-    serverConfig,
-    keybindings,
-    availableEditors,
+    ...terminalSelectors,
   }
 }

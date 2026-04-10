@@ -4,7 +4,7 @@ import type React from 'react'
 import type { DesktopUpdateReleaseChannel } from '@orxa-code/contracts'
 import { APP_VERSION } from '../../branding'
 import {
-  canCheckForUpdate,
+  canAttemptDesktopUpdateCheck,
   getDesktopUpdateButtonTooltip,
   getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
@@ -134,9 +134,13 @@ export function AboutVersionRow({
   const updateStateQuery = useDesktopUpdateState()
   const updateState = updateStateQuery.data ?? null
   const action = resolveUpdateButtonAction(updateState)
+  const bridge = window.desktopBridge
+  const canManualCheck = canAttemptDesktopUpdateCheck(
+    updateState,
+    typeof bridge?.checkForUpdate === 'function'
+  )
 
   const handleButtonClick = useCallback(() => {
-    const bridge = window.desktopBridge
     if (!bridge) return
     if (action === 'download') {
       runDownloadUpdate(bridge, queryClient)
@@ -147,11 +151,11 @@ export function AboutVersionRow({
       return
     }
     runCheckForUpdate(bridge, queryClient)
-  }, [action, queryClient, updateState])
+  }, [action, bridge, queryClient, updateState])
 
   const buttonTooltip = updateState ? getDesktopUpdateButtonTooltip(updateState) : null
   const buttonDisabled =
-    action === 'none' ? !canCheckForUpdate(updateState) : isDesktopUpdateButtonDisabled(updateState)
+    action === 'none' ? !canManualCheck : isDesktopUpdateButtonDisabled(updateState)
   const buttonLabel = buildUpdateButtonLabel(action, updateState)
   const description =
     action === 'download' || action === 'install'

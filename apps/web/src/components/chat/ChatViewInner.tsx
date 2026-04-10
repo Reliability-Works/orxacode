@@ -46,7 +46,7 @@ function ChatViewBranchToolbarBlock() {
     <BranchToolbar
       threadId={td.activeThread.id}
       onEnvModeChange={c.onEnvModeChange}
-      envLocked={td.isServerThread && td.activeThread.messages.length > 0}
+      envLocked={false}
       onComposerFocusRequest={c.scheduleComposerFocus}
       {...(td.canCheckoutPullRequestIntoThread
         ? { onCheckoutPullRequestRequest: c.openPullRequestDialog }

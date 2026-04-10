@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DesktopUpdateActionResult, DesktopUpdateState } from '@orxa-code/contracts'
 
 import {
+  canAttemptDesktopUpdateCheck,
   canCheckForUpdate,
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
@@ -278,6 +279,23 @@ describe('canCheckForUpdate', () => {
         message: 'network',
       })
     ).toBe(true)
+  })
+})
+
+describe('canAttemptDesktopUpdateCheck', () => {
+  it('returns true when the bridge exists but update state has not hydrated yet', () => {
+    expect(canAttemptDesktopUpdateCheck(null, true)).toBe(true)
+  })
+
+  it('returns false when there is no desktop bridge', () => {
+    expect(canAttemptDesktopUpdateCheck(null, false)).toBe(false)
+  })
+
+  it('delegates to canCheckForUpdate once state exists', () => {
+    expect(canAttemptDesktopUpdateCheck({ ...baseState, status: 'idle' }, true)).toBe(true)
+    expect(
+      canAttemptDesktopUpdateCheck({ ...baseState, enabled: false, status: 'disabled' }, true)
+    ).toBe(false)
   })
 })
 

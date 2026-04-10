@@ -4,9 +4,9 @@ import { useCallback } from 'react'
 
 import { newCommandId } from '../lib/utils'
 import { readNativeApi } from '../nativeApi'
-import { useComposerDraftStore } from '../composerDraftStore'
+import { useComposerDraftStore, type DraftThreadState } from '../composerDraftStore'
 import { useStore } from '../store'
-import type { Thread } from '../types'
+import { useUiStateStore } from '../uiStateStore'
 import {
   EnvMode,
   resolveDraftEnvModeAfterBranchChange,
@@ -28,44 +28,82 @@ interface BranchToolbarProps {
   onComposerFocusRequest?: () => void
 }
 
-function useBranchToolbarState(threadId: ThreadId) {
-  const threads = useStore(store => store.threads)
-  const projects = useStore(store => store.projects)
+function useBranchToolbarDraftState(threadId: ThreadId) {
   const draftThread = useComposerDraftStore(store => store.getDraftThread(threadId))
-  const serverThread = threads.find(thread => thread.id === threadId)
-  const activeProjectId = serverThread?.projectId ?? draftThread?.projectId ?? null
-  const activeProject = projects.find(project => project.id === activeProjectId)
-  const activeThreadId = serverThread?.id ?? (draftThread ? threadId : undefined)
-  const activeThreadBranch = serverThread?.branch ?? draftThread?.branch ?? null
-  const activeWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null
-  const branchCwd = activeWorktreePath ?? activeProject?.cwd ?? null
-  const hasServerThread = serverThread !== undefined
-  const effectiveEnvMode = resolveEffectiveBranchToolbarEnvMode({
+  const threadEnvModeOverride = useUiStateStore(store => store.threadEnvModeById[threadId] ?? null)
+  return { draftThread, threadEnvModeOverride }
+}
+
+function findActiveBranchToolbarProject(input: {
+  projects: ReturnType<typeof useStore.getState>['projects']
+  serverThread: ReturnType<typeof useStore.getState>['threads'][number] | undefined
+  draftThread: DraftThreadState | null
+}) {
+  const activeProjectId = input.serverThread?.projectId ?? input.draftThread?.projectId ?? null
+  return input.projects.find(project => project.id === activeProjectId) ?? null
+}
+
+function resolveBranchToolbarThreadContext(input: {
+  threadId: ThreadId
+  serverThread: ReturnType<typeof useStore.getState>['threads'][number] | undefined
+  draftThread: DraftThreadState | null
+}) {
+  const activeWorktreePath =
+    input.serverThread?.worktreePath ?? input.draftThread?.worktreePath ?? null
+  return {
+    activeThreadId: input.serverThread?.id ?? (input.draftThread ? input.threadId : undefined),
+    activeThreadBranch: input.serverThread?.branch ?? input.draftThread?.branch ?? null,
     activeWorktreePath,
-    serverThread,
-    draftThreadEnvMode: draftThread?.envMode,
-  })
+    hasServerThread: input.serverThread !== undefined,
+  }
+}
+
+function resolveBranchToolbarState(input: {
+  threadId: ThreadId
+  threads: ReturnType<typeof useStore.getState>['threads']
+  projects: ReturnType<typeof useStore.getState>['projects']
+  draftThread: DraftThreadState | null
+  threadEnvModeOverride: EnvMode | null
+}) {
+  const { threadId, threads, projects, draftThread, threadEnvModeOverride } = input
+  const serverThread = threads.find(thread => thread.id === threadId)
+  const activeProject = findActiveBranchToolbarProject({ projects, serverThread, draftThread })
+  const { activeThreadId, activeThreadBranch, activeWorktreePath, hasServerThread } =
+    resolveBranchToolbarThreadContext({ threadId, serverThread, draftThread })
   return {
     serverThread,
     activeProject,
     activeThreadId,
     activeThreadBranch,
     activeWorktreePath,
-    branchCwd,
+    branchCwd: activeWorktreePath ?? activeProject?.cwd ?? null,
     hasServerThread,
-    effectiveEnvMode,
+    effectiveEnvMode: resolveEffectiveBranchToolbarEnvMode({
+      activeWorktreePath,
+      draftThreadEnvMode: threadEnvModeOverride ?? draftThread?.envMode,
+    }),
   }
+}
+
+function useBranchToolbarState(threadId: ThreadId) {
+  const threads = useStore(store => store.threads)
+  const projects = useStore(store => store.projects)
+  const { draftThread, threadEnvModeOverride } = useBranchToolbarDraftState(threadId)
+  return resolveBranchToolbarState({
+    threadId,
+    threads,
+    projects,
+    draftThread,
+    threadEnvModeOverride,
+  })
 }
 
 function resolveEffectiveBranchToolbarEnvMode(input: {
   activeWorktreePath: string | null
-  serverThread: Thread | undefined
   draftThreadEnvMode: EnvMode | undefined
 }): EnvMode {
   return resolveEffectiveEnvMode({
     activeWorktreePath: input.activeWorktreePath,
-    allowDraftThreadEnvMode:
-      input.serverThread === undefined || input.serverThread.messages.length === 0,
     draftThreadEnvMode: input.draftThreadEnvMode,
   })
 }

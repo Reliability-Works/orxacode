@@ -3,12 +3,21 @@ import { type ProjectId, type ThreadId } from '@orxa-code/contracts'
 import { create } from 'zustand'
 import {
   type PendingNewSessionModalRequest,
-  type PersistedUiState,
   type SyncProjectInput,
   type SyncThreadInput,
+  type ThreadEnvMode,
   type UiState,
-  initialState,
 } from './uiStateStore.types'
+import {
+  getPersistedExpandedParentThreadIds,
+  getPersistedExpandedProjectCwds,
+  getPersistedPinnedThreadIds,
+  getPersistedProjectOrderCwds,
+  getPersistedThreadEnvModeById,
+  persistUiState,
+  readPersistedUiState,
+  refreshProjectCwdMappings,
+} from './uiStateStore.persistence'
 export type {
   PendingNewSessionModalRequest,
   PersistedUiState,
@@ -16,94 +25,6 @@ export type {
   SyncThreadInput,
   UiState,
 } from './uiStateStore.types'
-
-const PERSISTED_STATE_KEY = 'orxa:ui-state:v1'
-
-const persistedExpandedProjectCwds = new Set<string>()
-const persistedProjectOrderCwds: string[] = []
-const persistedPinnedThreadIds: ThreadId[] = []
-const persistedExpandedParentThreadIds: ThreadId[] = []
-const currentProjectCwdById = new Map<ProjectId, string>()
-
-function readPersistedState(): UiState {
-  if (typeof window === 'undefined') {
-    return initialState
-  }
-  try {
-    const raw = window.localStorage.getItem(PERSISTED_STATE_KEY)
-    if (!raw) {
-      return initialState
-    }
-    hydratePersistedProjectState(JSON.parse(raw) as PersistedUiState)
-    return initialState
-  } catch {
-    return initialState
-  }
-}
-
-function hydratePersistedProjectState(parsed: PersistedUiState): void {
-  persistedExpandedProjectCwds.clear()
-  persistedProjectOrderCwds.length = 0
-  persistedPinnedThreadIds.length = 0
-  persistedExpandedParentThreadIds.length = 0
-  for (const cwd of parsed.expandedProjectCwds ?? []) {
-    if (typeof cwd === 'string' && cwd.length > 0) {
-      persistedExpandedProjectCwds.add(cwd)
-    }
-  }
-  for (const cwd of parsed.projectOrderCwds ?? []) {
-    if (typeof cwd === 'string' && cwd.length > 0 && !persistedProjectOrderCwds.includes(cwd)) {
-      persistedProjectOrderCwds.push(cwd)
-    }
-  }
-  for (const threadId of parsed.pinnedThreadIds ?? []) {
-    if (
-      typeof threadId === 'string' &&
-      threadId.length > 0 &&
-      !persistedPinnedThreadIds.includes(threadId as ThreadId)
-    ) {
-      persistedPinnedThreadIds.push(threadId as ThreadId)
-    }
-  }
-  for (const threadId of parsed.expandedParentThreadIds ?? []) {
-    if (
-      typeof threadId === 'string' &&
-      threadId.length > 0 &&
-      !persistedExpandedParentThreadIds.includes(threadId as ThreadId)
-    ) {
-      persistedExpandedParentThreadIds.push(threadId as ThreadId)
-    }
-  }
-}
-
-function persistState(state: UiState): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  try {
-    const expandedProjectCwds = Object.entries(state.projectExpandedById)
-      .filter(([, expanded]) => expanded)
-      .flatMap(([projectId]) => {
-        const cwd = currentProjectCwdById.get(projectId as ProjectId)
-        return cwd ? [cwd] : []
-      })
-    const projectOrderCwds = state.projectOrder.flatMap(projectId => {
-      const cwd = currentProjectCwdById.get(projectId)
-      return cwd ? [cwd] : []
-    })
-    window.localStorage.setItem(
-      PERSISTED_STATE_KEY,
-      JSON.stringify({
-        expandedProjectCwds,
-        projectOrderCwds,
-        pinnedThreadIds: state.pinnedThreadIds,
-        expandedParentThreadIds: state.expandedParentThreadIds,
-      } satisfies PersistedUiState)
-    )
-  } catch {
-    // Ignore quota/storage errors to avoid breaking chat UX.
-  }
-}
 
 function recordsEqual<T>(left: Record<string, T>, right: Record<string, T>): boolean {
   const leftEntries = Object.entries(left)
@@ -119,27 +40,12 @@ function recordsEqual<T>(left: Record<string, T>, right: Record<string, T>): boo
   return true
 }
 
-const debouncedPersistState = new Debouncer(persistState, { wait: 500 })
+const debouncedPersistState = new Debouncer(persistUiState, { wait: 500 })
 
 function projectOrdersEqual(left: readonly ProjectId[], right: readonly ProjectId[]): boolean {
   return (
     left.length === right.length && left.every((projectId, index) => projectId === right[index])
   )
-}
-
-function refreshProjectCwdMappings(projects: readonly SyncProjectInput[]) {
-  const previousProjectCwdById = new Map(currentProjectCwdById)
-  const previousProjectIdByCwd = new Map(
-    [...previousProjectCwdById.entries()].map(([projectId, cwd]) => [cwd, projectId] as const)
-  )
-  currentProjectCwdById.clear()
-  for (const project of projects) {
-    currentProjectCwdById.set(project.id, project.cwd)
-  }
-  const cwdMappingChanged =
-    previousProjectCwdById.size !== currentProjectCwdById.size ||
-    projects.some(project => previousProjectCwdById.get(project.id) !== project.cwd)
-  return { previousProjectCwdById, previousProjectIdByCwd, cwdMappingChanged }
 }
 
 function buildMappedProjects(params: {
@@ -155,7 +61,9 @@ function buildMappedProjects(params: {
       (previousProjectIdForCwd
         ? params.previousExpandedById[previousProjectIdForCwd]
         : undefined) ??
-      (persistedExpandedProjectCwds.size > 0 ? persistedExpandedProjectCwds.has(project.cwd) : true)
+      (getPersistedExpandedProjectCwds().size > 0
+        ? getPersistedExpandedProjectCwds().has(project.cwd)
+        : true)
     params.nextExpandedById[project.id] = expanded
     return {
       id: project.id,
@@ -204,6 +112,7 @@ function deriveOrderedProjectIdsFromState(params: {
 function deriveInitialProjectOrder(
   mappedProjects: ReadonlyArray<{ id: ProjectId; cwd: string; incomingIndex: number }>
 ) {
+  const persistedProjectOrderCwds = getPersistedProjectOrderCwds()
   const persistedOrderByCwd = new Map(
     persistedProjectOrderCwds.map((cwd, index) => [cwd, index] as const)
   )
@@ -284,6 +193,11 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
   const nextExpandedParentThreadIds = state.expandedParentThreadIds.filter(threadId =>
     retainedThreadIds.has(threadId)
   )
+  const nextThreadEnvModeById = Object.fromEntries(
+    Object.entries(state.threadEnvModeById).filter(([threadId]) =>
+      retainedThreadIds.has(threadId as ThreadId)
+    )
+  ) as Record<string, ThreadEnvMode>
   if (
     recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
     state.pinnedThreadIds.length === nextPinnedThreadIds.length &&
@@ -291,7 +205,8 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
     state.expandedParentThreadIds.length === nextExpandedParentThreadIds.length &&
     state.expandedParentThreadIds.every(
       (threadId, index) => threadId === nextExpandedParentThreadIds[index]
-    )
+    ) &&
+    recordsEqual(state.threadEnvModeById, nextThreadEnvModeById)
   ) {
     return state
   }
@@ -300,6 +215,7 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     pinnedThreadIds: nextPinnedThreadIds,
     expandedParentThreadIds: nextExpandedParentThreadIds,
+    threadEnvModeById: nextThreadEnvModeById,
   }
 }
 
@@ -357,20 +273,54 @@ export function clearThreadUi(state: UiState, threadId: ThreadId): UiState {
   const nextExpandedParentThreadIds = state.expandedParentThreadIds.filter(
     expandedThreadId => expandedThreadId !== threadId
   )
+  const hadEnvMode = threadId in state.threadEnvModeById
   if (
     !hadVisitedAt &&
     nextPinnedThreadIds.length === state.pinnedThreadIds.length &&
-    nextExpandedParentThreadIds.length === state.expandedParentThreadIds.length
+    nextExpandedParentThreadIds.length === state.expandedParentThreadIds.length &&
+    !hadEnvMode
   ) {
     return state
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById }
+  const nextThreadEnvModeById = { ...state.threadEnvModeById }
   delete nextThreadLastVisitedAtById[threadId]
+  delete nextThreadEnvModeById[threadId]
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     pinnedThreadIds: nextPinnedThreadIds,
     expandedParentThreadIds: nextExpandedParentThreadIds,
+    threadEnvModeById: nextThreadEnvModeById,
+  }
+}
+
+export function setThreadEnvMode(
+  state: UiState,
+  threadId: ThreadId,
+  mode: ThreadEnvMode | null
+): UiState {
+  const previousMode = state.threadEnvModeById[threadId] ?? null
+  if (previousMode === mode) {
+    return state
+  }
+  if (mode === null) {
+    if (!(threadId in state.threadEnvModeById)) {
+      return state
+    }
+    const nextThreadEnvModeById = { ...state.threadEnvModeById }
+    delete nextThreadEnvModeById[threadId]
+    return {
+      ...state,
+      threadEnvModeById: nextThreadEnvModeById,
+    }
+  }
+  return {
+    ...state,
+    threadEnvModeById: {
+      ...state.threadEnvModeById,
+      [threadId]: mode,
+    },
   }
 }
 
@@ -484,6 +434,7 @@ interface UiStateStore extends UiState {
   pinThread: (threadId: ThreadId) => void
   unpinThread: (threadId: ThreadId) => void
   togglePinnedThread: (threadId: ThreadId) => void
+  setThreadEnvMode: (threadId: ThreadId, mode: ThreadEnvMode | null) => void
   setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
   toggleParentThreadExpanded: (threadId: ThreadId) => void
   toggleProject: (projectId: ProjectId) => void
@@ -494,9 +445,10 @@ interface UiStateStore extends UiState {
 }
 
 export const useUiStateStore = create<UiStateStore>(set => ({
-  ...readPersistedState(),
-  pinnedThreadIds: persistedPinnedThreadIds,
-  expandedParentThreadIds: persistedExpandedParentThreadIds,
+  ...readPersistedUiState(),
+  pinnedThreadIds: getPersistedPinnedThreadIds(),
+  expandedParentThreadIds: getPersistedExpandedParentThreadIds(),
+  threadEnvModeById: getPersistedThreadEnvModeById(),
   pendingNewSessionModalRequest: null,
   syncProjects: projects => set(state => syncProjects(state, projects)),
   syncThreads: threads => set(state => syncThreads(state, threads)),
@@ -508,6 +460,7 @@ export const useUiStateStore = create<UiStateStore>(set => ({
   pinThread: threadId => set(state => pinThread(state, threadId)),
   unpinThread: threadId => set(state => unpinThread(state, threadId)),
   togglePinnedThread: threadId => set(state => togglePinnedThread(state, threadId)),
+  setThreadEnvMode: (threadId, mode) => set(state => setThreadEnvMode(state, threadId, mode)),
   setParentThreadExpanded: (threadId, expanded) =>
     set(state => setParentThreadExpanded(state, threadId, expanded)),
   toggleParentThreadExpanded: threadId => set(state => toggleParentThreadExpanded(state, threadId)),

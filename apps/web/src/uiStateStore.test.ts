@@ -8,6 +8,7 @@ import {
   reorderProjects,
   setParentThreadExpanded,
   setProjectExpanded,
+  setThreadEnvMode,
   syncProjects,
   syncThreads,
   toggleParentThreadExpanded,
@@ -23,6 +24,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     threadLastVisitedAtById: {},
     pinnedThreadIds: [],
     expandedParentThreadIds: [],
+    threadEnvModeById: {},
     ...overrides,
   }
 }
@@ -198,6 +200,23 @@ describe('syncThreads', () => {
 
     expect(next.expandedParentThreadIds).toEqual([thread2])
   })
+
+  it('syncThreads prunes env-mode overrides for deleted threads', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+    const thread2 = ThreadId.makeUnsafe('thread-2')
+    const initialState = makeUiState({
+      threadEnvModeById: {
+        [thread1]: 'worktree',
+        [thread2]: 'local',
+      },
+    })
+
+    const next = syncThreads(initialState, [{ id: thread2 }])
+
+    expect(next.threadEnvModeById).toEqual({
+      [thread2]: 'local',
+    })
+  })
 })
 
 describe('setProjectExpanded', () => {
@@ -226,6 +245,7 @@ describe('clearThreadUi', () => {
       },
       pinnedThreadIds: [thread1],
       expandedParentThreadIds: [thread1],
+      threadEnvModeById: { [thread1]: 'worktree' },
     })
 
     const next = clearThreadUi(initialState, thread1)
@@ -233,6 +253,29 @@ describe('clearThreadUi', () => {
     expect(next.threadLastVisitedAtById).toEqual({})
     expect(next.pinnedThreadIds).toEqual([])
     expect(next.expandedParentThreadIds).toEqual([])
+    expect(next.threadEnvModeById).toEqual({})
+  })
+})
+
+describe('thread env mode', () => {
+  it('setThreadEnvMode stores per-thread overrides', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+
+    const next = setThreadEnvMode(makeUiState(), thread1, 'worktree')
+
+    expect(next.threadEnvModeById).toEqual({ [thread1]: 'worktree' })
+  })
+
+  it('setThreadEnvMode removes overrides when cleared', () => {
+    const thread1 = ThreadId.makeUnsafe('thread-1')
+
+    const next = setThreadEnvMode(
+      makeUiState({ threadEnvModeById: { [thread1]: 'worktree' } }),
+      thread1,
+      null
+    )
+
+    expect(next.threadEnvModeById).toEqual({})
   })
 })
 

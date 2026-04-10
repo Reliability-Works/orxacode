@@ -206,6 +206,46 @@ describe('deriveActivePlanState text fallback', () => {
   })
 })
 
+describe('deriveActivePlanState tool todo fallback', () => {
+  it('parses persisted todo-tool activity payloads when no structured plan event exists', () => {
+    expect(
+      deriveActivePlanState(
+        [
+          makeActivity({
+            id: 'tool-todo-opencode',
+            createdAt: '2026-02-23T00:00:03.500Z',
+            kind: 'tool.updated',
+            summary: 'Todos',
+            tone: 'tool',
+            turnId: 'turn-opencode-1',
+            payload: {
+              itemType: 'mcp_tool_call',
+              data: {
+                input: {
+                  todos: [
+                    { content: 'Audit provider routing.', status: 'in_progress' },
+                    { content: 'Summarize findings.', status: 'pending' },
+                    { content: 'Write validation prompt.', status: 'completed' },
+                  ],
+                },
+              },
+            },
+          }),
+        ],
+        TurnId.makeUnsafe('turn-opencode-1')
+      )
+    ).toEqual({
+      createdAt: '2026-02-23T00:00:03.500Z',
+      turnId: 'turn-opencode-1',
+      steps: [
+        { step: 'Audit provider routing.', status: 'inProgress' },
+        { step: 'Summarize findings.', status: 'pending' },
+        { step: 'Write validation prompt.', status: 'completed' },
+      ],
+    })
+  })
+})
+
 describe('deriveActivePlanState numbered status-prefix fallback', () => {
   it('parses numbered status-prefix task lists from assistant text', () => {
     expect(

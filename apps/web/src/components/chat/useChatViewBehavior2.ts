@@ -388,8 +388,8 @@ export function useEnvModeAndTraitsCallbacks(
   setPrompt: (s: string) => void,
   scheduleComposerFocus: () => void
 ) {
-  const { setDraftThreadContext, setProjectDraftThreadId } = store
-  const { isLocalDraftThread, activeProject, activeThread } = td
+  const { setDraftThreadContext, setThreadEnvMode } = store
+  const { isLocalDraftThread } = td
   const { setComposerCursor, setComposerTrigger } = ls
   const prompt = store.composerDraft.prompt
 
@@ -397,27 +397,12 @@ export function useEnvModeAndTraitsCallbacks(
     (mode: DraftThreadEnvMode) => {
       if (isLocalDraftThread) {
         setDraftThreadContext(threadId, { envMode: mode })
-      } else if (activeProject && activeThread) {
-        setProjectDraftThreadId(activeProject.id, threadId, {
-          branch: activeThread.branch ?? null,
-          worktreePath: activeThread.worktreePath ?? null,
-          createdAt: activeThread.createdAt,
-          envMode: mode,
-          runtimeMode: activeThread.runtimeMode,
-          interactionMode: activeThread.interactionMode,
-        })
+      } else {
+        setThreadEnvMode(threadId, mode)
       }
       scheduleComposerFocus()
     },
-    [
-      activeProject,
-      activeThread,
-      isLocalDraftThread,
-      scheduleComposerFocus,
-      setDraftThreadContext,
-      setProjectDraftThreadId,
-      threadId,
-    ]
+    [isLocalDraftThread, scheduleComposerFocus, setDraftThreadContext, setThreadEnvMode, threadId]
   )
 
   const setPromptFromTraits = useCallback(

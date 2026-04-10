@@ -1,10 +1,13 @@
 import { type ProjectId, type ThreadId } from '@orxa-code/contracts'
 
+export type ThreadEnvMode = 'local' | 'worktree'
+
 export interface PersistedUiState {
   expandedProjectCwds?: string[]
   projectOrderCwds?: string[]
   pinnedThreadIds?: string[]
   expandedParentThreadIds?: string[]
+  threadEnvModeById?: Record<string, ThreadEnvMode>
 }
 
 export interface UiProjectState {
@@ -16,6 +19,7 @@ export interface UiThreadState {
   threadLastVisitedAtById: Record<string, string>
   pinnedThreadIds: ThreadId[]
   expandedParentThreadIds: ThreadId[]
+  threadEnvModeById: Record<string, ThreadEnvMode>
 }
 
 export interface UiState extends UiProjectState, UiThreadState {}
@@ -42,4 +46,5 @@ export const initialState: UiState = {
   threadLastVisitedAtById: {},
   pinnedThreadIds: [],
   expandedParentThreadIds: [],
+  threadEnvModeById: {},
 }

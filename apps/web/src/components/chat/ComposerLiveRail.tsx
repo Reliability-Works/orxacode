@@ -1,6 +1,9 @@
 import { cn } from '~/lib/utils'
 import { useChatViewCtx } from './ChatViewContext'
+import { ComposerSubagentRailCard } from './ComposerSubagentRailCard'
+import { deriveRailSubagentItems, hasLiveSubagent } from './ComposerSubagentRailCard.helpers'
 import { ComposerTaskListRailCard } from './ComposerTaskListRailCard'
+import { useStore } from '../../store'
 import {
   ComposerQueuedMessagesRailCard,
   type ComposerLiveRailCardProps,
@@ -33,12 +36,20 @@ function ComposerLiveRailCard({
 
 export function ComposerLiveRail() {
   const c = useChatViewCtx()
+  const threads = useStore(store => store.threads)
   const cards: Array<Omit<ComposerLiveRailCardProps, 'stackIndex' | 'stackSize'>> = []
 
   if (c.ls.queuedComposerMessages.length > 0) {
     cards.push({
       testId: 'composer-queued-messages',
       children: <ComposerQueuedMessagesRailCard />,
+    })
+  }
+  const subagentItems = deriveRailSubagentItems(threads, c.td.activeThread?.id ?? null)
+  if (hasLiveSubagent(subagentItems)) {
+    cards.push({
+      testId: 'composer-subagent-card',
+      children: <ComposerSubagentRailCard />,
     })
   }
   if (c.p.activePlan || c.p.sidebarProposedPlan) {

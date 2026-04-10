@@ -7,7 +7,7 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import { isElectron } from '../../env'
 import { toastManager } from '../ui/toastState'
 import {
-  canCheckForUpdate,
+  canAttemptDesktopUpdateCheck,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
@@ -34,20 +34,60 @@ export interface SidebarDesktopUpdateReturn {
 // Click handler (extracted to reduce hook body line count)
 // ---------------------------------------------------------------------------
 
+function runDesktopUpdateCheck(input: {
+  bridge: NonNullable<typeof window.desktopBridge>
+  desktopUpdateState: DesktopUpdateState | null
+  setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
+}) {
+  if (
+    !canAttemptDesktopUpdateCheck(
+      input.desktopUpdateState,
+      typeof input.bridge.checkForUpdate === 'function'
+    )
+  ) {
+    return
+  }
+  void input.bridge
+    .checkForUpdate()
+    .then(result => {
+      input.setDesktopUpdateState(result.state)
+      if (result.checked) return
+      toastManager.add({
+        type: 'error',
+        title: 'Could not check for updates',
+        description: result.state.message ?? 'Automatic updates are not available in this build.',
+      })
+    })
+    .catch(error =>
+      toastManager.add({
+        type: 'error',
+        title: 'Could not check for updates',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred.',
+      })
+    )
+}
+
 function execDesktopUpdateClick(opts: {
   desktopUpdateState: DesktopUpdateState | null
   desktopUpdateButtonDisabled: boolean
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
+  setDesktopUpdateState: React.Dispatch<React.SetStateAction<DesktopUpdateState | null>>
 }) {
-  const { desktopUpdateState, desktopUpdateButtonDisabled, desktopUpdateButtonAction } = opts
+  const {
+    desktopUpdateState,
+    desktopUpdateButtonDisabled,
+    desktopUpdateButtonAction,
+    setDesktopUpdateState,
+  } = opts
   const bridge = window.desktopBridge
-  if (!bridge || !desktopUpdateState) return
+  if (!bridge) return
   if (desktopUpdateButtonDisabled) return
 
-  if (desktopUpdateButtonAction === 'download') {
+  if (desktopUpdateButtonAction === 'download' && desktopUpdateState) {
     void bridge
       .downloadUpdate()
       .then(result => {
+        setDesktopUpdateState(result.state)
         if (result.completed) {
           toastManager.add({
             type: 'success',
@@ -70,12 +110,13 @@ function execDesktopUpdateClick(opts: {
     return
   }
 
-  if (desktopUpdateButtonAction === 'install') {
+  if (desktopUpdateButtonAction === 'install' && desktopUpdateState) {
     const confirmed = window.confirm(getDesktopUpdateInstallConfirmationMessage(desktopUpdateState))
     if (!confirmed) return
     void bridge
       .installUpdate()
       .then(result => {
+        setDesktopUpdateState(result.state)
         if (!shouldToastDesktopUpdateActionResult(result)) return
         const err = getDesktopUpdateActionError(result)
         if (!err) return
@@ -91,25 +132,7 @@ function execDesktopUpdateClick(opts: {
     return
   }
 
-  if (canCheckForUpdate(desktopUpdateState)) {
-    void bridge
-      .checkForUpdate()
-      .then(result => {
-        if (result.checked) return
-        toastManager.add({
-          type: 'error',
-          title: 'Could not check for updates',
-          description: result.state.message ?? 'Automatic updates are not available in this build.',
-        })
-      })
-      .catch(error =>
-        toastManager.add({
-          type: 'error',
-          title: 'Could not check for updates',
-          description: error instanceof Error ? error.message : 'An unexpected error occurred.',
-        })
-      )
-  }
+  runDesktopUpdateCheck({ bridge, desktopUpdateState, setDesktopUpdateState })
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +187,7 @@ export function useSidebarDesktopUpdate(): SidebarDesktopUpdateReturn {
       desktopUpdateState,
       desktopUpdateButtonDisabled,
       desktopUpdateButtonAction,
+      setDesktopUpdateState,
     })
   }
 

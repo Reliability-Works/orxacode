@@ -6,12 +6,11 @@ export type EnvMode = typeof EnvMode.Type
 
 export function resolveEffectiveEnvMode(input: {
   activeWorktreePath: string | null
-  allowDraftThreadEnvMode: boolean
   draftThreadEnvMode: EnvMode | undefined
 }): EnvMode {
-  const { activeWorktreePath, allowDraftThreadEnvMode, draftThreadEnvMode } = input
+  const { activeWorktreePath, draftThreadEnvMode } = input
   if (activeWorktreePath) return 'worktree'
-  return allowDraftThreadEnvMode && draftThreadEnvMode === 'worktree' ? 'worktree' : 'local'
+  return draftThreadEnvMode === 'worktree' ? 'worktree' : 'local'
 }
 
 export function resolveDraftEnvModeAfterBranchChange(input: {

@@ -23,20 +23,7 @@ describe('resolveComposerHighlightedItemId', () => {
 })
 
 describe('deriveEnvMode', () => {
-  it('uses worktree mode for an empty server thread when the draft env mode requests it', () => {
-    expect(
-      deriveEnvMode(
-        {
-          worktreePath: null,
-          messages: [],
-        },
-        false,
-        'worktree'
-      )
-    ).toBe('worktree')
-  })
-
-  it('falls back to local mode once a server thread already has messages', () => {
+  it('uses worktree mode for a server thread when the draft env mode requests it', () => {
     expect(
       deriveEnvMode(
         {
@@ -44,8 +31,37 @@ describe('deriveEnvMode', () => {
           messages: [{}],
         },
         false,
-        'worktree'
+        'worktree',
+        null
+      )
+    ).toBe('worktree')
+  })
+
+  it('falls back to local mode when worktree mode is not selected', () => {
+    expect(
+      deriveEnvMode(
+        {
+          worktreePath: null,
+          messages: [],
+        },
+        false,
+        'local',
+        null
       )
     ).toBe('local')
+  })
+
+  it('uses the thread override for a server thread', () => {
+    expect(
+      deriveEnvMode(
+        {
+          worktreePath: null,
+          messages: [{}],
+        },
+        false,
+        null,
+        'worktree'
+      )
+    ).toBe('worktree')
   })
 })

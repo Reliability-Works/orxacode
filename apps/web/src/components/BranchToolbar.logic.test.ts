@@ -11,22 +11,20 @@ import {
 } from './BranchToolbar.logic'
 
 describe('resolveEffectiveEnvMode', () => {
-  it('allows draft worktree mode for an empty server-backed thread', () => {
+  it('uses draft worktree mode when selected and no worktree path exists', () => {
     expect(
       resolveEffectiveEnvMode({
         activeWorktreePath: null,
-        allowDraftThreadEnvMode: true,
         draftThreadEnvMode: 'worktree',
       })
     ).toBe('worktree')
   })
 
-  it('ignores draft worktree mode once the thread should be locked to local', () => {
+  it('falls back to local mode when draft worktree mode is not selected', () => {
     expect(
       resolveEffectiveEnvMode({
         activeWorktreePath: null,
-        allowDraftThreadEnvMode: false,
-        draftThreadEnvMode: 'worktree',
+        draftThreadEnvMode: 'local',
       })
     ).toBe('local')
   })

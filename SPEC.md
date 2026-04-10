@@ -7,7 +7,7 @@
 - [ ] Investigation phase completed
 - [ ] Shared live-rail model implemented
 - [ ] Shared stacking shell implemented
-- [ ] Codex task list surface shipped and manually validated
+- [x] Codex task list surface shipped and manually validated
 - [ ] Codex live subagent rail shipped and manually validated
 - [ ] OpenCode task list surface shipped and manually validated
 - [ ] OpenCode live subagent rail shipped and manually validated
