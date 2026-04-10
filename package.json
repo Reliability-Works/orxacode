@@ -1,10 +1,10 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.56",
+  "version": "0.1.0-beta.57",
   "description": "Orxa Code monorepo root",
   "author": "Reliability Works",
-  "main": "dist-electron/main.js",
+  "main": "apps/desktop/dist-electron/main.js",
   "type": "module",
   "packageManager": "pnpm@10.29.3",
   "engines": {
