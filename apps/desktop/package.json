@@ -14,7 +14,7 @@
     "smoke-test": "node scripts/smoke-test.mjs"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.43",
+    "effect": "4.0.0-beta.46",
     "electron": "40.6.0",
     "electron-updater": "^6.6.2"
   },
