@@ -39,6 +39,14 @@ async function resolveExecutablePath() {
       if (!entry.isDirectory() || !entry.name.startsWith('mac')) {
         continue
       }
+      const appBundlePath = path.join(DIST_DIR, entry.name, `${APP_NAME}.app`)
+      if (await pathExists(appBundlePath)) {
+        return appBundlePath
+      }
+      const fallbackAppBundlePath = path.join(DIST_DIR, entry.name, `${APP_FALLBACK_MAC_NAME}.app`)
+      if (await pathExists(fallbackAppBundlePath)) {
+        return fallbackAppBundlePath
+      }
       const macAppBinary = path.join(
         DIST_DIR,
         entry.name,
@@ -104,14 +112,19 @@ async function resolveExecutablePath() {
 
 async function runSmokeTest() {
   const executablePath = await resolveExecutablePath()
-  console.log(`Running smoke test with executable: ${executablePath}`)
-  const launchArgs =
-    process.platform === 'linux'
+  const isMacAppBundle = process.platform === 'darwin' && executablePath.endsWith('.app')
+  console.log(
+    `Running smoke test with ${isMacAppBundle ? 'app bundle' : 'executable'}: ${executablePath}`
+  )
+  const launchArgs = isMacAppBundle
+    ? ['-W', '-n', executablePath, '--args', '--smoke-test']
+    : process.platform === 'linux'
       ? ['--smoke-test', '--no-sandbox', '--disable-setuid-sandbox']
       : ['--smoke-test']
+  const launchCommand = isMacAppBundle ? 'open' : executablePath
 
   await new Promise((resolve, reject) => {
-    const child = spawn(executablePath, launchArgs, {
+    const child = spawn(launchCommand, launchArgs, {
       env: {
         ...process.env,
         ORXA_SMOKE_TEST: '1',

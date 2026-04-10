@@ -38,6 +38,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.4)
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.43
+        version: 4.0.0-beta.43(effect@4.0.0-beta.43)(ioredis@5.10.1)
       '@opencode-ai/sdk':
         specifier: ^1.2.10
         version: 1.2.10
@@ -56,6 +59,9 @@ importers:
       cytoscape:
         specifier: ^3.33.1
         version: 3.33.1
+      effect:
+        specifier: 4.0.0-beta.43
+        version: 4.0.0-beta.43
       electron-store:
         specifier: ^11.0.2
         version: 11.0.2

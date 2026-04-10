@@ -25,11 +25,16 @@ import {
   type IpcHost,
 } from './main.ipc'
 import { createBackendController, type BackendHost } from './main.backend'
+import { runSmokeTest } from './main.smoke'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
 import { createDesktopUpdatePreferencesStore } from './updatePreferences'
 
-syncShellEnvironment()
+const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
+
+if (!isSmokeTest) {
+  syncShellEnvironment()
+}
 
 const PICK_FOLDER_CHANNEL = 'desktop:pick-folder'
 const CONFIRM_CHANNEL = 'desktop:confirm'
@@ -50,7 +55,6 @@ const STATE_DIR = Path.join(BASE_DIR, 'userdata')
 const DESKTOP_SCHEME = 'orxa'
 const ROOT_DIR = Path.resolve(__dirname, '../../..')
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
-const isSmokeTest = process.argv.includes('--smoke-test') || process.env.ORXA_SMOKE_TEST === '1'
 const APP_DISPLAY_NAME = 'Orxa Code (Beta)'
 const APP_USER_MODEL_ID = 'com.orxa.code'
 const LINUX_DESKTOP_ENTRY_NAME = isDevelopment ? 'orxa-code-dev.desktop' : 'orxa-code.desktop'
@@ -473,14 +477,6 @@ const createWindowHost: CreateWindowHost = {
   resolveIconPath: ext => resolveIconPath(ext),
   notifyDidFinishLoad: () => {
     updaterController.setState({})
-    if (isSmokeTest) {
-      setTimeout(() => {
-        if (isQuitting) return
-        isQuitting = true
-        writeDesktopLogHeader('smoke test load complete; quitting app')
-        app.quit()
-      }, 250).unref()
-    }
   },
   setMainWindow: window => {
     mainWindow = window
@@ -492,9 +488,16 @@ function createWindow(): BrowserWindow {
   return createMainWindow(createWindowHost)
 }
 
-// Override Electron's userData path before the `ready` event so that
-// Chromium session data uses a filesystem-friendly directory name.
-// Must be called synchronously at the top level — before `app.whenReady()`.
+function quitFromSignal(signal: 'SIGINT' | 'SIGTERM'): void {
+  if (isQuitting) return
+  isQuitting = true
+  writeDesktopLogHeader(`${signal} received`)
+  updaterController.clearPollTimer()
+  stopBackend()
+  loggingState.restoreStdIoCapture?.()
+  app.quit()
+}
+
 app.setPath('userData', resolveUserDataPath())
 
 configureAppIdentity()
@@ -534,11 +537,24 @@ app
   .then(() => {
     writeDesktopLogHeader('app ready')
     configureAppIdentity()
+    if (isSmokeTest) {
+      void runSmokeTest({
+        writeLog: writeDesktopLogHeader,
+        resolveDesktopStaticDir,
+        resolveBackendEntry,
+        resolvePackagedModule: request => require.resolve(request),
+        isQuitting: () => isQuitting,
+        setQuitting: value => {
+          isQuitting = value
+        },
+      }).catch(error => {
+        handleFatalStartupError('smoke-test', error)
+      })
+      return
+    }
     configureApplicationMenu()
     registerDesktopProtocol()
-    if (!isSmokeTest) {
-      updaterController.configure()
-    }
+    updaterController.configure()
     void bootstrap().catch(error => {
       handleFatalStartupError('bootstrap', error)
     })
@@ -560,23 +576,6 @@ app.on('window-all-closed', () => {
 })
 
 if (process.platform !== 'win32') {
-  process.on('SIGINT', () => {
-    if (isQuitting) return
-    isQuitting = true
-    writeDesktopLogHeader('SIGINT received')
-    updaterController.clearPollTimer()
-    stopBackend()
-    loggingState.restoreStdIoCapture?.()
-    app.quit()
-  })
-
-  process.on('SIGTERM', () => {
-    if (isQuitting) return
-    isQuitting = true
-    writeDesktopLogHeader('SIGTERM received')
-    updaterController.clearPollTimer()
-    stopBackend()
-    loggingState.restoreStdIoCapture?.()
-    app.quit()
-  })
+  process.on('SIGINT', () => quitFromSignal('SIGINT'))
+  process.on('SIGTERM', () => quitFromSignal('SIGTERM'))
 }
