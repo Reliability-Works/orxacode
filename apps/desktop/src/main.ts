@@ -357,7 +357,8 @@ const ipcHost: IpcHost = {
   channels: IPC_CHANNELS,
   getLocalEnvironmentBootstrap: async () => {
     const remoteAccessState = remoteAccessPreferencesStore.get()
-    const environmentId = remoteAccessEnvironmentId ?? remoteAccessState.environmentId ?? 'local-desktop'
+    const environmentId =
+      remoteAccessEnvironmentId ?? remoteAccessState.environmentId ?? 'local-desktop'
     return createLocalEnvironmentBootstrap({
       backendAuthToken,
       backendPort,
@@ -389,10 +390,13 @@ function registerIpcHandlers(): void {
   registerIpcHandlersImpl(ipcHost)
 }
 const createWindowHost: CreateWindowHost = {
-  config: {
-    displayName: APP_DISPLAY_NAME,
-    desktopScheme: DESKTOP_SCHEME,
-    isDevelopment,
+  get config() {
+    return {
+      displayName: APP_DISPLAY_NAME,
+      desktopScheme: DESKTOP_SCHEME,
+      isDevelopment,
+      backendPort: backendPort || null,
+    }
   },
   resolveIconPath: ext => resolveIconPath(ext),
   notifyDidFinishLoad: () => {
@@ -425,6 +429,24 @@ app.setPath(
   })
 )
 configureAppIdentity()
+async function waitForBackendReady(port: number, maxWaitMs = 15_000): Promise<void> {
+  const intervalMs = 200
+  const maxAttempts = Math.ceil(maxWaitMs / intervalMs)
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/.well-known/orxa/environment`)
+      if (response.ok) {
+        writeDesktopLogHeader(`backend ready after ${attempt + 1} attempts`)
+        return
+      }
+    } catch {
+      // Server not listening yet
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  writeDesktopLogHeader(`backend readiness check timed out after ${maxWaitMs}ms, proceeding anyway`)
+}
+
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap start')
   backendPort = await Effect.service(NetService).pipe(
@@ -445,6 +467,7 @@ async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap ipc handlers registered')
   startBackend()
   writeDesktopLogHeader('bootstrap backend start requested')
+  await waitForBackendReady(backendPort)
   mainWindow = createWindow()
   writeDesktopLogHeader('bootstrap main window created')
 }

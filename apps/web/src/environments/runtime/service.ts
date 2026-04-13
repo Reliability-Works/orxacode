@@ -12,12 +12,7 @@ import {
   resolveRemotePairingTarget,
   resolveRemoteWebSocketConnectionUrl,
 } from '../remote'
-import {
-  getPrimaryKnownEnvironment,
-  resolveInitialPrimaryAuthGateState,
-  resolveInitialPrimaryEnvironmentDescriptor,
-  resolvePrimaryWebSocketConnectionUrl,
-} from '../primary'
+import { getPrimaryKnownEnvironment, resolvePrimaryWebSocketConnectionUrl } from '../primary'
 import { WsTransport } from '../../wsTransport'
 import type { ActiveEnvironmentConnection } from './connection'
 
@@ -230,29 +225,7 @@ function clearSavedEnvironmentPersistence() {
   localPersistence.clearSavedEnvironmentState()
 }
 
-async function waitForPrimaryEnvironmentDescriptor(): Promise<void> {
-  const MAX_ATTEMPTS = 15
-  const INTERVAL_MS = 500
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      await resolveInitialPrimaryEnvironmentDescriptor()
-      return
-    } catch {
-      logRuntime('wait-for-descriptor-retry', {
-        attempt: attempt + 1,
-        maxAttempts: MAX_ATTEMPTS,
-      })
-      await new Promise(resolve => setTimeout(resolve, INTERVAL_MS))
-    }
-  }
-  throw new Error('Unable to resolve the primary environment.')
-}
-
 async function connectPrimaryEnvironment(source: string): Promise<ActiveEnvironmentConnection> {
-  if (!getPrimaryKnownEnvironment()) {
-    await waitForPrimaryEnvironmentDescriptor()
-    await resolveInitialPrimaryAuthGateState()
-  }
   const nextConnection = primaryConnection ?? createPrimaryEnvironmentConnection()
   primaryConnection = nextConnection
   logRuntime('connect-primary-environment', {

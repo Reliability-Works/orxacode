@@ -9,6 +9,7 @@ export interface CreateWindowConfig {
   readonly displayName: string
   readonly desktopScheme: string
   readonly isDevelopment: boolean
+  readonly backendPort: number | null
 }
 
 export interface CreateWindowHost {
@@ -101,6 +102,8 @@ export function createMainWindow(host: CreateWindowHost): BrowserWindow {
   if (config.isDevelopment) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL as string)
     window.webContents.openDevTools({ mode: 'detach' })
+  } else if (config.backendPort) {
+    void window.loadURL(`http://127.0.0.1:${config.backendPort}`)
   } else {
     void window.loadURL(`${config.desktopScheme}://app/index.html`)
   }
