@@ -40,10 +40,10 @@ function StatLine({ label, value, className }: StatLineProps) {
 function TopModelRow({ usage }: { usage: ModelUsage }) {
   return (
     <div className="flex items-center gap-2 py-0.5">
-      <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+      <span className="min-w-0 flex-1 truncate text-caption text-muted-foreground">
         {usage.model}
       </span>
-      <span className="tabular-nums text-[11px]">{usage.count}</span>
+      <span className="tabular-nums text-caption">{usage.count}</span>
     </div>
   )
 }
@@ -65,7 +65,7 @@ function ProviderPanelBody({ snapshot }: ProviderPanelBodyProps) {
       </div>
       {snapshot.topModels.length > 0 ? (
         <div className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+          <span className="text-mini font-medium uppercase tracking-wider text-muted-foreground/60">
             Top models
           </span>
           {snapshot.topModels.map(usage => (

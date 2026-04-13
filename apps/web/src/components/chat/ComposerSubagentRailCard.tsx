@@ -65,7 +65,7 @@ function SubagentRow({ item }: { item: RailSubagentItem }) {
             </span>
           ) : null}
         </p>
-        <Badge variant="outline" className={cn('shrink-0 text-[10px]', statusTone(item.status))}>
+        <Badge variant="outline" className={cn('shrink-0 text-mini', statusTone(item.status))}>
           {statusLabel(item.status)}
         </Badge>
       </div>

@@ -80,7 +80,7 @@ function MobileThreadsToolbar(props: {
   return (
     <div className="mb-4 flex items-center justify-between gap-3">
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">
+        <div className="text-caption font-semibold uppercase tracking-wider text-muted-foreground/60">
           Projects
         </div>
         <div className="mt-1 text-sm text-muted-foreground/70">Choose where you want to work.</div>
@@ -194,7 +194,7 @@ function MobilePinnedThreadsSection(props: {
   if (props.renderedPinnedThreads.length === 0) return null
   return (
     <section className="mb-5">
-      <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/60">
+      <div className="mb-2 px-1 text-caption font-semibold uppercase tracking-wider text-muted-foreground/60">
         Pinned
       </div>
       <div className="space-y-1">

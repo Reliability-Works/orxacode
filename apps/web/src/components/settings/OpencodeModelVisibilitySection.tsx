@@ -45,7 +45,7 @@ function OpencodeModelGroupRow(props: {
       />
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs text-foreground/90">{props.model.name}</div>
-        <code className="block truncate text-[10px] text-muted-foreground">{props.model.slug}</code>
+        <code className="block truncate text-mini text-muted-foreground">{props.model.slug}</code>
       </div>
     </label>
   )
@@ -83,7 +83,7 @@ function OpencodeModelGroupSection(props: {
               <div className="truncate text-xs font-medium text-foreground">
                 {props.group.label}
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-mini text-muted-foreground">
                 {visibleCount} of {props.group.options.length} visible in composer
               </div>
             </div>

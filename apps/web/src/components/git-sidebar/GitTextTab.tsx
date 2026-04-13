@@ -18,10 +18,10 @@ function StatePill(props: { label: string; tone: 'neutral' | 'success' | 'accent
     <span
       className={
         props.tone === 'success'
-          ? 'rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success'
+          ? 'rounded-full bg-success/10 px-2 py-0.5 text-mini font-medium text-success'
           : props.tone === 'accent'
-            ? 'rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-foreground'
-            : 'rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
+            ? 'rounded-full bg-accent px-2 py-0.5 text-mini font-medium text-foreground'
+            : 'rounded-full bg-muted px-2 py-0.5 text-mini font-medium text-muted-foreground'
       }
     >
       {props.label}
@@ -53,7 +53,7 @@ function TextTabEntryCard(props: {
       }
       meta={props.meta}
       footer={
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {props.footerLogin ?? 'unknown'} updated {relativeDate(props.footerUpdatedAt)}
         </p>
       }
@@ -74,7 +74,7 @@ function IssueCard({ entry }: { entry: GitIssueEntry }) {
           {(entry.labels ?? []).slice(0, 4).map(label => (
             <span
               key={`${entry.number}:${label.name}`}
-              className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground"
+              className="rounded-full border border-border/70 px-2 py-0.5 text-mini text-muted-foreground"
             >
               {label.name}
             </span>
@@ -99,10 +99,10 @@ function PullRequestCard({ entry }: { entry: GitPullRequestListEntry }) {
       stateTone={entry.isDraft ? 'accent' : entry.state === 'OPEN' ? 'success' : 'neutral'}
       meta={
         <div className="flex flex-wrap gap-1">
-          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded-full border border-border/70 px-2 py-0.5 text-mini text-muted-foreground">
             {entry.headRefName}
           </span>
-          <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] text-muted-foreground">
+          <span className="rounded-full border border-border/70 px-2 py-0.5 text-mini text-muted-foreground">
             into {entry.baseRefName}
           </span>
         </div>

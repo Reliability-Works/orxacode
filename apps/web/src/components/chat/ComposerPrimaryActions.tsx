@@ -97,7 +97,7 @@ function renderRunningPrimaryAction(input: { onInterrupt: () => void }) {
     <div className="flex items-center gap-2">
       <button
         type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-rose-500/90 text-white transition-all duration-150 hover:bg-rose-500 hover:scale-105 sm:h-8 sm:w-8"
+        className="flex size-8 cursor-pointer items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-all duration-150 hover:bg-destructive/90 hover:scale-105 sm:h-8 sm:w-8"
         onClick={input.onInterrupt}
         aria-label="Stop generation"
       >

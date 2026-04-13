@@ -149,7 +149,7 @@ function FilesSidebarTreeToolbar(props: {
         value={props.query}
         onChange={event => props.setQuery(event.target.value)}
         placeholder="Filter files..."
-        className="h-7 w-[178px] text-[11px] placeholder:text-[10px] placeholder:text-muted-foreground/80"
+        className="h-7 w-[178px] text-caption placeholder:text-mini placeholder:text-muted-foreground/80"
       />
       <div className="ms-auto flex items-center gap-1">
         <Button
@@ -217,7 +217,7 @@ function FilesSidebarTreeBody(props: {
             />
           ))}
           {props.truncated ? (
-            <p className="px-2 pt-2 text-[10px] text-muted-foreground">
+            <p className="px-2 pt-2 text-mini text-muted-foreground">
               File list truncated to the indexed workspace limit.
             </p>
           ) : null}

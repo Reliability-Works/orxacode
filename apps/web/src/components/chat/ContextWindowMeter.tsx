@@ -79,7 +79,7 @@ function ContextWindowMeterDetails(props: {
   const { usage, usedPercentage } = props
   return (
     <div className="space-y-1.5 leading-tight">
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="text-caption font-medium uppercase tracking-wide text-muted-foreground">
         Context window
       </div>
       {usage.maxTokens !== null && usedPercentage ? (

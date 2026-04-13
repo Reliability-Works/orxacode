@@ -90,7 +90,7 @@ export function AddProjectForm({
         </button>
       </div>
       {addProjectError && (
-        <p className="mt-1 px-0.5 text-[11px] leading-tight text-red-400">{addProjectError}</p>
+        <p className="mt-1 px-0.5 text-caption leading-tight text-red-400">{addProjectError}</p>
       )}
     </div>
   )
@@ -125,17 +125,19 @@ export interface SidebarProjectListProps {
   isManualProjectSorting: boolean
 }
 
-function SidebarPinnedThreadList(props: Pick<
-  SidebarProjectListProps,
-  | 'renderedPinnedThreads'
-  | 'getThreadRowProps'
-  | 'routeThreadId'
-  | 'selectedThreadIds'
-  | 'threadJumpLabelById'
-  | 'terminalStateByThreadId'
-  | 'prByThreadId'
-  | 'confirmingArchiveThreadId'
->) {
+function SidebarPinnedThreadList(
+  props: Pick<
+    SidebarProjectListProps,
+    | 'renderedPinnedThreads'
+    | 'getThreadRowProps'
+    | 'routeThreadId'
+    | 'selectedThreadIds'
+    | 'threadJumpLabelById'
+    | 'terminalStateByThreadId'
+    | 'prByThreadId'
+    | 'confirmingArchiveThreadId'
+  >
+) {
   if (props.renderedPinnedThreads.length === 0) {
     return null
   }
@@ -144,7 +146,7 @@ function SidebarPinnedThreadList(props: Pick<
     <div className="mb-2">
       <div className="mb-1 flex items-center gap-1.5 pl-2 pr-1.5">
         <PinIcon className="size-3 text-muted-foreground/60" />
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+        <span className="text-mini font-medium uppercase tracking-wider text-muted-foreground/60">
           Pinned
         </span>
       </div>
@@ -159,7 +161,8 @@ function SidebarPinnedThreadList(props: Pick<
           const terminalStatus = terminalStatusFromRunningIds(
             selectThreadTerminalState(props.terminalStateByThreadId, thread.id).runningTerminalIds
           )
-          const isConfirmingArchive = props.confirmingArchiveThreadId === thread.id && !isThreadRunning
+          const isConfirmingArchive =
+            props.confirmingArchiveThreadId === thread.id && !isThreadRunning
           return (
             <ThreadRow
               key={thread.id}

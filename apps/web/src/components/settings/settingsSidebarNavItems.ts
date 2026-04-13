@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   ArchiveIcon,
   InfoIcon,
+  PaletteIcon,
   Plug2Icon,
   Settings2Icon,
   SlidersHorizontalIcon,
@@ -9,6 +10,7 @@ import {
 
 export type SettingsSectionPath =
   | '/settings/general'
+  | '/settings/appearance'
   | '/settings/providers'
   | '/settings/advanced'
   | '/settings/about'
@@ -20,6 +22,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   icon: ComponentType<{ className?: string }>
 }> = [
   { label: 'General', to: '/settings/general', icon: SlidersHorizontalIcon },
+  { label: 'Appearance', to: '/settings/appearance', icon: PaletteIcon },
   { label: 'Providers', to: '/settings/providers', icon: Plug2Icon },
   { label: 'Advanced', to: '/settings/advanced', icon: Settings2Icon },
   { label: 'About', to: '/settings/about', icon: InfoIcon },

@@ -19,6 +19,7 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as SettingsAdvancedRouteImport } from './routes/settings.advanced'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
 import { Route as ChatThreadIdRouteImport } from './routes/_chat.$threadId'
@@ -72,6 +73,11 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsAdvancedRoute = SettingsAdvancedRouteImport.update({
   id: '/advanced',
   path: '/advanced',
@@ -98,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/$threadId': typeof ChatThreadIdRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/_chat/$threadId': typeof ChatThreadIdRoute
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/$threadId'
     | '/settings/about'
     | '/settings/advanced'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/$threadId'
     | '/settings/about'
     | '/settings/advanced'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/_chat/$threadId'
     | '/settings/about'
     | '/settings/advanced'
+    | '/settings/appearance'
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
@@ -259,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsArchivedRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/advanced': {
       id: '/settings/advanced'
       path: '/advanced'
@@ -298,6 +317,7 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsAdvancedRoute: typeof SettingsAdvancedRoute
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
@@ -306,6 +326,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsAdvancedRoute: SettingsAdvancedRoute,
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,

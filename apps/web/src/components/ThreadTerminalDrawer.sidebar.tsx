@@ -89,9 +89,9 @@ function TerminalRow({
   const closeTerminalLabel = `Close ${terminalLabelById.get(terminalId) ?? 'terminal'}${isActive && closeShortcutLabel ? ` (${closeShortcutLabel})` : ''}`
   return (
     <div
-      className={`group flex items-center gap-1 rounded px-1 py-0.5 text-[11px] ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
+      className={`group flex items-center gap-1 rounded px-1 py-0.5 text-caption ${isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
     >
-      {showGroupHeaders && <span className="text-[10px] text-muted-foreground/80">└</span>}
+      {showGroupHeaders && <span className="text-mini text-muted-foreground/80">└</span>}
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-1 text-left"
@@ -151,7 +151,7 @@ function TerminalGroupItem({
       {showGroupHeaders && (
         <button
           type="button"
-          className={`flex w-full items-center rounded px-1 py-0.5 text-[10px] uppercase tracking-[0.08em] ${isGroupActive ? 'bg-accent/70 text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
+          className={`flex w-full items-center rounded px-1 py-0.5 text-mini uppercase tracking-wide ${isGroupActive ? 'bg-accent/70 text-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
           onClick={() => onActiveTerminalChange(groupActiveTerminalId)}
         >
           {terminalGroup.terminalIds.length > 1

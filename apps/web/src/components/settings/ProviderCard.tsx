@@ -98,11 +98,11 @@ function ProviderModelRow({ provider, model, onRemove }: ProviderModelRowProps) 
           </TooltipTrigger>
           <TooltipPopup side="top" className="max-w-56">
             <div className="space-y-1">
-              <code className="block text-[11px] text-foreground">{model.slug}</code>
+              <code className="block text-caption text-foreground">{model.slug}</code>
               {capLabels.length > 0 ? (
                 <div className="flex flex-wrap gap-x-2 gap-y-0.5">
                   {capLabels.map(label => (
-                    <span key={label} className="text-[10px] text-muted-foreground">
+                    <span key={label} className="text-mini text-muted-foreground">
                       {label}
                     </span>
                   ))}
@@ -114,7 +114,7 @@ function ProviderModelRow({ provider, model, onRemove }: ProviderModelRowProps) 
       ) : null}
       {model.isCustom ? (
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="text-[10px] text-muted-foreground">custom</span>
+          <span className="text-mini text-muted-foreground">custom</span>
           <button
             type="button"
             className="text-muted-foreground transition-colors hover:text-foreground"
@@ -456,7 +456,7 @@ function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }
   }
 
   return (
-    <span className="text-[11px] text-muted-foreground/60">
+    <span className="text-caption text-muted-foreground/60">
       {lastCheckedRelative.suffix ? (
         <>
           Checked <span className="font-mono tabular-nums">{lastCheckedRelative.value}</span>{' '}

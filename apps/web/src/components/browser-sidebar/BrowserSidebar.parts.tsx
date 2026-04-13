@@ -67,7 +67,7 @@ export function BrowserViewportHost(props: {
         <div className="flex h-full min-h-0 min-w-0 items-center justify-center p-4">
           <div className="max-w-xs space-y-1 text-center">
             <p className="text-xs font-medium text-foreground">In-app browser viewport</p>
-            <p className="break-all text-[11px] text-muted-foreground">
+            <p className="break-all text-caption text-muted-foreground">
               {activeUrl || 'Open a page to begin browsing.'}
             </p>
           </div>
@@ -192,7 +192,7 @@ function BrowserTabsStrip(props: {
     >
       <button
         type="button"
-        className="min-w-0 flex-1 truncate px-2 py-1 text-left text-[11px] text-muted-foreground"
+        className="min-w-0 flex-1 truncate px-2 py-1 text-left text-caption text-muted-foreground"
         onClick={() => void runAction(() => browserApi.switchTab(tab.id))}
         title={tab.url || tab.title}
         disabled={isRefreshing}
@@ -315,9 +315,7 @@ export function BrowserSidebarLoadedBody(props: {
       </div>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <BrowserViewportHost activeUrl={activeState.activeUrl ?? ''} hostRef={hostRef} />
-        <BrowserInspectOverlay
-          inspectMode={inspectMode}
-        />
+        <BrowserInspectOverlay inspectMode={inspectMode} />
       </div>
     </>
   )

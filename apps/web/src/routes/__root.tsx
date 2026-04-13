@@ -40,6 +40,8 @@ import {
 import { useStore } from '../store'
 import { useUiStateStore } from '../uiStateStore'
 import { useTerminalStateStore } from '../terminalStateStore'
+import { useSettings } from '../hooks/useSettings'
+import type { UiScale } from '@orxa-code/contracts/settings'
 import {
   useEventRouterRuntimeSync,
   useEventRouterServerConfigUpdatedHandler,
@@ -191,7 +193,7 @@ function RootRuntimeBootSurface(props: {
         : 'Connecting to your Mac…'
   const description =
     props.bootState === 'error'
-      ? props.errorMessage ?? 'Unable to initialize the environment runtime.'
+      ? (props.errorMessage ?? 'Unable to initialize the environment runtime.')
       : props.bootState === 'redirecting'
         ? 'No active session is available yet. Redirecting to pair your phone.'
         : 'Preparing the active environment before the app opens.'
@@ -213,11 +215,32 @@ function RootRuntimeBootSurface(props: {
   )
 }
 
+const UI_SCALE_CLASSES: Record<UiScale, string | null> = {
+  small: 'ui-scale-small',
+  default: null,
+  large: 'ui-scale-large',
+}
+
+function UiScaleSync() {
+  const settings = useSettings()
+  const uiScale = settings.uiScale
+  useEffect(() => {
+    const html = document.documentElement
+    for (const cls of Object.values(UI_SCALE_CLASSES)) {
+      if (cls) html.classList.remove(cls)
+    }
+    const cls = UI_SCALE_CLASSES[uiScale]
+    if (cls) html.classList.add(cls)
+  }, [uiScale])
+  return null
+}
+
 function RootRouteApp() {
   return (
     <ToastProvider>
       <AnchoredToastProvider>
         <ServerStateBootstrap />
+        <UiScaleSync />
         <EventRouter />
         <WebSocketConnectionCoordinator />
         <WebSocketConnectionSurface>
@@ -316,7 +339,7 @@ function RootRouteErrorView({ error, reset }: ErrorComponentProps) {
       </div>
 
       <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
-        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+        <p className="text-caption font-semibold text-muted-foreground uppercase tracking-wider">
           {APP_DISPLAY_NAME}
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -452,8 +475,7 @@ function EventRouter() {
   const disposedRef = useRef(false)
   const bootstrapFromSnapshotRef = useRef<() => Promise<void>>(async () => undefined)
   const serverConfig = useServerConfig()
-  const { activeEnvironmentId, connectionId, runtimeGeneration } =
-    getEventRouterConnectionBinding()
+  const { activeEnvironmentId, connectionId, runtimeGeneration } = getEventRouterConnectionBinding()
 
   useEventRouterActiveEnvironmentIdSync(activeEnvironmentId)
   useEventRouterMountLogging({

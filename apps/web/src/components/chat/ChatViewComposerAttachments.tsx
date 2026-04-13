@@ -39,7 +39,7 @@ export function ChatViewComposerAttachments({
               <img src={image.previewUrl} alt={image.name} className="h-full w-full object-cover" />
             </button>
           ) : (
-            <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] text-muted-foreground/70">
+            <div className="flex h-full w-full items-center justify-center px-1 text-center text-mini text-muted-foreground/70">
               {image.name}
             </div>
           )}

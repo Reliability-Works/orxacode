@@ -60,7 +60,7 @@ function TaskListSteps() {
           <div className="mt-0.5">{stepStatusIcon(step.status)}</div>
           <p
             className={cn(
-              'text-[13px] leading-snug',
+              'text-sm leading-snug',
               step.status === 'completed'
                 ? 'text-muted-foreground/50 line-through decoration-muted-foreground/20'
                 : step.status === 'inProgress'
@@ -110,7 +110,7 @@ function ProposedPlanPreview() {
         ) : (
           <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/40 transition-transform" />
         )}
-        <span className="text-[10px] font-semibold tracking-widest text-muted-foreground/40 uppercase group-hover:text-muted-foreground/60">
+        <span className="text-mini font-semibold tracking-widest text-muted-foreground/40 uppercase group-hover:text-muted-foreground/60">
           {title}
         </span>
       </button>

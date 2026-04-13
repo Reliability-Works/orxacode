@@ -107,56 +107,86 @@
   --sidebar-ring: oklch(0.488 0.217 264);
 
   @variant dark {
-    /* Glass theme — deep dark base with white-alpha surfaces.
-       Gradient glows live on body::before so panes can stay transparent. */
+    /* Opaque dark theme — solid surfaces with clear lightness hierarchy.
+       Grays tinted slightly toward blue (hue 264) for brand cohesion. */
     color-scheme: dark;
-    --background: #0a0a14;
-    --foreground: rgba(255, 255, 255, 0.93);
-    --card: rgba(255, 255, 255, 0.04);
-    --card-foreground: rgba(255, 255, 255, 0.93);
-    --popover: #141423;
-    --popover-foreground: rgba(255, 255, 255, 0.93);
-    --primary: #6c7bff;
-    --primary-foreground: #0a0a14;
-    --secondary: rgba(255, 255, 255, 0.06);
-    --secondary-foreground: rgba(255, 255, 255, 0.93);
-    --muted: rgba(255, 255, 255, 0.04);
-    --muted-foreground: rgba(255, 255, 255, 0.6);
-    --accent: rgba(255, 255, 255, 0.06);
-    --accent-foreground: rgba(255, 255, 255, 0.93);
-    --destructive: #f87171;
-    --border: rgba(255, 255, 255, 0.08);
-    --input: rgba(255, 255, 255, 0.06);
-    --ring: #6c7bff;
-    --destructive-foreground: #fca5a5;
-    --info: #6c7bff;
-    --info-foreground: #a5b4ff;
-    --success: #4ade80;
-    --success-foreground: #86efac;
-    --warning: #fbbf24;
-    --warning-foreground: #fcd34d;
-    --sidebar: rgba(255, 255, 255, 0.03);
-    --sidebar-foreground: rgba(255, 255, 255, 0.87);
-    --sidebar-border: rgba(255, 255, 255, 0.06);
-    --sidebar-accent: rgba(255, 255, 255, 0.06);
-    --sidebar-accent-foreground: rgba(255, 255, 255, 0.93);
-    --sidebar-primary: #6c7bff;
-    --sidebar-primary-foreground: #0a0a14;
-    --sidebar-ring: #6c7bff;
+    --background: oklch(0.145 0.008 264);
+    --foreground: oklch(0.93 0.005 264);
+    --card: oklch(0.18 0.008 264);
+    --card-foreground: oklch(0.93 0.005 264);
+    --popover: oklch(0.19 0.008 264);
+    --popover-foreground: oklch(0.93 0.005 264);
+    --primary: oklch(0.65 0.2 270);
+    --primary-foreground: oklch(0.145 0.008 264);
+    --secondary: oklch(0.22 0.008 264);
+    --secondary-foreground: oklch(0.93 0.005 264);
+    --muted: oklch(0.2 0.006 264);
+    --muted-foreground: oklch(0.65 0.01 264);
+    --accent: oklch(0.22 0.008 264);
+    --accent-foreground: oklch(0.93 0.005 264);
+    --destructive: oklch(0.65 0.2 25);
+    --border: oklch(0.26 0.008 264);
+    --input: oklch(0.24 0.008 264);
+    --ring: oklch(0.65 0.2 270);
+    --destructive-foreground: oklch(0.78 0.12 25);
+    --info: oklch(0.65 0.2 270);
+    --info-foreground: oklch(0.78 0.14 270);
+    --success: oklch(0.72 0.19 155);
+    --success-foreground: oklch(0.82 0.14 155);
+    --warning: oklch(0.78 0.16 85);
+    --warning-foreground: oklch(0.85 0.12 85);
+    --sidebar: oklch(0.13 0.008 264);
+    --sidebar-foreground: oklch(0.88 0.005 264);
+    --sidebar-border: oklch(0.24 0.008 264);
+    --sidebar-accent: oklch(0.22 0.008 264);
+    --sidebar-accent-foreground: oklch(0.93 0.005 264);
+    --sidebar-primary: oklch(0.65 0.2 270);
+    --sidebar-primary-foreground: oklch(0.145 0.008 264);
+    --sidebar-ring: oklch(0.65 0.2 270);
   }
 }
 
+/* Atmospheric preset (Aurora) color overrides are applied at runtime via preset CSS vars.
+   The .glass class is still used to toggle atmospheric effects below (body::before, body::after, #root). */
+
 body {
-  font-family:
-    'DM Sans',
+  font-family: var(
+    --font-sans,
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
     system-ui,
-    sans-serif;
+    sans-serif
+  );
   margin: 0;
   padding: 0;
   min-height: 100%;
+}
+
+/* Micro-type utility classes for consistent small text */
+@utility text-micro {
+  font-size: 0.5625rem;
+  line-height: 1;
+}
+
+@utility text-mini {
+  font-size: 0.625rem;
+  line-height: 1.3;
+}
+
+@utility text-caption {
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+html {
+  font-size: 16px;
+}
+html.ui-scale-small {
+  font-size: 14px;
+}
+html.ui-scale-large {
+  font-size: 18px;
 }
 
 html,
@@ -184,7 +214,8 @@ body,
   }
 }
 
-body::after {
+/* Noise texture — atmospheric presets only */
+.glass body::after {
   content: '';
   position: fixed;
   inset: 0;
@@ -196,8 +227,9 @@ body::after {
   z-index: 0;
 }
 
-/* Glass: atmospheric gradient glows behind the app shell (dark only). */
-.dark body::before {
+/* Atmospheric gradient glows behind the app shell.
+   Glow colors are defined as CSS custom properties so each preset can override them. */
+.glass body::before {
   content: '';
   position: fixed;
   inset: 0;
@@ -206,31 +238,32 @@ body::after {
   background:
     radial-gradient(
       700px 700px at 15% 20%,
-      rgba(108, 123, 255, 0.13) 0%,
-      rgba(108, 123, 255, 0.03) 50%,
+      var(--glow-1) 0%,
+      var(--glow-1-fade) 50%,
       transparent 100%
     ),
     radial-gradient(
       450px 450px at 5% 80%,
-      rgba(168, 85, 247, 0.08) 0%,
-      rgba(168, 85, 247, 0.02) 50%,
+      var(--glow-2) 0%,
+      var(--glow-2-fade) 50%,
       transparent 100%
     ),
     radial-gradient(
       600px 600px at 75% 70%,
-      rgba(124, 58, 237, 0.1) 0%,
-      rgba(124, 58, 237, 0.02) 50%,
+      var(--glow-3) 0%,
+      var(--glow-3-fade) 50%,
       transparent 100%
     ),
     radial-gradient(
       500px 500px at 85% 15%,
-      rgba(14, 165, 233, 0.09) 0%,
-      rgba(14, 165, 233, 0.02) 50%,
+      var(--glow-4) 0%,
+      var(--glow-4-fade) 50%,
       transparent 100%
     );
 }
 
-.dark #root {
+/* Ensure content sits above atmospheric glows and noise texture */
+.glass #root {
   position: relative;
   z-index: 1;
 }
@@ -239,7 +272,15 @@ pre,
 code,
 textarea,
 input {
-  font-family: 'SF Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-family: var(
+    --font-mono,
+    'SF Mono',
+    'SFMono-Regular',
+    Consolas,
+    'Liberation Mono',
+    Menlo,
+    monospace
+  );
 }
 
 @media (max-width: 767px) {
@@ -284,11 +325,11 @@ input {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .turn-chip-strip {
@@ -494,7 +535,17 @@ label:has(> select#reasoning-effort) select {
   background: color-mix(in srgb, var(--card) 92%, var(--background));
 }
 
-@keyframes ultrathink-rainbow {
+@keyframes ultrathink-breathe {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ultrathink-shift {
   0% {
     background-position: 0% 50%;
   }
@@ -503,33 +554,20 @@ label:has(> select#reasoning-effort) select {
   }
 }
 
-@keyframes ultrathink-chroma-shift {
-  0% {
-    filter: hue-rotate(0deg) saturate(1.2);
-  }
-  100% {
-    filter: hue-rotate(360deg) saturate(1.2);
-  }
-}
-
 .ultrathink-frame {
   --ultrathink-spectrum: linear-gradient(
     120deg,
-    #ff6b6b 0%,
-    #f59e0b 18%,
-    #22c55e 36%,
-    #14b8a6 54%,
-    #3b82f6 72%,
-    #ec4899 90%,
-    #ff6b6b 100%
+    oklch(0.65 0.15 250) 0%,
+    oklch(0.6 0.12 280) 50%,
+    oklch(0.65 0.15 250) 100%
   );
   background-image: var(--ultrathink-spectrum);
-  background-size: 220% 220%;
-  animation: ultrathink-rainbow 10s linear infinite;
+  background-size: 200% 200%;
+  animation: ultrathink-shift 6s ease-in-out infinite;
 }
 
 .ultrathink-chroma {
-  animation: ultrathink-chroma-shift 10s linear infinite;
+  animation: ultrathink-breathe 3s ease-in-out infinite;
 }
 
 .ultrathink-pill {
@@ -538,21 +576,16 @@ label:has(> select#reasoning-effort) select {
     var(--ultrathink-spectrum) border-box;
   background-size:
     100% 100%,
-    220% 220%;
+    200% 200%;
   background-position:
     0 0,
     0% 50%;
-  animation: ultrathink-rainbow 10s linear infinite;
+  animation: ultrathink-shift 6s ease-in-out infinite;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card) 82%, transparent);
 }
 
 .ultrathink-word {
   display: inline-block;
-  color: transparent;
-  background-image: var(--ultrathink-spectrum);
-  background-size: 220% 220%;
-  background-position: 0% 50%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  animation: ultrathink-rainbow 10s linear infinite;
+  color: oklch(0.65 0.15 265);
+  animation: ultrathink-breathe 3s ease-in-out infinite;
 }

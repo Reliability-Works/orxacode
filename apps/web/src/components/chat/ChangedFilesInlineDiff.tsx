@@ -27,7 +27,7 @@ export function ChangedFilesInlineDiff(props: {
 
   if (typeof checkpointTurnCount !== 'number') {
     return (
-      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground/70">
+      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-caption text-muted-foreground/70">
         Inline diff unavailable for this turn.
       </div>
     )
@@ -35,7 +35,7 @@ export function ChangedFilesInlineDiff(props: {
 
   if (checkpointDiffQuery.isLoading) {
     return (
-      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground/70">
+      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-caption text-muted-foreground/70">
         Loading diff...
       </div>
     )
@@ -43,7 +43,7 @@ export function ChangedFilesInlineDiff(props: {
 
   if (checkpointDiffQuery.error instanceof Error) {
     return (
-      <div className="mx-2 mb-1 mt-1 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-[11px] text-red-400/80">
+      <div className="mx-2 mb-1 mt-1 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-caption text-red-400/80">
         {checkpointDiffQuery.error.message}
       </div>
     )
@@ -52,7 +52,7 @@ export function ChangedFilesInlineDiff(props: {
   const fileDiff = findChangedFileDiff(checkpointDiffQuery.data?.diff, props.filePath)
   if (!fileDiff) {
     return (
-      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-[11px] text-muted-foreground/70">
+      <div className="mx-2 mb-1 mt-1 rounded-md border border-border/60 bg-background/70 px-3 py-2 text-caption text-muted-foreground/70">
         No inline diff available for {props.filePath}.
       </div>
     )

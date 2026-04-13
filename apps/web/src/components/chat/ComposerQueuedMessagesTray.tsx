@@ -26,7 +26,7 @@ function ComposerQueuedMessageRow(props: {
       )}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
+        <div className="flex items-center gap-2 text-caption text-muted-foreground/80">
           <span className="rounded-full border border-border/70 bg-background/50 px-2 py-0.5 font-medium text-foreground/85">
             Queued
           </span>
@@ -38,7 +38,7 @@ function ComposerQueuedMessageRow(props: {
           {summary.previewText}
         </p>
         {summary.attachmentSummary ? (
-          <p className="mt-1 text-[11px] text-muted-foreground/75">{summary.attachmentSummary}</p>
+          <p className="mt-1 text-caption text-muted-foreground/75">{summary.attachmentSummary}</p>
         ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-1">

@@ -71,7 +71,7 @@ function providerIconClassName(
 
 function ProviderStatusLabel(props: { label: string }) {
   return (
-    <span className="ms-auto text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
+    <span className="ms-auto text-caption text-muted-foreground/80 uppercase tracking-wide">
       {props.label}
     </span>
   )
@@ -196,7 +196,7 @@ function OpencodeSubproviderSection(props: {
     <>
       {showDivider ? <MenuDivider /> : null}
       <MenuGroup>
-        <div className="px-2 pt-1.5 pb-1 font-medium text-[11px] text-muted-foreground/80 uppercase tracking-[0.08em]">
+        <div className="px-2 pt-1.5 pb-1 font-medium text-caption text-muted-foreground/80 uppercase tracking-wide">
           {group.label}
         </div>
         <MenuRadioGroup value={value} onValueChange={next => onValueChange('opencode', next)}>

@@ -336,7 +336,7 @@ function ThreadListExpandButton({
         render={<button type="button" />}
         data-thread-selection-safe
         size="sm"
-        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-mini text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
         onClick={onClick}
       >
         <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -355,7 +355,7 @@ function ThreadListCollapseButton({ onClick }: { onClick: () => void }) {
         render={<button type="button" />}
         data-thread-selection-safe
         size="sm"
-        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-[10px] text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
+        className="h-6 w-full translate-x-0 justify-start px-2 text-left text-mini text-muted-foreground/60 hover:bg-accent hover:text-muted-foreground/80"
         onClick={onClick}
       >
         <span>Show less</span>
@@ -411,7 +411,7 @@ function ProjectThreadList({
         <SidebarMenuSubItem className="w-full" data-thread-selection-safe>
           <div
             data-thread-selection-safe
-            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-[10px] text-muted-foreground/60"
+            className="flex h-6 w-full translate-x-0 items-center px-2 text-left text-mini text-muted-foreground/60"
           >
             <span>No threads yet</span>
           </div>

@@ -57,7 +57,7 @@ function EmbeddedTerminalContextText(props: {
   }
 
   return inlineNodes.length > 0 ? (
-    <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground">
+    <div className="wrap-break-word whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
       {inlineNodes}
     </div>
   ) : null
@@ -91,7 +91,7 @@ function PrefixedTerminalContextText(props: {
   }
 
   return (
-    <div className="wrap-break-word whitespace-pre-wrap font-mono text-sm leading-relaxed text-foreground">
+    <div className="wrap-break-word whitespace-pre-wrap text-sm leading-relaxed text-foreground/80">
       {inlineNodes}
     </div>
   )
@@ -118,8 +118,8 @@ export const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <pre className="whitespace-pre-wrap wrap-break-word font-mono text-sm leading-relaxed text-foreground">
+    <div className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground/80">
       {props.text}
-    </pre>
+    </div>
   )
 })

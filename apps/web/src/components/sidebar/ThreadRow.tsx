@@ -141,14 +141,14 @@ function ThreadRowActionArea({
         <span className={threadMetaClassName}>
           {showThreadJumpHints && jumpLabel ? (
             <span
-              className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-[10px] font-medium tracking-tight text-foreground shadow-sm"
+              className="inline-flex h-5 items-center rounded-full border border-border/80 bg-background/90 px-1.5 font-mono text-mini font-medium tracking-tight text-foreground shadow-sm"
               title={jumpLabel}
             >
               {jumpLabel}
             </span>
           ) : (
             <span
-              className={`text-xs md:text-[10px] ${isHighlighted ? 'text-foreground/72 dark:text-foreground/82' : 'text-muted-foreground/40'}`}
+              className={`text-xs md:text-mini ${isHighlighted ? 'text-foreground/72 dark:text-foreground/82' : 'text-muted-foreground/40'}`}
             >
               {formatRelativeTimeLabel(thread.updatedAt ?? thread.createdAt)}
             </span>
@@ -176,7 +176,7 @@ function ThreadRowArchiveConfirmButton({
       data-thread-selection-safe
       data-testid={`thread-archive-confirm-${thread.id}`}
       aria-label={`Confirm archive ${thread.title}`}
-      className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-full bg-destructive/12 px-2 text-[10px] font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
+      className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-full bg-destructive/12 px-2 text-mini font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
       onPointerDown={e => {
         e.stopPropagation()
       }}
@@ -305,7 +305,7 @@ function ThreadRowButton(
       className={`${rowClassName} relative isolate`}
       style={
         nestingLevel > 0
-          ? { paddingLeft: `${(isMobile ? 10 : 8) + nestingLevel * (isMobile ? 16 : 14)}px` }
+          ? { paddingLeft: `${(isMobile ? 10 : 8) + nestingLevel * 22}px` }
           : undefined
       }
       onClick={event => {

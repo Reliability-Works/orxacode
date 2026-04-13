@@ -102,13 +102,13 @@ function GitSidebarScopePicker(props: {
             className="h-7 rounded-full px-2.5 text-xs font-medium"
           />
         }
-        >
-          <span>{activeLabel}</span>
-          {activeSummary ? (
-            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-              {activeSummary.fileCount}
-            </span>
-          ) : null}
+      >
+        <span>{activeLabel}</span>
+        {activeSummary ? (
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-mini leading-none text-muted-foreground">
+            {activeSummary.fileCount}
+          </span>
+        ) : null}
         <ChevronDownIcon className="size-3 opacity-60" />
       </MenuTrigger>
       <MenuPopup align="start" className="min-w-44">
@@ -119,7 +119,7 @@ function GitSidebarScopePicker(props: {
             />
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <span>{summary.label}</span>
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-mini leading-none text-muted-foreground">
                 {summary.fileCount}
               </span>
               {summary.compareLabel ? (
@@ -226,7 +226,9 @@ function GitSidebarContent(props: {
         data={props.logQuery.data}
         isPending={props.logQuery.isPending}
         isError={props.logQuery.isError}
-        errorMessage={props.logQuery.error instanceof Error ? props.logQuery.error.message : undefined}
+        errorMessage={
+          props.logQuery.error instanceof Error ? props.logQuery.error.message : undefined
+        }
       />
     )
   }
@@ -236,7 +238,9 @@ function GitSidebarContent(props: {
         data={props.issuesQuery.data}
         isPending={props.issuesQuery.isPending}
         isError={props.issuesQuery.isError}
-        errorMessage={props.issuesQuery.error instanceof Error ? props.issuesQuery.error.message : undefined}
+        errorMessage={
+          props.issuesQuery.error instanceof Error ? props.issuesQuery.error.message : undefined
+        }
         emptyMessage="No open issues found."
         variant="issues"
       />
@@ -247,7 +251,9 @@ function GitSidebarContent(props: {
       data={props.prsQuery.data}
       isPending={props.prsQuery.isPending}
       isError={props.prsQuery.isError}
-      errorMessage={props.prsQuery.error instanceof Error ? props.prsQuery.error.message : undefined}
+      errorMessage={
+        props.prsQuery.error instanceof Error ? props.prsQuery.error.message : undefined
+      }
       emptyMessage="No open pull requests found."
       variant="prs"
     />

@@ -12,15 +12,15 @@ function LogEntryRow({ entry }: { entry: GitLogEntry }) {
           <p className="truncate text-xs font-semibold text-foreground">{entry.shortHash}</p>
           <p className="mt-0.5 text-sm leading-5 text-foreground">{entry.subject}</p>
         </div>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground/80">
+        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-mini text-muted-foreground/80">
           {relativeDate(entry.date)}
         </span>
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-caption text-muted-foreground">
         {entry.author} · {entry.email || 'unknown author'}
       </p>
       {entry.body.trim() ? (
-        <p className="line-clamp-3 text-[11px] leading-5 text-muted-foreground">{entry.body}</p>
+        <p className="line-clamp-3 text-caption leading-5 text-muted-foreground">{entry.body}</p>
       ) : null}
     </div>
   )

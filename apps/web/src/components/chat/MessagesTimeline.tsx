@@ -40,7 +40,7 @@ interface MessagesTimelineProps {
 function EmptyTimelineState() {
   return (
     <div className="flex h-full items-center justify-center">
-      <p className="text-sm text-muted-foreground/30">Send a message to start the conversation.</p>
+      <p className="text-sm text-muted-foreground/50">Type a message below to start.</p>
     </div>
   )
 }
@@ -147,7 +147,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
   const onToggleAllDirectories = useCallback((turnId: TurnId) => {
     setAllDirectoriesExpandedByTurnId(current => ({
       ...current,
-      [turnId]: !(current[turnId] ?? true),
+      [turnId]: !(current[turnId] ?? false),
     }))
   }, [])
 

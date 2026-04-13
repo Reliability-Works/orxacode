@@ -41,7 +41,7 @@ export function AppBrandMark() {
   return (
     <span
       aria-label="Orxa"
-      className="inline-flex size-4 shrink-0 items-center justify-center rounded-[5px] bg-foreground/90 text-[9px] font-semibold leading-none text-background"
+      className="inline-flex size-4 shrink-0 items-center justify-center rounded-[5px] bg-foreground/90 text-micro font-semibold leading-none text-background"
     >
       O
     </span>

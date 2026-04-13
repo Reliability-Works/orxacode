@@ -1,6 +1,5 @@
 import type { ProviderKind } from '@orxa-code/contracts'
 import { DEFAULT_UNIFIED_SETTINGS } from '@orxa-code/contracts/settings'
-import { APP_BASE_NAME } from '../../branding'
 import { ProviderModelPicker } from '../chat/ProviderModelPicker'
 import { TraitsPicker } from '../chat/TraitsPicker'
 import { useSettings, useUpdateSettings } from '../../hooks/useSettings'
@@ -13,23 +12,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '../
 import { Switch } from '../ui/switch'
 import { SettingsSection, SettingsRow, SettingResetButton } from './settingsLayout'
 
-const THEME_OPTIONS = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-] as const
-
-const TIMESTAMP_FORMAT_LABELS = {
-  locale: 'System default',
-  '12-hour': '12-hour',
-  '24-hour': '24-hour',
-} as const
-
-type Theme = 'light' | 'dark' | 'system'
-
 export interface GeneralSectionProps {
-  theme: string
-  setTheme: (theme: Theme) => void
   settings: ReturnType<typeof useSettings>
   updateSettings: ReturnType<typeof useUpdateSettings>['updateSettings']
   isGitWritingModelDirty: boolean
@@ -38,102 +21,6 @@ export interface GeneralSectionProps {
   textGenModelOptions: ReturnType<typeof resolveAppModelSelectionState>['options']
   gitModelOptionsByProvider: ReturnType<typeof getCustomModelOptionsByProvider>
   serverProviders: ReturnType<typeof useServerProviders>
-}
-
-function ThemeRow({ theme, setTheme }: Pick<GeneralSectionProps, 'theme' | 'setTheme'>) {
-  return (
-    <SettingsRow
-      title="Theme"
-      description={`Choose how ${APP_BASE_NAME} looks across the app.`}
-      resetAction={
-        theme !== 'system' ? (
-          <SettingResetButton label="theme" onClick={() => setTheme('system')} />
-        ) : null
-      }
-      control={
-        <Select
-          value={theme}
-          onValueChange={value => {
-            if (value === 'system' || value === 'light' || value === 'dark') setTheme(value)
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
-            <SelectValue>
-              {THEME_OPTIONS.find(o => o.value === theme)?.label ?? 'System'}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            {THEME_OPTIONS.map(option => (
-              <SelectItem hideIndicator key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
-      }
-    />
-  )
-}
-
-function TimeFormatRow({
-  settings,
-  updateSettings,
-}: Pick<GeneralSectionProps, 'settings' | 'updateSettings'>) {
-  return (
-    <SettingsRow
-      title="Time format"
-      description="System default follows your browser or OS clock preference."
-      resetAction={
-        settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat ? (
-          <SettingResetButton
-            label="time format"
-            onClick={() =>
-              updateSettings({ timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat })
-            }
-          />
-        ) : null
-      }
-      control={
-        <Select
-          value={settings.timestampFormat}
-          onValueChange={value => {
-            if (value === 'locale' || value === '12-hour' || value === '24-hour') {
-              updateSettings({ timestampFormat: value })
-            }
-          }}
-        >
-          <SelectTrigger className="w-full sm:w-40" aria-label="Timestamp format">
-            <SelectValue>{TIMESTAMP_FORMAT_LABELS[settings.timestampFormat]}</SelectValue>
-          </SelectTrigger>
-          <SelectPopup align="end" alignItemWithTrigger={false}>
-            <SelectItem hideIndicator value="locale">
-              {TIMESTAMP_FORMAT_LABELS.locale}
-            </SelectItem>
-            <SelectItem hideIndicator value="12-hour">
-              {TIMESTAMP_FORMAT_LABELS['12-hour']}
-            </SelectItem>
-            <SelectItem hideIndicator value="24-hour">
-              {TIMESTAMP_FORMAT_LABELS['24-hour']}
-            </SelectItem>
-          </SelectPopup>
-        </Select>
-      }
-    />
-  )
-}
-
-function AppearanceRows({
-  theme,
-  setTheme,
-  settings,
-  updateSettings,
-}: Pick<GeneralSectionProps, 'theme' | 'setTheme' | 'settings' | 'updateSettings'>) {
-  return (
-    <>
-      <ThemeRow theme={theme} setTheme={setTheme} />
-      <TimeFormatRow settings={settings} updateSettings={updateSettings} />
-    </>
-  )
 }
 
 function DiffWrapRow({
@@ -396,12 +283,6 @@ function ModelRow(props: Omit<GeneralSectionProps, 'theme' | 'setTheme'>) {
 export function GeneralSection(props: GeneralSectionProps) {
   return (
     <SettingsSection title="General">
-      <AppearanceRows
-        theme={props.theme}
-        setTheme={props.setTheme}
-        settings={props.settings}
-        updateSettings={props.updateSettings}
-      />
       <CoreBehaviorRows settings={props.settings} updateSettings={props.updateSettings} />
       <ThreadConfirmationRows settings={props.settings} updateSettings={props.updateSettings} />
       <ModelRow

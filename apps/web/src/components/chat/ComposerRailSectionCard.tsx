@@ -19,7 +19,7 @@ export function ComposerRailSectionCard(props: ComposerRailSectionCardProps) {
         onClick={props.onToggle}
       >
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] text-muted-foreground/80">
+          <div className="flex items-center gap-2 text-caption text-muted-foreground/80">
             <span className="rounded-full border border-border/70 bg-background/50 px-2 py-0.5 font-medium text-foreground/85">
               {props.badgeLabel}
             </span>

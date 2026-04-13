@@ -25,14 +25,12 @@ export function BrowserInspectToggle(props: {
   )
 }
 
-export function BrowserInspectOverlay(props: {
-  inspectMode: boolean
-}) {
+export function BrowserInspectOverlay(props: { inspectMode: boolean }) {
   const { inspectMode } = props
   if (!inspectMode) return null
   return (
     <div
-      className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-emerald-500/35 bg-background/90 px-2 py-1 text-[11px] text-emerald-300 shadow-sm backdrop-blur"
+      className="pointer-events-none absolute left-3 top-3 z-10 rounded-full border border-emerald-500/35 bg-background/90 px-2 py-1 text-caption text-emerald-300 shadow-sm backdrop-blur"
       aria-live="polite"
     >
       Click elements in the browser to annotate them.
@@ -73,7 +71,7 @@ export function BrowserAnnotationsPanel(props: {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-0.5">
                 <p className="truncate text-xs font-medium text-foreground">{annotation.element}</p>
-                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                <p className="truncate font-mono text-caption text-muted-foreground">
                   {annotation.selector}
                 </p>
               </div>
@@ -90,7 +88,7 @@ export function BrowserAnnotationsPanel(props: {
             </div>
             <div className="mt-2 space-y-1">
               {annotation.text ? (
-                <p className="line-clamp-2 text-[11px] text-muted-foreground">{annotation.text}</p>
+                <p className="line-clamp-2 text-caption text-muted-foreground">{annotation.text}</p>
               ) : null}
               <Input
                 nativeInput

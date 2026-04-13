@@ -21,6 +21,7 @@ import {
   DesktopUpdateChannelRow,
   StaticAboutVersionRow,
 } from './AboutVersionSection'
+import { AppearanceSection } from './AppearanceSection'
 import { GeneralSection } from './GeneralSection'
 import { SettingsSection, SettingsRow, SettingsPageContainer } from './settingsLayout'
 import { PROVIDER_SETTINGS } from './providerSettings'
@@ -185,7 +186,7 @@ function ComingSoonProvidersBlock() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-medium text-foreground">{entry.label}</h3>
-                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <span className="rounded-full border border-border/70 px-2 py-0.5 text-mini uppercase tracking-wide text-muted-foreground">
                     Coming soon
                   </span>
                 </div>
@@ -219,7 +220,7 @@ function AdvancedSettingsBlock({
         description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
         status={
           <>
-            <span className="block break-all font-mono text-[11px] text-foreground">
+            <span className="block break-all font-mono text-caption text-foreground">
               {keybindingsConfigPath ?? 'Resolving keybindings path...'}
             </span>
             {openKeybindingsError ? (
@@ -259,11 +260,48 @@ function AboutSettingsBlock() {
   )
 }
 
-export function GeneralSettingsPanel() {
+export function AppearanceSettingsPanel() {
   const panel = useGeneralSettingsPanel()
   const {
     theme,
+    resolvedTheme,
+    lightPresetId,
+    darkPresetId,
+    uiFont,
+    codeFont,
     setTheme,
+    setPreset,
+    setUiFont,
+    setCodeFont,
+    resetPresets,
+    settings,
+    updateSettings,
+  } = panel
+
+  return (
+    <SettingsPageContainer>
+      <AppearanceSection
+        theme={theme}
+        resolvedTheme={resolvedTheme}
+        lightPresetId={lightPresetId}
+        darkPresetId={darkPresetId}
+        uiFont={uiFont}
+        codeFont={codeFont}
+        setTheme={setTheme}
+        setPreset={setPreset}
+        setUiFont={setUiFont}
+        setCodeFont={setCodeFont}
+        resetPresets={resetPresets}
+        settings={settings}
+        updateSettings={updateSettings}
+      />
+    </SettingsPageContainer>
+  )
+}
+
+export function GeneralSettingsPanel() {
+  const panel = useGeneralSettingsPanel()
+  const {
     settings,
     updateSettings,
     serverProviders,
@@ -277,8 +315,6 @@ export function GeneralSettingsPanel() {
   return (
     <SettingsPageContainer>
       <GeneralSection
-        theme={theme}
-        setTheme={setTheme}
         settings={settings}
         updateSettings={updateSettings}
         isGitWritingModelDirty={isGitWritingModelDirty}

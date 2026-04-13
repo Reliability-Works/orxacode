@@ -43,6 +43,9 @@ report/
 # Ad-hoc local handoff/scratch docs
 handoffs/
 
+# Impeccable design tool config
+.impeccable.md
+
 # Workpack execution state
 .workpack/
 TODO.md

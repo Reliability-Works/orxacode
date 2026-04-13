@@ -97,7 +97,7 @@ function GitDiffModeButton(props: {
       type="button"
       size="xs"
       variant={props.active ? 'secondary' : 'ghost'}
-      className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
+      className="h-7 gap-1.5 rounded-full px-2.5 text-caption"
       onClick={props.onClick}
     >
       <Icon className="size-3" />
@@ -121,7 +121,7 @@ function GitDiffBulkActions(props: {
         type="button"
         size="xs"
         variant="ghost"
-        className="h-7 gap-1.5 rounded-full px-2.5 text-[11px]"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-caption"
         disabled={!props.canStageAll || props.pendingAction !== null}
         onClick={props.onStageAll}
       >
@@ -132,7 +132,7 @@ function GitDiffBulkActions(props: {
         type="button"
         size="xs"
         variant="ghost"
-        className="h-7 gap-1.5 rounded-full px-2.5 text-[11px] text-destructive hover:text-destructive"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-caption text-destructive hover:text-destructive"
         disabled={!props.canRestoreAll || props.pendingAction !== null}
         onClick={props.onRestoreAll}
       >
@@ -180,7 +180,7 @@ function GitDiffControls(props: {
         />
       </div>
       {props.compareLabel ? (
-        <p className="truncate text-[11px] text-muted-foreground">{props.compareLabel}</p>
+        <p className="truncate text-caption text-muted-foreground">{props.compareLabel}</p>
       ) : null}
       <div className="ms-auto flex items-center gap-1">
         {props.showFileToggle ? (
@@ -188,7 +188,7 @@ function GitDiffControls(props: {
             type="button"
             size="xs"
             variant={props.fileListOpen ? 'secondary' : 'ghost'}
-            className="h-7 rounded-full px-2.5 text-[11px]"
+            className="h-7 rounded-full px-2.5 text-caption"
             onClick={props.onToggleFileList}
           >
             {props.fileListOpen ? 'Hide files' : 'Show files'}
@@ -278,14 +278,15 @@ function GitDiffTabContent({
   const allFiles = getVisibleDiffFiles(data, scope)
   const activeFile = allFiles.find(file => file.path === selectedPath) ?? allFiles[0] ?? null
   const isLocalWorkingTreeScope = scope === 'unstaged'
-  const canStageAll = isLocalWorkingTreeScope && (data.unstaged.length > 0 || data.untracked.length > 0)
+  const canStageAll =
+    isLocalWorkingTreeScope && (data.unstaged.length > 0 || data.untracked.length > 0)
   const canRestoreAll = isLocalWorkingTreeScope && data.unstaged.length > 0
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <GitDiffControls
         mode={mode}
-        compareLabel={scope === 'branch' ? data.branch?.compareLabel ?? null : null}
+        compareLabel={scope === 'branch' ? (data.branch?.compareLabel ?? null) : null}
         setMode={setMode}
         fileListOpen={fileListOpen}
         showFileToggle={mode !== 'list'}

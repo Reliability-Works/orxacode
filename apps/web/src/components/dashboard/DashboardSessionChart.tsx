@@ -22,7 +22,7 @@ function Bar({ day, sessions, maxSessions, isToday }: BarProps) {
 
   return (
     <div className="flex flex-1 flex-col items-center gap-1">
-      <span className="text-[10px] tabular-nums text-muted-foreground/70">{sessions || ''}</span>
+      <span className="text-mini tabular-nums text-muted-foreground/70">{sessions || ''}</span>
       <div className="flex w-full flex-1 items-end">
         <div
           className="w-full rounded-sm transition-all"
@@ -40,7 +40,7 @@ function Bar({ day, sessions, maxSessions, isToday }: BarProps) {
         </div>
       </div>
       <span
-        className={`text-[10px] ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground/70'}`}
+        className={`text-mini ${isToday ? 'font-semibold text-foreground' : 'text-muted-foreground/70'}`}
       >
         {label}
       </span>

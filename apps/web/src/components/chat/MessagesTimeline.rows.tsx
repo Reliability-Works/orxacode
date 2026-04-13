@@ -139,13 +139,13 @@ function WorkTimelineRow(props: {
     <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
       {showHeader && (
         <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-          <p className="text-[9px] uppercase tracking-[0.16em] text-muted-foreground/55">
+          <p className="text-micro uppercase tracking-wider text-muted-foreground/55">
             {groupLabel} ({groupedEntries.length})
           </p>
           {hasOverflow && (
             <button
               type="button"
-              className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
+              className="text-micro uppercase tracking-wider text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
               onClick={() => props.onToggleWorkGroup(groupId)}
             >
               {isExpanded ? 'Show less' : `Show ${hiddenCount} more`}
@@ -211,7 +211,7 @@ function UserTimelineRow(props: {
               </Button>
             )}
           </div>
-          <p className="text-right text-[10px] text-muted-foreground/30">
+          <p className="text-right text-mini text-muted-foreground/45">
             {formatTimestamp(props.row.message.createdAt, props.timestampFormat)}
           </p>
         </div>
@@ -252,7 +252,7 @@ function UserTimelineImageGrid(props: {
               />
             </button>
           ) : (
-            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-[11px] text-muted-foreground/70">
+            <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-caption text-muted-foreground/70">
               {image.name}
             </div>
           )}
@@ -278,7 +278,7 @@ function AssistantTimelineRow(
       {props.row.showCompletionDivider && (
         <div className="my-3 flex items-center gap-3">
           <span className="h-px flex-1 bg-border" />
-          <span className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80">
+          <span className="rounded-full border border-border bg-background px-2.5 py-1 text-mini uppercase tracking-wide text-muted-foreground/80">
             {props.completionSummary ? `Response • ${props.completionSummary}` : 'Response'}
           </span>
           <span className="h-px flex-1 bg-border" />
@@ -299,7 +299,7 @@ function AssistantTimelineRow(
           onOpenGitSidebar={props.onOpenGitSidebar}
           threadId={props.threadId}
         />
-        <p className="mt-1.5 text-[10px] text-muted-foreground/30">
+        <p className="mt-1.5 text-mini text-muted-foreground/45">
           {formatMessageMeta(
             props.row.message.createdAt,
             props.row.message.streaming
@@ -320,12 +320,12 @@ function AssistantTurnDiffSummary(props: AssistantDisplayProps) {
   if (checkpointFiles.length === 0) return null
   const summaryStat = summarizeTurnDiffStats(checkpointFiles)
   const changedFileCountLabel = String(checkpointFiles.length)
-  const allDirectoriesExpanded = props.allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true
+  const allDirectoriesExpanded = props.allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? false
 
   return (
     <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+        <p className="text-mini uppercase tracking-wide text-muted-foreground/65">
           <span>Changed files ({changedFileCountLabel})</span>
           {hasNonZeroStat(summaryStat) && (
             <>
@@ -368,7 +368,7 @@ function WorkingTimelineRow(props: {
 }) {
   return (
     <div className="py-0.5 pl-1.5">
-      <div className="flex items-center gap-2 pt-1 text-[11px] text-muted-foreground/70">
+      <div className="flex items-center gap-2 pt-1 text-caption text-muted-foreground/70">
         <span className="inline-flex items-center gap-[3px]">
           <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse" />
           <span className="h-1 w-1 rounded-full bg-muted-foreground/30 animate-pulse [animation-delay:200ms]" />

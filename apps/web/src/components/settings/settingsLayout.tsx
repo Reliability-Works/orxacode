@@ -17,7 +17,7 @@ export function SettingsSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        <h2 className="flex items-center gap-1.5 text-caption font-medium uppercase tracking-wider text-muted-foreground">
           {icon}
           {title}
         </h2>
@@ -56,7 +56,7 @@ export function SettingsRow({
             </span>
           </div>
           <p className="text-xs text-muted-foreground">{description}</p>
-          {status ? <div className="pt-1 text-[11px] text-muted-foreground">{status}</div> : null}
+          {status ? <div className="pt-1 text-caption text-muted-foreground">{status}</div> : null}
         </div>
         {control ? (
           <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">

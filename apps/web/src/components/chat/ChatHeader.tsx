@@ -6,9 +6,9 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import { FolderTreeIcon, GitBranchIcon, GlobeIcon, TerminalSquareIcon } from 'lucide-react'
+import { GitBranchIcon, TerminalSquareIcon } from 'lucide-react'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
-import ProjectScriptsControl, { type NewProjectScriptInput } from '../ProjectScriptsControl'
+import type { NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
 import { OpenInPicker } from './OpenInPicker'
 import type { ChatAuxSidebarMode } from './useChatViewLocalState'
@@ -18,6 +18,7 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSidebar } from '../ui/sidebar.shared'
 import { ChatHeaderMobileActions, ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
 import { ChatHeaderToggleControl } from './ChatHeaderToggleControl'
+import { ChatHeaderPanelSelector } from './ChatHeaderPanelSelector'
 
 interface ProjectActionProps {
   activeThreadId: ThreadId
@@ -79,7 +80,7 @@ function ChatHeaderTitle(props: {
       </h2>
       {threadActionsMenu}
       {activeProjectName && !isGitRepo ? (
-        <span className="shrink-0 rounded-full border border-amber-500/30 px-2 py-0.5 text-[10px] text-amber-700">
+        <span className="shrink-0 rounded-full border border-amber-500/30 px-2 py-0.5 text-mini text-amber-700">
           No Git
         </span>
       ) : null}
@@ -91,32 +92,15 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
   const {
     activeThreadId,
     activeProjectName,
-    activeProjectScripts,
-    preferredScriptId,
     keybindings,
     availableEditors,
     openInCwd,
     gitCwd,
-    onRunProjectScript,
-    onAddProjectScript,
-    onUpdateProjectScript,
-    onDeleteProjectScript,
     handoffAction,
   } = props
 
   return (
     <>
-      {activeProjectScripts && (
-        <ProjectScriptsControl
-          scripts={activeProjectScripts}
-          keybindings={keybindings}
-          preferredScriptId={preferredScriptId}
-          onRunScript={onRunProjectScript}
-          onAddScript={onAddProjectScript}
-          onUpdateScript={onUpdateProjectScript}
-          onDeleteScript={onDeleteProjectScript}
-        />
-      )}
       {activeProjectName && (
         <OpenInPicker
           keybindings={keybindings}
@@ -133,42 +117,10 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
 function GitSidebarDiffLabel({ stats }: { stats: DiffStats | null }) {
   if (!stats || (stats.additions === 0 && stats.deletions === 0)) return null
   return (
-    <span className="flex items-center gap-1 font-mono text-[10px] leading-none">
+    <span className="flex items-center gap-1 font-mono text-mini leading-none">
       {stats.additions > 0 && <span className="text-success">+{stats.additions}</span>}
       {stats.deletions > 0 && <span className="text-destructive">-{stats.deletions}</span>}
     </span>
-  )
-}
-
-function FilesSidebarToggle(props: {
-  filesAvailable: boolean
-  filesSidebarOpen: boolean
-  onToggleFilesSidebar: () => void
-}) {
-  const { filesAvailable, filesSidebarOpen, onToggleFilesSidebar } = props
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            className={cn('relative shrink-0', !filesAvailable && 'opacity-50')}
-            pressed={filesSidebarOpen}
-            onPressedChange={onToggleFilesSidebar}
-            aria-label="Toggle files sidebar"
-            variant="outline"
-            size="xs"
-            disabled={!filesAvailable}
-          >
-            <FolderTreeIcon className="size-3" />
-          </Toggle>
-        }
-      />
-      <TooltipPopup side="bottom">
-        {!filesAvailable
-          ? 'Files unavailable until this thread has an active project.'
-          : 'Toggle files sidebar'}
-      </TooltipPopup>
-    </Tooltip>
   )
 }
 
@@ -205,38 +157,6 @@ function GitSidebarToggle(props: {
   )
 }
 
-function BrowserSidebarToggle(props: {
-  browserAvailable: boolean
-  browserSidebarOpen: boolean
-  onToggleBrowserSidebar: () => void
-}) {
-  const { browserAvailable, browserSidebarOpen, onToggleBrowserSidebar } = props
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Toggle
-            className={cn('relative shrink-0', !browserAvailable && 'opacity-50')}
-            pressed={browserSidebarOpen}
-            onPressedChange={onToggleBrowserSidebar}
-            aria-label="Toggle browser sidebar"
-            variant="outline"
-            size="xs"
-            disabled={!browserAvailable}
-          >
-            <GlobeIcon className="size-3" />
-          </Toggle>
-        }
-      />
-      <TooltipPopup side="bottom">
-        {!browserAvailable
-          ? 'Browser unavailable until this thread has an active project in the desktop app.'
-          : 'Toggle browser sidebar'}
-      </TooltipPopup>
-    </Tooltip>
-  )
-}
-
 function ChatHeaderSidebarActions(props: {
   auxSidebarMode: ChatAuxSidebarMode
   onToggleGitSidebar: () => void
@@ -259,21 +179,18 @@ function ChatHeaderSidebarActions(props: {
   } = props
   return (
     <>
-      <FilesSidebarToggle
-        filesAvailable={filesAvailable}
-        filesSidebarOpen={auxSidebarMode === 'files'}
-        onToggleFilesSidebar={onToggleFilesSidebar}
-      />
-      <BrowserSidebarToggle
-        browserAvailable={browserAvailable}
-        browserSidebarOpen={auxSidebarMode === 'browser'}
-        onToggleBrowserSidebar={onToggleBrowserSidebar}
-      />
       <GitSidebarToggle
         isGitRepo={isGitRepo}
         gitSidebarOpen={auxSidebarMode === 'git'}
         onToggleGitSidebar={onToggleGitSidebar}
         diffStats={diffStats}
+      />
+      <ChatHeaderPanelSelector
+        auxSidebarMode={auxSidebarMode}
+        filesAvailable={filesAvailable}
+        browserAvailable={browserAvailable}
+        onToggleFilesSidebar={onToggleFilesSidebar}
+        onToggleBrowserSidebar={onToggleBrowserSidebar}
       />
     </>
   )

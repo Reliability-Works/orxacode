@@ -42,10 +42,10 @@ function RecentSessionRow({ session, onClick }: RecentSessionRowProps) {
           {session.title}
         </p>
         {session.projectName ? (
-          <p className="truncate text-[10px] text-muted-foreground">{session.projectName}</p>
+          <p className="truncate text-mini text-muted-foreground">{session.projectName}</p>
         ) : null}
       </div>
-      <span className="shrink-0 text-[10px] text-muted-foreground/70">
+      <span className="shrink-0 text-mini text-muted-foreground/70">
         {relativeTime(session.updatedAt)}
       </span>
     </button>

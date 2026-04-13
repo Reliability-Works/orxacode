@@ -10,3 +10,7 @@ pnpm-lock.yaml
 
 # Generated files
 apps/web/src/routeTree.gen.ts
+
+# Symlinks (Prettier errors on explicit symlink patterns)
+CLAUDE.md
+GEMINI.md

@@ -117,7 +117,7 @@ function ChatHeaderHandoffBanner() {
   if (!handoff) return null
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
-      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+      <Badge variant="outline" className="text-mini uppercase tracking-wide">
         Handoff
       </Badge>
       <p className="truncate text-xs text-muted-foreground">
@@ -140,7 +140,7 @@ function ChatHeaderSubagentBanner() {
   )
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 pt-2 sm:px-5">
-      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+      <Badge variant="outline" className="text-mini uppercase tracking-wide">
         Subagent
       </Badge>
       <p className="truncate text-xs text-muted-foreground">
