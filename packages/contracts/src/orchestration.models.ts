@@ -328,8 +328,13 @@ const threadInteractionModeField = ProviderInteractionMode.pipe(
   Schema.withDecodingDefault(() => DEFAULT_PROVIDER_INTERACTION_MODE)
 )
 
+const gitRootWithDefault = Schema.NullOr(TrimmedNonEmptyString).pipe(
+  Schema.withDecodingDefault(() => null as string | null)
+)
+
 export const threadCoreFields = {
   ...threadIdentityFields,
+  gitRoot: gitRootWithDefault,
   runtimeMode: RuntimeMode,
   interactionMode: threadInteractionModeField,
   handoff: Schema.NullOr(OrchestrationThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
@@ -349,6 +354,7 @@ export const threadCreateCommandFields = {
 
 export const threadCreatedPayloadFields = {
   ...threadIdentityFields,
+  gitRoot: gitRootWithDefault,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: threadInteractionModeField,
   handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
