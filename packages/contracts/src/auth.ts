@@ -4,10 +4,7 @@ import { IsoDateTime, TrimmedNonEmptyString } from './baseSchemas'
 export const AuthSessionRole = Schema.Literals(['owner', 'client'])
 export type AuthSessionRole = typeof AuthSessionRole.Type
 
-export const AuthSessionMethod = Schema.Literals([
-  'browser-session-cookie',
-  'bearer-session-token',
-])
+export const AuthSessionMethod = Schema.Literals(['browser-session-cookie', 'bearer-session-token'])
 export type AuthSessionMethod = typeof AuthSessionMethod.Type
 
 export const AuthDescriptor = Schema.Struct({
@@ -34,6 +31,7 @@ export const AuthBootstrapResult = Schema.Struct({
   role: AuthSessionRole,
   sessionMethod: Schema.Literal('browser-session-cookie'),
   expiresAt: IsoDateTime,
+  sessionToken: Schema.optional(TrimmedNonEmptyString),
 })
 export type AuthBootstrapResult = typeof AuthBootstrapResult.Type
 

@@ -117,10 +117,16 @@ export const authBootstrapRouteLayer = createBootstrapRoute(
   (serverAuth, credential, request) =>
     serverAuth.exchangeBootstrapCredential(credential, deriveAuthClientMetadata(request)).pipe(
       Effect.flatMap(result =>
-        HttpServerResponse.jsonUnsafe(result.response satisfies AuthBootstrapResult, {
-          status: 200,
-          headers: corsHeaders(request),
-        }).pipe(
+        HttpServerResponse.jsonUnsafe(
+          {
+            ...result.response,
+            sessionToken: result.sessionToken,
+          } satisfies AuthBootstrapResult,
+          {
+            status: 200,
+            headers: corsHeaders(request),
+          }
+        ).pipe(
           HttpServerResponse.setCookie(serverAuth.cookieName, result.sessionToken, {
             expires: new Date(result.response.expiresAt),
             httpOnly: true,

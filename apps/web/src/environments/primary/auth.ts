@@ -20,6 +20,7 @@ export type PrimaryAuthGateState =
   | PrimaryAuthGateStateRequiresAuth
 
 let bootstrapPromise: Promise<PrimaryAuthGateState> | null = null
+let primarySessionToken: string | null = null
 
 function unauthenticatedSessionState(): AuthSessionState {
   return {
@@ -88,7 +89,11 @@ async function exchangeBootstrapCredential(credential: string): Promise<AuthBoot
     throw new Error(message || `Failed to bootstrap auth session (${response.status}).`)
   }
 
-  return (await response.json()) as AuthBootstrapResult
+  const result = (await response.json()) as AuthBootstrapResult
+  if (result.sessionToken) {
+    primarySessionToken = result.sessionToken
+  }
+  return result
 }
 
 async function bootstrapPrimaryAuth(): Promise<PrimaryAuthGateState> {
@@ -141,6 +146,7 @@ export function resolveInitialPrimaryAuthGateState(): Promise<PrimaryAuthGateSta
 
 export function resetPrimaryAuthGateStateForTests(): void {
   bootstrapPromise = null
+  primarySessionToken = null
 }
 
 export async function resolvePrimaryWebSocketConnectionUrl(wsBaseUrl: string): Promise<string> {
@@ -148,5 +154,8 @@ export async function resolvePrimaryWebSocketConnectionUrl(wsBaseUrl: string): P
   url.pathname = '/ws'
   url.search = ''
   url.hash = ''
+  if (primarySessionToken) {
+    url.searchParams.set('token', primarySessionToken)
+  }
   return url.toString()
 }
