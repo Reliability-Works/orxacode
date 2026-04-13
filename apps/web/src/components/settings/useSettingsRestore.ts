@@ -7,8 +7,48 @@ import { useTheme } from '../../hooks/useTheme'
 import { useSettings, useUpdateSettings } from '../../hooks/useSettings'
 import { PROVIDER_SETTINGS } from './providerSettings'
 
+function computeChangedSettingLabels(
+  theme: string,
+  lightPresetId: string,
+  darkPresetId: string,
+  uiFont: string,
+  codeFont: string,
+  settings: ReturnType<typeof useSettings>,
+  isGitWritingModelDirty: boolean,
+  areProviderSettingsDirty: boolean
+): string[] {
+  return [
+    ...(theme !== 'system' ? ['Mode'] : []),
+    ...(lightPresetId !== 'default' ? ['Light theme'] : []),
+    ...(darkPresetId !== 'default' ? ['Dark theme'] : []),
+    ...(uiFont !== 'system' ? ['Interface font'] : []),
+    ...(codeFont !== 'system' ? ['Code font'] : []),
+    ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
+      ? ['Time format']
+      : []),
+    ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
+      ? ['Diff line wrapping']
+      : []),
+    ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
+      ? ['Assistant output']
+      : []),
+    ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
+      ? ['New thread mode']
+      : []),
+    ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
+      ? ['Archive confirmation']
+      : []),
+    ...(settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete
+      ? ['Delete confirmation']
+      : []),
+    ...(isGitWritingModelDirty ? ['Git writing model'] : []),
+    ...(areProviderSettingsDirty ? ['Providers'] : []),
+  ]
+}
+
 export function useSettingsRestore(onRestored?: () => void) {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, lightPresetId, darkPresetId, uiFont, codeFont, resetPresets } =
+    useTheme()
   const settings = useSettings()
   const { resetSettings } = useUpdateSettings()
 
@@ -23,39 +63,26 @@ export function useSettingsRestore(onRestored?: () => void) {
   })
 
   const changedSettingLabels = useMemo(
-    () => [
-      ...(theme !== 'system' ? ['Theme'] : []),
-      ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
-        ? ['Time format']
-        : []),
-      ...(settings.diffWordWrap !== DEFAULT_UNIFIED_SETTINGS.diffWordWrap
-        ? ['Diff line wrapping']
-        : []),
-      ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
-        ? ['Assistant output']
-        : []),
-      ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
-        ? ['New thread mode']
-        : []),
-      ...(settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive
-        ? ['Archive confirmation']
-        : []),
-      ...(settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete
-        ? ['Delete confirmation']
-        : []),
-      ...(isGitWritingModelDirty ? ['Git writing model'] : []),
-      ...(areProviderSettingsDirty ? ['Providers'] : []),
-    ],
+    () =>
+      computeChangedSettingLabels(
+        theme,
+        lightPresetId,
+        darkPresetId,
+        uiFont,
+        codeFont,
+        settings,
+        isGitWritingModelDirty,
+        areProviderSettingsDirty
+      ),
     [
       areProviderSettingsDirty,
       isGitWritingModelDirty,
-      settings.confirmThreadArchive,
-      settings.confirmThreadDelete,
-      settings.defaultThreadEnvMode,
-      settings.diffWordWrap,
-      settings.enableAssistantStreaming,
-      settings.timestampFormat,
+      settings,
       theme,
+      lightPresetId,
+      darkPresetId,
+      uiFont,
+      codeFont,
     ]
   )
 
@@ -68,14 +95,11 @@ export function useSettingsRestore(onRestored?: () => void) {
       )
     )
     if (!confirmed) return
-
     setTheme('system')
+    resetPresets()
     resetSettings()
     onRestored?.()
-  }, [changedSettingLabels, onRestored, resetSettings, setTheme])
+  }, [changedSettingLabels, onRestored, resetPresets, resetSettings, setTheme])
 
-  return {
-    changedSettingLabels,
-    restoreDefaults,
-  }
+  return { changedSettingLabels, restoreDefaults }
 }

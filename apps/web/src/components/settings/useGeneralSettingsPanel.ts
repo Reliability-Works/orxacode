@@ -342,8 +342,58 @@ function useOpenKeybindingsFile(
   }, [availableEditors, keybindingsConfigPath, setIsOpeningKeybindings, setOpenKeybindingsError])
 }
 
+function assembleGeneralSettingsPanelReturn(
+  themeState: ReturnType<typeof useTheme>,
+  settings: Settings,
+  updateSettings: UpdateSettings,
+  state: PanelState,
+  derived: ReturnType<typeof useGeneralSettingsPanelDerived>,
+  keybindingsConfigPath: string | null,
+  serverProviders: ServerProviders,
+  refreshProviders: () => void,
+  openKeybindingsFile: () => void,
+  addCustomModel: (provider: ProviderKind) => void,
+  removeCustomModel: (provider: ProviderKind, slug: string) => void,
+  providerActions: ReturnType<typeof useProviderSettingsActions>,
+  providerModelVisibilityActions: ReturnType<typeof useProviderModelVisibilityActions>
+) {
+  return {
+    theme: themeState.theme,
+    setTheme: themeState.setTheme,
+    resolvedTheme: themeState.resolvedTheme,
+    lightPresetId: themeState.lightPresetId,
+    darkPresetId: themeState.darkPresetId,
+    setPreset: themeState.setPreset,
+    uiFont: themeState.uiFont,
+    codeFont: themeState.codeFont,
+    setUiFont: themeState.setUiFont,
+    setCodeFont: themeState.setCodeFont,
+    resetPresets: themeState.resetPresets,
+    settings,
+    updateSettings,
+    isOpeningKeybindings: state.isOpeningKeybindings,
+    openKeybindingsError: state.openKeybindingsError,
+    openProviderDetails: state.openProviderDetails,
+    setOpenProviderDetails: state.setOpenProviderDetails,
+    customModelInputByProvider: state.customModelInputByProvider,
+    setCustomModelInputByProvider: state.setCustomModelInputByProvider,
+    customModelErrorByProvider: state.customModelErrorByProvider,
+    isRefreshingProviders: state.isRefreshingProviders,
+    modelListRefs: state.modelListRefs,
+    keybindingsConfigPath,
+    serverProviders,
+    ...derived,
+    refreshProviders,
+    openKeybindingsFile,
+    addCustomModel,
+    removeCustomModel,
+    handleHiddenModelSlugsChange: providerModelVisibilityActions.handleHiddenModelSlugsChange,
+    ...providerActions,
+  }
+}
+
 export function useGeneralSettingsPanel() {
-  const { theme, setTheme } = useTheme()
+  const themeState = useTheme()
   const settings = useSettings()
   const { updateSettings } = useUpdateSettings()
   const state = useGeneralSettingsPanelState(settings)
@@ -368,35 +418,19 @@ export function useGeneralSettingsPanel() {
     derived.textGenProvider
   )
   const providerModelVisibilityActions = useProviderModelVisibilityActions(settings, updateSettings)
-  return {
-    theme,
-    setTheme,
+  return assembleGeneralSettingsPanelReturn(
+    themeState,
     settings,
     updateSettings,
-    isOpeningKeybindings: state.isOpeningKeybindings,
-    openKeybindingsError: state.openKeybindingsError,
-    openProviderDetails: state.openProviderDetails,
-    setOpenProviderDetails: state.setOpenProviderDetails,
-    customModelInputByProvider: state.customModelInputByProvider,
-    setCustomModelInputByProvider: state.setCustomModelInputByProvider,
-    customModelErrorByProvider: state.customModelErrorByProvider,
-    isRefreshingProviders: state.isRefreshingProviders,
-    modelListRefs: state.modelListRefs,
+    state,
+    derived,
     keybindingsConfigPath,
     serverProviders,
-    textGenProvider: derived.textGenProvider,
-    textGenModel: derived.textGenModel,
-    textGenModelOptions: derived.textGenModelOptions,
-    gitModelOptionsByProvider: derived.gitModelOptionsByProvider,
-    isGitWritingModelDirty: derived.isGitWritingModelDirty,
     refreshProviders,
     openKeybindingsFile,
     addCustomModel,
     removeCustomModel,
-    handleHiddenModelSlugsChange: providerModelVisibilityActions.handleHiddenModelSlugsChange,
-    handleToggleEnabled: providerActions.handleToggleEnabled,
-    handleBinaryPathChange: providerActions.handleBinaryPathChange,
-    handleCodexHomePathChange: providerActions.handleCodexHomePathChange,
-    handleResetProvider: providerActions.handleResetProvider,
-  }
+    providerActions,
+    providerModelVisibilityActions
+  )
 }
