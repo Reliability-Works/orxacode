@@ -6,7 +6,7 @@ import { desktopDir, resolveElectronPath } from './electron-launcher.mjs'
 import { waitForResources } from './wait-for-resources.mjs'
 
 const port = Number(process.env.ELECTRON_RENDERER_PORT ?? 5733)
-const devServerUrl = `http://localhost:${port}`
+const devServerUrl = `http://127.0.0.1:${port}`
 const requiredFiles = [
   'dist-electron/main.js',
   'dist-electron/preload.js',

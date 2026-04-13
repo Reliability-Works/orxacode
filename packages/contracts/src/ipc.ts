@@ -149,20 +149,81 @@ export interface DesktopBrowserState {
 
 export interface DesktopRemoteAccessEndpoint {
   id: string
+  environmentId?: string
   label: string
   address: string
   url: string
+  bootstrapUrl?: string
+  pairUrl?: string
+  sessionUrl?: string
+  authMode?: 'bootstrap' | 'session' | 'bearer'
+  transport?: 'ws' | 'wss'
 }
 
 export type DesktopRemoteAccessStatus = 'disabled' | 'available' | 'unavailable'
 
 export interface DesktopRemoteAccessPreferences {
   enabled: boolean
+  environmentId?: string
+}
+
+export type ExecutionEnvironmentKind = 'local-desktop'
+
+export interface ExecutionEnvironmentDescriptor {
+  environmentId: string
+  label: string
+  kind: ExecutionEnvironmentKind
+}
+
+export interface EnvironmentCredential {
+  environmentId: string
+  token: string
+  issuedAt: string
+  revokedAt: string | null
+}
+
+export interface AccessEndpoint {
+  id: string
+  environmentId: string
+  label: string
+  transport: 'ws' | 'wss'
+  url: string
+  bootstrapUrl: string
+  sessionUrl: string
+  authMode: 'bootstrap' | 'session'
+}
+
+export interface KnownEnvironment {
+  environment: ExecutionEnvironmentDescriptor
+  endpoints: AccessEndpoint[]
+  lastSuccessfulEndpointId: string | null
+  credential: EnvironmentCredential | null
+}
+
+export type EnvironmentConnectionState =
+  | 'idle'
+  | 'bootstrapping'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting'
+  | 'error'
+
+export interface EnvironmentConnectionTarget {
+  httpBaseUrl: string
+  wsBaseUrl: string
+}
+
+export interface DesktopPrimaryEnvironmentBootstrap {
+  environment: ExecutionEnvironmentDescriptor
+  target: EnvironmentConnectionTarget
+  bootstrapToken: string | null
 }
 
 export interface DesktopRemoteAccessSnapshot {
   enabled: boolean
   status: DesktopRemoteAccessStatus
+  environment?: ExecutionEnvironmentDescriptor
+  bootstrapUrl?: string | null
   port: number
   endpoints: DesktopRemoteAccessEndpoint[]
 }
@@ -191,7 +252,7 @@ export interface DesktopUpdateCheckResult {
 }
 
 export interface DesktopBridge {
-  getWsUrl: () => string | null
+  getLocalEnvironmentBootstrap: () => Promise<DesktopPrimaryEnvironmentBootstrap>
   setRemoteAccessPreferences: (
     input: Partial<DesktopRemoteAccessPreferences>
   ) => Promise<DesktopRemoteAccessPreferences>

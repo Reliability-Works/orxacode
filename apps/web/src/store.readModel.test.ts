@@ -151,6 +151,7 @@ it('replaces projects using snapshot order during recovery', () => {
       },
     ],
     threads: [],
+    activeEnvironmentId: null,
     bootstrapComplete: true,
   }
   const readModel: OrchestrationReadModel = {

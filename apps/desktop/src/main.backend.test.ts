@@ -16,7 +16,8 @@ describe('createDesktopBootstrapPayload', () => {
         resolveBackendCwd: () => '/tmp',
         getBackendPort: () => 3773,
         getBackendAuthToken: () => 'secret-token',
-        getRemoteAccessToken: () => 'remote-secret-token',
+        getRemoteAccessBootstrapToken: () => 'bootstrap-token',
+        getRemoteAccessEnvironmentId: () => 'environment-1',
       },
       process: null,
       restartTimer: null,
@@ -30,7 +31,8 @@ describe('createDesktopBootstrapPayload', () => {
       port: 3773,
       orxaHome: '/tmp/orxa',
       authToken: 'secret-token',
-      remoteAccessToken: 'remote-secret-token',
+      remoteAccessBootstrapToken: 'bootstrap-token',
+      remoteAccessEnvironmentId: 'environment-1',
     })
   })
 })

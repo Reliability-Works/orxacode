@@ -1,12 +1,17 @@
 import * as OS from 'node:os'
 
-import type { DesktopRemoteAccessEndpoint, DesktopRemoteAccessSnapshot } from '@orxa-code/contracts'
+import type {
+  DesktopRemoteAccessEndpoint,
+  DesktopRemoteAccessSnapshot,
+  ExecutionEnvironmentDescriptor,
+} from '@orxa-code/contracts'
 
 interface ResolveRemoteAccessSnapshotInput {
   cacheKey?: string
   enabled: boolean
+  environmentId: string
+  bootstrapToken: string | null
   port: number
-  token: string
   networkInterfaces?: typeof OS.networkInterfaces
 }
 
@@ -35,28 +40,44 @@ function endpointPriority(address: string): number {
 function buildEndpoint(
   address: string,
   port: number,
-  token: string,
+  environmentId: string,
+  bootstrapToken: string,
   cacheKey: string
 ): DesktopRemoteAccessEndpoint {
+  const sessionUrl = `http://${address}:${port}/`
+  const pairUrl = `http://${address}:${port}/pair?v=${encodeURIComponent(cacheKey)}#token=${encodeURIComponent(bootstrapToken)}`
   return {
     id: address,
+    environmentId,
     label: isPrivateIpv4(address)
       ? 'Local network'
       : isTailnetIpv4(address)
         ? 'Tailnet / VPN'
         : 'Network address',
     address,
-    url: `http://${address}:${port}/?token=${encodeURIComponent(token)}&mobile=1&v=${encodeURIComponent(cacheKey)}`,
+    transport: 'ws',
+    url: pairUrl,
+    pairUrl,
+    bootstrapUrl: pairUrl,
+    sessionUrl,
+    authMode: 'bootstrap',
   }
 }
 
 export function resolveRemoteAccessSnapshot(
   input: ResolveRemoteAccessSnapshotInput
 ): DesktopRemoteAccessSnapshot {
+  const environment: ExecutionEnvironmentDescriptor = {
+    environmentId: input.environmentId,
+    label: 'Orxa Code (Desktop)',
+    kind: 'local-desktop',
+  }
   if (!input.enabled) {
     return {
       enabled: false,
       status: 'disabled',
+      environment,
+      bootstrapUrl: null,
       port: input.port,
       endpoints: [],
     }
@@ -79,11 +100,21 @@ export function resolveRemoteAccessSnapshot(
       const priorityDelta = endpointPriority(left) - endpointPriority(right)
       return priorityDelta !== 0 ? priorityDelta : left.localeCompare(right)
     })
-    .map(address => buildEndpoint(address, input.port, input.token, cacheKey))
+    .map(address =>
+      buildEndpoint(
+        address,
+        input.port,
+        input.environmentId,
+        input.bootstrapToken ?? '',
+        cacheKey
+      )
+    )
 
   return {
     enabled: true,
     status: endpoints.length > 0 ? 'available' : 'unavailable',
+    environment,
+    bootstrapUrl: endpoints[0]?.bootstrapUrl ?? null,
     port: input.port,
     endpoints,
   }

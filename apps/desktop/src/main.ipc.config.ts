@@ -13,12 +13,12 @@ export const UPDATE_DOWNLOAD_CHANNEL = 'desktop:update-download'
 export const UPDATE_INSTALL_CHANNEL = 'desktop:update-install'
 export const UPDATE_CHECK_CHANNEL = 'desktop:update-check'
 export const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
-export const GET_WS_URL_CHANNEL = 'desktop:get-ws-url'
+export const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = 'desktop:get-local-environment-bootstrap'
 export const SET_REMOTE_ACCESS_PREFERENCES_CHANNEL = 'desktop:set-remote-access-preferences'
 export const GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL = 'desktop:get-remote-access-snapshot'
 
 export const IPC_CHANNELS: IpcChannels = {
-  getWsUrl: GET_WS_URL_CHANNEL,
+  getLocalEnvironmentBootstrap: GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL,
   setRemoteAccessPreferences: SET_REMOTE_ACCESS_PREFERENCES_CHANNEL,
   getRemoteAccessSnapshot: GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL,
   pickFolder: PICK_FOLDER_CHANNEL,

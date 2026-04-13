@@ -2,18 +2,13 @@ import { type ContextMenuItem, type NativeApi } from '@orxa-code/contracts'
 
 import { showContextMenuFallback } from './contextMenuFallback'
 import { resetServerStateForTests } from './rpc/serverState'
-import { getWsRpcClient, resetWsRpcClient, resetWsRpcClientForTests } from './wsRpcClient'
+import { getWsRpcClient, resetWsRpcClientForTests, type WsRpcClient } from './wsRpcClient'
 
 let instance: { api: NativeApi } | null = null
 
-export async function resetWsNativeApi() {
-  instance = null
-  await resetWsRpcClient()
-  resetServerStateForTests()
-}
-
 export async function resetWsNativeApiForTests() {
-  await resetWsNativeApi()
+  instance = null
+  resetServerStateForTests()
   await resetWsRpcClientForTests()
 }
 
@@ -32,7 +27,7 @@ function createDialogsApi(): NativeApi['dialogs'] {
   }
 }
 
-function createShellApi(rpcClient: ReturnType<typeof getWsRpcClient>): NativeApi['shell'] {
+function createShellApi(rpcClient: WsRpcClient): NativeApi['shell'] {
   return {
     openInEditor: (cwd, editor) => rpcClient.shell.openInEditor({ cwd, editor }),
     openExternal: async url => {
@@ -63,7 +58,7 @@ function createContextMenuApi(): NativeApi['contextMenu'] {
   }
 }
 
-function createServerApi(rpcClient: ReturnType<typeof getWsRpcClient>): NativeApi['server'] {
+function createServerApi(rpcClient: WsRpcClient): NativeApi['server'] {
   return {
     getConfig: rpcClient.server.getConfig,
     refreshProviders: rpcClient.server.refreshProviders,
@@ -74,7 +69,7 @@ function createServerApi(rpcClient: ReturnType<typeof getWsRpcClient>): NativeAp
 }
 
 function createOrchestrationApi(
-  rpcClient: ReturnType<typeof getWsRpcClient>
+  rpcClient: WsRpcClient
 ): NativeApi['orchestration'] {
   return {
     getSnapshot: rpcClient.orchestration.getSnapshot,
@@ -87,13 +82,7 @@ function createOrchestrationApi(
   }
 }
 
-export function createWsNativeApi(): NativeApi {
-  if (instance) {
-    return instance.api
-  }
-
-  const rpcClient = getWsRpcClient()
-
+export function createWsNativeApiForRpcClient(rpcClient: WsRpcClient): NativeApi {
   const api: NativeApi = {
     dialogs: createDialogsApi(),
     ...(window.desktopBridge?.browser ? { browser: window.desktopBridge.browser } : {}),
@@ -130,6 +119,15 @@ export function createWsNativeApi(): NativeApi {
     orchestration: createOrchestrationApi(rpcClient),
   }
 
+  return api
+}
+
+export function createWsNativeApi(): NativeApi {
+  if (instance) {
+    return instance.api
+  }
+
+  const api = createWsNativeApiForRpcClient(getWsRpcClient())
   instance = { api }
   return api
 }

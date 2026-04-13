@@ -25,15 +25,6 @@ function registerListener<T>(listeners: Set<(event: T) => void>, listener: (even
   }
 }
 
-function createDeferredPromise<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>(nextResolve => {
-    resolve = nextResolve
-  })
-
-  return { promise, resolve }
-}
-
 const lifecycleListeners = new Set<(event: ServerLifecycleStreamEvent) => void>()
 const configListeners = new Set<(event: ServerConfigStreamEvent) => void>()
 
@@ -61,7 +52,6 @@ const baseServerConfig: ServerConfig = {
 }
 
 const serverApi = {
-  getConfig: vi.fn<() => Promise<ServerConfig>>(),
   subscribeConfig: vi.fn((listener: (event: ServerConfigStreamEvent) => void) =>
     registerListener(configListeners, listener)
   ),
@@ -114,6 +104,36 @@ function emitServerConfigEvent(event: ServerConfigStreamEvent) {
   }
 }
 
+function emitServerConfigSnapshot(config: ServerConfig) {
+  emitServerConfigEvent({
+    version: 1,
+    type: 'snapshot',
+    config,
+  })
+}
+
+function emitServerConfigUpdates(input: {
+  readonly issues: ServerConfig['issues']
+  readonly providers: ServerConfig['providers']
+  readonly settings: ServerConfig['settings']
+}) {
+  emitServerConfigEvent({
+    version: 1,
+    type: 'keybindingsUpdated',
+    payload: { issues: input.issues },
+  })
+  emitServerConfigEvent({
+    version: 1,
+    type: 'providerStatuses',
+    payload: { providers: input.providers },
+  })
+  emitServerConfigEvent({
+    version: 1,
+    type: 'settingsUpdated',
+    payload: { settings: input.settings },
+  })
+}
+
 async function waitFor(assertion: () => void, timeoutMs = 1_000): Promise<void> {
   const startedAt = Date.now()
   for (;;) {
@@ -141,12 +161,12 @@ afterEach(() => {
 })
 
 describe('serverState bootstrap', () => {
-  it('bootstraps the server config snapshot and replays it to late subscribers', async () => {
-    serverApi.getConfig.mockResolvedValueOnce(baseServerConfig)
-
+  it('replays the streamed server config snapshot to late subscribers', async () => {
     const configListener = vi.fn()
     const stop = startServerStateSync(serverApi)
     const unsubscribe = onServerConfigUpdated(configListener)
+
+    emitServerConfigSnapshot(baseServerConfig)
 
     await waitFor(() => {
       expect(getServerConfig()).toEqual(baseServerConfig)
@@ -154,7 +174,6 @@ describe('serverState bootstrap', () => {
 
     expect(serverApi.subscribeConfig).toHaveBeenCalledOnce()
     expect(serverApi.subscribeLifecycle).toHaveBeenCalledOnce()
-    expect(serverApi.getConfig).toHaveBeenCalledOnce()
     expect(configListener).toHaveBeenCalledWith(buildExpectedServerConfigSummary(), 'snapshot')
 
     const lateListener = vi.fn()
@@ -166,9 +185,7 @@ describe('serverState bootstrap', () => {
     stop()
   })
 
-  it('keeps the streamed snapshot when it arrives before the fallback fetch resolves', async () => {
-    const deferred = createDeferredPromise<ServerConfig>()
-    serverApi.getConfig.mockReturnValueOnce(deferred.promise)
+  it('keeps the latest streamed snapshot when later snapshots arrive', async () => {
     const stop = startServerStateSync(serverApi)
 
     const streamedConfig: ServerConfig = {
@@ -176,27 +193,23 @@ describe('serverState bootstrap', () => {
       cwd: '/tmp/from-stream',
     }
 
-    emitServerConfigEvent({
-      version: 1,
-      type: 'snapshot',
-      config: streamedConfig,
-    })
+    emitServerConfigSnapshot(streamedConfig)
 
     await waitFor(() => {
       expect(getServerConfig()).toEqual(streamedConfig)
     })
 
-    deferred.resolve(baseServerConfig)
-    await new Promise(resolve => setTimeout(resolve, 0))
+    emitServerConfigSnapshot(baseServerConfig)
 
-    expect(getServerConfig()).toEqual(streamedConfig)
+    await waitFor(() => {
+      expect(getServerConfig()).toEqual(baseServerConfig)
+    })
     stop()
   })
 })
 
 describe('serverState lifecycle replay', () => {
   it('replays welcome events to late subscribers', async () => {
-    serverApi.getConfig.mockResolvedValueOnce(baseServerConfig)
     const stop = startServerStateSync(serverApi)
 
     const listener = vi.fn()
@@ -238,12 +251,13 @@ describe('serverState lifecycle replay', () => {
 
 describe('serverState config updates', () => {
   it('merges provider, settings, and keybinding updates into the cached config', async () => {
-    serverApi.getConfig.mockResolvedValueOnce(baseServerConfig)
     const configListener = vi.fn()
     const providersListener = vi.fn()
     const stop = startServerStateSync(serverApi)
     const unsubscribeConfig = onServerConfigUpdated(configListener)
     const unsubscribeProviders = onProvidersUpdated(providersListener)
+
+    emitServerConfigSnapshot(baseServerConfig)
 
     await waitFor(() => {
       expect(getServerConfig()).toEqual(baseServerConfig)
@@ -258,26 +272,10 @@ describe('serverState config updates', () => {
     }
     const nextProviders = createWarningProviders()
 
-    emitServerConfigEvent({
-      version: 1,
-      type: 'keybindingsUpdated',
-      payload: {
-        issues: keybindingIssues,
-      },
-    })
-    emitServerConfigEvent({
-      version: 1,
-      type: 'providerStatuses',
-      payload: {
-        providers: nextProviders,
-      },
-    })
-    emitServerConfigEvent({
-      version: 1,
-      type: 'settingsUpdated',
-      payload: {
-        settings: updatedSettings,
-      },
+    emitServerConfigUpdates({
+      issues: keybindingIssues,
+      providers: nextProviders,
+      settings: updatedSettings,
     })
 
     await waitFor(() => {

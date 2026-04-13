@@ -7,6 +7,7 @@ import '@xterm/xterm/css/xterm.css'
 import './index.css'
 
 import { isElectron } from './env'
+import { installMobileSyncDebugBuffer } from './mobileSyncDebugBuffer'
 import { getRouter } from './router'
 import { APP_DISPLAY_NAME } from './branding'
 
@@ -16,9 +17,8 @@ const history = isElectron ? createHashHistory() : createBrowserHistory()
 const router = getRouter(history)
 
 document.title = APP_DISPLAY_NAME
+installMobileSyncDebugBuffer()
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <React.StrictMode>
-    <RouterProvider router={router} />
-  </React.StrictMode>
+  <RouterProvider router={router} />
 )

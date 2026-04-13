@@ -5,10 +5,30 @@ import { Effect, FileSystem, Path, Stream } from 'effect'
 
 import {
   buildAppUnderTest,
+  getHttpServerUrl,
   getWsServerUrl,
   provideServerTest,
   withWsRpcClient,
 } from './server.test.helpers.ts'
+
+const issueSessionTokenForCredential = (credential: string) =>
+  Effect.gen(function* () {
+    const bootstrapUrl = yield* getHttpServerUrl('/api/auth/bootstrap/bearer')
+    const bootstrapResponse = yield* Effect.tryPromise(() =>
+      fetch(bootstrapUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ credential }),
+      })
+    )
+    assert.equal(bootstrapResponse.status, 200)
+    const bootstrapPayload = (yield* Effect.tryPromise(() => bootstrapResponse.json())) as {
+      sessionToken: string
+    }
+    return bootstrapPayload.sessionToken
+  })
 
 it.effect('routes websocket rpc server.upsertKeybinding', () =>
   provideServerTest(
@@ -99,7 +119,8 @@ it.effect('accepts websocket rpc handshake when auth token is provided', () =>
         },
       })
 
-      const wsUrl = yield* getWsServerUrl('/ws?token=secret-token')
+      const sessionToken = yield* issueSessionTokenForCredential('secret-token')
+      const wsUrl = yield* getWsServerUrl(`/ws?token=${encodeURIComponent(sessionToken)}`)
       const response = yield* Effect.scoped(
         withWsRpcClient(wsUrl, client =>
           client[WS_METHODS.projectsSearchEntries]({
@@ -116,7 +137,7 @@ it.effect('accepts websocket rpc handshake when auth token is provided', () =>
   )
 )
 
-it.effect('accepts websocket rpc handshake when remote access token is provided', () =>
+it.effect('accepts websocket rpc handshake when remote bootstrap credential is exchanged', () =>
   provideServerTest(
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem
@@ -130,11 +151,12 @@ it.effect('accepts websocket rpc handshake when remote access token is provided'
       yield* buildAppUnderTest({
         config: {
           authToken: 'desktop-token',
-          remoteAccessToken: 'remote-token',
+          remoteAccessBootstrapToken: 'remote-bootstrap-token',
         },
       })
 
-      const wsUrl = yield* getWsServerUrl('/ws?token=remote-token')
+      const sessionToken = yield* issueSessionTokenForCredential('remote-bootstrap-token')
+      const wsUrl = yield* getWsServerUrl(`/ws?token=${encodeURIComponent(sessionToken)}`)
       const response = yield* Effect.scoped(
         withWsRpcClient(wsUrl, client =>
           client[WS_METHODS.projectsSearchEntries]({

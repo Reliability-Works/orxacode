@@ -1,4 +1,9 @@
-export type OrchestrationRecoveryReason = 'bootstrap' | 'sequence-gap' | 'replay-failed'
+export type OrchestrationRecoveryReason =
+  | 'bootstrap'
+  | 'sequence-gap'
+  | 'resubscribe'
+  | 'replay-failed'
+  | 'foreground-reconcile'
 
 export interface OrchestrationRecoveryPhase {
   kind: 'snapshot' | 'replay'

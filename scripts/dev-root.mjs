@@ -10,13 +10,20 @@ const desktopDir = `${repoRoot}/apps/desktop`
 const serverDir = `${repoRoot}/apps/server`
 const webDir = `${repoRoot}/apps/web`
 const nodeBin = process.execPath
+const webDevHost = '127.0.0.1'
 
 const processes = [
   {
     name: 'web',
     cwd: webDir,
     command: nodeBin,
-    args: [resolve(repoRoot, 'apps/web/node_modules/vite/bin/vite.js')],
+    args: [
+      resolve(repoRoot, 'apps/web/node_modules/vite/bin/vite.js'),
+      '--host',
+      webDevHost,
+      '--port',
+      String(webDevPort),
+    ],
   },
   {
     name: 'server-build',

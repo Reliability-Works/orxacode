@@ -9,8 +9,8 @@ import {
 } from '../diffRouteSearch'
 import { useStore } from '../store'
 import { type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
-import { ChatThreadInlineLayout } from './chatThreadLayout'
-import { useChatThreadRouteState } from './chatThreadRouteState'
+import { ChatThreadInlineLayout } from './-chatThreadLayout'
+import { useChatThreadRouteState } from './-chatThreadRouteState'
 import { useComposerDraftStore } from '../composerDraftStore'
 import { useUiStateStore } from '../uiStateStore'
 

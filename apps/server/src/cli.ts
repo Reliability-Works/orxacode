@@ -26,7 +26,8 @@ const BootstrapEnvelopeSchema = Schema.Struct({
   devUrl: Schema.optional(Schema.URLFromString),
   noBrowser: Schema.optional(Schema.Boolean),
   authToken: Schema.optional(Schema.String),
-  remoteAccessToken: Schema.optional(Schema.String),
+  remoteAccessBootstrapToken: Schema.optional(Schema.String),
+  remoteAccessEnvironmentId: Schema.optional(Schema.String),
   autoBootstrapProjectFromCwd: Schema.optional(Schema.Boolean),
   logWebSocketEvents: Schema.optional(Schema.Boolean),
 })
@@ -99,7 +100,11 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined)
   ),
-  remoteAccessToken: Config.string('ORXA_REMOTE_ACCESS_TOKEN').pipe(
+  remoteAccessBootstrapToken: Config.string('ORXA_REMOTE_ACCESS_BOOTSTRAP_TOKEN').pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined)
+  ),
+  remoteAccessEnvironmentId: Config.string('ORXA_REMOTE_ACCESS_ENVIRONMENT_ID').pipe(
     Config.option,
     Config.map(Option.getOrUndefined)
   ),
@@ -139,7 +144,8 @@ interface ResolvedCliEnvConfig {
   readonly devUrl: URL | undefined
   readonly noBrowser: boolean | undefined
   readonly authToken: string | undefined
-  readonly remoteAccessToken: string | undefined
+  readonly remoteAccessBootstrapToken: string | undefined
+  readonly remoteAccessEnvironmentId: string | undefined
   readonly bootstrapFd: number | undefined
   readonly autoBootstrapProjectFromCwd: boolean | undefined
   readonly logWebSocketEvents: boolean | undefined
@@ -153,7 +159,8 @@ interface BootstrapEnvelope {
   readonly devUrl?: URL | undefined
   readonly noBrowser?: boolean | undefined
   readonly authToken?: string | undefined
-  readonly remoteAccessToken?: string | undefined
+  readonly remoteAccessBootstrapToken?: string | undefined
+  readonly remoteAccessEnvironmentId?: string | undefined
   readonly autoBootstrapProjectFromCwd?: boolean | undefined
   readonly logWebSocketEvents?: boolean | undefined
 }
@@ -271,14 +278,25 @@ const resolveAuthToken = (
     )
   )
 
-const resolveRemoteAccessToken = (
+const resolveRemoteAccessBootstrapToken = (
   env: ResolvedCliEnvConfig,
   bootstrapEnvelope: Option.Option<BootstrapEnvelope>
 ) =>
   Option.getOrUndefined(
     resolveOptionPrecedence(
-      envOption(env.remoteAccessToken),
-      bootstrapOption(bootstrapEnvelope, bootstrap => bootstrap.remoteAccessToken)
+      envOption(env.remoteAccessBootstrapToken),
+      bootstrapOption(bootstrapEnvelope, bootstrap => bootstrap.remoteAccessBootstrapToken)
+    )
+  )
+
+const resolveRemoteAccessEnvironmentId = (
+  env: ResolvedCliEnvConfig,
+  bootstrapEnvelope: Option.Option<BootstrapEnvelope>
+) =>
+  Option.getOrUndefined(
+    resolveOptionPrecedence(
+      envOption(env.remoteAccessEnvironmentId),
+      bootstrapOption(bootstrapEnvelope, bootstrap => bootstrap.remoteAccessEnvironmentId)
     )
   )
 
@@ -357,7 +375,8 @@ const buildServerConfig = (input: {
   devUrl: URL | undefined
   noBrowser: boolean
   authToken: string | undefined
-  remoteAccessToken: string | undefined
+  remoteAccessBootstrapToken: string | undefined
+  remoteAccessEnvironmentId: string | undefined
   autoBootstrapProjectFromCwd: boolean
   logWebSocketEvents: boolean
 }): ServerConfigShape => ({
@@ -372,7 +391,8 @@ const buildServerConfig = (input: {
   devUrl: input.devUrl,
   noBrowser: input.noBrowser,
   authToken: input.authToken,
-  remoteAccessToken: input.remoteAccessToken,
+  remoteAccessBootstrapToken: input.remoteAccessBootstrapToken,
+  remoteAccessEnvironmentId: input.remoteAccessEnvironmentId,
   autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
   logWebSocketEvents: input.logWebSocketEvents,
 })
@@ -401,7 +421,8 @@ export const resolveServerConfig = (
     yield* ensureServerDirectories(derivedPaths)
     const noBrowser = resolveNoBrowser(flags, env, bootstrapEnvelope, mode)
     const authToken = resolveAuthToken(flags, env, bootstrapEnvelope)
-    const remoteAccessToken = resolveRemoteAccessToken(env, bootstrapEnvelope)
+    const remoteAccessBootstrapToken = resolveRemoteAccessBootstrapToken(env, bootstrapEnvelope)
+    const remoteAccessEnvironmentId = resolveRemoteAccessEnvironmentId(env, bootstrapEnvelope)
     const autoBootstrapProjectFromCwd = resolveAutoBootstrapProjectFromCwd(
       flags,
       env,
@@ -424,7 +445,8 @@ export const resolveServerConfig = (
       devUrl,
       noBrowser,
       authToken,
-      remoteAccessToken,
+      remoteAccessBootstrapToken,
+      remoteAccessEnvironmentId,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
     })

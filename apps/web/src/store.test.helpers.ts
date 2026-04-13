@@ -31,6 +31,7 @@ export function makeState(thread: Thread): AppState {
       },
     ],
     threads: [thread],
+    activeEnvironmentId: null,
     bootstrapComplete: true,
   }
 }

@@ -4,6 +4,7 @@ import type {
   DesktopBrowserInspectPoint,
   DesktopBrowserBounds,
   ContextMenuItem,
+  DesktopPrimaryEnvironmentBootstrap,
   DesktopRemoteAccessPreferences,
   DesktopRemoteAccessSnapshot,
   DesktopUpdateActionResult,
@@ -33,7 +34,7 @@ import { getSafeExternalUrl, getSafeTheme } from './main.logging'
 import { getDestructiveMenuIcon } from './main.menu'
 
 export interface IpcChannels {
-  readonly getWsUrl: string
+  readonly getLocalEnvironmentBootstrap: string
   readonly setRemoteAccessPreferences: string
   readonly getRemoteAccessSnapshot: string
   readonly pickFolder: string
@@ -59,7 +60,7 @@ export interface IpcUpdaterAdapter {
 
 export interface IpcHost {
   readonly channels: IpcChannels
-  readonly backendWsUrl: () => string
+  readonly getLocalEnvironmentBootstrap: () => Promise<DesktopPrimaryEnvironmentBootstrap>
   readonly setRemoteAccessPreferences: (
     input: Partial<DesktopRemoteAccessPreferences>
   ) => Promise<DesktopRemoteAccessPreferences>
@@ -204,10 +205,10 @@ export function registerDesktopUpdateIpcHandlers(host: IpcHost): void {
 
 function registerCoreIpcHandlers(host: IpcHost): void {
   const { channels } = host
-  ipcMain.removeAllListeners(channels.getWsUrl)
-  ipcMain.on(channels.getWsUrl, event => {
-    event.returnValue = host.backendWsUrl()
-  })
+  ipcMain.removeHandler(channels.getLocalEnvironmentBootstrap)
+  ipcMain.handle(channels.getLocalEnvironmentBootstrap, async () =>
+    host.getLocalEnvironmentBootstrap()
+  )
 
   ipcMain.removeHandler(channels.getRemoteAccessSnapshot)
   ipcMain.handle(channels.getRemoteAccessSnapshot, async () => host.getRemoteAccessSnapshot())

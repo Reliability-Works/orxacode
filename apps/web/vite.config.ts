@@ -54,6 +54,7 @@ export default defineConfig({
     extensions: ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs', '.json'],
   },
   server: {
+    host: '127.0.0.1',
     port,
     strictPort: true,
     hmr: {
@@ -61,7 +62,7 @@ export default defineConfig({
       // inside Electron's BrowserWindow. Vite 8 uses console.debug for
       // connection logs — enable "Verbose" in DevTools to see them.
       protocol: 'ws',
-      host: 'localhost',
+      host: '127.0.0.1',
     },
   },
   build: {

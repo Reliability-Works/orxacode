@@ -79,6 +79,7 @@ it('reuses an existing project row when project.created arrives with a new id fo
       },
     ],
     threads: [],
+    activeEnvironmentId: null,
     bootstrapComplete: true,
   }
 

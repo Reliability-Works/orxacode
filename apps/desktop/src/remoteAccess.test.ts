@@ -59,13 +59,15 @@ describe('resolveRemoteAccessSnapshot', () => {
     const snapshot = resolveRemoteAccessSnapshot({
       cacheKey: 'fresh-view',
       enabled: true,
+      environmentId: 'environment-1',
+      bootstrapToken: 'bootstrap-token',
       port: 3773,
-      token: 'secret-token',
       networkInterfaces: LAN_NETWORK_INTERFACES,
     })
 
     expect(snapshot.enabled).toBe(true)
     expect(snapshot.status).toBe('available')
+    expect(snapshot.environment?.environmentId).toBe('environment-1')
     expect(snapshot.endpoints.map(endpoint => endpoint.address)).toEqual([
       '10.0.0.15',
       '192.168.1.24',
@@ -73,15 +75,19 @@ describe('resolveRemoteAccessSnapshot', () => {
     ])
     expect(snapshot.endpoints[2]?.label).toBe('Tailnet / VPN')
     expect(snapshot.endpoints[0]?.url).toBe(
-      'http://10.0.0.15:3773/?token=secret-token&mobile=1&v=fresh-view'
+      'http://10.0.0.15:3773/pair?v=fresh-view#token=bootstrap-token'
+    )
+    expect(snapshot.endpoints[0]?.sessionUrl).toBe(
+      'http://10.0.0.15:3773/'
     )
   })
 
   it('reports unavailable when remote access is enabled without external IPv4 interfaces', () => {
     const snapshot = resolveRemoteAccessSnapshot({
       enabled: true,
+      environmentId: 'environment-1',
+      bootstrapToken: 'bootstrap-token',
       port: 3773,
-      token: 'secret-token',
       networkInterfaces: LOOPBACK_ONLY_NETWORK_INTERFACES,
     })
 
@@ -93,13 +99,15 @@ describe('resolveRemoteAccessSnapshot', () => {
   it('reports disabled when remote access is turned off', () => {
     const snapshot = resolveRemoteAccessSnapshot({
       enabled: false,
+      environmentId: 'environment-1',
+      bootstrapToken: 'bootstrap-token',
       port: 3773,
-      token: 'secret-token',
       networkInterfaces: LAN_NETWORK_INTERFACES,
     })
 
     expect(snapshot.enabled).toBe(false)
     expect(snapshot.status).toBe('disabled')
+    expect(snapshot.environment?.environmentId).toBe('environment-1')
     expect(snapshot.endpoints).toEqual([])
   })
 })

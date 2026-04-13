@@ -1,4 +1,5 @@
-import { WS_METHODS } from '@orxa-code/contracts'
+import { DEFAULT_SERVER_SETTINGS, WS_METHODS } from '@orxa-code/contracts'
+import type { Scope } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WsTransport } from './wsTransport'
@@ -92,13 +93,17 @@ function emitRequestChunk(socket: MockWebSocket, requestId: string, value: unkno
 }
 
 function emitSuccessfulExit(socket: MockWebSocket, requestId: string) {
+  emitSuccessfulExitWithValue(socket, requestId, null)
+}
+
+function emitSuccessfulExitWithValue(socket: MockWebSocket, requestId: string, value: unknown) {
   socket.serverMessage(
     JSON.stringify({
       _tag: 'Exit',
       requestId,
       exit: {
         _tag: 'Success',
-        value: null,
+        value,
       },
     })
   )
@@ -133,7 +138,6 @@ async function waitFor(assertion: () => void, timeoutMs = 1_000): Promise<void> 
 
 beforeEach(() => {
   sockets.length = 0
-
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
@@ -146,24 +150,65 @@ beforeEach(() => {
       desktopBridge: undefined,
     },
   })
-
   globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
 })
 
 afterEach(() => {
   globalThis.WebSocket = originalWebSocket
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
+
+function createHangingThenResolvedUrlProvider() {
+  return vi
+    .fn<() => Promise<string>>()
+    .mockImplementationOnce(() => new Promise<string>(() => undefined))
+    .mockResolvedValue('ws://localhost:3020')
+}
+
+function subscribeServerLifecycle(transport: WsTransport, listener?: () => void) {
+  return transport.subscribe(
+    client => client[WS_METHODS.subscribeServerLifecycle]({}),
+    listener ?? (() => undefined)
+  )
+}
+
+async function waitForSingleSocket() { await waitFor(() => { expect(sockets).toHaveLength(1) }) }
+
+async function openSocketAndWaitForLifecycleRequest(socket: MockWebSocket) {
+  socket.open()
+  await waitFor(() => {
+    const [requestMessage] = parseRequestMessages(socket)
+    expect(requestMessage?.tag).toBe(WS_METHODS.serverGetSettings)
+  })
+  const handshakeRequest = parseRequestMessages(socket)[0]
+  if (!handshakeRequest) throw new Error('Expected a bootstrap handshake request')
+  emitSuccessfulExitWithValue(socket, handshakeRequest.id, DEFAULT_SERVER_SETTINGS)
+  await waitFor(() => {
+    const lifecycleRequest = parseRequestMessages(socket)[1]
+    expect(lifecycleRequest?.tag).toBe(WS_METHODS.subscribeServerLifecycle)
+  })
+}
+
+async function openSocketAndCompleteHandshake(socket: MockWebSocket) {
+  socket.open()
+  await waitFor(() => {
+    const [requestMessage] = parseRequestMessages(socket)
+    expect(requestMessage?.tag).toBe(WS_METHODS.serverGetSettings)
+  })
+  const handshakeRequest = parseRequestMessages(socket)[0]
+  if (!handshakeRequest) throw new Error('Expected a bootstrap handshake request')
+  emitSuccessfulExitWithValue(socket, handshakeRequest.id, DEFAULT_SERVER_SETTINGS)
+}
 
 describe('WsTransport connection setup', () => {
   it('normalizes root websocket urls to /ws and preserves query params', async () => {
     const transport = new WsTransport('ws://localhost:3020/?token=secret-token')
-
-    await waitFor(() => {
-      expect(sockets).toHaveLength(1)
-    })
-
+    const unsubscribe = subscribeServerLifecycle(transport)
+    await waitForSingleSocket()
     expect(getSocket().url).toBe('ws://localhost:3020/ws?token=secret-token')
+    await openSocketAndCompleteHandshake(getSocket())
+    unsubscribe()
     await transport.dispose()
   })
 
@@ -176,14 +221,63 @@ describe('WsTransport connection setup', () => {
     })
 
     const transport = new WsTransport()
-
-    await waitFor(() => {
-      expect(sockets).toHaveLength(1)
-    })
-
+    const unsubscribe = subscribeServerLifecycle(transport)
+    await waitForSingleSocket()
     expect(getSocket().url).toBe('wss://app.example.com/ws')
+    await openSocketAndCompleteHandshake(getSocket())
+    unsubscribe()
     await transport.dispose()
   })
+
+  it('times out a hung connection url bootstrap and retries with a fresh connection attempt', async () => {
+    vi.useFakeTimers()
+    const listener = vi.fn()
+    const urlProvider = createHangingThenResolvedUrlProvider()
+    const transport = new WsTransport(urlProvider)
+    const unsubscribe = transport.subscribe(
+      client => client[WS_METHODS.subscribeServerLifecycle]({}),
+      listener,
+      { retryDelay: 1 }
+    )
+    await vi.advanceTimersByTimeAsync(10_100)
+    expect(urlProvider).toHaveBeenCalledTimes(2)
+    expect(sockets).toHaveLength(1)
+
+    const socket = getSocket()
+    await openSocketAndCompleteHandshake(socket)
+    await vi.advanceTimersByTimeAsync(0)
+
+    unsubscribe()
+    await transport.dispose()
+  })
+
+  it('allows reconnect to replace a hung bootstrap without waiting for the original promise', async () => {
+    const urlProvider = createHangingThenResolvedUrlProvider()
+    const transport = new WsTransport(urlProvider)
+    void transport.request(client =>
+      client[WS_METHODS.serverUpsertKeybinding]({
+        command: 'terminal.toggle',
+        key: 'ctrl+k',
+      })
+    )
+
+    await waitFor(() => {
+      expect(urlProvider).toHaveBeenCalledTimes(1)
+    })
+    await expect(transport.reconnect()).resolves.toBeUndefined()
+
+    const listener = vi.fn()
+    const unsubscribe = subscribeServerLifecycle(transport, listener)
+    await waitFor(() => {
+      expect(urlProvider).toHaveBeenCalledTimes(2)
+      expect(sockets).toHaveLength(1)
+    })
+    const socket = getSocket()
+    await openSocketAndWaitForLifecycleRequest(socket)
+    unsubscribe()
+    await transport.dispose()
+  })
+
 })
 
 describe('WsTransport unary requests', () => {
@@ -202,13 +296,12 @@ describe('WsTransport unary requests', () => {
     })
 
     const socket = getSocket()
-    socket.open()
-
+    await openSocketAndCompleteHandshake(socket)
     await waitFor(() => {
-      expect(socket.sent).toHaveLength(1)
+      expect(socket.sent).toHaveLength(2)
     })
 
-    const requestMessage = JSON.parse(socket.sent[0] ?? '{}') as {
+    const requestMessage = JSON.parse(socket.sent[1] ?? '{}') as {
       _tag: string
       id: string
       payload: unknown
@@ -246,6 +339,45 @@ describe('WsTransport unary requests', () => {
   })
 })
 
+describe('WsTransport streaming subscriptions bootstrap retry', () => {
+  it('retries subscription bootstrap when the connection URL provider fails once', async () => {
+    const listener = vi.fn()
+    const urlProvider = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error('Failed to fetch remote auth endpoint'))
+      .mockResolvedValue('ws://localhost:3020')
+    const transport = new WsTransport(urlProvider)
+    const unsubscribe = transport.subscribe(
+      client => client[WS_METHODS.subscribeServerLifecycle]({}),
+      listener,
+      { retryDelay: 1 }
+    )
+
+    await waitFor(() => {
+      expect(urlProvider).toHaveBeenCalledTimes(2)
+      expect(sockets).toHaveLength(1)
+    }, 3_000)
+
+    const socket = getSocket()
+    await openSocketAndWaitForLifecycleRequest(socket)
+
+    const requestMessage = parseRequestMessages(socket)[1]
+    if (!requestMessage) {
+      throw new Error('Expected a subscription request message.')
+    }
+
+    const welcomeEvent = createWelcomeEvent(1, '/tmp/workspace', 'orxa-code')
+    emitRequestChunk(socket, requestMessage.id, welcomeEvent)
+
+    await waitFor(() => {
+      expect(listener).toHaveBeenCalledWith(welcomeEvent)
+    })
+
+    unsubscribe()
+    await transport.dispose()
+  })
+})
+
 describe('WsTransport streaming subscriptions', () => {
   it('delivers stream chunks to subscribers', async () => {
     const transport = new WsTransport('ws://localhost:3020')
@@ -260,13 +392,9 @@ describe('WsTransport streaming subscriptions', () => {
     })
 
     const socket = getSocket()
-    socket.open()
+    await openSocketAndWaitForLifecycleRequest(socket)
 
-    await waitFor(() => {
-      expect(socket.sent).toHaveLength(1)
-    })
-
-    const requestMessage = parseRequestMessages(socket)[0]
+    const requestMessage = parseRequestMessages(socket)[1]
     if (!requestMessage) {
       throw new Error('Expected a stream request')
     }
@@ -282,7 +410,9 @@ describe('WsTransport streaming subscriptions', () => {
     unsubscribe()
     await transport.dispose()
   })
+})
 
+describe('WsTransport streaming subscriptions resubscribe', () => {
   it('re-subscribes stream listeners after the stream exits', async () => {
     const transport = new WsTransport('ws://localhost:3020')
     const listener = vi.fn()
@@ -296,13 +426,9 @@ describe('WsTransport streaming subscriptions', () => {
     })
 
     const socket = getSocket()
-    socket.open()
+    await openSocketAndWaitForLifecycleRequest(socket)
 
-    await waitFor(() => {
-      expect(socket.sent).toHaveLength(1)
-    })
-
-    const firstRequest = parseRequestMessages(socket)[0]
+    const firstRequest = parseRequestMessages(socket)[1]
     if (!firstRequest) {
       throw new Error('Expected an initial stream request')
     }
@@ -311,13 +437,15 @@ describe('WsTransport streaming subscriptions', () => {
 
     await waitFor(() => {
       const nextRequest = parseRequestMessages(socket).find(
-        message => message.id !== firstRequest.id
+        message =>
+          message.id !== firstRequest.id && message.tag === WS_METHODS.subscribeServerLifecycle
       )
       expect(nextRequest).toBeDefined()
     })
 
     const secondRequest = parseRequestMessages(socket).find(
-      message => message.id !== firstRequest.id
+      message =>
+        message.id !== firstRequest.id && message.tag === WS_METHODS.subscribeServerLifecycle
     )
     if (!secondRequest) {
       throw new Error('Expected a resubscribe request')
@@ -341,13 +469,6 @@ describe('WsTransport finite streams', () => {
   it('streams finite request events without re-subscribing', async () => {
     const transport = new WsTransport('ws://localhost:3020')
     const listener = vi.fn()
-
-    await waitFor(() => {
-      expect(sockets).toHaveLength(1)
-    })
-    const socket = getSocket()
-    socket.open()
-
     const requestPromise = transport.requestStream(
       client =>
         client[WS_METHODS.gitRunStackedAction]({
@@ -359,10 +480,16 @@ describe('WsTransport finite streams', () => {
     )
 
     await waitFor(() => {
-      expect(socket.sent).toHaveLength(1)
+      expect(sockets).toHaveLength(1)
+    })
+    const socket = getSocket()
+    await openSocketAndCompleteHandshake(socket)
+
+    await waitFor(() => {
+      expect(socket.sent).toHaveLength(2)
     })
 
-    const requestMessage = parseRequestMessages(socket)[0]
+    const requestMessage = parseRequestMessages(socket)[1]
     if (!requestMessage) {
       throw new Error('Expected a finite stream request')
     }
@@ -409,15 +536,34 @@ describe('WsTransport disposal', () => {
         callOrder.push('runtime:dispose')
       }),
     }
-    const transport = {
-      disposed: false,
-      clientScope: {} as never,
+    const transport = new WsTransport('ws://localhost:3020')
+    ;(
+      transport as unknown as {
+        connectionPromise: Promise<{
+          clientPromise: Promise<unknown>
+          clientScope: Scope.Closeable
+          runtime: typeof runtime
+        }>
+        disposed: boolean
+        resetPromise: Promise<void> | null
+      }
+    ).connectionPromise = Promise.resolve({
+      clientPromise: Promise.resolve({}),
+      clientScope: {} as Scope.Closeable,
       runtime,
-    } as unknown as WsTransport
+    })
+    ;(
+      transport as unknown as {
+        disposed: boolean
+        resetPromise: Promise<void> | null
+      }
+    ).resetPromise = null
 
-    WsTransport.prototype.dispose.call(transport)
+    void transport.dispose()
 
-    expect(runtime.runPromise).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(runtime.runPromise).toHaveBeenCalledTimes(1)
+    })
     expect(runtime.dispose).not.toHaveBeenCalled()
     expect((transport as unknown as { disposed: boolean }).disposed).toBe(true)
 

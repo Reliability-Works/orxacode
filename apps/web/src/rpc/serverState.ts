@@ -24,7 +24,7 @@ export interface ServerConfigUpdatedNotification {
 
 type ServerStateClient = Pick<
   WsRpcClient['server'],
-  'getConfig' | 'subscribeConfig' | 'subscribeLifecycle'
+  'subscribeConfig' | 'subscribeLifecycle'
 >
 
 function makeStateAtom<A>(label: string, initialValue: A) {
@@ -137,6 +137,14 @@ export function applySettingsUpdated(settings: ServerSettings): void {
 }
 
 export function emitWelcome(payload: ServerLifecycleWelcomePayload): void {
+  if (typeof window !== 'undefined') {
+    console.info('[mobile-sync] serverState emitWelcome', {
+      revision: 'mobile-reopen-probe-1',
+      bootstrapProjectId: payload.bootstrapProjectId ?? null,
+      bootstrapThreadId: payload.bootstrapThreadId ?? null,
+      cwd: payload.cwd,
+    })
+  }
   appAtomRegistry.set(welcomeAtom, payload)
 }
 
@@ -158,8 +166,7 @@ export function onProvidersUpdated(
   return subscribeLatest(providersUpdatedAtom, listener)
 }
 
-export function startServerStateSync(client: ServerStateClient): () => void {
-  let disposed = false
+export function startServerStateSubscriptions(client: ServerStateClient): () => void {
   const cleanups = [
     client.subscribeLifecycle(event => {
       if (event.type === 'welcome') {
@@ -171,23 +178,37 @@ export function startServerStateSync(client: ServerStateClient): () => void {
     }),
   ]
 
-  if (getServerConfig() === null) {
-    void client
-      .getConfig()
-      .then(config => {
-        if (disposed || getServerConfig() !== null) {
-          return
-        }
-        setServerConfigSnapshot(config)
-      })
-      .catch(() => undefined)
-  }
-
   return () => {
-    disposed = true
     for (const cleanup of cleanups) {
       cleanup()
     }
+  }
+}
+
+export function startServerStateSync(client: ServerStateClient): () => void {
+  const stopSubscriptions = startServerStateSubscriptions(client)
+  const hasExistingConfig = getServerConfig() !== null
+
+  if (typeof window !== 'undefined') {
+    console.info('[mobile-sync] serverState start sync', {
+      revision: 'mobile-reopen-probe-1',
+      hasExistingConfig,
+    })
+  }
+
+  if (!hasExistingConfig) {
+    console.info('[mobile-sync] serverState awaiting config snapshot', {
+      revision: 'mobile-reopen-probe-1',
+    })
+  }
+
+  return () => {
+    if (typeof window !== 'undefined') {
+      console.info('[mobile-sync] serverState stop sync', {
+        revision: 'mobile-reopen-probe-1',
+      })
+    }
+    stopSubscriptions()
   }
 }
 

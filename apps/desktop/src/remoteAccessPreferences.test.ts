@@ -38,15 +38,26 @@ describe('createDesktopRemoteAccessPreferencesStore', () => {
   it('defaults to remote access disabled', () => {
     const store = createStore()
 
-    expect(store.get()).toEqual({ enabled: false })
+    const value = store.get()
+    expect(value.enabled).toBe(false)
+    expect(value.environmentId).toBeTypeOf('string')
+    expect(value.environmentId).not.toHaveLength(0)
   })
 
   it('persists the enabled state', () => {
     const store = createStore()
 
-    expect(store.set({ enabled: true })).toEqual({ enabled: true })
-    expect(store.get()).toEqual({ enabled: true })
-    expect(store.set({ enabled: false })).toEqual({ enabled: false })
-    expect(store.get()).toEqual({ enabled: false })
+    const enabled = store.set({ enabled: true })
+    expect(enabled.enabled).toBe(true)
+    expect(enabled.environmentId).toBeTypeOf('string')
+    const afterEnable = store.get()
+    expect(afterEnable.enabled).toBe(true)
+    expect(afterEnable.environmentId).toBe(enabled.environmentId)
+    const disabled = store.set({ enabled: false })
+    expect(disabled.enabled).toBe(false)
+    expect(disabled.environmentId).toBe(enabled.environmentId)
+    const afterDisable = store.get()
+    expect(afterDisable.enabled).toBe(false)
+    expect(afterDisable.environmentId).toBe(enabled.environmentId)
   })
 })

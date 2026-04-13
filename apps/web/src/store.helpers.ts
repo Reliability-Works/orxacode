@@ -20,17 +20,20 @@ import {
   compareActivitiesBySequenceThenCreatedAt,
   retainThreadMessageIdsAfterRevert,
 } from '@orxa-code/shared/projectionRevert'
+import { getActiveEnvironmentHttpOrigin } from './environmentRuntimeState'
 import { type ChatMessage, type Project, type Thread } from './types'
 
 // ── State ────────────────────────────────────────────────────────────
 
 export interface AppState {
+  activeEnvironmentId: string | null
   projects: Project[]
   threads: Thread[]
   bootstrapComplete: boolean
 }
 
 export const initialState: AppState = {
+  activeEnvironmentId: null,
   projects: [],
   threads: [],
   bootstrapComplete: false,
@@ -122,22 +125,19 @@ export function toLegacyProvider(providerName: string | null): ProviderKind {
 
 function resolveWsHttpOrigin(): string {
   if (typeof window === 'undefined') return ''
-  const bridgeWsUrl = window.desktopBridge?.getWsUrl?.()
   const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined
   const wsCandidate =
-    typeof bridgeWsUrl === 'string' && bridgeWsUrl.length > 0
-      ? bridgeWsUrl
-      : typeof envWsUrl === 'string' && envWsUrl.length > 0
-        ? envWsUrl
-        : null
-  if (!wsCandidate) return window.location.origin
+    typeof envWsUrl === 'string' && envWsUrl.length > 0 ? envWsUrl : null
+  if (!wsCandidate) {
+    return getActiveEnvironmentHttpOrigin() ?? window.location.origin
+  }
   try {
     const wsUrl = new URL(wsCandidate)
     const protocol =
       wsUrl.protocol === 'wss:' ? 'https:' : wsUrl.protocol === 'ws:' ? 'http:' : wsUrl.protocol
     return `${protocol}//${wsUrl.host}`
   } catch {
-    return window.location.origin
+    return getActiveEnvironmentHttpOrigin() ?? window.location.origin
   }
 }
 
@@ -216,9 +216,10 @@ export function mapTurnDiffSummary(
   }
 }
 
-export function mapThread(thread: OrchestrationThread): Thread {
+export function mapThread(thread: OrchestrationThread, environmentId?: string): Thread {
   return {
     id: thread.id,
+    ...(environmentId ? { environmentId } : {}),
     codexThreadId: null,
     projectId: thread.projectId,
     title: thread.title,
@@ -252,9 +253,10 @@ export function mapProject(project: {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
-}): Project {
+}, environmentId?: string): Project {
   return {
     id: ProjectId.makeUnsafe(project.id),
+    ...(environmentId ? { environmentId } : {}),
     name: project.title,
     cwd: project.workspaceRoot,
     defaultModelSelection: project.defaultModelSelection

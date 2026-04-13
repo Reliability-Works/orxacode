@@ -1,0 +1,20 @@
+const TRANSPORT_ERROR_PATTERNS = [
+  /\bSocketCloseError\b/i,
+  /\bSocketOpenError\b/i,
+  /\bTransport disposed\b/i,
+  /Unable to connect to the .* WebSocket/i,
+  /\bWebSocket\b.*\b(disconnect|closed|close)\b/i,
+] as const
+
+export function isTransportConnectionErrorMessage(message: string | null | undefined): boolean {
+  if (typeof message !== 'string') {
+    return false
+  }
+
+  const normalizedMessage = message.trim()
+  if (normalizedMessage.length === 0) {
+    return false
+  }
+
+  return TRANSPORT_ERROR_PATTERNS.some(pattern => pattern.test(normalizedMessage))
+}

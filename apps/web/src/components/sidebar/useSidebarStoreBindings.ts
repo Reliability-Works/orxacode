@@ -50,6 +50,7 @@ function useThreadSelectionBindings() {
 }
 
 export function useSidebarStoreBindings() {
+  const bootstrapComplete = useStore(store => store.bootstrapComplete)
   const projects = useStore(store => store.projects)
   const serverThreads = useStore(store => store.threads)
   const uiBindings = useSidebarUiBindings()
@@ -77,6 +78,7 @@ export function useSidebarStoreBindings() {
   const shouldBrowseForProjectImmediately = isElectron && !isLinuxDesktop
 
   return {
+    bootstrapComplete,
     projects,
     serverThreads,
     ...uiBindings,

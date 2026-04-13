@@ -60,9 +60,9 @@ function SplitAwareChatThreadShell(props: {
 
   return (
     <ChatSplitPaneContext.Provider value={controls}>
-      <SidebarInset
+        <SidebarInset
         className={cn(
-          'h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground',
+          'h-full min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground',
           isMobile && openMobile && 'invisible pointer-events-none'
         )}
       >

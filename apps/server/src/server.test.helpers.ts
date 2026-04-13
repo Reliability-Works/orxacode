@@ -43,6 +43,7 @@ import {
   ProjectionSnapshotQuery,
   type ProjectionSnapshotQueryShape,
 } from './orchestration/Services/ProjectionSnapshotQuery.ts'
+import { ServerAuthLive } from './auth/service.ts'
 import { OpencodeAdapter } from './provider/Services/OpencodeAdapter.ts'
 import {
   ProviderDiscoveryService,
@@ -162,7 +163,8 @@ const makeServerConfig = (
       devUrl,
       noBrowser: true,
       authToken: undefined,
-      remoteAccessToken: undefined,
+      remoteAccessBootstrapToken: undefined,
+      remoteAccessEnvironmentId: undefined,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       ...config,
@@ -251,6 +253,10 @@ const makeOrchestrationMockLayers = (overrides?: TestServerLayerOverrides) =>
 const makeBaseMockLayer = (overrides?: TestServerLayerOverrides) =>
   Layer.mergeAll(
     Layer.mock(Keybindings)({
+      loadConfigState: Effect.succeed({
+        keybindings: [],
+        issues: [],
+      }),
       streamChanges: Stream.empty,
       ...overrides?.keybindings,
     }),
@@ -314,6 +320,7 @@ export const buildAppUnderTest = (options?: {
       disableLogger: true,
     }).pipe(
       Layer.provide(makeBaseMockLayer(options?.layers)),
+      Layer.provideMerge(ServerAuthLive),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provide(layerConfig)
     )

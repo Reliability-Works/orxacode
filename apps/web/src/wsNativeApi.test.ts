@@ -34,6 +34,7 @@ const orchestrationEventListeners = new Set<(event: OrchestrationEvent) => void>
 
 const rpcClientMock = {
   dispose: vi.fn(),
+  reconnect: vi.fn(),
   terminal: {
     open: vi.fn(),
     write: vi.fn(),
@@ -117,11 +118,28 @@ function getWindowForTest(): Window & typeof globalThis & { desktopBridge?: unkn
 
 function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
   return {
-    getWsUrl: () => null,
+    getLocalEnvironmentBootstrap: async () => ({
+      environment: {
+        environmentId: 'test-environment',
+        label: 'Test Environment',
+        kind: 'local-desktop',
+      },
+      target: {
+        httpBaseUrl: 'http://127.0.0.1:3773/',
+        wsBaseUrl: 'ws://127.0.0.1:3773/',
+      },
+      bootstrapToken: 'desktop-bootstrap-token',
+    }),
     setRemoteAccessPreferences: async () => ({ enabled: false }),
     getRemoteAccessSnapshot: async () => ({
       enabled: false,
       status: 'disabled',
+      environment: {
+        environmentId: 'test-environment',
+        label: 'Test Environment',
+        kind: 'local-desktop',
+      },
+      bootstrapUrl: null,
       port: 0,
       endpoints: [],
     }),

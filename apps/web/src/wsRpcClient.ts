@@ -30,6 +30,10 @@ type RpcTag = keyof WsRpcProtocolClient & string
 type RpcMethod<TTag extends RpcTag> = WsRpcProtocolClient[TTag]
 type RpcInput<TTag extends RpcTag> = Parameters<RpcMethod<TTag>>[0]
 
+interface StreamSubscriptionOptions {
+  readonly onResubscribe?: () => void
+}
+
 type RpcUnaryMethod<TTag extends RpcTag> =
   RpcMethod<TTag> extends (...args: infer _Args) => infer TResult
     ? TResult extends Effect.Effect<infer TSuccess, unknown, unknown>
@@ -47,7 +51,7 @@ type RpcUnaryNoArgMethod<TTag extends RpcTag> =
 type RpcStreamMethod<TTag extends RpcTag> =
   RpcMethod<TTag> extends (...args: infer _Args) => infer TResult
     ? TResult extends Stream.Stream<infer TEvent, unknown, unknown>
-      ? (listener: (event: TEvent) => void) => () => void
+      ? (listener: (event: TEvent) => void, options?: StreamSubscriptionOptions) => () => void
       : never
     : never
 
@@ -57,6 +61,7 @@ interface GitRunStackedActionOptions {
 
 export interface WsRpcClient {
   readonly dispose: () => Promise<void>
+  readonly reconnect: () => Promise<void>
   readonly terminal: {
     readonly open: RpcUnaryMethod<typeof WS_METHODS.terminalOpen>
     readonly write: RpcUnaryMethod<typeof WS_METHODS.terminalWrite>
@@ -157,8 +162,16 @@ export interface WsRpcClient {
 }
 
 let sharedWsRpcClient: WsRpcClient | null = null
+let activeWsRpcClient: WsRpcClient | null = null
+
+export function setActiveWsRpcClient(client: WsRpcClient | null) {
+  activeWsRpcClient = client
+}
 
 export function getWsRpcClient(): WsRpcClient {
+  if (activeWsRpcClient) {
+    return activeWsRpcClient
+  }
   if (sharedWsRpcClient) {
     return sharedWsRpcClient
   }
@@ -167,6 +180,7 @@ export function getWsRpcClient(): WsRpcClient {
 }
 
 export async function resetWsRpcClient() {
+  activeWsRpcClient = null
   await sharedWsRpcClient?.dispose()
   sharedWsRpcClient = null
 }
@@ -183,8 +197,8 @@ function createTerminalApi(transport: WsTransport): WsRpcClient['terminal'] {
     clear: input => transport.request(client => client[WS_METHODS.terminalClear](input)),
     restart: input => transport.request(client => client[WS_METHODS.terminalRestart](input)),
     close: input => transport.request(client => client[WS_METHODS.terminalClose](input)),
-    onEvent: listener =>
-      transport.subscribe(client => client[WS_METHODS.subscribeTerminalEvents]({}), listener),
+    onEvent: (listener, options) =>
+      transport.subscribe(client => client[WS_METHODS.subscribeTerminalEvents]({}), listener, options),
   }
 }
 
@@ -264,10 +278,14 @@ function createServerApi(transport: WsTransport): WsRpcClient['server'] {
     getSettings: () => transport.request(client => client[WS_METHODS.serverGetSettings]({})),
     updateSettings: patch =>
       transport.request(client => client[WS_METHODS.serverUpdateSettings]({ patch })),
-    subscribeConfig: listener =>
-      transport.subscribe(client => client[WS_METHODS.subscribeServerConfig]({}), listener),
-    subscribeLifecycle: listener =>
-      transport.subscribe(client => client[WS_METHODS.subscribeServerLifecycle]({}), listener),
+    subscribeConfig: (listener, options) =>
+      transport.subscribe(client => client[WS_METHODS.subscribeServerConfig]({}), listener, options),
+    subscribeLifecycle: (listener, options) =>
+      transport.subscribe(
+        client => client[WS_METHODS.subscribeServerLifecycle]({}),
+        listener,
+        options
+      ),
   }
 }
 
@@ -315,10 +333,11 @@ function createOrchestrationApi(transport: WsTransport): WsRpcClient['orchestrat
       transport
         .request(client => client[ORCHESTRATION_WS_METHODS.replayEvents](input))
         .then(events => [...events]),
-    onDomainEvent: listener =>
+    onDomainEvent: (listener, options) =>
       transport.subscribe(
         client => client[WS_METHODS.subscribeOrchestrationDomainEvents]({}),
-        listener
+        listener,
+        options
       ),
   }
 }
@@ -326,6 +345,7 @@ function createOrchestrationApi(transport: WsTransport): WsRpcClient['orchestrat
 export function createWsRpcClient(transport = new WsTransport()): WsRpcClient {
   return {
     dispose: () => transport.dispose(),
+    reconnect: () => transport.reconnect(),
     terminal: createTerminalApi(transport),
     projects: createProjectsApi(transport),
     shell: createShellApi(transport),

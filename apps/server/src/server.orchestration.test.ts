@@ -23,8 +23,8 @@ import {
 const buildOrchestrationSuccessApp = (now: string) =>
   buildAppUnderTest({
     layers: {
-      projectionSnapshotQuery: {
-        getSnapshot: () =>
+      orchestrationEngine: {
+        getReadModel: () =>
           Effect.succeed({
             snapshotSequence: 1,
             updatedAt: now,
@@ -65,8 +65,6 @@ const buildOrchestrationSuccessApp = (now: string) =>
               },
             ],
           }),
-      },
-      orchestrationEngine: {
         dispatch: () => Effect.succeed({ sequence: 7 }),
         readEvents: () => Stream.empty,
       },
@@ -212,14 +210,14 @@ it.effect('routes websocket rpc orchestration.getSnapshot errors', () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({
         layers: {
-          projectionSnapshotQuery: {
-            getSnapshot: () =>
+          orchestrationEngine: {
+            getReadModel: (() =>
               Effect.fail(
                 new PersistenceSqlError({
-                  operation: 'ProjectionSnapshotQuery.getSnapshot',
-                  detail: 'projection unavailable',
+                  operation: 'OrchestrationEngine.getReadModel',
+                  detail: 'engine unavailable',
                 })
-              ),
+              )) as never,
           },
         },
       })

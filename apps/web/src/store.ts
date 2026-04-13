@@ -49,11 +49,30 @@ export function applyOrchestrationEvents(
 
 // ── Pure state transition functions ────────────────────────────────────
 
-export function syncServerReadModel(state: AppState, readModel: OrchestrationReadModel): AppState {
-  const projects = readModel.projects.filter(project => project.deletedAt === null).map(mapProject)
-  const threads = readModel.threads.filter(thread => thread.deletedAt === null).map(mapThread)
+export function syncServerReadModel(
+  state: AppState,
+  readModel: OrchestrationReadModel,
+  environmentId?: string
+): AppState {
+  const projects = readModel.projects
+    .filter(project => project.deletedAt === null)
+    .map(project => mapProject(project, environmentId))
+  const threads = readModel.threads
+    .filter(thread => thread.deletedAt === null)
+    .map(thread => mapThread(thread, environmentId))
+  if (typeof window !== 'undefined') {
+    console.info('[mobile-sync] syncServerReadModel applied', {
+      bootstrapComplete: true,
+      mobile: new URLSearchParams(window.location.search).get('mobile') === '1',
+      projects: projects.length,
+      revision: 'mobile-reopen-probe-1',
+      threads: threads.length,
+      snapshotSequence: readModel.snapshotSequence,
+    })
+  }
   return {
     ...state,
+    activeEnvironmentId: environmentId ?? state.activeEnvironmentId,
     projects,
     threads,
     bootstrapComplete: true,
@@ -102,16 +121,40 @@ export const selectThreadById =
 // ── Zustand store ────────────────────────────────────────────────────
 
 interface AppStore extends AppState {
-  syncServerReadModel: (readModel: OrchestrationReadModel) => void
+  syncServerReadModel: (readModel: OrchestrationReadModel, environmentId?: string) => void
   applyOrchestrationEvent: (event: OrchestrationEvent) => void
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void
   setError: (threadId: ThreadId, error: string | null) => void
   setThreadBranch: (threadId: ThreadId, branch: string | null, worktreePath: string | null) => void
+  setActiveEnvironmentId: (environmentId: string | null) => void
 }
 
 export const useStore = create<AppStore>(set => ({
   ...initialState,
-  syncServerReadModel: readModel => set(state => syncServerReadModel(state, readModel)),
+  syncServerReadModel: (readModel, environmentId) =>
+    set(state => {
+      if (typeof window !== 'undefined') {
+        console.info('[mobile-sync] store syncServerReadModel commit start', {
+          revision: 'mobile-reopen-probe-1',
+          previousBootstrapComplete: state.bootstrapComplete,
+          previousProjects: state.projects.length,
+          previousThreads: state.threads.length,
+          previousActiveEnvironmentId: state.activeEnvironmentId,
+          nextEnvironmentId: environmentId ?? state.activeEnvironmentId,
+        })
+      }
+      const nextState = syncServerReadModel(state, readModel, environmentId)
+      if (typeof window !== 'undefined') {
+        console.info('[mobile-sync] store syncServerReadModel commit done', {
+          revision: 'mobile-reopen-probe-1',
+          nextBootstrapComplete: nextState.bootstrapComplete,
+          nextProjects: nextState.projects.length,
+          nextThreads: nextState.threads.length,
+          nextActiveEnvironmentId: nextState.activeEnvironmentId,
+        })
+      }
+      return nextState
+    }),
   applyOrchestrationEvent: event =>
     set(state => {
       logOpencodeStartupTelemetryForEvent(event)
@@ -127,4 +170,79 @@ export const useStore = create<AppStore>(set => ({
   setError: (threadId, error) => set(state => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set(state => setThreadBranch(state, threadId, branch, worktreePath)),
+  setActiveEnvironmentId: environmentId =>
+    set(state => {
+      if (typeof window !== 'undefined' && state.activeEnvironmentId !== environmentId) {
+        console.info('[mobile-sync] store setActiveEnvironmentId', {
+          revision: 'mobile-reopen-probe-1',
+          previousActiveEnvironmentId: state.activeEnvironmentId,
+          nextActiveEnvironmentId: environmentId,
+        })
+      }
+      return { activeEnvironmentId: environmentId }
+    }),
 }))
+
+function installMobileSyncStoreDebugSubscription() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const debugWindow = window as Window & {
+    __orxaMobileSyncStoreDebugInstalled__?: boolean
+  }
+  if (debugWindow.__orxaMobileSyncStoreDebugInstalled__) {
+    return
+  }
+  debugWindow.__orxaMobileSyncStoreDebugInstalled__ = true
+
+  let previousState = useStore.getState()
+  useStore.subscribe(nextState => {
+    const changed =
+      previousState.bootstrapComplete !== nextState.bootstrapComplete ||
+      previousState.projects.length !== nextState.projects.length ||
+      previousState.threads.length !== nextState.threads.length ||
+      previousState.activeEnvironmentId !== nextState.activeEnvironmentId
+
+    if (!changed) {
+      previousState = nextState
+      return
+    }
+
+    console.info('[mobile-sync] store transition', {
+      revision: 'mobile-reopen-probe-1',
+      previousBootstrapComplete: previousState.bootstrapComplete,
+      nextBootstrapComplete: nextState.bootstrapComplete,
+      previousProjects: previousState.projects.length,
+      nextProjects: nextState.projects.length,
+      previousThreads: previousState.threads.length,
+      nextThreads: nextState.threads.length,
+      previousActiveEnvironmentId: previousState.activeEnvironmentId,
+      nextActiveEnvironmentId: nextState.activeEnvironmentId,
+    })
+
+    const looksLikeReset =
+      (previousState.bootstrapComplete && !nextState.bootstrapComplete) ||
+      ((previousState.projects.length > 0 || previousState.threads.length > 0) &&
+        nextState.projects.length === 0 &&
+        nextState.threads.length === 0)
+
+    if (looksLikeReset) {
+      console.warn('[mobile-sync] store potential bootstrap reset', {
+        revision: 'mobile-reopen-probe-1',
+        previousBootstrapComplete: previousState.bootstrapComplete,
+        nextBootstrapComplete: nextState.bootstrapComplete,
+        previousProjects: previousState.projects.length,
+        nextProjects: nextState.projects.length,
+        previousThreads: previousState.threads.length,
+        nextThreads: nextState.threads.length,
+        previousActiveEnvironmentId: previousState.activeEnvironmentId,
+        nextActiveEnvironmentId: nextState.activeEnvironmentId,
+      })
+    }
+
+    previousState = nextState
+  })
+}
+
+installMobileSyncStoreDebugSubscription()

@@ -234,7 +234,7 @@ function RemoteAccessAvailableState(props: {
             <QrCodeIcon className="size-3.5" />
             Scan
           </div>
-          <RemoteAccessQrCode value={primaryEndpoint?.url ?? ''} />
+          <RemoteAccessQrCode value={primaryEndpoint?.bootstrapUrl ?? ''} />
           <p className="text-center text-xs text-muted-foreground">
             The QR uses the first reachable address for this Mac.
           </p>
@@ -245,8 +245,8 @@ function RemoteAccessAvailableState(props: {
               key={endpoint.id}
               label={endpoint.label}
               address={endpoint.address}
-              url={endpoint.url}
-              isCopied={props.isCopied && props.copiedUrl === endpoint.url}
+              url={endpoint.bootstrapUrl ?? ''}
+              isCopied={props.isCopied && props.copiedUrl === endpoint.bootstrapUrl}
               onCopy={props.onCopy}
             />
           ))}

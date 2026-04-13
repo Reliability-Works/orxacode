@@ -1,35 +1,16 @@
-import { Effect, Layer, Option, Queue, Ref, Schema, Stream } from 'effect'
+import { Effect, Layer, Queue, Ref, Schema, Stream } from 'effect'
 import {
-  type ClientOrchestrationCommand,
-  type OrchestrationGetFullThreadDiffInput,
+  type ClientOrchestrationCommand, type OrchestrationGetFullThreadDiffInput,
   OrchestrationDispatchCommandError,
-  type OrchestrationGetTurnDiffInput,
-  type OrchestrationEvent,
-  type OrchestrationReplayEventsInput,
-  type OpenInEditorInput,
-  OrchestrationGetFullThreadDiffError,
-  OrchestrationGetSnapshotError,
-  OrchestrationGetTurnDiffError,
-  ORCHESTRATION_WS_METHODS,
-  type ProjectListEntriesInput,
-  ProjectListEntriesError,
-  type ProjectReadFileInput,
-  ProjectReadFileError,
-  type ProjectSearchEntriesInput,
-  ProjectSearchEntriesError,
-  type ProjectWriteFileInput,
-  ProjectWriteFileError,
-  type ProviderListAgentsInput,
-  type ProviderListAgentsResult,
-  OrchestrationReplayEventsError,
-  type ServerSettingsPatch,
-  type ServerUpsertKeybindingInput,
-  type TerminalEvent,
-  type TerminalClearInput,
-  type TerminalCloseInput,
-  type TerminalOpenInput,
-  type TerminalResizeInput,
-  type TerminalRestartInput,
+  type OrchestrationGetTurnDiffInput, type OrchestrationEvent, type OrchestrationReplayEventsInput,
+  type OpenInEditorInput, OrchestrationGetFullThreadDiffError, OrchestrationGetSnapshotError,
+  OrchestrationGetTurnDiffError, ORCHESTRATION_WS_METHODS, type ProjectListEntriesInput,
+  ProjectListEntriesError, type ProjectReadFileInput, ProjectReadFileError,
+  type ProjectSearchEntriesInput, ProjectSearchEntriesError, type ProjectWriteFileInput,
+  ProjectWriteFileError, type ProviderListAgentsInput, type ProviderListAgentsResult,
+  OrchestrationReplayEventsError, type ServerSettingsPatch, type ServerUpsertKeybindingInput,
+  type TerminalEvent, type TerminalClearInput, type TerminalCloseInput, type TerminalOpenInput,
+  type TerminalResizeInput, type TerminalRestartInput,
   type TerminalWriteInput,
   WS_METHODS,
   WsRpcGroup,
@@ -37,8 +18,10 @@ import {
 import { clamp } from 'effect/Number'
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstable/http'
 import { RpcSerialization, RpcServer } from 'effect/unstable/rpc'
-
+import * as Socket from 'effect/unstable/socket/Socket'
 import { CheckpointDiffQuery } from './checkpointing/Services/CheckpointDiffQuery'
+import { respondToAuthError } from './auth/http'
+import { ServerAuth } from './auth/service'
 import { ServerConfig } from './config'
 import { DashboardQuery } from './orchestration/Services/DashboardQuery'
 import { ProviderUsageQuery } from './orchestration/Services/ProviderUsageQuery'
@@ -46,10 +29,9 @@ import { GitCore } from './git/Services/GitCore'
 import { GitHubCli } from './git/Services/GitHubCli'
 import { GitManager } from './git/Services/GitManager'
 import { Keybindings } from './keybindings'
-import { Open, resolveAvailableEditors } from './open'
+import { Open } from './open'
 import { normalizeDispatchCommand } from './orchestration/Normalizer'
 import { OrchestrationEngineService } from './orchestration/Services/OrchestrationEngine'
-import { ProjectionSnapshotQuery } from './orchestration/Services/ProjectionSnapshotQuery'
 import { OpencodeAdapter } from './provider/Services/OpencodeAdapter'
 import { ProviderDiscoveryService } from './provider/Services/ProviderDiscoveryService'
 import { ProviderRegistry } from './provider/Services/ProviderRegistry'
@@ -63,54 +45,39 @@ import { SkillsService } from './skills/Services/SkillsService'
 import { WorkspacePathOutsideRootError } from './workspace/Services/WorkspacePaths'
 import { createDashboardMethods } from './ws.dashboard'
 import { createGitMethods } from './ws.git'
+import { loadServerConfigSnapshot } from './mobileSync/bootstrap'
+import { logWebSocketUpgradeAuthenticated, logWebSocketUpgradeAuthError, logWebSocketUpgradeRequest } from './ws.mobileSyncLog'
+import { logWsRpcError, logWsRpcInfo } from './ws.rpc.mobileSyncLog'
+import { createServerConfigStream, createServerLifecycleStream } from './ws.serverStreams'
 import { createProviderMethods } from './ws.provider'
 import { createSkillsMethods } from './ws.skills'
+import { createTrackedWebSocketProtocol } from './ws.protocol'
 
 type WsRpcDependencies = {
-  readonly dashboardQuery: typeof DashboardQuery.Service
-  readonly providerUsageQuery: typeof ProviderUsageQuery.Service
-  readonly skillsService: typeof SkillsService.Service
-  readonly projectionSnapshotQuery: typeof ProjectionSnapshotQuery.Service
-  readonly orchestrationEngine: typeof OrchestrationEngineService.Service
-  readonly checkpointDiffQuery: typeof CheckpointDiffQuery.Service
-  readonly keybindings: typeof Keybindings.Service
-  readonly open: typeof Open.Service
-  readonly gitManager: typeof GitManager.Service
-  readonly git: typeof GitCore.Service
-  readonly gitHubCli: typeof GitHubCli.Service
-  readonly terminalManager: typeof TerminalManager.Service
-  readonly providerRegistry: typeof ProviderRegistry.Service
-  readonly opencodeAdapter: typeof OpencodeAdapter.Service
-  readonly providerDiscoveryService: typeof ProviderDiscoveryService.Service
-  readonly config: typeof ServerConfig.Service
-  readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
-  readonly serverSettings: typeof ServerSettingsService.Service
-  readonly startup: typeof ServerRuntimeStartup.Service
+  readonly dashboardQuery: typeof DashboardQuery.Service; readonly providerUsageQuery: typeof ProviderUsageQuery.Service
+  readonly skillsService: typeof SkillsService.Service; readonly orchestrationEngine: typeof OrchestrationEngineService.Service
+  readonly checkpointDiffQuery: typeof CheckpointDiffQuery.Service; readonly keybindings: typeof Keybindings.Service
+  readonly open: typeof Open.Service; readonly gitManager: typeof GitManager.Service
+  readonly git: typeof GitCore.Service; readonly gitHubCli: typeof GitHubCli.Service
+  readonly terminalManager: typeof TerminalManager.Service; readonly providerRegistry: typeof ProviderRegistry.Service
+  readonly opencodeAdapter: typeof OpencodeAdapter.Service; readonly providerDiscoveryService: typeof ProviderDiscoveryService.Service
+  readonly config: typeof ServerConfig.Service; readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
+  readonly serverSettings: typeof ServerSettingsService.Service; readonly startup: typeof ServerRuntimeStartup.Service
   readonly workspaceEntries: typeof WorkspaceEntries.Service
   readonly workspaceFileSystem: typeof WorkspaceFileSystem.Service
 }
-
 const createLoadServerConfig = ({
   config,
   keybindings,
   providerRegistry,
   serverSettings,
 }: Pick<WsRpcDependencies, 'config' | 'keybindings' | 'providerRegistry' | 'serverSettings'>) =>
-  Effect.gen(function* () {
-    const keybindingsConfig = yield* keybindings.loadConfigState
-    const providers = yield* providerRegistry.getProviders
-    const settings = yield* serverSettings.getSettings
-
-    return {
-      cwd: config.cwd,
-      keybindingsConfigPath: config.keybindingsConfigPath,
-      keybindings: keybindingsConfig.keybindings,
-      issues: keybindingsConfig.issues,
-      providers,
-      availableEditors: resolveAvailableEditors(),
-      settings,
-    }
-  })
+  loadServerConfigSnapshot().pipe(
+    Effect.provideService(ServerConfig, config),
+    Effect.provideService(Keybindings, keybindings),
+    Effect.provideService(ProviderRegistry, providerRegistry),
+    Effect.provideService(ServerSettingsService, serverSettings)
+  )
 
 const createOrchestrationDomainEventStream = (
   orchestrationEngine: WsRpcDependencies['orchestrationEngine']
@@ -135,7 +102,6 @@ const createOrchestrationDomainEventStream = (
         nextSequence: fromSequenceExclusive + 1,
         pendingBySequence: new Map<number, OrchestrationEvent>(),
       })
-
       return source.pipe(
         Stream.mapEffect(event =>
           Ref.modify(
@@ -144,10 +110,8 @@ const createOrchestrationDomainEventStream = (
               if (event.sequence < nextSequence || pendingBySequence.has(event.sequence)) {
                 return [[], { nextSequence, pendingBySequence }]
               }
-
               const updatedPending = new Map(pendingBySequence)
               updatedPending.set(event.sequence, event)
-
               const emit: Array<OrchestrationEvent> = []
               let expected = nextSequence
               for (;;) {
@@ -159,72 +123,12 @@ const createOrchestrationDomainEventStream = (
                 updatedPending.delete(expected)
                 expected += 1
               }
-
               return [emit, { nextSequence: expected, pendingBySequence: updatedPending }]
             }
           )
         ),
         Stream.flatMap(events => Stream.fromIterable(events))
       )
-    })
-  )
-
-const createServerConfigStream = ({
-  keybindings,
-  loadServerConfig,
-  providerRegistry,
-  serverSettings,
-}: Pick<WsRpcDependencies, 'keybindings' | 'providerRegistry' | 'serverSettings'> & {
-  readonly loadServerConfig: ReturnType<typeof createLoadServerConfig>
-}) =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const keybindingsUpdates = keybindings.streamChanges.pipe(
-        Stream.map(event => ({
-          version: 1 as const,
-          type: 'keybindingsUpdated' as const,
-          payload: {
-            issues: event.issues,
-          },
-        }))
-      )
-      const providerStatuses = providerRegistry.streamChanges.pipe(
-        Stream.map(providers => ({
-          version: 1 as const,
-          type: 'providerStatuses' as const,
-          payload: { providers },
-        }))
-      )
-      const settingsUpdates = serverSettings.streamChanges.pipe(
-        Stream.map(settings => ({
-          version: 1 as const,
-          type: 'settingsUpdated' as const,
-          payload: { settings },
-        }))
-      )
-
-      return Stream.concat(
-        Stream.make({
-          version: 1 as const,
-          type: 'snapshot' as const,
-          config: yield* loadServerConfig,
-        }),
-        Stream.merge(keybindingsUpdates, Stream.merge(providerStatuses, settingsUpdates))
-      )
-    })
-  )
-
-const createServerLifecycleStream = (lifecycleEvents: WsRpcDependencies['lifecycleEvents']) =>
-  Stream.unwrap(
-    Effect.gen(function* () {
-      const snapshot = yield* lifecycleEvents.snapshot
-      const snapshotEvents = Array.from(snapshot.events).toSorted(
-        (left, right) => left.sequence - right.sequence
-      )
-      const liveEvents = lifecycleEvents.stream.pipe(
-        Stream.filter(event => event.sequence > snapshot.sequence)
-      )
-      return Stream.concat(Stream.fromIterable(snapshotEvents), liveEvents)
     })
   )
 
@@ -244,7 +148,6 @@ const createDispatchCommandHandler =
             })
       )
     )
-
 const createReplayEventsHandler =
   (orchestrationEngine: WsRpcDependencies['orchestrationEngine']) =>
   (input: OrchestrationReplayEventsInput) =>
@@ -262,18 +165,58 @@ const createReplayEventsHandler =
           })
       )
     )
-
+const createServerGetSettingsHandler = (
+  serverSettings: WsRpcDependencies['serverSettings']
+) =>
+  Effect.sync(() => {
+    logWsRpcInfo('serverGetSettings:start', {})
+  }).pipe(
+    Effect.flatMap(() => serverSettings.getSettings),
+    Effect.tap(settings =>
+      Effect.sync(() => {
+        logWsRpcInfo('serverGetSettings:done', {
+          defaultThreadEnvMode: settings.defaultThreadEnvMode,
+          enableAssistantStreaming: settings.enableAssistantStreaming,
+        })
+      })
+    ),
+    Effect.tapError(cause =>
+      Effect.sync(() => {
+        logWsRpcError('serverGetSettings:error', {
+          cause,
+        })
+        })
+      )
+    )
 const createOrchestrationMethods = ({
   checkpointDiffQuery,
   orchestrationEngine,
-  projectionSnapshotQuery,
   startup,
 }: Pick<
   WsRpcDependencies,
-  'checkpointDiffQuery' | 'orchestrationEngine' | 'projectionSnapshotQuery' | 'startup'
+  'checkpointDiffQuery' | 'orchestrationEngine' | 'startup'
 >) => ({
   [ORCHESTRATION_WS_METHODS.getSnapshot]: () =>
-    projectionSnapshotQuery.getSnapshot().pipe(
+    Effect.sync(() => {
+      logWsRpcInfo('orchestration.getSnapshot:start', {})
+    }).pipe(
+      Effect.flatMap(() => orchestrationEngine.getReadModel()),
+      Effect.tap(snapshot =>
+        Effect.sync(() => {
+          logWsRpcInfo('orchestration.getSnapshot:done', {
+            projects: snapshot.projects.filter(project => project.deletedAt === null).length,
+            threads: snapshot.threads.filter(thread => thread.deletedAt === null).length,
+            snapshotSequence: snapshot.snapshotSequence,
+          })
+        })
+      ),
+      Effect.tapError(cause =>
+        Effect.sync(() => {
+          logWsRpcError('orchestration.getSnapshot:error', {
+            cause,
+          })
+        })
+      ),
       Effect.mapError(
         cause =>
           new OrchestrationGetSnapshotError({
@@ -310,7 +253,6 @@ const createOrchestrationMethods = ({
   [WS_METHODS.subscribeOrchestrationDomainEvents]: () =>
     createOrchestrationDomainEventStream(orchestrationEngine),
 })
-
 const createServerMethods = ({
   keybindings,
   loadServerConfig,
@@ -318,13 +260,31 @@ const createServerMethods = ({
   opencodeAdapter,
   providerRegistry,
   serverSettings,
-}: Pick<
-  WsRpcDependencies,
-  'keybindings' | 'lifecycleEvents' | 'opencodeAdapter' | 'providerRegistry' | 'serverSettings'
-> & {
+}: Pick<WsRpcDependencies, 'keybindings' | 'lifecycleEvents' | 'opencodeAdapter' | 'providerRegistry' | 'serverSettings'> & {
   readonly loadServerConfig: ReturnType<typeof createLoadServerConfig>
 }) => ({
-  [WS_METHODS.serverGetConfig]: () => loadServerConfig,
+  [WS_METHODS.serverGetConfig]: () =>
+    Effect.sync(() => {
+      logWsRpcInfo('serverGetConfig:start', {})
+    }).pipe(
+      Effect.flatMap(() => loadServerConfig),
+      Effect.tap(config =>
+        Effect.sync(() => {
+          logWsRpcInfo('serverGetConfig:done', {
+            issues: config.issues.length,
+            keybindings: config.keybindings.length,
+            providers: config.providers.length,
+          })
+        })
+      ),
+      Effect.tapError(cause =>
+        Effect.sync(() => {
+          logWsRpcError('serverGetConfig:error', {
+            cause,
+          })
+        })
+      )
+    ),
   [WS_METHODS.serverRefreshProviders]: () =>
     providerRegistry.refresh().pipe(Effect.map(providers => ({ providers }))),
   [WS_METHODS.providerListAgents]: (
@@ -342,7 +302,7 @@ const createServerMethods = ({
       const keybindingsConfig = yield* keybindings.upsertKeybindingRule(rule)
       return { keybindings: keybindingsConfig, issues: [] }
     }),
-  [WS_METHODS.serverGetSettings]: () => serverSettings.getSettings,
+  [WS_METHODS.serverGetSettings]: () => createServerGetSettingsHandler(serverSettings),
   [WS_METHODS.serverUpdateSettings]: ({ patch }: { readonly patch: ServerSettingsPatch }) =>
     serverSettings.updateSettings(patch),
   [WS_METHODS.subscribeServerConfig]: () =>
@@ -354,7 +314,6 @@ const createServerMethods = ({
     }),
   [WS_METHODS.subscribeServerLifecycle]: () => createServerLifecycleStream(lifecycleEvents),
 })
-
 const createProjectMethods = ({
   open,
   workspaceEntries,
@@ -407,7 +366,6 @@ const createProjectMethods = ({
     ),
   [WS_METHODS.shellOpenInEditor]: (input: OpenInEditorInput) => open.openInEditor(input),
 })
-
 const createTerminalMethods = ({
   terminalManager,
 }: Pick<WsRpcDependencies, 'terminalManager'>) => ({
@@ -425,14 +383,12 @@ const createTerminalMethods = ({
       )
     ),
 })
-
 const WsRpcLayer = WsRpcGroup.toLayer(
   Effect.gen(function* () {
     const dependencies: WsRpcDependencies = {
       dashboardQuery: yield* DashboardQuery,
       providerUsageQuery: yield* ProviderUsageQuery,
       skillsService: yield* SkillsService,
-      projectionSnapshotQuery: yield* ProjectionSnapshotQuery,
       orchestrationEngine: yield* OrchestrationEngineService,
       checkpointDiffQuery: yield* CheckpointDiffQuery,
       keybindings: yield* Keybindings,
@@ -452,7 +408,6 @@ const WsRpcLayer = WsRpcGroup.toLayer(
       workspaceFileSystem: yield* WorkspaceFileSystem,
     }
     const loadServerConfig = createLoadServerConfig(dependencies)
-
     return WsRpcGroup.of({
       ...createOrchestrationMethods(dependencies),
       ...createServerMethods({ ...dependencies, loadServerConfig }),
@@ -465,33 +420,58 @@ const WsRpcLayer = WsRpcGroup.toLayer(
     })
   })
 )
-
-export const websocketRpcRouteLayer = Layer.unwrap(
+export const websocketRpcRouteLayer = HttpRouter.add(
+  'GET',
+  '/ws',
   Effect.gen(function* () {
-    const rpcWebSocketHttpEffect = yield* RpcServer.toHttpEffectWebsocket(WsRpcGroup).pipe(
-      Effect.provide(Layer.mergeAll(WsRpcLayer, RpcSerialization.layerJson))
-    )
-    return HttpRouter.add(
-      'GET',
-      '/ws',
-      Effect.gen(function* () {
-        const request = yield* HttpServerRequest.HttpServerRequest
-        const config = yield* ServerConfig
-        if (config.authToken || config.remoteAccessToken) {
-          const url = HttpServerRequest.toURL(request)
-          if (Option.isNone(url)) {
-            return HttpServerResponse.text('Invalid WebSocket URL', { status: 400 })
-          }
-          const token = url.value.searchParams.get('token')
-          const matchesDesktopToken = config.authToken ? token === config.authToken : false
-          const matchesRemoteToken = config.remoteAccessToken
-            ? token === config.remoteAccessToken
-            : false
-          if (!matchesDesktopToken && !matchesRemoteToken) {
-            return HttpServerResponse.text('Unauthorized WebSocket connection', { status: 401 })
-          }
-        }
-        return yield* rpcWebSocketHttpEffect
+    const request = yield* HttpServerRequest.HttpServerRequest
+    logWebSocketUpgradeRequest(request)
+    return yield* Effect.gen(function* () {
+      const serverAuth = yield* ServerAuth
+      const session = yield* serverAuth.authenticateWebSocketUpgrade(request)
+      logWebSocketUpgradeAuthenticated(session)
+      const { onSocket, protocol } = yield* createTrackedWebSocketProtocol(serverAuth)
+      if (session.role === 'client') {
+        yield* serverAuth.closeOtherLiveSessionsForRole(
+          'client',
+          session.sessionId,
+          new Socket.CloseEvent(4001, 'Superseded by new mobile session')
+        )
+      }
+      yield* RpcServer.make(WsRpcGroup).pipe(
+        Effect.provideService(RpcServer.Protocol, protocol),
+        Effect.provide(Layer.mergeAll(WsRpcLayer, RpcSerialization.layerJson)),
+        Effect.forkScoped
+      )
+      return yield* Effect.acquireUseRelease(
+        serverAuth.markConnected(session.sessionId),
+        () =>
+          Effect.withFiber(connectionFiber =>
+            Effect.gen(function* () {
+              const socket = yield* Effect.orDie(request.upgrade)
+              yield* onSocket(socket, Object.entries(request.headers), session, connectionFiber)
+              return HttpServerResponse.empty()
+            }).pipe(
+              Effect.tapError(cause =>
+                Effect.sync(() => {
+                  logWsRpcError('ws-upgrade:error', {
+                    sessionId: session.sessionId,
+                    role: session.role,
+                    cause,
+                  })
+                })
+              )
+            )
+          ),
+        () => serverAuth.markDisconnected(session.sessionId)
+      )
+    }).pipe(
+      Effect.catchTag('AuthError', error => {
+        logWebSocketUpgradeAuthError({
+          message: error.message,
+          status: error.status ?? 500,
+        })
+        return respondToAuthError(request, error)
       })
     )
   })

@@ -9,7 +9,7 @@ function createBootstrappedCoordinator(latestSequence = 3) {
   return coordinator
 }
 
-describe('createOrchestrationRecoveryCoordinator', () => {
+describe('createOrchestrationRecoveryCoordinator bootstrap and replay flow', () => {
   it('defers live events until bootstrap completes and then requests replay', () => {
     const coordinator = createOrchestrationRecoveryCoordinator()
 
@@ -34,6 +34,16 @@ describe('createOrchestrationRecoveryCoordinator', () => {
     expect(coordinator.getState().inFlight).toEqual({
       kind: 'replay',
       reason: 'sequence-gap',
+    })
+  })
+
+  it('supports replay recovery triggered by domain stream resubscribe', () => {
+    const coordinator = createBootstrappedCoordinator()
+
+    expect(coordinator.beginReplayRecovery('resubscribe')).toBe(true)
+    expect(coordinator.getState().inFlight).toEqual({
+      kind: 'replay',
+      reason: 'resubscribe',
     })
   })
 
@@ -73,7 +83,9 @@ describe('createOrchestrationRecoveryCoordinator', () => {
       inFlight: null,
     })
   })
+})
 
+describe('createOrchestrationRecoveryCoordinator snapshot recovery modes', () => {
   it('marks replay failure as unbootstrapped so snapshot fallback is recovery-only', () => {
     const coordinator = createBootstrappedCoordinator()
     coordinator.beginReplayRecovery('sequence-gap')
@@ -87,6 +99,23 @@ describe('createOrchestrationRecoveryCoordinator', () => {
     expect(coordinator.getState().inFlight).toEqual({
       kind: 'snapshot',
       reason: 'replay-failed',
+    })
+  })
+
+  it('supports explicit foreground snapshot reconciliation after bootstrap', () => {
+    const coordinator = createBootstrappedCoordinator()
+
+    expect(coordinator.beginSnapshotRecovery('foreground-reconcile')).toBe(true)
+    expect(coordinator.getState().inFlight).toEqual({
+      kind: 'snapshot',
+      reason: 'foreground-reconcile',
+    })
+    expect(coordinator.completeSnapshotRecovery(6)).toBe(false)
+    expect(coordinator.getState()).toMatchObject({
+      latestSequence: 6,
+      highestObservedSequence: 6,
+      bootstrapped: true,
+      inFlight: null,
     })
   })
 })

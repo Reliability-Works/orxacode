@@ -45,7 +45,8 @@ export interface ServerConfigShape extends ServerDerivedPaths {
   readonly devUrl: URL | undefined
   readonly noBrowser: boolean
   readonly authToken: string | undefined
-  readonly remoteAccessToken: string | undefined
+  readonly remoteAccessBootstrapToken: string | undefined
+  readonly remoteAccessEnvironmentId: string | undefined
   readonly autoBootstrapProjectFromCwd: boolean
   readonly logWebSocketEvents: boolean
 }
@@ -127,7 +128,8 @@ export class ServerConfig extends ServiceMap.Service<ServerConfig, ServerConfigS
           port: 0,
           host: undefined,
           authToken: undefined,
-          remoteAccessToken: undefined,
+          remoteAccessBootstrapToken: undefined,
+          remoteAccessEnvironmentId: undefined,
           staticDir: undefined,
           devUrl,
           noBrowser: false,

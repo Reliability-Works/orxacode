@@ -82,7 +82,7 @@ export function DashboardView() {
   const onRefresh = () => void invalidateDashboard(queryClient)
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
+    <SidebarInset className="h-full min-h-0 overflow-hidden bg-background text-foreground">
       <div className="flex min-h-0 flex-1 flex-col">
         <DashboardHeader collapsed={collapsed} onRefresh={onRefresh} refreshing={refreshing} />
         <div className="min-h-0 flex-1 overflow-y-auto">

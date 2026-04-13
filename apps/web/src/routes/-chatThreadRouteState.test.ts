@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { deriveChatThreadRouteState } from './chatThreadRouteState'
+import { deriveChatThreadRouteState } from './-chatThreadRouteState'
 
 describe('deriveChatThreadRouteState', () => {
   it('derives route existence for an existing thread', () => {

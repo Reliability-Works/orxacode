@@ -58,6 +58,7 @@ export interface SidebarBodyProps {
   desktopUpdateButtonAction: 'download' | 'install' | 'none'
   desktopUpdateButtonDisabled: boolean
   onDesktopUpdateButtonClick: (anchor?: HTMLElement | null) => void
+  bootstrapComplete: boolean
   projects: Project[]
   renderedPinnedThreads: RenderedPinnedThreadData[]
   renderedProjects: RenderedProjectData[]

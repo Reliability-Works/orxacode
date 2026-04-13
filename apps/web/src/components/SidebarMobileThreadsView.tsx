@@ -1,6 +1,7 @@
 import { ArchiveIcon, ChevronRightIcon, PlusIcon, SquarePenIcon } from 'lucide-react'
 import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from '@orxa-code/contracts'
 import type { ThreadId } from '@orxa-code/contracts'
+import { useEffect } from 'react'
 
 import { formatRelativeTimeLabel } from '../timestampFormat'
 import { cn } from '~/lib/utils'
@@ -10,9 +11,11 @@ import { ProjectFavicon } from './ProjectFavicon'
 import { ProviderLogo } from './session'
 import { ProjectSortMenu } from './sidebar/SidebarHelpers'
 import type { RenderedPinnedThreadData, RenderedProjectData } from './sidebar/ProjectItem'
+import { MobileSyncDebugDock } from './MobileSyncDebugOverlay'
 import { Button } from './ui/button'
 import { ScrollArea } from './ui/scroll-area'
 import type { SidebarBodyProps } from './SidebarBody'
+import { useStore } from '../store'
 import { toastManager } from './ui/toastState'
 
 export type SidebarMobileThreadsViewProps = Omit<SidebarBodyProps, 'isOnSettings'>
@@ -350,8 +353,72 @@ function MobileProjectCard(props: {
   )
 }
 
+function useMobileThreadsDebugState(input: {
+  activeEnvironmentId: string | null
+  bootstrapComplete: boolean
+  pinnedThreads: number
+  projectCards: number
+  shouldShowBootstrapLoading: boolean
+}) {
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    console.info('[mobile-sync] mobile threads view state', {
+      activeEnvironmentId: input.activeEnvironmentId,
+      bootstrapComplete: input.bootstrapComplete,
+      mobile: new URLSearchParams(window.location.search).get('mobile') === '1',
+      pinnedThreads: input.pinnedThreads,
+      projectCards: input.projectCards,
+      revision: 'mobile-reopen-probe-1',
+      shouldShowBootstrapLoading: input.shouldShowBootstrapLoading,
+    })
+  }, [
+    input.activeEnvironmentId,
+    input.bootstrapComplete,
+    input.pinnedThreads,
+    input.projectCards,
+    input.shouldShowBootstrapLoading,
+  ])
+}
+
+function useMobileThreadsRuntimeDebugState(input: {
+  bootstrapComplete: boolean
+  pinnedThreads: number
+  projectCards: number
+  shouldShowBootstrapLoading: boolean
+}) {
+  const activeEnvironmentId = useStore(store => store.activeEnvironmentId)
+  useMobileThreadsDebugState({
+    activeEnvironmentId,
+    bootstrapComplete: input.bootstrapComplete,
+    pinnedThreads: input.pinnedThreads,
+    projectCards: input.projectCards,
+    shouldShowBootstrapLoading: input.shouldShowBootstrapLoading,
+  })
+}
+
+function MobileThreadsFooter() {
+  return (
+    <div className="border-t border-sidebar-border px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+      <MobileSyncDebugDock />
+    </div>
+  )
+}
+
 export function SidebarMobileThreadsView(props: SidebarMobileThreadsViewProps) {
   const { projectItemProps } = props.getProjectItemProps()
+  const shouldShowBootstrapLoading =
+    !props.bootstrapComplete &&
+    !props.shouldShowProjectPathEntry &&
+    props.renderedPinnedThreads.length === 0 &&
+    props.renderedProjects.length === 0
+  useMobileThreadsRuntimeDebugState({
+    bootstrapComplete: props.bootstrapComplete,
+    pinnedThreads: props.renderedPinnedThreads.length,
+    projectCards: props.renderedProjects.length,
+    shouldShowBootstrapLoading,
+  })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-sidebar text-sidebar-foreground">
@@ -386,18 +453,32 @@ export function SidebarMobileThreadsView(props: SidebarMobileThreadsViewProps) {
             routeThreadId={props.routeThreadId}
             getThreadRowProps={props.getThreadRowProps}
           />
-          <div className="space-y-4">
-            {props.renderedProjects.map(renderedProject => (
-              <MobileProjectCard
-                key={renderedProject.project.id}
-                renderedProject={renderedProject}
-                projectItemProps={projectItemProps}
-                routeThreadId={props.routeThreadId}
-              />
-            ))}
-          </div>
+          {shouldShowBootstrapLoading ? (
+            <div className="flex min-h-[40vh] items-center justify-center px-6 py-10 text-center">
+              <div>
+                <div className="text-sm font-medium text-sidebar-foreground">
+                  Syncing your workspaces…
+                </div>
+                <div className="mt-2 text-sm text-muted-foreground/70">
+                  Pulling projects and sessions from your Mac.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {props.renderedProjects.map(renderedProject => (
+                <MobileProjectCard
+                  key={renderedProject.project.id}
+                  renderedProject={renderedProject}
+                  projectItemProps={projectItemProps}
+                  routeThreadId={props.routeThreadId}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </ScrollArea>
+      <MobileThreadsFooter />
     </div>
   )
 }

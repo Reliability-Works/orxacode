@@ -51,6 +51,7 @@ function buildSidebarBodyProps(
     desktopUpdateButtonAction: w.desktopUpdate.desktopUpdateButtonAction,
     desktopUpdateButtonDisabled: w.desktopUpdate.desktopUpdateButtonDisabled,
     onDesktopUpdateButtonClick: w.desktopUpdate.handleDesktopUpdateButtonClick,
+    bootstrapComplete: s.bootstrapComplete,
     projects: s.projects,
     renderedPinnedThreads: w.renderedPinnedThreads,
     renderedProjects: w.renderedProjects,

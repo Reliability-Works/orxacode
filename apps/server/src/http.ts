@@ -14,6 +14,21 @@ import { ProjectFaviconResolver } from './project/Services/ProjectFaviconResolve
 const PROJECT_FAVICON_CACHE_CONTROL = 'public, max-age=3600'
 const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6b728080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-fallback="project-favicon"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>`
 
+function corsHeaders(request: HttpServerRequest.HttpServerRequest) {
+  const origin = typeof request.headers.origin === 'string' ? request.headers.origin : null
+  return {
+    Vary: 'Origin',
+    ...(origin
+      ? {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Allow-Headers': 'authorization, content-type',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        }
+      : {}),
+  } as const
+}
+
 const requireRequestUrl = Effect.fn('http.requireRequestUrl')(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest
   const url = HttpServerRequest.toURL(request)
@@ -128,6 +143,42 @@ export const projectFaviconRouteLayer = HttpRouter.add(
       Effect.catch(() =>
         Effect.succeed(HttpServerResponse.text('Internal Server Error', { status: 500 }))
       )
+    )
+  })
+)
+
+export const serverEnvironmentRouteLayer = HttpRouter.add(
+  'OPTIONS',
+  '/.well-known/orxa/environment',
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    return HttpServerResponse.text('', {
+      status: 204,
+      headers: corsHeaders(request),
+    })
+  })
+)
+
+export const serverEnvironmentGetRouteLayer = HttpRouter.add(
+  'GET',
+  '/.well-known/orxa/environment',
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest
+    const config = yield* ServerConfig
+    const environmentId = config.remoteAccessEnvironmentId ?? 'local-desktop'
+    return HttpServerResponse.jsonUnsafe(
+      {
+        environmentId,
+        label: 'Orxa Code (Desktop)',
+        kind: 'local-desktop',
+      },
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders(request),
+          'Cache-Control': 'no-store',
+        },
+      }
     )
   })
 )

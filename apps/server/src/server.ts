@@ -5,7 +5,27 @@ import * as NodeServices from '@effect/platform-node/NodeServices'
 import * as NodeHttp from 'node:http'
 
 import { ServerConfig } from './config'
-import { attachmentsRouteLayer, projectFaviconRouteLayer, staticAndDevRouteLayer } from './http'
+import {
+  attachmentsRouteLayer,
+  projectFaviconRouteLayer,
+  serverEnvironmentGetRouteLayer,
+  serverEnvironmentRouteLayer,
+  staticAndDevRouteLayer,
+} from './http'
+import {
+  mobileSyncBootstrapRouteLayer,
+  mobileSyncLogRouteLayer,
+  mobileSyncPreflightRouteLayer,
+} from './mobileSync/http'
+import {
+  authBearerBootstrapRouteLayer,
+  authBootstrapRouteLayer,
+  authClientsRevokeOthersRouteLayer,
+  authClientsRevokeRouteLayer,
+  authClientsRouteLayer,
+  authPreflightRouteLayer,
+  authSessionRouteLayer,
+} from './auth/http'
 import { fixPath } from './os-jank'
 import { websocketRpcRouteLayer } from './ws'
 import { OpenLive } from './open'
@@ -51,6 +71,7 @@ import { WorkspaceEntriesLive } from './workspace/Layers/WorkspaceEntries'
 import { WorkspaceFileSystemLive } from './workspace/Layers/WorkspaceFileSystem'
 import { WorkspacePathsLive } from './workspace/Layers/WorkspacePaths'
 import { layer as NodePtyAdapterLive } from './terminal/Layers/NodePTY'
+import { ServerAuthLive } from './auth/service'
 
 const PtyAdapterLive = NodePtyAdapterLive
 
@@ -175,6 +196,7 @@ const RuntimeServicesLive = Layer.empty.pipe(
   Layer.provideMerge(ProviderRegistryLive),
   Layer.provideMerge(ProviderDiscoveryServiceLive),
   Layer.provideMerge(ServerSettingsLive),
+  Layer.provideMerge(ServerAuthLive),
   Layer.provideMerge(WorkspaceLayerLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
 
@@ -185,8 +207,20 @@ const RuntimeServicesLive = Layer.empty.pipe(
 )
 
 export const makeRoutesLayer = Layer.mergeAll(
+  authPreflightRouteLayer,
+  authSessionRouteLayer,
+  authBootstrapRouteLayer,
+  authBearerBootstrapRouteLayer,
+  authClientsRouteLayer,
+  authClientsRevokeRouteLayer,
+  authClientsRevokeOthersRouteLayer,
   attachmentsRouteLayer,
   projectFaviconRouteLayer,
+  serverEnvironmentRouteLayer,
+  serverEnvironmentGetRouteLayer,
+  mobileSyncPreflightRouteLayer,
+  mobileSyncBootstrapRouteLayer,
+  mobileSyncLogRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer
 )

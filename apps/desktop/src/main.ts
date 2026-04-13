@@ -6,6 +6,11 @@ import { app, BrowserWindow, dialog, protocol } from 'electron'
 import * as Effect from 'effect/Effect'
 import { NetService } from '@orxa-code/shared/Net'
 import {
+  configureAppIdentity as configureAppIdentityImpl,
+  resolveResourcePath,
+  resolveUserDataPath,
+} from './main.identity'
+import {
   createDesktopLoggingState,
   formatErrorMessage,
   initializePackagedLogging as initializePackagedLoggingImpl,
@@ -17,18 +22,16 @@ import {
   configureApplicationMenu as configureApplicationMenuImpl,
   type MenuHost,
 } from './main.menu'
+import { resolveDesktopRemoteAccessSnapshot } from './desktopRemoteAccessSnapshot'
+import { createLocalEnvironmentBootstrap } from './localEnvironmentBootstrap'
 import { registerIpcHandlers as registerIpcHandlersImpl, type IpcHost } from './main.ipc'
 import { IPC_CHANNELS, MENU_ACTION_CHANNEL, UPDATE_STATE_CHANNEL } from './main.ipc.config'
 import { createBackendController, type BackendHost } from './main.backend'
 import { runSmokeTest } from './main.smoke'
 import { createMainWindow, type CreateWindowHost } from './main.window'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
-import { resolveRemoteAccessSnapshot } from './remoteAccess'
 import { createDesktopRemoteAccessPreferencesStore } from './remoteAccessPreferences'
-import {
-  applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl,
-  resolveRemoteAccessToken,
-} from './remoteAccessRuntime'
+import { applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl } from './remoteAccessRuntime'
 import {
   createDesktopUpdatePreferencesStore,
   resolveDesktopUpdateFeedChannel,
@@ -58,14 +61,11 @@ const AUTO_UPDATE_STARTUP_DELAY_MS = 15_000
 const AUTO_UPDATE_POLL_INTERVAL_MS = 4 * 60 * 60 * 1000
 const AUTO_UPDATE_DISABLED_BY_ENV = process.env.ORXA_CODE_DISABLE_AUTO_UPDATE === '1'
 
-type LinuxDesktopNamedApp = Electron.App & {
-  setDesktopName?: (desktopName: string) => void
-}
 let mainWindow: BrowserWindow | null = null
 let backendPort = 0
 let backendAuthToken = ''
-let remoteAccessToken: string | undefined
-let backendWsUrl = ''
+let remoteAccessBootstrapToken: string | undefined
+let remoteAccessEnvironmentId: string | undefined
 let isQuitting = false
 let desktopProtocolRegistered = false
 let aboutCommitHashCache: string | null | undefined
@@ -104,7 +104,6 @@ const updaterController = createUpdaterController(
 function writeDesktopLogHeader(message: string): void {
   writeDesktopLogHeaderImpl(loggingState, APP_RUN_ID, message)
 }
-
 initializePackagedLoggingImpl(loggingState, {
   logDir: LOG_DIR,
   logFileMaxBytes: LOG_FILE_MAX_BYTES,
@@ -115,7 +114,6 @@ initializePackagedLoggingImpl(loggingState, {
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('class', LINUX_WM_CLASS)
 }
-
 protocol.registerSchemesAsPrivileged([
   {
     scheme: DESKTOP_SCHEME,
@@ -134,7 +132,6 @@ function resolveAppRoot(): string {
   }
   return app.getAppPath()
 }
-
 function normalizeCommitHash(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null
@@ -160,7 +157,6 @@ function resolveEmbeddedCommitHash(): string | null {
     return null
   }
 }
-
 function resolveAboutCommitHash(): string | null {
   if (aboutCommitHashCache !== undefined) {
     return aboutCommitHashCache
@@ -179,21 +175,17 @@ function resolveAboutCommitHash(): string | null {
   }
 
   aboutCommitHashCache = resolveEmbeddedCommitHash()
-
   return aboutCommitHashCache
 }
-
 function resolveBackendEntry(): string {
   return Path.join(resolveAppRoot(), 'apps/server/dist/bin.mjs')
 }
-
 function resolveBackendCwd(): string {
   if (!app.isPackaged) {
     return resolveAppRoot()
   }
   return OS.homedir()
 }
-
 function resolveDesktopStaticDir(): string | null {
   const appRoot = resolveAppRoot()
   const candidates = [
@@ -206,10 +198,8 @@ function resolveDesktopStaticDir(): string | null {
       return candidate
     }
   }
-
   return null
 }
-
 function resolveDesktopStaticPath(staticRoot: string, requestUrl: string): string {
   const url = new URL(requestUrl)
   const rawPath = decodeURIComponent(url.pathname)
@@ -232,7 +222,6 @@ function resolveDesktopStaticPath(staticRoot: string, requestUrl: string): strin
 
   return Path.join(staticRoot, 'index.html')
 }
-
 function isStaticAssetRequest(requestUrl: string): boolean {
   try {
     const url = new URL(requestUrl)
@@ -255,7 +244,6 @@ function handleFatalStartupError(stage: string, error: unknown): void {
   loggingState.restoreStdIoCapture?.()
   app.quit()
 }
-
 function registerDesktopProtocol(): void {
   if (isDevelopment || desktopProtocolRegistered) return
 
@@ -293,7 +281,6 @@ function registerDesktopProtocol(): void {
 
   desktopProtocolRegistered = true
 }
-
 const menuHost: MenuHost = {
   menuActionChannel: MENU_ACTION_CHANNEL,
   disabledByEnv: AUTO_UPDATE_DISABLED_BY_ENV,
@@ -305,7 +292,6 @@ const menuHost: MenuHost = {
   createWindow: () => createWindow(),
   checkForUpdatesFromMenu: () => checkForUpdatesFromMenu(),
 }
-
 async function checkForUpdatesFromMenu(): Promise<void> {
   await updaterController.checkForUpdates('menu')
   const state = updaterController.getState()
@@ -326,86 +312,23 @@ async function checkForUpdatesFromMenu(): Promise<void> {
     })
   }
 }
-
 function configureApplicationMenu(): void {
   configureApplicationMenuImpl(menuHost)
 }
-
-function resolveResourcePath(fileName: string): string | null {
-  const candidates = [
-    Path.join(ROOT_DIR, 'build', fileName),
-    Path.join(__dirname, '../resources', fileName),
-    Path.join(__dirname, '../prod-resources', fileName),
-    Path.join(process.resourcesPath, 'resources', fileName),
-    Path.join(process.resourcesPath, fileName),
-  ]
-
-  for (const candidate of candidates) {
-    if (FS.existsSync(candidate)) {
-      return candidate
-    }
-  }
-
-  return null
-}
-
 function resolveIconPath(ext: 'ico' | 'icns' | 'png'): string | null {
-  return resolveResourcePath(`icon.${ext}`)
+  return resolveResourcePath(ROOT_DIR, `icon.${ext}`)
 }
-
-/**
- * Resolve the Electron userData directory path.
- *
- * Electron derives the default userData path from `productName` in
- * package.json, which currently produces directories with spaces and
- * parentheses (e.g. `~/.config/Orxa Code (Alpha)` on Linux). This is
- * unfriendly for shell usage and violates Linux naming conventions.
- *
- * We override it to a clean lowercase name (`orxa-code`). If the legacy
- * directory already exists we keep using it so existing users don't
- * lose their Chromium profile data (localStorage, cookies, sessions).
- */
-function resolveUserDataPath(): string {
-  const appDataBase =
-    process.platform === 'win32'
-      ? process.env.APPDATA || Path.join(OS.homedir(), 'AppData', 'Roaming')
-      : process.platform === 'darwin'
-        ? Path.join(OS.homedir(), 'Library', 'Application Support')
-        : process.env.XDG_CONFIG_HOME || Path.join(OS.homedir(), '.config')
-
-  const legacyPath = Path.join(appDataBase, LEGACY_USER_DATA_DIR_NAME)
-  if (FS.existsSync(legacyPath)) {
-    return legacyPath
-  }
-
-  return Path.join(appDataBase, USER_DATA_DIR_NAME)
-}
-
 function configureAppIdentity(): void {
-  app.setName(APP_DISPLAY_NAME)
-  const commitHash = resolveAboutCommitHash()
-  app.setAboutPanelOptions({
-    applicationName: APP_DISPLAY_NAME,
-    applicationVersion: app.getVersion(),
-    version: commitHash ?? 'unknown',
+  configureAppIdentityImpl({
+    app,
+    appDisplayName: APP_DISPLAY_NAME,
+    appUserModelId: APP_USER_MODEL_ID,
+    commitHash: resolveAboutCommitHash(),
+    legacyUserDataDirName: LEGACY_USER_DATA_DIR_NAME,
+    linuxDesktopEntryName: LINUX_DESKTOP_ENTRY_NAME,
+    resolveIconPath,
   })
-
-  if (process.platform === 'win32') {
-    app.setAppUserModelId(APP_USER_MODEL_ID)
-  }
-
-  if (process.platform === 'linux') {
-    ;(app as LinuxDesktopNamedApp).setDesktopName?.(LINUX_DESKTOP_ENTRY_NAME)
-  }
-
-  if (process.platform === 'darwin' && app.dock) {
-    const iconPath = resolveIconPath('png')
-    if (iconPath) {
-      app.dock.setIcon(iconPath)
-    }
-  }
 }
-
 const backendHost: BackendHost = {
   config: { baseDir: BASE_DIR, appRunId: APP_RUN_ID },
   logging: loggingState,
@@ -414,7 +337,8 @@ const backendHost: BackendHost = {
   resolveBackendCwd: () => resolveBackendCwd(),
   getBackendPort: () => backendPort,
   getBackendAuthToken: () => backendAuthToken,
-  getRemoteAccessToken: () => remoteAccessToken,
+  getRemoteAccessBootstrapToken: () => remoteAccessBootstrapToken,
+  getRemoteAccessEnvironmentId: () => remoteAccessEnvironmentId,
 }
 const backendController = createBackendController(backendHost)
 const startBackend = (): void => backendController.start()
@@ -428,20 +352,26 @@ const remoteAccessRuntimeHost = {
     await stopBackendAndWaitForExit()
     if (!isQuitting) startBackend()
   },
-  setRemoteAccessToken: (token: string | undefined) => {
-    remoteAccessToken = token
-  },
 }
 const ipcHost: IpcHost = {
   channels: IPC_CHANNELS,
-  backendWsUrl: () => backendWsUrl,
+  getLocalEnvironmentBootstrap: async () => {
+    const remoteAccessState = remoteAccessPreferencesStore.get()
+    const environmentId = remoteAccessEnvironmentId ?? remoteAccessState.environmentId ?? 'local-desktop'
+    return createLocalEnvironmentBootstrap({
+      backendAuthToken,
+      backendPort,
+      environmentId,
+    })
+  },
   setRemoteAccessPreferences: input =>
     applyRemoteAccessPreferencesImpl(remoteAccessRuntimeHost, input),
   getRemoteAccessSnapshot: () =>
-    resolveRemoteAccessSnapshot({
-      enabled: remoteAccessPreferencesStore.get().enabled,
-      port: backendPort,
-      token: remoteAccessToken ?? '',
+    resolveDesktopRemoteAccessSnapshot({
+      backendPort,
+      remoteAccessBootstrapToken,
+      remoteAccessEnvironmentId,
+      store: remoteAccessPreferencesStore,
     }),
   mainWindow: () => mainWindow,
   isQuitting: () => isQuitting,
@@ -487,7 +417,13 @@ function quitFromSignal(signal: 'SIGINT' | 'SIGTERM'): void {
   loggingState.restoreStdIoCapture?.()
   app.quit()
 }
-app.setPath('userData', resolveUserDataPath())
+app.setPath(
+  'userData',
+  resolveUserDataPath({
+    legacyUserDataDirName: LEGACY_USER_DATA_DIR_NAME,
+    userDataDirName: USER_DATA_DIR_NAME,
+  })
+)
 configureAppIdentity()
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap start')
@@ -498,9 +434,12 @@ async function bootstrap(): Promise<void> {
   )
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`)
   backendAuthToken = Crypto.randomBytes(24).toString('hex')
-  remoteAccessToken = resolveRemoteAccessToken(remoteAccessPreferencesStore.get().enabled)
+  const remoteAccessState = remoteAccessPreferencesStore.get()
+  remoteAccessEnvironmentId = remoteAccessState.environmentId
+  remoteAccessBootstrapToken = remoteAccessState.enabled
+    ? Crypto.randomBytes(24).toString('hex')
+    : undefined
   const baseUrl = `ws://127.0.0.1:${backendPort}`
-  backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`)
   registerIpcHandlers()
   writeDesktopLogHeader('bootstrap ipc handlers registered')

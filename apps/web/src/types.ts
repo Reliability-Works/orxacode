@@ -82,6 +82,7 @@ export interface TurnDiffSummary {
 
 export interface Project {
   id: ProjectId
+  environmentId?: string
   name: string
   cwd: string
   defaultModelSelection: ModelSelection | null
@@ -92,6 +93,7 @@ export interface Project {
 
 export interface Thread {
   id: ThreadId
+  environmentId?: string
   codexThreadId: string | null
   projectId: ProjectId
   title: string

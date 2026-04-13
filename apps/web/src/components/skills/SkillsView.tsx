@@ -228,7 +228,7 @@ function ProviderDiscoveryView({ mode }: { mode: DiscoveryViewMode }): ReactNode
   const copy = DISCOVERY_COPY[mode]
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
+    <SidebarInset className="h-full min-h-0 overflow-hidden bg-background text-foreground">
       <div className="flex min-h-0 flex-1 flex-col">
         <SkillsHeader
           collapsed={state === 'collapsed'}
