@@ -204,6 +204,7 @@ const autoBootstrapWelcome = Effect.gen(function* () {
           runtimeMode: 'full-access',
           branch: null,
           worktreePath: null,
+          gitRoot: null,
           createdAt,
         })
         bootstrapProjectId = nextProjectId

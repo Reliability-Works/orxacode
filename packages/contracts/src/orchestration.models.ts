@@ -321,6 +321,7 @@ const threadIdentityFields = {
   modelSelection: ModelSelection,
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  gitRoot: Schema.NullOr(TrimmedNonEmptyString),
 } as const
 
 const threadInteractionModeField = ProviderInteractionMode.pipe(

@@ -42,6 +42,7 @@ const createRealCodexThread = (
   runtimeMode,
   branch: null,
   worktreePath: workspaceDir,
+  gitRoot: null,
   createdAt: nowIso(),
 })
 

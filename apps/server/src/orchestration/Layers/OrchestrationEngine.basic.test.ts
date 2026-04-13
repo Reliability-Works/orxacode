@@ -71,6 +71,7 @@ it('bootstraps the in-memory read model from persisted projections', async () =>
         runtimeMode: 'full-access' as const,
         branch: null,
         worktreePath: null,
+        gitRoot: null,
         handoff: null,
         parentLink: null,
         latestTurn: null,

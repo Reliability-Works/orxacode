@@ -194,6 +194,7 @@ export function createThreadCommand(input: {
     runtimeMode: input.runtimeMode ?? 'approval-required',
     branch: null,
     worktreePath: null,
+    gitRoot: null,
     parentLink: input.parentLink ?? null,
     createdAt: input.createdAt,
   }

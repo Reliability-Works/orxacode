@@ -42,6 +42,7 @@ export interface ThreadCreatedCoreFields {
   readonly interactionMode: ThreadCreatedEvent['payload']['interactionMode']
   readonly branch: ThreadCreatedEvent['payload']['branch']
   readonly worktreePath: ThreadCreatedEvent['payload']['worktreePath']
+  readonly gitRoot: ThreadCreatedEvent['payload']['gitRoot']
   readonly handoff: OrchestrationThread['handoff']
   readonly parentLink: OrchestrationThread['parentLink']
   readonly createdAt: ThreadCreatedEvent['payload']['createdAt']
@@ -60,6 +61,7 @@ export function threadCreatedToCoreFields(event: ThreadCreatedEvent): ThreadCrea
     interactionMode: event.payload.interactionMode,
     branch: event.payload.branch,
     worktreePath: event.payload.worktreePath,
+    gitRoot: event.payload.gitRoot,
     handoff: event.payload.handoff ?? null,
     parentLink: event.payload.parentLink ?? null,
     createdAt: event.payload.createdAt,
@@ -92,5 +94,6 @@ export function threadMetaUpdatedToPatch(event: ThreadMetaUpdatedEvent) {
     ...(event.payload.worktreePath !== undefined
       ? { worktreePath: event.payload.worktreePath }
       : {}),
+    ...(event.payload.gitRoot !== undefined ? { gitRoot: event.payload.gitRoot } : {}),
   }
 }

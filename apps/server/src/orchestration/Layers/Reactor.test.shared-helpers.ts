@@ -74,6 +74,7 @@ export async function dispatchProjectAndThreadCreate(
       runtimeMode: input.runtimeMode,
       branch: null,
       worktreePath: input.worktreePath,
+      gitRoot: null,
       createdAt: input.createdAt,
     })
   )

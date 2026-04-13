@@ -126,8 +126,7 @@ export function toLegacyProvider(providerName: string | null): ProviderKind {
 function resolveWsHttpOrigin(): string {
   if (typeof window === 'undefined') return ''
   const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined
-  const wsCandidate =
-    typeof envWsUrl === 'string' && envWsUrl.length > 0 ? envWsUrl : null
+  const wsCandidate = typeof envWsUrl === 'string' && envWsUrl.length > 0 ? envWsUrl : null
   if (!wsCandidate) {
     return getActiveEnvironmentHttpOrigin() ?? window.location.origin
   }
@@ -237,6 +236,7 @@ export function mapThread(thread: OrchestrationThread, environmentId?: string): 
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    gitRoot: thread.gitRoot,
     handoff: thread.handoff,
     parentLink: thread.parentLink,
     turnDiffSummaries: thread.checkpoints.map(mapTurnDiffSummary),
@@ -244,16 +244,19 @@ export function mapThread(thread: OrchestrationThread, environmentId?: string): 
   }
 }
 
-export function mapProject(project: {
-  id: string
-  title: string
-  workspaceRoot: string
-  defaultModelSelection?: { provider: 'codex' | 'claudeAgent' | 'opencode'; model: string } | null
-  scripts: ReadonlyArray<Project['scripts'][number]>
-  createdAt: string
-  updatedAt: string
-  deletedAt: string | null
-}, environmentId?: string): Project {
+export function mapProject(
+  project: {
+    id: string
+    title: string
+    workspaceRoot: string
+    defaultModelSelection?: { provider: 'codex' | 'claudeAgent' | 'opencode'; model: string } | null
+    scripts: ReadonlyArray<Project['scripts'][number]>
+    createdAt: string
+    updatedAt: string
+    deletedAt: string | null
+  },
+  environmentId?: string
+): Project {
   return {
     id: ProjectId.makeUnsafe(project.id),
     ...(environmentId ? { environmentId } : {}),

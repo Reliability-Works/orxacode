@@ -13,6 +13,7 @@ import {
   resolveEffectiveEnvMode,
 } from './BranchToolbar.logic'
 import { BranchToolbarBranchSelector } from './BranchToolbarBranchSelector'
+import { BranchToolbarRepoPicker } from './BranchToolbarRepoPicker'
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from './ui/select'
 
 const envModeItems = [
@@ -76,7 +77,7 @@ function resolveBranchToolbarState(input: {
     activeThreadId,
     activeThreadBranch,
     activeWorktreePath,
-    branchCwd: activeWorktreePath ?? activeProject?.cwd ?? null,
+    branchCwd: activeWorktreePath ?? serverThread?.gitRoot ?? activeProject?.cwd ?? null,
     hasServerThread,
     effectiveEnvMode: resolveEffectiveBranchToolbarEnvMode({
       activeWorktreePath,
@@ -294,17 +295,25 @@ export default function BranchToolbar({
         onEnvModeChange={onEnvModeChange}
       />
 
-      <BranchToolbarBranchSelector
-        activeProjectCwd={activeProject.cwd}
-        activeThreadBranch={activeThreadBranch}
-        activeWorktreePath={activeWorktreePath}
-        branchCwd={branchCwd}
-        effectiveEnvMode={effectiveEnvMode}
-        envLocked={envLocked}
-        onSetThreadBranch={setThreadBranch}
-        {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
-        {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
-      />
+      <div className="flex items-center gap-1">
+        <BranchToolbarRepoPicker
+          threadId={threadId}
+          activeProjectCwd={activeProject.cwd}
+          activeGitRoot={serverThread?.gitRoot ?? null}
+          hasServerThread={hasServerThread}
+        />
+        <BranchToolbarBranchSelector
+          activeProjectCwd={activeProject.cwd}
+          activeThreadBranch={activeThreadBranch}
+          activeWorktreePath={activeWorktreePath}
+          branchCwd={branchCwd}
+          effectiveEnvMode={effectiveEnvMode}
+          envLocked={envLocked}
+          onSetThreadBranch={setThreadBranch}
+          {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
+          {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
+        />
+      </div>
     </div>
   )
 }

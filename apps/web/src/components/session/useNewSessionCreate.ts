@@ -1,11 +1,13 @@
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   type ModelSelection,
   type ProviderKind,
   type ThreadId,
   DEFAULT_RUNTIME_MODE,
 } from '@orxa-code/contracts'
+import { gitDiscoverReposQueryOptions } from '~/lib/gitReactQuery'
 import { newCommandId, newThreadId } from '~/lib/utils'
 import { ensureNativeApi } from '~/nativeApi'
 import { useStore } from '~/store'
@@ -48,14 +50,28 @@ function getDefaultProjectId(): ReturnType<typeof useStore.getState>['projects']
   return projects[0]?.id ?? null
 }
 
+function resolveDefaultGitRoot(
+  queryClient: ReturnType<typeof useQueryClient>,
+  projectCwd: string
+): string | null {
+  const cached = queryClient.getQueryData(gitDiscoverReposQueryOptions(projectCwd).queryKey)
+  if (!cached || cached.repos.length < 2) return null
+  return cached.repos[0]?.path ?? null
+}
+
 export function useNewSessionCreate(): UseNewSessionCreateReturn {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   const create = useCallback(
     async (input: CreateSessionInput): Promise<ThreadId> => {
       const api = ensureNativeApi()
       const projectId = input.projectId ?? getDefaultProjectId()
       if (!projectId) throw new Error('No project available to create a session in.')
+
+      const { projects } = useStore.getState()
+      const project = projects.find(p => p.id === projectId)
+      const gitRoot = project ? resolveDefaultGitRoot(queryClient, project.cwd) : null
 
       const threadId = newThreadId()
       const modelSelection = buildModelSelection(input)
@@ -86,6 +102,7 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
           interactionMode: 'default',
           branch: null,
           worktreePath: null,
+          gitRoot,
           createdAt,
         })
       } catch (error) {
@@ -99,7 +116,7 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
       }
       return threadId
     },
-    [navigate]
+    [navigate, queryClient]
   )
 
   return { create }

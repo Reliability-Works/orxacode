@@ -25,7 +25,9 @@ function truncateText(value: string, limit = HANDOFF_MESSAGE_CHAR_LIMIT): string
   return normalized.length <= limit ? normalized : `${normalized.slice(0, limit - 3)}...`
 }
 
-export function getHandoffTargetProviders(currentProvider: ProviderKind): ReadonlyArray<ProviderKind> {
+export function getHandoffTargetProviders(
+  currentProvider: ProviderKind
+): ReadonlyArray<ProviderKind> {
   return ALL_HANDOFF_PROVIDERS.filter(provider => provider !== currentProvider)
 }
 
@@ -142,6 +144,7 @@ export async function startThreadHandoff(input: {
     interactionMode: 'default',
     branch: input.thread.branch,
     worktreePath: input.thread.worktreePath,
+    gitRoot: input.thread.gitRoot,
     handoff: {
       sourceThreadId: input.thread.id,
       sourceProvider: input.thread.modelSelection.provider,

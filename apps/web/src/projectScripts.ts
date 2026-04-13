@@ -60,6 +60,7 @@ interface ProjectScriptRuntimeEnvInput {
     cwd: string
   }
   worktreePath?: string | null
+  gitRoot?: string | null
   extraEnv?: Record<string, string>
 }
 
@@ -68,8 +69,9 @@ export function projectScriptCwd(input: {
     cwd: string
   }
   worktreePath?: string | null
+  gitRoot?: string | null
 }): string {
-  return input.worktreePath ?? input.project.cwd
+  return input.worktreePath ?? input.gitRoot ?? input.project.cwd
 }
 
 export function projectScriptRuntimeEnv(
@@ -80,6 +82,9 @@ export function projectScriptRuntimeEnv(
   }
   if (input.worktreePath) {
     env.ORXA_WORKTREE_PATH = input.worktreePath
+  }
+  if (input.gitRoot) {
+    env.ORXA_GIT_ROOT = input.gitRoot
   }
   if (input.extraEnv) {
     return { ...env, ...input.extraEnv }

@@ -64,6 +64,7 @@ export async function createProjectScriptsReadModel(now: string) {
         runtimeMode: 'approval-required',
         branch: null,
         worktreePath: null,
+        gitRoot: null,
         createdAt: now,
         updatedAt: now,
       },

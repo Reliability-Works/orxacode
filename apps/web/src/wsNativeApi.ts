@@ -68,9 +68,7 @@ function createServerApi(rpcClient: WsRpcClient): NativeApi['server'] {
   }
 }
 
-function createOrchestrationApi(
-  rpcClient: WsRpcClient
-): NativeApi['orchestration'] {
+function createOrchestrationApi(rpcClient: WsRpcClient): NativeApi['orchestration'] {
   return {
     getSnapshot: rpcClient.orchestration.getSnapshot,
     dispatchCommand: rpcClient.orchestration.dispatchCommand,
@@ -113,6 +111,7 @@ export function createWsNativeApiForRpcClient(rpcClient: WsRpcClient): NativeApi
       init: rpcClient.git.init,
       resolvePullRequest: rpcClient.git.resolvePullRequest,
       preparePullRequestThread: rpcClient.git.preparePullRequestThread,
+      discoverRepos: rpcClient.git.discoverRepos,
     },
     contextMenu: createContextMenuApi(),
     server: createServerApi(rpcClient),

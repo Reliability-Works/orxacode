@@ -66,6 +66,7 @@ const createSubagentChildThread = async (
       interactionMode: 'default',
       branch: null,
       worktreePath: null,
+      gitRoot: null,
       parentLink: {
         parentThreadId: ThreadId.makeUnsafe('thread-1'),
         relationKind: 'subagent',
@@ -121,6 +122,7 @@ const createOpencodeSubagentChildThread = async (
       interactionMode: 'default',
       branch: null,
       worktreePath: null,
+      gitRoot: null,
       parentLink: {
         parentThreadId: ThreadId.makeUnsafe('thread-1'),
         relationKind: 'subagent',
@@ -175,6 +177,7 @@ const createClaudeSubagentChildThread = async (
       interactionMode: 'default',
       branch: null,
       worktreePath: null,
+      gitRoot: null,
       parentLink: {
         parentThreadId: ThreadId.makeUnsafe('thread-1'),
         relationKind: 'subagent',

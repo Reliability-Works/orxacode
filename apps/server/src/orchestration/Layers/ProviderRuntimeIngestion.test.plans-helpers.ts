@@ -40,6 +40,7 @@ export async function createPlanSourceThread(
       runtimeMode: 'approval-required',
       branch: null,
       worktreePath: null,
+      gitRoot: null,
       createdAt,
     })
   )
@@ -80,6 +81,7 @@ export async function createPlanTargetThread(
       runtimeMode: 'approval-required',
       branch: null,
       worktreePath: null,
+      gitRoot: null,
       createdAt,
     })
   )

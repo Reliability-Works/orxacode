@@ -67,6 +67,21 @@ export function gitPanelPullRequestsQueryOptions(cwd: string | null) {
   })
 }
 
+const GIT_DISCOVER_REPOS_STALE_TIME_MS = 60_000
+
+export function gitDiscoverReposQueryOptions(cwd: string | null) {
+  return queryOptions({
+    queryKey: ['git', 'discoverRepos', cwd] as const,
+    queryFn: () => {
+      if (!cwd) throw new Error('cwd required')
+      return getWsRpcClient().git.discoverRepos({ cwd })
+    },
+    enabled: cwd !== null,
+    staleTime: GIT_DISCOVER_REPOS_STALE_TIME_MS,
+    refetchOnWindowFocus: false,
+  })
+}
+
 const GIT_STATUS_STALE_TIME_MS = 5_000
 const GIT_STATUS_REFETCH_INTERVAL_MS = 15_000
 const GIT_BRANCHES_STALE_TIME_MS = 15_000

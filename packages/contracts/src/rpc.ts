@@ -18,6 +18,8 @@ import {
   GitCheckoutInput,
   GitCommandError,
   GitCreateBranchInput,
+  GitDiscoverReposInput,
+  GitDiscoverReposResult,
   GitCreateWorktreeInput,
   GitCreateWorktreeResult,
   GitGetDiffInput,
@@ -154,7 +156,7 @@ export const WS_METHODS = {
   gitStagePath: 'git.stagePath',
   gitUnstagePath: 'git.unstagePath',
   gitRestorePath: 'git.restorePath',
-
+  gitDiscoverRepos: 'git.discoverRepos',
   // Dashboard methods
   dashboardGetSnapshot: 'dashboard.getSnapshot',
   dashboardRefresh: 'dashboard.refresh',
@@ -228,9 +230,18 @@ export const WsProviderListAgentsRpc = Rpc.make(WS_METHODS.providerListAgents, {
   success: ProviderListAgentsResult,
 })
 
-export const WsProviderGetComposerCapabilitiesRpc = Rpc.make(WS_METHODS.providerGetComposerCapabilities, { payload: ProviderGetComposerCapabilitiesInput, success: ProviderComposerCapabilities })
-export const WsProviderListCommandsRpc = Rpc.make(WS_METHODS.providerListCommands, { payload: ProviderListCommandsInput, success: ProviderListCommandsResult })
-export const WsProviderListPluginsRpc = Rpc.make(WS_METHODS.providerListPlugins, { payload: ProviderListPluginsInput, success: ProviderListPluginsResult })
+export const WsProviderGetComposerCapabilitiesRpc = Rpc.make(
+  WS_METHODS.providerGetComposerCapabilities,
+  { payload: ProviderGetComposerCapabilitiesInput, success: ProviderComposerCapabilities }
+)
+export const WsProviderListCommandsRpc = Rpc.make(WS_METHODS.providerListCommands, {
+  payload: ProviderListCommandsInput,
+  success: ProviderListCommandsResult,
+})
+export const WsProviderListPluginsRpc = Rpc.make(WS_METHODS.providerListPlugins, {
+  payload: ProviderListPluginsInput,
+  success: ProviderListPluginsResult,
+})
 
 export const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
@@ -261,17 +272,10 @@ export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   error: OpenError,
 })
 
-export const WsGitStatusRpc = Rpc.make(WS_METHODS.gitStatus, {
-  payload: GitStatusInput,
-  success: GitStatusResult,
-  error: GitManagerServiceError,
-})
-
-export const WsGitPullRpc = Rpc.make(WS_METHODS.gitPull, {
-  payload: GitPullInput,
-  success: GitPullResult,
-  error: GitCommandError,
-})
+// prettier-ignore
+export const WsGitStatusRpc = Rpc.make(WS_METHODS.gitStatus, { payload: GitStatusInput, success: GitStatusResult, error: GitManagerServiceError })
+// prettier-ignore
+export const WsGitPullRpc = Rpc.make(WS_METHODS.gitPull, { payload: GitPullInput, success: GitPullResult, error: GitCommandError })
 
 export const WsGitRunStackedActionRpc = Rpc.make(WS_METHODS.gitRunStackedAction, {
   payload: GitRunStackedActionInput,
@@ -292,98 +296,43 @@ export const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePu
   error: GitManagerServiceError,
 })
 
-export const WsGitListBranchesRpc = Rpc.make(WS_METHODS.gitListBranches, {
-  payload: GitListBranchesInput,
-  success: GitListBranchesResult,
-  error: GitCommandError,
-})
+// prettier-ignore
+export const WsGitListBranchesRpc = Rpc.make(WS_METHODS.gitListBranches, { payload: GitListBranchesInput, success: GitListBranchesResult, error: GitCommandError })
+// prettier-ignore
+export const WsGitCreateWorktreeRpc = Rpc.make(WS_METHODS.gitCreateWorktree, { payload: GitCreateWorktreeInput, success: GitCreateWorktreeResult, error: GitCommandError })
+// prettier-ignore
+export const WsGitRemoveWorktreeRpc = Rpc.make(WS_METHODS.gitRemoveWorktree, { payload: GitRemoveWorktreeInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitCreateBranchRpc = Rpc.make(WS_METHODS.gitCreateBranch, { payload: GitCreateBranchInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitCheckoutRpc = Rpc.make(WS_METHODS.gitCheckout, { payload: GitCheckoutInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitInitRpc = Rpc.make(WS_METHODS.gitInit, { payload: GitInitInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitGetDiffRpc = Rpc.make(WS_METHODS.gitGetDiff, { payload: GitGetDiffInput, success: GitGetDiffResult, error: GitCommandError })
+// prettier-ignore
+export const WsGitGetLogRpc = Rpc.make(WS_METHODS.gitGetLog, { payload: GitGetLogInput, success: GitGetLogResult, error: GitCommandError })
+// prettier-ignore
+export const WsGitGetIssuesRpc = Rpc.make(WS_METHODS.gitGetIssues, { payload: GitGetIssuesInput, success: GitGetIssuesResult, error: GitHubCliError })
+// prettier-ignore
+export const WsGitGetPullRequestsRpc = Rpc.make(WS_METHODS.gitGetPullRequests, { payload: GitGetPullRequestsInput, success: GitGetPullRequestsResult, error: GitHubCliError })
+// prettier-ignore
+export const WsGitStageAllRpc = Rpc.make(WS_METHODS.gitStageAll, { payload: GitStageAllInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitRestoreAllUnstagedRpc = Rpc.make(WS_METHODS.gitRestoreAllUnstaged, { payload: GitRestoreAllUnstagedInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitStagePathRpc = Rpc.make(WS_METHODS.gitStagePath, { payload: GitStagePathInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitUnstagePathRpc = Rpc.make(WS_METHODS.gitUnstagePath, { payload: GitUnstagePathInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitRestorePathRpc = Rpc.make(WS_METHODS.gitRestorePath, { payload: GitRestorePathInput, error: GitCommandError })
+// prettier-ignore
+export const WsGitDiscoverReposRpc = Rpc.make(WS_METHODS.gitDiscoverRepos, { payload: GitDiscoverReposInput, success: GitDiscoverReposResult, error: GitCommandError })
 
-export const WsGitCreateWorktreeRpc = Rpc.make(WS_METHODS.gitCreateWorktree, {
-  payload: GitCreateWorktreeInput,
-  success: GitCreateWorktreeResult,
-  error: GitCommandError,
-})
-
-export const WsGitRemoveWorktreeRpc = Rpc.make(WS_METHODS.gitRemoveWorktree, {
-  payload: GitRemoveWorktreeInput,
-  error: GitCommandError,
-})
-
-export const WsGitCreateBranchRpc = Rpc.make(WS_METHODS.gitCreateBranch, {
-  payload: GitCreateBranchInput,
-  error: GitCommandError,
-})
-
-export const WsGitCheckoutRpc = Rpc.make(WS_METHODS.gitCheckout, {
-  payload: GitCheckoutInput,
-  error: GitCommandError,
-})
-
-export const WsGitInitRpc = Rpc.make(WS_METHODS.gitInit, {
-  payload: GitInitInput,
-  error: GitCommandError,
-})
-
-export const WsGitGetDiffRpc = Rpc.make(WS_METHODS.gitGetDiff, {
-  payload: GitGetDiffInput,
-  success: GitGetDiffResult,
-  error: GitCommandError,
-})
-
-export const WsGitGetLogRpc = Rpc.make(WS_METHODS.gitGetLog, {
-  payload: GitGetLogInput,
-  success: GitGetLogResult,
-  error: GitCommandError,
-})
-
-export const WsGitGetIssuesRpc = Rpc.make(WS_METHODS.gitGetIssues, {
-  payload: GitGetIssuesInput,
-  success: GitGetIssuesResult,
-  error: GitHubCliError,
-})
-
-export const WsGitGetPullRequestsRpc = Rpc.make(WS_METHODS.gitGetPullRequests, {
-  payload: GitGetPullRequestsInput,
-  success: GitGetPullRequestsResult,
-  error: GitHubCliError,
-})
-
-export const WsGitStageAllRpc = Rpc.make(WS_METHODS.gitStageAll, {
-  payload: GitStageAllInput,
-  error: GitCommandError,
-})
-
-export const WsGitRestoreAllUnstagedRpc = Rpc.make(WS_METHODS.gitRestoreAllUnstaged, {
-  payload: GitRestoreAllUnstagedInput,
-  error: GitCommandError,
-})
-
-export const WsGitStagePathRpc = Rpc.make(WS_METHODS.gitStagePath, {
-  payload: GitStagePathInput,
-  error: GitCommandError,
-})
-
-export const WsGitUnstagePathRpc = Rpc.make(WS_METHODS.gitUnstagePath, {
-  payload: GitUnstagePathInput,
-  error: GitCommandError,
-})
-
-export const WsGitRestorePathRpc = Rpc.make(WS_METHODS.gitRestorePath, {
-  payload: GitRestorePathInput,
-  error: GitCommandError,
-})
-
-export const WsDashboardGetSnapshotRpc = Rpc.make(WS_METHODS.dashboardGetSnapshot, {
-  payload: DashboardGetSnapshotInput,
-  success: DashboardGetSnapshotResult,
-  error: DashboardQueryError,
-})
-
-export const WsDashboardRefreshRpc = Rpc.make(WS_METHODS.dashboardRefresh, {
-  payload: DashboardRefreshInput,
-  success: DashboardRefreshResult,
-  error: DashboardQueryError,
-})
+// prettier-ignore
+export const WsDashboardGetSnapshotRpc = Rpc.make(WS_METHODS.dashboardGetSnapshot, { payload: DashboardGetSnapshotInput, success: DashboardGetSnapshotResult, error: DashboardQueryError })
+// prettier-ignore
+export const WsDashboardRefreshRpc = Rpc.make(WS_METHODS.dashboardRefresh, { payload: DashboardRefreshInput, success: DashboardRefreshResult, error: DashboardQueryError })
 
 export const WsDashboardGetProviderUsageRpc = Rpc.make(WS_METHODS.dashboardGetProviderUsage, {
   payload: DashboardGetProviderUsageInput,
@@ -391,61 +340,27 @@ export const WsDashboardGetProviderUsageRpc = Rpc.make(WS_METHODS.dashboardGetPr
   error: ProviderUsageUnavailableError,
 })
 
-export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, {
-  payload: SkillListInput,
-  success: SkillListResult,
-  error: SkillsServiceError,
-})
+// prettier-ignore
+export const WsSkillsListRpc = Rpc.make(WS_METHODS.skillsList, { payload: SkillListInput, success: SkillListResult, error: SkillsServiceError })
+// prettier-ignore
+export const WsSkillsRefreshRpc = Rpc.make(WS_METHODS.skillsRefresh, { payload: SkillRefreshInput, success: SkillRefreshResult, error: SkillsServiceError })
+// prettier-ignore
+export const WsSkillsGetRootsRpc = Rpc.make(WS_METHODS.skillsGetRoots, { payload: SkillGetRootsInput, success: SkillGetRootsResult, error: SkillsServiceError })
+// prettier-ignore
+export const WsSkillsSetRootsRpc = Rpc.make(WS_METHODS.skillsSetRoots, { payload: SkillSetRootsInput, success: SkillSetRootsResult, error: SkillsServiceError })
 
-export const WsSkillsRefreshRpc = Rpc.make(WS_METHODS.skillsRefresh, {
-  payload: SkillRefreshInput,
-  success: SkillRefreshResult,
-  error: SkillsServiceError,
-})
-
-export const WsSkillsGetRootsRpc = Rpc.make(WS_METHODS.skillsGetRoots, {
-  payload: SkillGetRootsInput,
-  success: SkillGetRootsResult,
-  error: SkillsServiceError,
-})
-
-export const WsSkillsSetRootsRpc = Rpc.make(WS_METHODS.skillsSetRoots, {
-  payload: SkillSetRootsInput,
-  success: SkillSetRootsResult,
-  error: SkillsServiceError,
-})
-
-export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, {
-  payload: TerminalOpenInput,
-  success: TerminalSessionSnapshot,
-  error: TerminalError,
-})
-
-export const WsTerminalWriteRpc = Rpc.make(WS_METHODS.terminalWrite, {
-  payload: TerminalWriteInput,
-  error: TerminalError,
-})
-
-export const WsTerminalResizeRpc = Rpc.make(WS_METHODS.terminalResize, {
-  payload: TerminalResizeInput,
-  error: TerminalError,
-})
-
-export const WsTerminalClearRpc = Rpc.make(WS_METHODS.terminalClear, {
-  payload: TerminalClearInput,
-  error: TerminalError,
-})
-
-export const WsTerminalRestartRpc = Rpc.make(WS_METHODS.terminalRestart, {
-  payload: TerminalRestartInput,
-  success: TerminalSessionSnapshot,
-  error: TerminalError,
-})
-
-export const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
-  payload: TerminalCloseInput,
-  error: TerminalError,
-})
+// prettier-ignore
+export const WsTerminalOpenRpc = Rpc.make(WS_METHODS.terminalOpen, { payload: TerminalOpenInput, success: TerminalSessionSnapshot, error: TerminalError })
+// prettier-ignore
+export const WsTerminalWriteRpc = Rpc.make(WS_METHODS.terminalWrite, { payload: TerminalWriteInput, error: TerminalError })
+// prettier-ignore
+export const WsTerminalResizeRpc = Rpc.make(WS_METHODS.terminalResize, { payload: TerminalResizeInput, error: TerminalError })
+// prettier-ignore
+export const WsTerminalClearRpc = Rpc.make(WS_METHODS.terminalClear, { payload: TerminalClearInput, error: TerminalError })
+// prettier-ignore
+export const WsTerminalRestartRpc = Rpc.make(WS_METHODS.terminalRestart, { payload: TerminalRestartInput, success: TerminalSessionSnapshot, error: TerminalError })
+// prettier-ignore
+export const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, { payload: TerminalCloseInput, error: TerminalError })
 
 export const WsOrchestrationGetSnapshotRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getSnapshot, {
   payload: OrchestrationGetSnapshotInput,
@@ -546,6 +461,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitStagePathRpc,
   WsGitUnstagePathRpc,
   WsGitRestorePathRpc,
+  WsGitDiscoverReposRpc,
   WsTerminalOpenRpc,
   WsTerminalWriteRpc,
   WsTerminalResizeRpc,

@@ -106,6 +106,18 @@ export function setThreadBranch(
   return threads === state.threads ? state : { ...state, threads }
 }
 
+export function setThreadGitRoot(
+  state: AppState,
+  threadId: ThreadId,
+  gitRoot: string | null
+): AppState {
+  const threads = updateThread(state.threads, threadId, t => {
+    if (t.gitRoot === gitRoot) return t
+    return { ...t, gitRoot, branch: null, worktreePath: null, session: null }
+  })
+  return threads === state.threads ? state : { ...state, threads }
+}
+
 // ── Selectors ────────────────────────────────────────────────────────
 
 export const selectProjectById =
@@ -126,6 +138,7 @@ interface AppStore extends AppState {
   applyOrchestrationEvents: (events: ReadonlyArray<OrchestrationEvent>) => void
   setError: (threadId: ThreadId, error: string | null) => void
   setThreadBranch: (threadId: ThreadId, branch: string | null, worktreePath: string | null) => void
+  setThreadGitRoot: (threadId: ThreadId, gitRoot: string | null) => void
   setActiveEnvironmentId: (environmentId: string | null) => void
 }
 
@@ -170,6 +183,7 @@ export const useStore = create<AppStore>(set => ({
   setError: (threadId, error) => set(state => setError(state, threadId, error)),
   setThreadBranch: (threadId, branch, worktreePath) =>
     set(state => setThreadBranch(state, threadId, branch, worktreePath)),
+  setThreadGitRoot: (threadId, gitRoot) => set(state => setThreadGitRoot(state, threadId, gitRoot)),
   setActiveEnvironmentId: environmentId =>
     set(state => {
       if (typeof window !== 'undefined' && state.activeEnvironmentId !== environmentId) {

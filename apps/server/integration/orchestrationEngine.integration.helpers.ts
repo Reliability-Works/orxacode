@@ -127,6 +127,7 @@ export const seedProjectAndThread = (harness: OrchestrationIntegrationHarness) =
       runtimeMode: 'approval-required',
       branch: null,
       worktreePath: harness.workspaceDir,
+      gitRoot: null,
       createdAt,
     })
   })

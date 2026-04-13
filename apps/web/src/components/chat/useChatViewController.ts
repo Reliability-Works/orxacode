@@ -92,6 +92,7 @@ function useChatViewControllerState(threadId: ThreadId) {
     ? projectScriptCwd({
         project: { cwd: td.activeProject.cwd },
         worktreePath: td.activeThread?.worktreePath ?? null,
+        gitRoot: td.activeThread?.gitRoot ?? null,
       })
     : null
   const cd = useChatViewDerivedComposer(store, ls, td, gitCwd)

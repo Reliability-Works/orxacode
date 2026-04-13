@@ -111,6 +111,7 @@ export interface Thread {
   pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
   branch: string | null
   worktreePath: string | null
+  gitRoot: string | null
   handoff: OrchestrationThreadHandoff | null
   parentLink?: OrchestrationThreadParentLink | null
   turnDiffSummaries: TurnDiffSummary[]

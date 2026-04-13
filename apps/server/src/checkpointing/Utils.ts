@@ -13,6 +13,7 @@ export function resolveThreadWorkspaceCwd(input: {
   readonly thread: {
     readonly projectId: ProjectId
     readonly worktreePath: string | null
+    readonly gitRoot?: string | null
   }
   readonly projects: ReadonlyArray<{
     readonly id: ProjectId
@@ -22,6 +23,10 @@ export function resolveThreadWorkspaceCwd(input: {
   const worktreeCwd = input.thread.worktreePath ?? undefined
   if (worktreeCwd) {
     return worktreeCwd
+  }
+
+  if (input.thread.gitRoot) {
+    return input.thread.gitRoot
   }
 
   return input.projects.find(project => project.id === input.thread.projectId)?.workspaceRoot

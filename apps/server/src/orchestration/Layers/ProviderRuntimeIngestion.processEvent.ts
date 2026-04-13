@@ -95,6 +95,7 @@ const createCodexSubagentThread = (deps: ProcessRuntimeEventDeps) =>
       interactionMode: thread.interactionMode,
       branch: thread.branch,
       worktreePath: thread.worktreePath,
+      gitRoot: thread.gitRoot,
       parentLink: buildSubagentParentLink(thread, descriptor, event),
       createdAt: event.createdAt,
     })

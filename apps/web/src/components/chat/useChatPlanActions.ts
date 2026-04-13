@@ -187,6 +187,7 @@ async function executeImplementPlanInNewThread(p: ImplementPlanInNewThreadInput)
       interactionMode: 'default',
       branch: p.activeThread.branch,
       worktreePath: p.activeThread.worktreePath,
+      gitRoot: p.activeThread.gitRoot,
       createdAt,
     })
     .then(() =>

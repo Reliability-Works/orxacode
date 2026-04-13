@@ -65,6 +65,7 @@ export function decideThreadCreateCommand({
         interactionMode: command.interactionMode,
         branch: command.branch,
         worktreePath: command.worktreePath,
+        gitRoot: command.gitRoot,
         handoff: command.handoff ?? null,
         parentLink: command.parentLink ?? null,
         createdAt: command.createdAt,
@@ -154,6 +155,7 @@ export function decideThreadMetaUpdateCommand({
         ...(command.modelSelection !== undefined ? { modelSelection: command.modelSelection } : {}),
         ...(command.branch !== undefined ? { branch: command.branch } : {}),
         ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
+        ...(command.gitRoot !== undefined ? { gitRoot: command.gitRoot } : {}),
         updatedAt: occurredAt,
       },
     })

@@ -154,6 +154,7 @@ async function createLocalDraftThreadIfNeeded(
     interactionMode: params.interactionMode,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
+    gitRoot: params.thread.gitRoot ?? null,
     createdAt: params.thread.createdAt,
   })
   return true

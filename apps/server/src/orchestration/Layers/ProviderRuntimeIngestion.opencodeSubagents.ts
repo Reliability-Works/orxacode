@@ -240,6 +240,7 @@ const dispatchCreatedThread = (
     interactionMode: parentThread.interactionMode,
     branch: parentThread.branch,
     worktreePath: parentThread.worktreePath,
+    gitRoot: parentThread.gitRoot,
     parentLink: {
       parentThreadId: parentThread.id,
       relationKind: 'subagent',

@@ -55,6 +55,7 @@ function handleThreadCreatedEvent(nextBase: OrchestrationReadModel, event: Orche
         interactionMode: payload.interactionMode,
         branch: payload.branch,
         worktreePath: payload.worktreePath,
+        gitRoot: payload.gitRoot ?? null,
         handoff: payload.handoff ?? null,
         parentLink: payload.parentLink ?? null,
         latestTurn: null,
@@ -125,6 +126,7 @@ function handleThreadMetaUpdatedEvent(nextBase: OrchestrationReadModel, event: O
         ...(payload.modelSelection !== undefined ? { modelSelection: payload.modelSelection } : {}),
         ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
         ...(payload.worktreePath !== undefined ? { worktreePath: payload.worktreePath } : {}),
+        ...(payload.gitRoot !== undefined ? { gitRoot: payload.gitRoot } : {}),
         updatedAt: payload.updatedAt,
       }),
     }))

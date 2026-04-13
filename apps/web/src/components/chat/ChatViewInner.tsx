@@ -5,7 +5,9 @@
  * layout stays under max-lines-per-function.
  */
 
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '~/lib/utils'
+import { gitDiscoverReposQueryOptions } from '~/lib/gitReactQuery'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import BranchToolbar from '../BranchToolbar'
 import { FilesSidebar } from '../files-sidebar/FilesSidebar'
@@ -24,10 +26,13 @@ import { useChatAuxSidebarResize } from './ChatViewAuxSidebar.resize'
 function ChatViewComposerForm() {
   const c = useChatViewCtx()
   const { composerFormRef } = c.scroll.refs
-  const isGitRepo = c.cd.isGitRepo
+  const projectCwd = c.td.activeProject?.cwd ?? null
+  const discoverQuery = useQuery(gitDiscoverReposQueryOptions(projectCwd))
+  const hasDiscoveredRepos = (discoverQuery.data?.repos.length ?? 0) >= 2
+  const showBranchToolbar = c.cd.isGitRepo || hasDiscoveredRepos
   if (c.td.isSubagentThread) return null
   return (
-    <div className={cn('px-3 pt-1.5 sm:px-5 sm:pt-2', isGitRepo ? 'pb-1' : 'pb-3 sm:pb-4')}>
+    <div className={cn('px-3 pt-1.5 sm:px-5 sm:pt-2', showBranchToolbar ? 'pb-1' : 'pb-3 sm:pb-4')}>
       <form
         ref={composerFormRef}
         onSubmit={c.onSend}
@@ -43,7 +48,11 @@ function ChatViewComposerForm() {
 function ChatViewBranchToolbarBlock() {
   const c = useChatViewCtx()
   const { td } = c
-  if (!td.activeThread || !c.cd.isGitRepo || td.isSubagentThread) return null
+  const projectCwd = td.activeProject?.cwd ?? null
+  const discoverQuery = useQuery(gitDiscoverReposQueryOptions(projectCwd))
+  const hasDiscoveredRepos = (discoverQuery.data?.repos.length ?? 0) >= 2
+  if (!td.activeThread || (!c.cd.isGitRepo && !hasDiscoveredRepos) || td.isSubagentThread)
+    return null
   return (
     <BranchToolbar
       threadId={td.activeThread.id}
@@ -123,7 +132,7 @@ function ChatViewAuxSidebarBlock() {
         />
       )
     } else {
-      if (!c.cd.isGitRepo) return null
+      if (!c.cd.isGitRepo && !c.td.activeThread?.gitRoot) return null
       content = (
         <GitSidebar
           cwd={gitCwd}

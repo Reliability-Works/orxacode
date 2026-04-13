@@ -116,6 +116,7 @@ export interface WsRpcClient {
     readonly stagePath: (input: GitStagePathInput) => Promise<void>
     readonly unstagePath: (input: GitUnstagePathInput) => Promise<void>
     readonly restorePath: (input: GitRestorePathInput) => Promise<void>
+    readonly discoverRepos: RpcUnaryMethod<typeof WS_METHODS.gitDiscoverRepos>
   }
   readonly server: {
     readonly getConfig: RpcUnaryNoArgMethod<typeof WS_METHODS.serverGetConfig>
@@ -198,7 +199,11 @@ function createTerminalApi(transport: WsTransport): WsRpcClient['terminal'] {
     restart: input => transport.request(client => client[WS_METHODS.terminalRestart](input)),
     close: input => transport.request(client => client[WS_METHODS.terminalClose](input)),
     onEvent: (listener, options) =>
-      transport.subscribe(client => client[WS_METHODS.subscribeTerminalEvents]({}), listener, options),
+      transport.subscribe(
+        client => client[WS_METHODS.subscribeTerminalEvents]({}),
+        listener,
+        options
+      ),
   }
 }
 
@@ -265,6 +270,7 @@ function createGitApi(transport: WsTransport): WsRpcClient['git'] {
     stagePath: input => transport.request(client => client[WS_METHODS.gitStagePath](input)),
     unstagePath: input => transport.request(client => client[WS_METHODS.gitUnstagePath](input)),
     restorePath: input => transport.request(client => client[WS_METHODS.gitRestorePath](input)),
+    discoverRepos: input => transport.request(client => client[WS_METHODS.gitDiscoverRepos](input)),
   }
 }
 
@@ -279,7 +285,11 @@ function createServerApi(transport: WsTransport): WsRpcClient['server'] {
     updateSettings: patch =>
       transport.request(client => client[WS_METHODS.serverUpdateSettings]({ patch })),
     subscribeConfig: (listener, options) =>
-      transport.subscribe(client => client[WS_METHODS.subscribeServerConfig]({}), listener, options),
+      transport.subscribe(
+        client => client[WS_METHODS.subscribeServerConfig]({}),
+        listener,
+        options
+      ),
     subscribeLifecycle: (listener, options) =>
       transport.subscribe(
         client => client[WS_METHODS.subscribeServerLifecycle]({}),

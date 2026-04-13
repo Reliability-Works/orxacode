@@ -12,6 +12,7 @@ import {
   type GitCheckoutInput,
   type GitCreateBranchInput,
   type GitCreateWorktreeInput,
+  type GitDiscoverReposInput,
   type GitGetDiffInput,
   type GitGetIssuesInput,
   type GitGetLogInput,
@@ -30,12 +31,15 @@ import {
   type GitStagePathInput,
   type GitStatusInput,
   type GitUnstagePathInput,
+  GitCommandError,
   GitGetIssuesResult,
   GitGetPullRequestsResult,
   GitHubCliError,
   WS_METHODS,
 } from '@orxa-code/contracts'
 import { Effect, Queue, Schema, Stream } from 'effect'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
 import type { GitCore } from './git/Services/GitCore'
 import type { GitHubCli } from './git/Services/GitHubCli'
@@ -112,6 +116,33 @@ function buildGitPullRequestsMethod(gitHubCli: GitMethodDependencies['gitHubCli'
       )
 }
 
+function discoverRepos(input: GitDiscoverReposInput) {
+  return Effect.try({
+    try: () => {
+      const entries = fs.readdirSync(input.cwd, { withFileTypes: true })
+      const repos: Array<{ path: string; name: string }> = []
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const childPath = path.join(input.cwd, entry.name)
+        try {
+          fs.statSync(path.join(childPath, '.git'))
+          repos.push({ path: childPath, name: entry.name })
+        } catch {
+          // not a git repo, skip
+        }
+      }
+      return { repos }
+    },
+    catch: error =>
+      new GitCommandError({
+        operation: 'discoverRepos',
+        command: 'fs.readdirSync',
+        cwd: input.cwd,
+        detail: error instanceof Error ? error.message : 'Failed to scan directory for git repos',
+      }),
+  })
+}
+
 export const createGitMethods = ({ git, gitHubCli, gitManager }: GitMethodDependencies) => ({
   [WS_METHODS.gitStatus]: (input: GitStatusInput) => gitManager.status(input),
   [WS_METHODS.gitPull]: (input: GitPullInput) => git.pullCurrentBranch(input.cwd),
@@ -151,4 +182,5 @@ export const createGitMethods = ({ git, gitHubCli, gitManager }: GitMethodDepend
   [WS_METHODS.gitRestorePath]: (input: GitRestorePathInput) => git.restorePath(input),
   [WS_METHODS.gitGetIssues]: buildGitIssuesMethod(gitHubCli),
   [WS_METHODS.gitGetPullRequests]: buildGitPullRequestsMethod(gitHubCli),
+  [WS_METHODS.gitDiscoverRepos]: (input: GitDiscoverReposInput) => discoverRepos(input),
 })
