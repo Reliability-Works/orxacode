@@ -9,7 +9,11 @@ type RecoverySnapshot = Awaited<ReturnType<NativeApi['orchestration']['getSnapsh
 
 type SnapshotSyncParams = Pick<
   RuntimeSyncOptions,
-  'activeEnvironmentId' | 'removeOrphanedTerminalStates' | 'syncProjects' | 'syncServerReadModel' | 'syncThreads'
+  | 'activeEnvironmentId'
+  | 'removeOrphanedTerminalStates'
+  | 'syncProjects'
+  | 'syncServerReadModel'
+  | 'syncThreads'
 >
 
 export function applySnapshotReadModel({
@@ -26,17 +30,11 @@ export function applySnapshotReadModel({
   reconcileSnapshotDerivedState(removeOrphanedTerminalStates, syncProjects, syncThreads)
 }
 
-export function applyForegroundReconcileSnapshot(
+function applySnapshotReadModelFromInput(
   input: SnapshotSyncParams & {
-    log: (event: string, data: Record<string, unknown>) => void
-    logData: Record<string, unknown>
     snapshot: RecoverySnapshot
   }
 ) {
-  input.log('reconcile apply start', {
-    ...input.logData,
-    snapshotSequence: input.snapshot.snapshotSequence,
-  })
   applySnapshotReadModel({
     activeEnvironmentId: input.activeEnvironmentId,
     removeOrphanedTerminalStates: input.removeOrphanedTerminalStates,
@@ -45,9 +43,34 @@ export function applyForegroundReconcileSnapshot(
     syncServerReadModel: input.syncServerReadModel,
     syncThreads: input.syncThreads,
   })
-  input.log('reconcile apply done', {
-    ...input.logData,
-    snapshotSequence: input.snapshot.snapshotSequence,
+}
+
+export function applyForegroundReconcileSnapshot(
+  input: SnapshotSyncParams & {
+    log: (event: string, data: Record<string, unknown>) => void
+    logData: Record<string, unknown>
+    snapshot: RecoverySnapshot
+  }
+) {
+  logSnapshotApply(input.log, input.logData, input.snapshot.snapshotSequence, () =>
+    applySnapshotReadModelFromInput(input)
+  )
+}
+
+function logSnapshotApply(
+  log: (event: string, data: Record<string, unknown>) => void,
+  logData: Record<string, unknown>,
+  snapshotSequence: number,
+  apply: () => void
+) {
+  log('reconcile apply start', {
+    ...logData,
+    snapshotSequence,
+  })
+  apply()
+  log('reconcile apply done', {
+    ...logData,
+    snapshotSequence,
   })
 }
 
@@ -67,22 +90,9 @@ export async function completeSnapshotRecovery(
     return
   }
 
-  input.logInfo('snapshot recovery apply start', {
-    ...input.logData,
-    snapshotSequence: input.snapshot.snapshotSequence,
-  })
-  applySnapshotReadModel({
-    activeEnvironmentId: input.activeEnvironmentId,
-    removeOrphanedTerminalStates: input.removeOrphanedTerminalStates,
-    snapshot: input.snapshot,
-    syncProjects: input.syncProjects,
-    syncServerReadModel: input.syncServerReadModel,
-    syncThreads: input.syncThreads,
-  })
-  input.logInfo('snapshot recovery apply done', {
-    ...input.logData,
-    snapshotSequence: input.snapshot.snapshotSequence,
-  })
+  logSnapshotApply(input.logInfo, input.logData, input.snapshot.snapshotSequence, () =>
+    applySnapshotReadModelFromInput(input)
+  )
   logSyncReady(input.logInfo, {
     logData: input.logData,
     snapshot: input.snapshot,

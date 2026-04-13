@@ -209,17 +209,9 @@ function installMobileSyncStoreDebugSubscription() {
       return
     }
 
-    console.info('[mobile-sync] store transition', {
-      revision: 'mobile-reopen-probe-1',
-      previousBootstrapComplete: previousState.bootstrapComplete,
-      nextBootstrapComplete: nextState.bootstrapComplete,
-      previousProjects: previousState.projects.length,
-      nextProjects: nextState.projects.length,
-      previousThreads: previousState.threads.length,
-      nextThreads: nextState.threads.length,
-      previousActiveEnvironmentId: previousState.activeEnvironmentId,
-      nextActiveEnvironmentId: nextState.activeEnvironmentId,
-    })
+    const transitionPayload = buildMobileSyncStoreTransitionPayload(previousState, nextState)
+
+    console.info('[mobile-sync] store transition', transitionPayload)
 
     const looksLikeReset =
       (previousState.bootstrapComplete && !nextState.bootstrapComplete) ||
@@ -228,17 +220,7 @@ function installMobileSyncStoreDebugSubscription() {
         nextState.threads.length === 0)
 
     if (looksLikeReset) {
-      console.warn('[mobile-sync] store potential bootstrap reset', {
-        revision: 'mobile-reopen-probe-1',
-        previousBootstrapComplete: previousState.bootstrapComplete,
-        nextBootstrapComplete: nextState.bootstrapComplete,
-        previousProjects: previousState.projects.length,
-        nextProjects: nextState.projects.length,
-        previousThreads: previousState.threads.length,
-        nextThreads: nextState.threads.length,
-        previousActiveEnvironmentId: previousState.activeEnvironmentId,
-        nextActiveEnvironmentId: nextState.activeEnvironmentId,
-      })
+      console.warn('[mobile-sync] store potential bootstrap reset', transitionPayload)
     }
 
     previousState = nextState
@@ -246,3 +228,17 @@ function installMobileSyncStoreDebugSubscription() {
 }
 
 installMobileSyncStoreDebugSubscription()
+
+function buildMobileSyncStoreTransitionPayload(previousState: AppState, nextState: AppState) {
+  return {
+    revision: 'mobile-reopen-probe-1',
+    previousBootstrapComplete: previousState.bootstrapComplete,
+    nextBootstrapComplete: nextState.bootstrapComplete,
+    previousProjects: previousState.projects.length,
+    nextProjects: nextState.projects.length,
+    previousThreads: previousState.threads.length,
+    nextThreads: nextState.threads.length,
+    previousActiveEnvironmentId: previousState.activeEnvironmentId,
+    nextActiveEnvironmentId: nextState.activeEnvironmentId,
+  }
+}

@@ -69,6 +69,57 @@ function createAnonymousSession(): AuthenticatedSession {
   }
 }
 
+type StoredSession = AuthState['sessionsById'] extends Map<string, infer Session> ? Session : never
+
+function succeedIfAuthNotRequired(
+  requireAuth: boolean,
+  anonymousSession: AuthenticatedSession
+): Effect.Effect<AuthenticatedSession, never, never> | null {
+  return requireAuth ? null : Effect.succeed(anonymousSession)
+}
+
+function updateSessionState(
+  stateRef: Ref.Ref<AuthState>,
+  sessionId: string,
+  transform: (session: StoredSession) => StoredSession
+) {
+  return Ref.update(stateRef, state => {
+    const existing = state.sessionsById.get(sessionId)
+    if (!existing) {
+      return state
+    }
+    const nextSessionsById = new Map(state.sessionsById)
+    nextSessionsById.set(sessionId, transform(existing))
+    return {
+      ...state,
+      sessionsById: nextSessionsById,
+    }
+  })
+}
+
+function countRevokedSessions(
+  sessionIds: ReadonlyArray<string>,
+  revokeClientSession: (sessionId: string) => Effect.Effect<boolean, never, never>
+) {
+  return Effect.forEach(
+    sessionIds,
+    sessionId => revokeClientSession(sessionId).pipe(Effect.map(revoked => (revoked ? 1 : 0))),
+    { concurrency: 'unbounded' }
+  ).pipe(Effect.map(revoked => revoked.reduce<number>((total, next) => total + next, 0)))
+}
+
+function withAuthBypass(
+  requireAuth: boolean,
+  anonymousSession: AuthenticatedSession,
+  handleAuthenticated: () => Effect.Effect<AuthenticatedSession, AuthError, never>
+) {
+  const bypass = succeedIfAuthNotRequired(requireAuth, anonymousSession)
+  if (bypass) {
+    return bypass
+  }
+  return handleAuthenticated()
+}
+
 function createFindSessionByToken(
   stateRef: Ref.Ref<AuthState>
 ): (token: string) => Effect.Effect<AuthenticatedSession, AuthError, never> {
@@ -115,23 +166,23 @@ function createFindSessionByToken(
 function createAuthenticateHttpRequest(input: {
   readonly requireAuth: boolean
   readonly anonymousSession: AuthenticatedSession
-  readonly findSessionByToken: (token: string) => Effect.Effect<AuthenticatedSession, AuthError, never>
+  readonly findSessionByToken: (
+    token: string
+  ) => Effect.Effect<AuthenticatedSession, AuthError, never>
 }) {
-  return (request: HttpServerRequest.HttpServerRequest) => {
-    if (!input.requireAuth) {
-      return Effect.succeed(input.anonymousSession)
-    }
-    const token = parseBearerToken(request) ?? request.cookies[SESSION_COOKIE_NAME]
-    if (!token) {
-      return Effect.fail(
-        new AuthError({
-          message: 'Authentication required.',
-          status: 401,
-        })
-      )
-    }
-    return input.findSessionByToken(token)
-  }
+  return (request: HttpServerRequest.HttpServerRequest) =>
+    withAuthBypass(input.requireAuth, input.anonymousSession, () => {
+      const token = parseBearerToken(request) ?? request.cookies[SESSION_COOKIE_NAME]
+      if (!token) {
+        return Effect.fail(
+          new AuthError({
+            message: 'Authentication required.',
+            status: 401,
+          })
+        )
+      }
+      return input.findSessionByToken(token)
+    })
 }
 
 function createExchangeBootstrapCredential(
@@ -185,29 +236,26 @@ function createAuthenticateWebSocketUpgrade(input: {
     token: string
   ) => Effect.Effect<AuthenticatedSession, AuthError, never>
 }) {
-  return (request: HttpServerRequest.HttpServerRequest) => {
-    if (!input.requireAuth) {
-      return Effect.succeed(input.anonymousSession)
-    }
-
-    return Effect.gen(function* () {
-      const requestUrl = HttpServerRequest.toURL(request)
-      if (Option.isSome(requestUrl)) {
-        const sessionToken = requestUrl.value.searchParams.get(SESSION_TOKEN_QUERY_PARAM)
-        if (sessionToken && sessionToken.trim().length > 0) {
-          logWebSocketAuthInfo('upgrade-using-query-session-token', {
-            hasSessionTokenQuery: true,
-          })
-          return yield* input.findSessionByToken(sessionToken)
+  return (request: HttpServerRequest.HttpServerRequest) =>
+    withAuthBypass(input.requireAuth, input.anonymousSession, () =>
+      Effect.gen(function* () {
+        const requestUrl = HttpServerRequest.toURL(request)
+        if (Option.isSome(requestUrl)) {
+          const sessionToken = requestUrl.value.searchParams.get(SESSION_TOKEN_QUERY_PARAM)
+          if (sessionToken && sessionToken.trim().length > 0) {
+            logWebSocketAuthInfo('upgrade-using-query-session-token', {
+              hasSessionTokenQuery: true,
+            })
+            return yield* input.findSessionByToken(sessionToken)
+          }
         }
-      }
-      logWebSocketAuthInfo('upgrade-using-http-auth', {
-        hasAuthorizationHeader: typeof request.headers.authorization === 'string',
-        hasCookieSession: typeof request.cookies[SESSION_COOKIE_NAME] === 'string',
+        logWebSocketAuthInfo('upgrade-using-http-auth', {
+          hasAuthorizationHeader: typeof request.headers.authorization === 'string',
+          hasCookieSession: typeof request.cookies[SESSION_COOKIE_NAME] === 'string',
+        })
+        return yield* input.authenticateHttpRequest(request)
       })
-      return yield* input.authenticateHttpRequest(request)
-    })
-  }
+    )
 }
 
 function createGetSessionState(
@@ -238,41 +286,19 @@ function createGetSessionState(
 
 function createMarkConnected(stateRef: Ref.Ref<AuthState>) {
   return (sessionId: string) =>
-    Ref.update(stateRef, state => {
-      const existing = state.sessionsById.get(sessionId)
-      if (!existing) {
-        return state
-      }
-      const nextSessionsById = new Map(state.sessionsById)
-      nextSessionsById.set(sessionId, {
-        ...existing,
-        connected: true,
-        lastConnectedAt: new Date().toISOString(),
-      })
-      return {
-        ...state,
-        sessionsById: nextSessionsById,
-      }
-    })
+    updateSessionState(stateRef, sessionId, existing => ({
+      ...existing,
+      connected: true,
+      lastConnectedAt: new Date().toISOString(),
+    }))
 }
 
 function createMarkDisconnected(stateRef: Ref.Ref<AuthState>) {
   return (sessionId: string) =>
-    Ref.update(stateRef, state => {
-      const existing = state.sessionsById.get(sessionId)
-      if (!existing) {
-        return state
-      }
-      const nextSessionsById = new Map(state.sessionsById)
-      nextSessionsById.set(sessionId, {
-        ...existing,
-        connected: false,
-      })
-      return {
-        ...state,
-        sessionsById: nextSessionsById,
-      }
-    })
+    updateSessionState(stateRef, sessionId, existing => ({
+      ...existing,
+      connected: false,
+    }))
 }
 
 function createListClientSessions(stateRef: Ref.Ref<AuthState>) {
@@ -321,10 +347,10 @@ function createRevokeClientSession(
         if (revokedSessionId === null) {
           return Effect.succeed(false)
         }
-        return closeLiveSession(revokedSessionId, new Socket.CloseEvent(4001, 'Client session revoked')).pipe(
-          Effect.forkDetach,
-          Effect.as(true)
-        )
+        return closeLiveSession(
+          revokedSessionId,
+          new Socket.CloseEvent(4001, 'Client session revoked')
+        ).pipe(Effect.forkDetach, Effect.as(true))
       })
     )
 }
@@ -336,13 +362,11 @@ function createRevokeOtherClientSessions(
   return (currentSessionId: string) =>
     Ref.get(stateRef).pipe(
       Effect.flatMap(state =>
-        Effect.forEach(
+        countRevokedSessions(
           Array.from(state.sessionsById.keys()).filter(sessionId => sessionId !== currentSessionId),
-          sessionId => revokeClientSession(sessionId).pipe(Effect.map(revoked => (revoked ? 1 : 0))),
-          { concurrency: 'unbounded' }
+          revokeClientSession
         )
-      ),
-      Effect.map(revoked => revoked.reduce<number>((total, next) => total + next, 0))
+      )
     )
 }
 
@@ -353,15 +377,13 @@ function createRevokeSessionsByRole(
   return (role: AuthSessionRole) =>
     Ref.get(stateRef).pipe(
       Effect.flatMap(state =>
-        Effect.forEach(
+        countRevokedSessions(
           Array.from(state.sessionsById.values())
             .filter(session => session.role === role && session.revokedAt === null)
             .map(session => session.sessionId),
-          sessionId => revokeClientSession(sessionId).pipe(Effect.map(revoked => (revoked ? 1 : 0))),
-          { concurrency: 'unbounded' }
+          revokeClientSession
         )
-      ),
-      Effect.map(revoked => revoked.reduce<number>((total, next) => total + next, 0))
+      )
     )
 }
 

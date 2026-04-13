@@ -1,8 +1,8 @@
 import * as Crypto from 'node:crypto'
-import * as FS from 'node:fs'
-import * as Path from 'node:path'
 
 import type { DesktopRemoteAccessPreferences } from '@orxa-code/contracts'
+
+import { readPersistedJsonFile, writePersistedJsonFile } from './persistedJsonFile'
 
 const DEFAULT_REMOTE_ACCESS_PREFERENCES: DesktopRemoteAccessPreferences = {
   enabled: false,
@@ -62,17 +62,15 @@ export function createDesktopRemoteAccessPreferencesStore(
   filePath: string
 ): DesktopRemoteAccessPreferencesStore {
   function readPersisted(): PersistedRemoteAccessPreferences {
-    try {
-      const raw = FS.readFileSync(filePath, 'utf-8')
-      return sanitizePersistedRemoteAccessPreferences(JSON.parse(raw))
-    } catch {
-      return createPersistedDefaults()
-    }
+    return readPersistedJsonFile({
+      filePath,
+      fallback: createPersistedDefaults,
+      sanitize: sanitizePersistedRemoteAccessPreferences,
+    })
   }
 
   function writePersisted(next: PersistedRemoteAccessPreferences): void {
-    FS.mkdirSync(Path.dirname(filePath), { recursive: true })
-    FS.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf-8')
+    writePersistedJsonFile(filePath, next)
   }
 
   function get(): DesktopRemoteAccessPreferences {

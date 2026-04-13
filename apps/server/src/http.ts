@@ -9,25 +9,11 @@ import {
 } from './attachmentPaths'
 import { resolveAttachmentPathById } from './attachmentStore'
 import { ServerConfig } from './config'
+import { corsHeaders } from './http.shared'
 import { ProjectFaviconResolver } from './project/Services/ProjectFaviconResolver'
 
 const PROJECT_FAVICON_CACHE_CONTROL = 'public, max-age=3600'
 const FALLBACK_PROJECT_FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6b728080" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-fallback="project-favicon"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z"/></svg>`
-
-function corsHeaders(request: HttpServerRequest.HttpServerRequest) {
-  const origin = typeof request.headers.origin === 'string' ? request.headers.origin : null
-  return {
-    Vary: 'Origin',
-    ...(origin
-      ? {
-          'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Credentials': 'true',
-          'Access-Control-Allow-Headers': 'authorization, content-type',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        }
-      : {}),
-  } as const
-}
 
 const requireRequestUrl = Effect.fn('http.requireRequestUrl')(function* () {
   const request = yield* HttpServerRequest.HttpServerRequest

@@ -57,10 +57,11 @@ export function WebSocketConnectionCoordinator() {
 export function WebSocketConnectionSurface({ children }: { children: ReactNode }) {
   const status = useWsConnectionStatus()
   const uiState = getWsConnectionUiState(status)
-  const shouldShowBanner = uiState === 'offline' || uiState === 'reconnecting' || uiState === 'error'
+  const shouldShowBanner =
+    uiState === 'offline' || uiState === 'reconnecting' || uiState === 'error'
 
   return (
-    <div className="relative flex min-h-screen flex-col">
+    <div className="relative flex h-svh min-h-0 flex-col">
       {shouldShowBanner ? (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-foreground">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
@@ -89,7 +90,7 @@ export function WebSocketConnectionSurface({ children }: { children: ReactNode }
           </div>
         </div>
       ) : null}
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   )
 }

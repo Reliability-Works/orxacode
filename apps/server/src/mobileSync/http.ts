@@ -4,6 +4,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from 'effect/unstab
 import { ServerAuth } from '../auth/service'
 import { respondToAuthError } from '../auth/http'
 import { ServerConfig } from '../config'
+import { corsHeaders } from '../http.shared'
 import { loadMobileSyncBootstrap } from './bootstrap'
 
 type MobileSyncLogEntry = {
@@ -12,23 +13,12 @@ type MobileSyncLogEntry = {
   readonly timestamp: string
 }
 
-function mobileSyncHeaders(request: HttpServerRequest.HttpServerRequest) {
-  const origin = typeof request.headers.origin === 'string' ? request.headers.origin : null
-  return {
-    Vary: 'Origin',
-    ...(origin
-      ? {
-          'Access-Control-Allow-Origin': origin,
-          'Access-Control-Allow-Credentials': 'true',
-          'Access-Control-Allow-Headers': 'authorization, content-type',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        }
-      : {}),
-  } as const
-}
-
 function parseMobileSyncLogEntries(body: unknown): ReadonlyArray<MobileSyncLogEntry> {
-  if (!body || typeof body !== 'object' || !Array.isArray((body as { entries?: unknown }).entries)) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !Array.isArray((body as { entries?: unknown }).entries)
+  ) {
     return []
   }
 
@@ -74,7 +64,7 @@ export const mobileSyncBootstrapRouteLayer = HttpRouter.add(
       return HttpServerResponse.text(JSON.stringify(bootstrap), {
         status: 200,
         contentType: 'application/json; charset=utf-8',
-        headers: mobileSyncHeaders(request),
+        headers: corsHeaders(request),
       })
     }).pipe(Effect.catchTag('AuthError', error => respondToAuthError(request, error)))
   })
@@ -111,7 +101,7 @@ export const mobileSyncLogRouteLayer = HttpRouter.add(
 
       return HttpServerResponse.jsonUnsafe(
         { accepted: entries.length },
-        { status: 200, headers: mobileSyncHeaders(request) }
+        { status: 200, headers: corsHeaders(request) }
       )
     }).pipe(Effect.catchTag('AuthError', error => respondToAuthError(request, error)))
   })
@@ -124,7 +114,7 @@ export const mobileSyncPreflightRouteLayer = HttpRouter.add(
     const request = yield* HttpServerRequest.HttpServerRequest
     return HttpServerResponse.text('', {
       status: 204,
-      headers: mobileSyncHeaders(request),
+      headers: corsHeaders(request),
     })
   })
 )

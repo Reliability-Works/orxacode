@@ -1,7 +1,6 @@
-import * as FS from 'node:fs'
-import * as Path from 'node:path'
-
 import type { DesktopUpdatePreferences, DesktopUpdateReleaseChannel } from '@orxa-code/contracts'
+
+import { readPersistedJsonFile, writePersistedJsonFile } from './persistedJsonFile'
 
 const DEFAULT_UPDATE_PREFERENCES: DesktopUpdatePreferences = {
   releaseChannel: 'stable',
@@ -61,17 +60,15 @@ export function createDesktopUpdatePreferencesStore(
   filePath: string
 ): DesktopUpdatePreferencesStore {
   function readPersisted(): PersistedUpdatePreferences {
-    try {
-      const raw = FS.readFileSync(filePath, 'utf-8')
-      return sanitizePersistedUpdatePreferences(JSON.parse(raw))
-    } catch {
-      return createPersistedDefaults()
-    }
+    return readPersistedJsonFile({
+      filePath,
+      fallback: createPersistedDefaults,
+      sanitize: sanitizePersistedUpdatePreferences,
+    })
   }
 
   function writePersisted(next: PersistedUpdatePreferences): void {
-    FS.mkdirSync(Path.dirname(filePath), { recursive: true })
-    FS.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, 'utf-8')
+    writePersistedJsonFile(filePath, next)
   }
 
   function get(): DesktopUpdatePreferences {

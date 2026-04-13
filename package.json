@@ -1,7 +1,7 @@
 {
   "name": "orxa-code",
   "private": true,
-  "version": "0.1.0-beta.72",
+  "version": "0.1.0-beta.73",
   "description": "Orxa Code monorepo root",
   "author": "Reliability Works",
   "main": "apps/desktop/dist-electron/main.js",
