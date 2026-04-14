@@ -18,7 +18,8 @@ import { type FileSystem, Queue } from 'effect'
 
 import type { ServerConfigShape } from '../../config.ts'
 import type { ServerSettingsShape } from '../../serverSettings.ts'
-import { startOpencodeServer, type StartOpencodeServerInput } from '../opencodeAppServer.ts'
+import type { StartOpencodeServerInput } from '../opencodeAppServer.ts'
+import { acquireSharedOpencodeServer } from '../opencodeServerPool.ts'
 import type {
   OpencodeAdapterLiveOptions,
   OpencodeClientRuntime,
@@ -52,7 +53,10 @@ export interface MakeOpencodeAdapterDepsInput {
 }
 
 function defaultCreateRuntime(input: StartOpencodeServerInput): Promise<OpencodeClientRuntime> {
-  return startOpencodeServer(input)
+  // Delegate to the refcounted pool so all opencode-bound threads share one
+  // long-lived `opencode serve`. See `opencodeServerPool.ts` for the grace
+  // window and shutdown semantics.
+  return acquireSharedOpencodeServer(input)
 }
 
 export const makeOpencodeAdapterDeps = (

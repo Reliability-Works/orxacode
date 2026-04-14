@@ -68,6 +68,29 @@ export interface OpencodeChildDelegation {
   readonly command: string | null
 }
 
+/**
+ * Snapshot of a `permission.asked` event we've forwarded upstream. Kept only
+ * so `respondToRequest` can look up the opencode `permission` string (for
+ * logging) after the UI decision arrives — the actual request identifier used
+ * to reply to the SDK is opencode's own `requestID`, which we pass through
+ * as the runtime `ApprovalRequestId`.
+ */
+export interface OpencodePendingPermission {
+  readonly requestID: string
+  readonly permission: string
+}
+
+/**
+ * Snapshot of a `question.asked` event with the original question ids in
+ * order. `respondToUserInput` receives answers keyed by question id (from the
+ * renderer) but opencode's reply endpoint takes a positional
+ * `Array<Array<string>>`, so we need the original ordering to translate.
+ */
+export interface OpencodePendingQuestion {
+  readonly requestID: string
+  readonly questionIds: ReadonlyArray<string>
+}
+
 export interface OpencodeSessionContext {
   session: ProviderSession
   readonly runtime: OpencodeClientRuntime
@@ -81,6 +104,8 @@ export interface OpencodeSessionContext {
   readonly relatedSessionIds: Set<string>
   readonly childDelegationsBySessionId: Map<string, OpencodeChildDelegation>
   readonly pendingChildDelegations: Array<OpencodeChildDelegation>
+  readonly pendingPermissions: Map<string, OpencodePendingPermission>
+  readonly pendingQuestions: Map<string, OpencodePendingQuestion>
   stopped: boolean
 }
 

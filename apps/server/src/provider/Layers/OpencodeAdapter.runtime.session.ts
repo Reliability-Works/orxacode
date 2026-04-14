@@ -162,6 +162,8 @@ function buildInitialContext(input: {
     relatedSessionIds: new Set([input.providerSessionId]),
     childDelegationsBySessionId: new Map(),
     pendingChildDelegations: [],
+    pendingPermissions: new Map(),
+    pendingQuestions: new Map(),
     stopped: false,
   }
 }

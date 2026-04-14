@@ -123,6 +123,54 @@ export async function sendOpencodePrompt(input: SendPromptInput): Promise<void> 
   unwrap(response, 'session.promptAsync')
 }
 
+export interface ReplyPermissionInput {
+  readonly client: OpencodeClient
+  readonly requestID: string
+  readonly reply: 'once' | 'always' | 'reject'
+  readonly message?: string | undefined
+  readonly directory?: string | undefined
+}
+
+export async function replyOpencodePermission(input: ReplyPermissionInput): Promise<void> {
+  const response = (await input.client.permission.reply({
+    requestID: input.requestID,
+    reply: input.reply,
+    ...(input.message ? { message: input.message } : {}),
+    ...(input.directory ? { directory: input.directory } : {}),
+  })) as SdkResponseLike<unknown>
+  unwrap(response, 'permission.reply')
+}
+
+export interface ReplyQuestionInput {
+  readonly client: OpencodeClient
+  readonly requestID: string
+  readonly answers: ReadonlyArray<ReadonlyArray<string>>
+  readonly directory?: string | undefined
+}
+
+export async function replyOpencodeQuestion(input: ReplyQuestionInput): Promise<void> {
+  const response = (await input.client.question.reply({
+    requestID: input.requestID,
+    answers: input.answers.map(answer => [...answer]),
+    ...(input.directory ? { directory: input.directory } : {}),
+  })) as SdkResponseLike<unknown>
+  unwrap(response, 'question.reply')
+}
+
+export interface RejectQuestionInput {
+  readonly client: OpencodeClient
+  readonly requestID: string
+  readonly directory?: string | undefined
+}
+
+export async function rejectOpencodeQuestion(input: RejectQuestionInput): Promise<void> {
+  const response = (await input.client.question.reject({
+    requestID: input.requestID,
+    ...(input.directory ? { directory: input.directory } : {}),
+  })) as SdkResponseLike<unknown>
+  unwrap(response, 'question.reject')
+}
+
 export async function abortOpencodeSession(input: AbortSessionInput): Promise<boolean> {
   const response = (await input.client.session.abort({
     sessionID: input.sessionId,

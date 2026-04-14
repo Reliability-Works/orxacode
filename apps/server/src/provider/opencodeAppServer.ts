@@ -140,10 +140,19 @@ const defaultSpawner: OpencodeSpawner = (binaryPath, args, options) =>
   nodeSpawn(binaryPath, args, options) as SpawnedOpencodeProcess
 
 async function defaultReadinessProbe(url: string, signal: AbortSignal): Promise<boolean> {
+  // Hit the SDK-documented `/global/health` endpoint rather than `/`. The
+  // health endpoint only returns `{ healthy: true, version }` once the server
+  // has finished bootstrapping; `/` can 200 before the workspace is fully
+  // initialised and lead us to resolve readiness before opencode can actually
+  // accept a `session.prompt` call.
   try {
-    const response = await fetch(url, { signal, method: 'GET' })
-    response.body?.cancel().catch(() => {})
-    return response.status < 500
+    const response = await fetch(`${url}/global/health`, { signal, method: 'GET' })
+    if (!response.ok) {
+      response.body?.cancel().catch(() => {})
+      return false
+    }
+    const body = (await response.json().catch(() => null)) as { healthy?: unknown } | null
+    return body?.healthy === true
   } catch {
     return false
   }

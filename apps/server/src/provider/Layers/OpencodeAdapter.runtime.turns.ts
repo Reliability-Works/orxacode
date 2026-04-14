@@ -128,18 +128,25 @@ const abortInflightTurn = Effect.fn('opencode.abortInflightTurn')(function* (
   context: OpencodeSessionContext,
   reason: string
 ) {
-  if (!context.turnState) return
+  // Always ask the SDK to abort even when we have no local turnState. Client
+  // and server state can drift: the UI may still show "Working" while our
+  // turnState was cleared by a stray `session.idle` or a missed event. If we
+  // skip the abort in that window, the SDK session keeps running server-side
+  // and the stop button looks broken. `session.abort` is idempotent — a
+  // redundant call is harmless.
   yield* abortOpencodeSessionIgnoring(context, 'Failed to abort opencode session.')
-  const mapperContext = yield* prepareMapperContext(deps, context)
-  const abortEvents = mapTurnAbort(reason, mapperContext)
-  if (abortEvents.length > 0) {
-    yield* emitMappedEvents(deps, abortEvents)
-  }
-  context.turnState = undefined
-  context.session = {
-    ...context.session,
-    status: 'ready',
-    activeTurnId: undefined,
+  if (context.turnState) {
+    const mapperContext = yield* prepareMapperContext(deps, context)
+    const abortEvents = mapTurnAbort(reason, mapperContext)
+    if (abortEvents.length > 0) {
+      yield* emitMappedEvents(deps, abortEvents)
+    }
+    context.turnState = undefined
+    context.session = {
+      ...context.session,
+      status: 'ready',
+      activeTurnId: undefined,
+    }
   }
 })
 
@@ -268,6 +275,8 @@ export const interruptTurn = (
       )
       return
     }
-    if (!context.turnState) return
+    // Always forward to abortInflightTurn — even with no tracked turnState we
+    // need the SDK session aborted defensively. See the note in
+    // abortInflightTurn for why.
     yield* abortInflightTurn(deps, context, 'Interrupted by user request.')
   })

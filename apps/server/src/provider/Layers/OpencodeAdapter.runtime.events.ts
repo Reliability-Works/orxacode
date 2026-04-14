@@ -36,6 +36,38 @@ import {
 } from './OpencodeAdapter.runtime.eventBase.ts'
 import type { OpencodeEvent, OpencodeSessionContext } from './OpencodeAdapter.types.ts'
 
+function rememberPendingPromptRequests(
+  context: OpencodeSessionContext,
+  event: OpencodeEvent
+): void {
+  if (event.type === 'permission.asked') {
+    const info = event.properties
+    context.pendingPermissions.set(info.id, {
+      requestID: info.id,
+      permission: info.permission,
+    })
+    return
+  }
+  if (event.type === 'permission.replied') {
+    context.pendingPermissions.delete(event.properties.requestID)
+    return
+  }
+  if (event.type === 'question.asked') {
+    const info = event.properties
+    // Mirror the pure mapper's `q${index}` keying so respondToUserInput can
+    // rebuild the positional answers array from the ids we exposed upstream.
+    const questionIds = info.questions.map((_, index) => `q${index}`)
+    context.pendingQuestions.set(info.id, {
+      requestID: info.id,
+      questionIds,
+    })
+    return
+  }
+  if (event.type === 'question.replied' || event.type === 'question.rejected') {
+    context.pendingQuestions.delete(event.properties.requestID)
+  }
+}
+
 function rememberChildSessionRelations(
   context: OpencodeSessionContext,
   event: OpencodeEvent
@@ -181,6 +213,7 @@ export const handleIncomingEvent = (
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     rememberChildSessionRelations(context, event)
+    rememberPendingPromptRequests(context, event)
     yield* markStartupMilestones(deps, context, event)
     const hint = cacheLookup(event)
     const mapperContext = yield* prepareMapperContext(deps, context)

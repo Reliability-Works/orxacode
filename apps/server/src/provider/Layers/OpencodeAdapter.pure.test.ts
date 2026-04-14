@@ -107,14 +107,25 @@ describe('mapOpencodeEvent message lifecycle', () => {
     })
   })
 
-  it('emits token usage update when the assistant message completes', () => {
+  it('emits token usage and turn.completed when the assistant message completes', () => {
     const result = mapOpencodeEvent(fixtureMessageUpdatedCompleted, makeCtx())
-    expect(result).toHaveLength(2)
+    expect(result).toHaveLength(3)
     expect(result[0]?.type).toBe('item.started')
     expect(result[1]).toMatchObject({
       type: 'thread.token-usage.updated',
-      payload: { usage: { usedTokens: 350 } },
+      payload: { usage: { usedTokens: 350, maxTokens: 1_000_000 } },
     })
+    expect(result[2]).toMatchObject({
+      type: 'turn.completed',
+      turnId: TURN_ID,
+      payload: { state: 'completed' },
+    })
+  })
+
+  it('skips turn.completed from message.updated when no turn is tracked', () => {
+    const result = mapOpencodeEvent(fixtureMessageUpdatedCompleted, makeCtx({ turnId: undefined }))
+    // item.started (no turnId is fine for items) + token usage, but NO turn.completed
+    expect(result.find(e => e.type === 'turn.completed')).toBeUndefined()
   })
 
   it('maps message.removed to a declined item update', () => {

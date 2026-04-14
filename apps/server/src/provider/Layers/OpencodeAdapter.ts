@@ -88,8 +88,8 @@ const makeOpencodeAdapter = Effect.fn('makeOpencodeAdapter')(function* (
     rollbackThread: rollbackThread(deps),
   } as const
   const requestMethods = {
-    respondToRequest: respondToRequest(),
-    respondToUserInput: respondToUserInput(),
+    respondToRequest: respondToRequest(deps),
+    respondToUserInput: respondToUserInput(deps),
   } as const
   const lifecycleMethods = {
     startSession: startSession(deps),

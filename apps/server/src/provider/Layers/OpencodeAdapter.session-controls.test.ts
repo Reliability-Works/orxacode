@@ -230,7 +230,11 @@ describe('OpencodeAdapter.runtime.turns - interruptTurn', () => {
     )
   })
 
-  it('is a no-op when no turn is running', async () => {
+  it('still calls SDK abort defensively when no local turn is tracked', async () => {
+    // Client/server turn state can drift — the UI may still believe a turn is
+    // running after we've cleared turnState locally (e.g. after a stray
+    // session.idle). We always forward the abort to the SDK so the stop
+    // button never feels broken.
     const fakeRuntime = createFakeOpencodeRuntime({ sessionId: 'sess-noop-abort' })
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -243,7 +247,7 @@ describe('OpencodeAdapter.runtime.turns - interruptTurn', () => {
         })
         yield* collectEvents(harness.runtimeEventQueue, 1)
         yield* interruptTurn(harness.deps)(TEST_THREAD_ID)
-        expect(fakeRuntime.sessionAbortCalls.length).toBe(0)
+        expect(fakeRuntime.sessionAbortCalls.length).toBe(1)
         const context = harness.sessions.get(TEST_THREAD_ID)
         if (context) yield* stopSessionInternal(harness.deps, context)
       })
