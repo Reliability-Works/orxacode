@@ -5,7 +5,10 @@ import type { Project } from '../types'
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
 import { Tooltip, TooltipPopup, TooltipTrigger } from './ui/tooltip'
 import { SidebarGroup } from './ui/sidebar'
-import { PlusIcon } from 'lucide-react'
+import { ChevronsDownUpIcon, ChevronsUpDownIcon, FolderInputIcon } from 'lucide-react'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useUiStateStore } from '../uiStateStore'
 import { ProjectSortMenu } from './sidebar/SidebarHelpers'
 import type { SortableProjectHandleProps } from './sidebar/SidebarHelpers'
 import { ProjectItem } from './sidebar/ProjectItem'
@@ -59,7 +62,45 @@ export interface SidebarProjectGroupProps extends SidebarProjectGroupSharedProps
   addFormProps: AddProjectFormProps
 }
 
+function CollapseAllProjectsButton({ projects }: { projects: Project[] }) {
+  const { projectExpandedById, setAllProjectsExpanded } = useUiStateStore(
+    useShallow(state => ({
+      projectExpandedById: state.projectExpandedById,
+      setAllProjectsExpanded: state.setAllProjectsExpanded,
+    }))
+  )
+  const projectIds = useMemo(() => projects.map(p => p.id), [projects])
+  const anyExpanded = useMemo(
+    () => projectIds.some(id => projectExpandedById[id] ?? true),
+    [projectIds, projectExpandedById]
+  )
+  if (projectIds.length === 0) return null
+  const label = anyExpanded ? 'Collapse all projects' : 'Expand all projects'
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+            onClick={() => setAllProjectsExpanded(projectIds, !anyExpanded)}
+          />
+        }
+      >
+        {anyExpanded ? (
+          <ChevronsDownUpIcon className="size-3.5" />
+        ) : (
+          <ChevronsUpDownIcon className="size-3.5" />
+        )}
+      </TooltipTrigger>
+      <TooltipPopup side="right">{label}</TooltipPopup>
+    </Tooltip>
+  )
+}
+
 function SidebarProjectGroupHeader(props: {
+  projects: Project[]
   shouldShowProjectPathEntry: boolean
   appSettings: SidebarProjectGroupProps['appSettings']
   onUpdateProjectSortOrder: SidebarProjectGroupProps['onUpdateProjectSortOrder']
@@ -72,6 +113,7 @@ function SidebarProjectGroupHeader(props: {
         Projects
       </span>
       <div className="flex items-center gap-1">
+        <CollapseAllProjectsButton projects={props.projects} />
         <ProjectSortMenu
           projectSortOrder={props.appSettings.sidebarProjectSortOrder}
           threadSortOrder={props.appSettings.sidebarThreadSortOrder}
@@ -90,7 +132,7 @@ function SidebarProjectGroupHeader(props: {
               />
             }
           >
-            <PlusIcon
+            <FolderInputIcon
               className={`size-3.5 transition-transform duration-150 ${props.shouldShowProjectPathEntry ? 'rotate-45' : 'rotate-0'}`}
             />
           </TooltipTrigger>
@@ -149,6 +191,7 @@ export function SidebarProjectGroup(props: SidebarProjectGroupProps) {
   return (
     <SidebarGroup className="px-2 py-2">
       <SidebarProjectGroupHeader
+        projects={props.projects}
         shouldShowProjectPathEntry={props.shouldShowProjectPathEntry}
         appSettings={props.appSettings}
         onUpdateProjectSortOrder={props.onUpdateProjectSortOrder}

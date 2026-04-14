@@ -5,7 +5,7 @@
  * Sidebar() render path and the decomposed SidebarBody.
  */
 
-import { ArrowUpDownIcon } from 'lucide-react'
+import { ArrowDownWideNarrowIcon } from 'lucide-react'
 import type { ProjectId } from '@orxa-code/contracts'
 import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from '../ui/menu'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
@@ -76,7 +76,7 @@ export function ProjectSortMenu({
             />
           }
         >
-          <ArrowUpDownIcon className={cn('size-3.5', iconClassName)} />
+          <ArrowDownWideNarrowIcon className={cn('size-3.5', iconClassName)} />
         </TooltipTrigger>
         <TooltipPopup side={tooltipSide}>Sort projects</TooltipPopup>
       </Tooltip>

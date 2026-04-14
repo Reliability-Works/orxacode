@@ -399,6 +399,39 @@ export function setProjectExpanded(
   }
 }
 
+/**
+ * Bulk expand/collapse: sets every project in `projectIds` to the same
+ * expanded state. When collapsing we also drop any nested-thread expansion
+ * (`expandedParentThreadIds`) since those rows are now hidden anyway and
+ * keeping them expanded would surprise the user the next time they expand
+ * a project.
+ */
+export function setAllProjectsExpanded(
+  state: UiState,
+  projectIds: ReadonlyArray<ProjectId>,
+  expanded: boolean
+): UiState {
+  if (projectIds.length === 0) return state
+  const nextExpandedById: Record<ProjectId, boolean> = { ...state.projectExpandedById }
+  let changed = false
+  for (const projectId of projectIds) {
+    const current = state.projectExpandedById[projectId] ?? true
+    if (current !== expanded) {
+      nextExpandedById[projectId] = expanded
+      changed = true
+    }
+  }
+  const nextExpandedParentThreadIds = expanded ? state.expandedParentThreadIds : []
+  const expandedThreadsChanged =
+    nextExpandedParentThreadIds.length !== state.expandedParentThreadIds.length
+  if (!changed && !expandedThreadsChanged) return state
+  return {
+    ...state,
+    projectExpandedById: nextExpandedById,
+    expandedParentThreadIds: nextExpandedParentThreadIds,
+  }
+}
+
 export function reorderProjects(
   state: UiState,
   draggedProjectId: ProjectId,
@@ -439,6 +472,7 @@ interface UiStateStore extends UiState {
   toggleParentThreadExpanded: (threadId: ThreadId) => void
   toggleProject: (projectId: ProjectId) => void
   setProjectExpanded: (projectId: ProjectId, expanded: boolean) => void
+  setAllProjectsExpanded: (projectIds: ReadonlyArray<ProjectId>, expanded: boolean) => void
   reorderProjects: (draggedProjectId: ProjectId, targetProjectId: ProjectId) => void
   requestNewSessionModal: (request: PendingNewSessionModalRequest) => void
   clearPendingNewSessionModal: () => void
@@ -467,6 +501,8 @@ export const useUiStateStore = create<UiStateStore>(set => ({
   toggleProject: projectId => set(state => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set(state => setProjectExpanded(state, projectId, expanded)),
+  setAllProjectsExpanded: (projectIds, expanded) =>
+    set(state => setAllProjectsExpanded(state, projectIds, expanded)),
   reorderProjects: (draggedProjectId, targetProjectId) =>
     set(state => reorderProjects(state, draggedProjectId, targetProjectId)),
   requestNewSessionModal: request => set({ pendingNewSessionModalRequest: request }),
