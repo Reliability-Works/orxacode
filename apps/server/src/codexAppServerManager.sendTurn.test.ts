@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 
 import {
   CODEX_DEFAULT_MODE_DEVELOPER_INSTRUCTIONS,
@@ -167,6 +167,98 @@ it('keeps the session model when interaction mode is set without an explicit mod
       },
     },
   })
+})
+
+it('steers the active turn when one is running instead of starting a new one', async () => {
+  const { manager, context, sendRequest, updateSession } = createSendTurnHarness()
+  context.session.status = 'running'
+  context.session.activeTurnId = 'turn_active'
+
+  const result = await manager.sendTurn({
+    threadId: asThreadId('thread_1'),
+    input: 'Also, look at this file',
+  })
+
+  expect(sendRequest).toHaveBeenCalledTimes(1)
+  expect(sendRequest).toHaveBeenCalledWith(context, 'turn/steer', {
+    threadId: 'thread_1',
+    input: [
+      {
+        type: 'text',
+        text: 'Also, look at this file',
+        text_elements: [],
+      },
+    ],
+    expectedTurnId: 'turn_active',
+  })
+  expect(result).toEqual({
+    threadId: 'thread_1',
+    turnId: 'turn_active',
+    resumeCursor: { threadId: 'thread_1' },
+  })
+  // Steer does not change the active turn — no status transition needed.
+  expect(updateSession).not.toHaveBeenCalled()
+})
+
+it('falls back to turn/start when the CLI does not know turn/steer', async () => {
+  const { manager, context } = createSendTurnHarness()
+  context.session.status = 'running'
+  context.session.activeTurnId = 'turn_active'
+
+  const sendRequest = vi
+    .spyOn(
+      manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> },
+      'sendRequest'
+    )
+    .mockImplementationOnce(() => {
+      const err = new Error('turn/steer failed: Method not found') as Error & { code?: number }
+      err.code = -32601
+      return Promise.reject(err)
+    })
+    .mockResolvedValueOnce({ turn: { id: 'turn_new' } })
+
+  const result = await manager.sendTurn({
+    threadId: asThreadId('thread_1'),
+    input: 'Also, look at this file',
+  })
+
+  expect(sendRequest).toHaveBeenNthCalledWith(
+    1,
+    context,
+    'turn/steer',
+    expect.objectContaining({ expectedTurnId: 'turn_active' })
+  )
+  expect(sendRequest).toHaveBeenNthCalledWith(
+    2,
+    context,
+    'turn/start',
+    expect.objectContaining({ threadId: 'thread_1' })
+  )
+  expect(result).toEqual({
+    threadId: 'thread_1',
+    turnId: 'turn_new',
+    resumeCursor: { threadId: 'thread_1' },
+  })
+})
+
+it('propagates steer errors other than method-not-found (e.g. non-steerable turn)', async () => {
+  const { manager, context } = createSendTurnHarness()
+  context.session.status = 'running'
+  context.session.activeTurnId = 'turn_active'
+
+  vi.spyOn(
+    manager as unknown as { sendRequest: (...args: unknown[]) => Promise<unknown> },
+    'sendRequest'
+  ).mockRejectedValueOnce(
+    Object.assign(new Error('turn/steer failed: active turn is not steerable'), { code: -32602 })
+  )
+
+  await expect(
+    manager.sendTurn({
+      threadId: asThreadId('thread_1'),
+      input: 'Also, look at this file',
+    })
+  ).rejects.toThrow('active turn is not steerable')
 })
 
 it('rejects empty turn input', async () => {

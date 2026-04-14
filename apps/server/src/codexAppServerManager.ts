@@ -47,6 +47,8 @@ import {
 import { attachProcessListeners } from './codexAppServerManager.process'
 import {
   buildTurnStartParams,
+  buildTurnSteerParams,
+  isSteerMethodNotFoundError,
   parseThreadSnapshot,
   readStartedTurnId,
   type CodexThreadSnapshot,
@@ -131,12 +133,36 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
   async sendTurn(input: CodexAppServerSendTurnInput): Promise<ProviderTurnStartResult> {
     const context = this.requireSession(input.threadId)
+    const activeTurnId = context.session.activeTurnId
+    if (activeTurnId && context.session.status === 'running') {
+      const steered = await this.trySteerActiveTurn(context, activeTurnId, input)
+      if (steered) {
+        return steered
+      }
+    }
     context.collabReceiverTurns.clear()
     const turnStartParams = buildTurnStartParams(context.session, context.account, input)
     const response = await this.sendRequest(context, 'turn/start', turnStartParams)
     const turnId = readStartedTurnId(response)
     this.markTurnRunning(context, turnId)
     return this.buildTurnStartResult(context, turnId)
+  }
+
+  private async trySteerActiveTurn(
+    context: CodexSessionContext,
+    activeTurnId: TurnId,
+    input: CodexAppServerSendTurnInput
+  ): Promise<ProviderTurnStartResult | null> {
+    try {
+      const steerParams = buildTurnSteerParams(context.session, activeTurnId, input)
+      await this.sendRequest(context, 'turn/steer', steerParams)
+      return this.buildTurnStartResult(context, activeTurnId)
+    } catch (error) {
+      if (isSteerMethodNotFoundError(error)) {
+        return null
+      }
+      throw error
+    }
   }
 
   async interruptTurn(

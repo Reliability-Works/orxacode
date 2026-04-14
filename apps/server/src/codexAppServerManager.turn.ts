@@ -12,6 +12,7 @@ import {
   readStringField,
   type CodexTurnInputItem,
   type CodexTurnStartParams,
+  type CodexTurnSteerParams,
 } from './codexAppServerManager.protocol'
 
 export interface CodexThreadTurnSnapshot {
@@ -104,6 +105,34 @@ export function buildTurnStartParams(
   }
 
   return turnStartParams
+}
+
+export function buildTurnSteerParams(
+  session: ProviderSession,
+  expectedTurnId: TurnId,
+  input: BuildTurnInputInput
+): CodexTurnSteerParams {
+  const providerThreadId = requireProviderThreadId(session)
+  return {
+    threadId: providerThreadId,
+    input: buildTurnInput(input),
+    expectedTurnId,
+  }
+}
+
+/**
+ * An older Codex CLI that doesn't support `turn/steer` responds with JSON-RPC
+ * error code -32601 ("method not found"). In that case we fall back to opening
+ * a fresh `turn/start`, which is still better than dropping the queued message.
+ */
+export function isSteerMethodNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: unknown }).code
+  if (code === -32601) return true
+  const message = (error as { message?: unknown }).message
+  if (typeof message !== 'string') return false
+  const lower = message.toLowerCase()
+  return lower.includes('method not found')
 }
 
 export function buildTurnInput(input: BuildTurnInputInput): CodexTurnInputItem[] {

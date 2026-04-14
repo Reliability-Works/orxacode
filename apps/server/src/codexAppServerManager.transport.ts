@@ -79,7 +79,13 @@ export function handleResponse(context: TransportContext, response: JsonRpcRespo
   context.pending.delete(key)
 
   if (response.error?.message) {
-    pending.reject(new Error(`${pending.method} failed: ${String(response.error.message)}`))
+    const rpcError = new Error(
+      `${pending.method} failed: ${String(response.error.message)}`
+    ) as Error & { code?: number }
+    if (typeof response.error.code === 'number') {
+      rpcError.code = response.error.code
+    }
+    pending.reject(rpcError)
     return
   }
 

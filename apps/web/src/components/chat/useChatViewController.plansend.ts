@@ -231,7 +231,14 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
     if (!queuedComposerMessage) {
       return
     }
-    if (args.ld.isSendBusy || args.td.phase === 'running' || !args.ad.latestTurnSettled) {
+    if (args.ld.isSendBusy) {
+      return
+    }
+    // Codex supports `turn/steer` — inject the queued message into the running
+    // turn without waiting for it to settle. Claude/Opencode queue passively:
+    // wait for the current turn to finish, then send as a fresh turn.
+    const canSteer = queuedComposerMessage.selectedProvider === 'codex'
+    if (!canSteer && (args.td.phase === 'running' || !args.ad.latestTurnSettled)) {
       return
     }
     args.ls.setQueuedComposerMessages(messages => messages.slice(1))

@@ -83,6 +83,12 @@ export type CodexTurnInputItem =
   | { type: 'text'; text: string; text_elements: [] }
   | { type: 'image'; url: string }
 
+export type CodexTurnSteerParams = {
+  threadId: string
+  input: CodexTurnInputItem[]
+  expectedTurnId: string
+}
+
 export type CodexTurnStartParams = {
   threadId: string
   input: CodexTurnInputItem[]
