@@ -26,6 +26,7 @@ import { Cause, Effect, Exit, type Fiber, Stream } from 'effect'
 
 import type { OpencodeAdapterDeps } from './OpencodeAdapter.deps.ts'
 import { mapOpencodeEvent } from './OpencodeAdapter.pure.ts'
+import { toolLifecycleItemTypeForTool } from './OpencodeAdapter.toolSummary.ts'
 import { readOpencodeSubtaskDelegation } from '../../opencodeChildThreads.ts'
 import {
   emitMappedEvents,
@@ -65,6 +66,27 @@ function rememberPendingPromptRequests(
   }
   if (event.type === 'question.replied' || event.type === 'question.rejected') {
     context.pendingQuestions.delete(event.properties.requestID)
+  }
+}
+
+function trackInFlightToolParts(context: OpencodeSessionContext, event: OpencodeEvent): void {
+  const turnState = context.turnState
+  if (!turnState) return
+  if (event.type === 'message.part.updated') {
+    const part = event.properties.part
+    if (part.type !== 'tool') return
+    const status = part.state.status
+    if (status === 'pending' || status === 'running') {
+      turnState.inFlightToolParts.set(part.id, toolLifecycleItemTypeForTool(part.tool))
+      return
+    }
+    if (status === 'completed' || status === 'error') {
+      turnState.inFlightToolParts.delete(part.id)
+    }
+    return
+  }
+  if (event.type === 'message.part.removed') {
+    turnState.inFlightToolParts.delete(event.properties.partID)
   }
 }
 
@@ -214,6 +236,7 @@ export const handleIncomingEvent = (
   Effect.gen(function* () {
     rememberChildSessionRelations(context, event)
     rememberPendingPromptRequests(context, event)
+    trackInFlightToolParts(context, event)
     yield* markStartupMilestones(deps, context, event)
     const hint = cacheLookup(event)
     const mapperContext = yield* prepareMapperContext(deps, context)

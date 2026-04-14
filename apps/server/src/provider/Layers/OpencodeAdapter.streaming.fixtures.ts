@@ -218,6 +218,23 @@ export const fixtureSessionStatusBusy: Extract<OpencodeEvent, { type: 'session.s
   },
 }
 
+export function fixtureSessionStatusRetry(
+  message: string
+): Extract<OpencodeEvent, { type: 'session.status' }> {
+  return {
+    type: 'session.status',
+    properties: {
+      sessionID: FIXTURE_PROVIDER_SESSION_ID,
+      status: {
+        type: 'retry',
+        attempt: 1,
+        message,
+        next: 1_000,
+      },
+    },
+  }
+}
+
 export const fixtureSessionError: Extract<OpencodeEvent, { type: 'session.error' }> = {
   type: 'session.error',
   properties: {

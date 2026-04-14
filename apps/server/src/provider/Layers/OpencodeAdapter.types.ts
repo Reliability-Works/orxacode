@@ -24,6 +24,7 @@ import type {
   RuntimeTaskId,
   ThreadId,
   ThreadTokenUsageSnapshot,
+  ToolLifecycleItemType,
   TurnId,
 } from '@orxa-code/contracts'
 import type { Fiber } from 'effect'
@@ -49,6 +50,11 @@ export interface OpencodeTurnState {
   readonly startedAt: string
   readonly providerMessageIds: Set<string>
   readonly startupTrace: OpencodeTurnStartupTrace
+  // Insertion-ordered map of tool-call parts that opened (pending/running)
+  // but haven't yet transitioned to completed/error. On turn abort we
+  // synthesize terminal `item.completed{status:'declined'}` events for each
+  // so the UI doesn't leave tool spinners running.
+  readonly inFlightToolParts: Map<string, ToolLifecycleItemType>
 }
 
 export interface OpencodeTurnStartupTrace {

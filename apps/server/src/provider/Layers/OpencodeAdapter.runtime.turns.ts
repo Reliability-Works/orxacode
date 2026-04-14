@@ -30,7 +30,7 @@ import {
   ProviderAdapterValidationError,
 } from '../Errors.ts'
 import type { OpencodeAdapterDeps } from './OpencodeAdapter.deps.ts'
-import { mapTurnAbort } from './OpencodeAdapter.pure.ts'
+import { mapInterruptedToolCalls, mapTurnAbort } from './OpencodeAdapter.pure.ts'
 import {
   abortOpencodeSessionIgnoring,
   emitMappedEvents,
@@ -136,11 +136,21 @@ const abortInflightTurn = Effect.fn('opencode.abortInflightTurn')(function* (
   // redundant call is harmless.
   yield* abortOpencodeSessionIgnoring(context, 'Failed to abort opencode session.')
   if (context.turnState) {
-    const mapperContext = yield* prepareMapperContext(deps, context)
+    const inFlight = Array.from(context.turnState.inFlightToolParts, ([partId, itemType]) => ({
+      partId,
+      itemType,
+    }))
+    // 1 stamp per synthesized tool completion + 1 for `turn.aborted`.
+    const mapperContext = yield* prepareMapperContext(deps, context, inFlight.length + 1)
+    const interruptedToolEvents = mapInterruptedToolCalls(inFlight, mapperContext)
+    if (interruptedToolEvents.length > 0) {
+      yield* emitMappedEvents(deps, interruptedToolEvents)
+    }
     const abortEvents = mapTurnAbort(reason, mapperContext)
     if (abortEvents.length > 0) {
       yield* emitMappedEvents(deps, abortEvents)
     }
+    context.turnState.inFlightToolParts.clear()
     context.turnState = undefined
     context.session = {
       ...context.session,
@@ -168,6 +178,7 @@ const openTurn = Effect.fn('opencode.openTurn')(function* (
       firstContentDeltaAtMs: undefined,
       firstToolAtMs: undefined,
     },
+    inFlightToolParts: new Map(),
   }
   context.turnState = turnState
   context.session = {

@@ -46,6 +46,14 @@ export function turnIdForSession(
   return ctx.relatedSessionIds.has(sessionId) ? opencodeChildTurnId(sessionId) : ctx.turnId
 }
 
+export function resolveMapperContext(
+  ctx: OpencodeMapperContext,
+  sessionID: string
+): { readonly turnId: TurnId | undefined } | null {
+  if (!matchesThread(ctx, sessionID)) return null
+  return { turnId: turnIdForSession(ctx, sessionID) ?? ctx.turnId }
+}
+
 export function matchesThread(ctx: OpencodeMapperContext, sessionId: string | undefined): boolean {
   if (sessionId && ctx.relatedSessionIds.has(sessionId)) {
     return true

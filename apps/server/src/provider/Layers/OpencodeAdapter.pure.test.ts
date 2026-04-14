@@ -7,7 +7,9 @@ import { EventId, ThreadId, TurnId } from '@orxa-code/contracts'
 import { describe, expect, it } from 'vitest'
 
 import {
+  detectFatalRetryMessage,
   isHandledOpencodeEvent,
+  mapInterruptedToolCalls,
   mapOpencodeEvent,
   type OpencodeEventStamp,
   type OpencodeMapperContext,
@@ -28,6 +30,7 @@ import {
   fixtureSessionIdle,
   fixtureSessionStatusBusy,
   fixtureSessionStatusIdle,
+  fixtureSessionStatusRetry,
   fixtureTextPartDelta,
   fixtureTextPartUpdatedCompleted,
   fixtureTextPartUpdatedInProgress,
@@ -116,6 +119,91 @@ describe('mapOpencodeEvent session lifecycle', () => {
   it('ignores session.status({type: idle}) when no turn is active', () => {
     const result = mapOpencodeEvent(fixtureSessionStatusIdle, makeCtx({ turnId: undefined }))
     expect(result).toEqual([])
+  })
+
+  it('promotes fatal session.status({type: retry}) messages to turn.failed', () => {
+    const result = mapOpencodeEvent(
+      fixtureSessionStatusRetry('401 Unauthorized: invalid API key'),
+      makeCtx()
+    )
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      type: 'turn.completed',
+      turnId: TURN_ID,
+      payload: {
+        state: 'failed',
+        errorMessage: expect.stringContaining('401 Unauthorized'),
+      },
+    })
+  })
+
+  it('ignores transient session.status({type: retry}) messages', () => {
+    const result = mapOpencodeEvent(
+      fixtureSessionStatusRetry('network hiccup, retrying'),
+      makeCtx()
+    )
+    expect(result).toEqual([])
+  })
+})
+
+describe('detectFatalRetryMessage', () => {
+  const fatalCases: ReadonlyArray<string> = [
+    'insufficient balance on account',
+    'invalid API key for provider',
+    'invalid_api_key',
+    'unknown model requested',
+    'model not found: gpt-9',
+    '401 Unauthorized',
+    'authentication failed',
+    'forbidden: access denied',
+    'Rate limit exceeded, try later',
+    'quota exceeded for today',
+  ]
+  for (const message of fatalCases) {
+    it(`flags "${message}" as fatal`, () => {
+      expect(detectFatalRetryMessage(message)).not.toBeNull()
+    })
+  }
+
+  it('lets transient networking errors through', () => {
+    expect(detectFatalRetryMessage('connection reset, retrying in 1s')).toBeNull()
+    expect(detectFatalRetryMessage('timeout waiting for response')).toBeNull()
+    expect(detectFatalRetryMessage('')).toBeNull()
+  })
+})
+
+describe('mapInterruptedToolCalls', () => {
+  it('emits a declined item.completed per in-flight tool partId', () => {
+    const ctx = makeCtx()
+    const result = mapInterruptedToolCalls(
+      [
+        { partId: 'part_a', itemType: 'command_execution' },
+        { partId: 'part_b', itemType: 'file_change' },
+      ],
+      ctx
+    )
+    expect(result).toHaveLength(2)
+    expect(result[0]).toMatchObject({
+      type: 'item.completed',
+      turnId: TURN_ID,
+      payload: { itemType: 'command_execution', status: 'declined' },
+    })
+    expect(result[1]).toMatchObject({
+      type: 'item.completed',
+      payload: { itemType: 'file_change', status: 'declined' },
+    })
+  })
+
+  it('returns empty when no turn is active', () => {
+    const result = mapInterruptedToolCalls(
+      [{ partId: 'part_a', itemType: 'command_execution' }],
+      makeCtx({ turnId: undefined })
+    )
+    expect(result).toEqual([])
+  })
+
+  it('returns empty when no tools are in flight', () => {
+    expect(mapInterruptedToolCalls([], makeCtx())).toEqual([])
   })
 })
 

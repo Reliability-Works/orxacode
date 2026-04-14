@@ -79,10 +79,14 @@ const MAX_EVENTS_PER_SDK_EVENT = 4
 
 export const prepareMapperContext = Effect.fn('prepareMapperContext')(function* (
   deps: OpencodeAdapterDeps,
-  context: OpencodeSessionContext
+  context: OpencodeSessionContext,
+  // Abort-path callers may synthesize one `item.completed` per in-flight
+  // tool part on top of the regular SDK-event fan-out, so they pass an
+  // explicit count instead of the shared per-event ceiling.
+  stampCount: number = MAX_EVENTS_PER_SDK_EVENT
 ) {
   const stamps: Array<OpencodeEventStamp> = []
-  for (let index = 0; index < MAX_EVENTS_PER_SDK_EVENT; index += 1) {
+  for (let index = 0; index < stampCount; index += 1) {
     stamps.push(yield* deps.makeEventStamp())
   }
   let cursor = 0
