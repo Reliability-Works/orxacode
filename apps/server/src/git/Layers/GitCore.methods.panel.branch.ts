@@ -116,10 +116,16 @@ export function buildBranchCompareResult(deps: GitCoreInternalDeps) {
     const baseRef = yield* resolveBaseRef(cwd, branch)
     if (!baseRef) return null
 
+    // Diff the working tree (including staged + unstaged + committed changes)
+    // against the upstream base. Previously this used `base...HEAD` (three-dot)
+    // which only surfaces committed divergence and returns 0 when HEAD matches
+    // the upstream — even when there are uncommitted edits on the branch. For
+    // the sidebar, "Branch" should always include everything that diverges
+    // from the upstream, so it's at least >= Unstaged.
     const patchText = yield* deps.runGitStdoutWithOptions(
       'GitCore.getDiff.branch',
       cwd,
-      ['diff', `${baseRef}...HEAD`, '-U3'],
+      ['diff', baseRef, '-U3'],
       { allowNonZeroExit: true }
     )
 
