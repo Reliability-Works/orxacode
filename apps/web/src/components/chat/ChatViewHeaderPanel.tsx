@@ -14,14 +14,10 @@ import { ProviderStatusBanner } from './ProviderStatusBanner'
 import { ThreadErrorBanner } from './ThreadErrorBanner'
 import { useChatViewCtx } from './ChatViewContext'
 import { useSidebar } from '../ui/sidebar.shared'
-import { useChatSplitPaneContext } from './ChatSplitPaneContext'
 import { Badge } from '../ui/badge'
-import { Button } from '../ui/button'
-import { Columns2Icon, Maximize2Icon } from 'lucide-react'
 import { ThreadHandoffMenu } from './ThreadHandoffMenu'
 import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
-import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 
@@ -37,54 +33,6 @@ function HandoffMenuAction() {
         ? { onOpenPullRequestDialog: c.openPullRequestDialog }
         : {})}
     />
-  )
-}
-
-function ChatHeaderSplitActions() {
-  const split = useChatSplitPaneContext()
-  if (!split) return null
-  if (!split.splitOpen) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={split.toggleSplit}
-              aria-label="Open split view"
-            />
-          }
-        >
-          <Columns2Icon className="size-3.5" />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">Open split view</TooltipPopup>
-      </Tooltip>
-    )
-  }
-
-  // Split is open: drop the (redundant) Columns2 toggle — the secondary pane
-  // carries its own close (X) control. Keep the Maximize affordance so the
-  // primary pane can still be expanded to full width.
-  const isSplitMaximized = split.maximizedPane === split.pane
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="xs"
-            variant={isSplitMaximized ? 'secondary' : 'outline'}
-            onClick={split.toggleMaximize}
-            aria-label={isSplitMaximized ? 'Restore split view' : `Maximize ${split.pane} pane`}
-          />
-        }
-      >
-        <Maximize2Icon className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        {isSplitMaximized ? 'Restore split view' : `Maximize ${split.pane} pane`}
-      </TooltipPopup>
-    </Tooltip>
   )
 }
 
@@ -186,7 +134,6 @@ export function ChatViewHeaderPanel() {
           onToggleBrowserSidebar={c.toggleBrowserSidebar}
           onSelectChatView={c.closeAuxSidebar}
           browserAvailable={browserAvailable}
-          splitActions={<ChatHeaderSplitActions />}
           handoffAction={<HandoffMenuAction />}
           threadActionsMenu={
             <ThreadActionsMenu thread={activeThread} project={activeProject ?? null} />

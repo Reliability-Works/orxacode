@@ -6,7 +6,7 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import { GitBranchIcon, TerminalSquareIcon } from 'lucide-react'
+import { GitBranchIcon } from 'lucide-react'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import type { NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
@@ -17,8 +17,7 @@ import type { ReactNode } from 'react'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSidebar } from '../ui/sidebar.shared'
 import { ChatHeaderMobileActions, ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
-import { ChatHeaderToggleControl } from './ChatHeaderToggleControl'
-import { ChatHeaderPanelSelector } from './ChatHeaderPanelSelector'
+import { ChatHeaderViewsGroup } from './ChatHeaderViewsGroup'
 
 interface ProjectActionProps {
   activeThreadId: ThreadId
@@ -55,7 +54,6 @@ interface ChatHeaderProps extends ProjectActionProps {
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
   onSelectChatView: () => void
-  splitActions?: ReactNode
   handoffAction?: ReactNode
   threadActionsMenu?: ReactNode
 }
@@ -160,39 +158,17 @@ function GitSidebarToggle(props: {
 function ChatHeaderSidebarActions(props: {
   auxSidebarMode: ChatAuxSidebarMode
   onToggleGitSidebar: () => void
-  onToggleFilesSidebar: () => void
-  onToggleBrowserSidebar: () => void
   isGitRepo: boolean
-  filesAvailable: boolean
-  browserAvailable: boolean
   diffStats: DiffStats | null
 }) {
-  const {
-    auxSidebarMode,
-    onToggleGitSidebar,
-    onToggleFilesSidebar,
-    onToggleBrowserSidebar,
-    isGitRepo,
-    filesAvailable,
-    browserAvailable,
-    diffStats,
-  } = props
+  const { auxSidebarMode, onToggleGitSidebar, isGitRepo, diffStats } = props
   return (
-    <>
-      <GitSidebarToggle
-        isGitRepo={isGitRepo}
-        gitSidebarOpen={auxSidebarMode === 'git'}
-        onToggleGitSidebar={onToggleGitSidebar}
-        diffStats={diffStats}
-      />
-      <ChatHeaderPanelSelector
-        auxSidebarMode={auxSidebarMode}
-        filesAvailable={filesAvailable}
-        browserAvailable={browserAvailable}
-        onToggleFilesSidebar={onToggleFilesSidebar}
-        onToggleBrowserSidebar={onToggleBrowserSidebar}
-      />
-    </>
+    <GitSidebarToggle
+      isGitRepo={isGitRepo}
+      gitSidebarOpen={auxSidebarMode === 'git'}
+      onToggleGitSidebar={onToggleGitSidebar}
+      diffStats={diffStats}
+    />
   )
 }
 
@@ -209,25 +185,22 @@ interface ChatHeaderActionsProps extends ProjectActionProps {
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
   onSelectChatView: () => void
-  splitActions?: ReactNode
 }
 
-function ChatHeaderDesktopActions(
-  props: Omit<ChatHeaderActionsProps, 'splitActions'> & {
-    splitActions?: ReactNode
-  }
-) {
+function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
   return (
     <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
-      <ChatHeaderToggleControl
-        pressed={props.terminalOpen}
-        onToggle={props.onToggleTerminal}
-        disabled={!props.terminalAvailable}
-        ariaLabel="Toggle terminal drawer"
-        icon={TerminalSquareIcon}
-        tooltipLabel={props.terminalToggleLabel}
+      <ChatHeaderViewsGroup
+        auxSidebarMode={props.auxSidebarMode}
+        filesAvailable={props.openInCwd !== null}
+        browserAvailable={props.browserAvailable}
+        terminalAvailable={props.terminalAvailable}
+        terminalOpen={props.terminalOpen}
+        terminalToggleLabel={props.terminalToggleLabel}
+        onToggleFilesSidebar={props.onToggleFilesSidebar}
+        onToggleBrowserSidebar={props.onToggleBrowserSidebar}
+        onToggleTerminal={props.onToggleTerminal}
       />
-      {props.splitActions}
       <ChatHeaderProjectActions
         activeThreadId={props.activeThreadId}
         activeProjectName={props.activeProjectName}
@@ -246,11 +219,7 @@ function ChatHeaderDesktopActions(
       <ChatHeaderSidebarActions
         auxSidebarMode={props.auxSidebarMode}
         onToggleGitSidebar={props.onToggleGitSidebar}
-        onToggleFilesSidebar={props.onToggleFilesSidebar}
-        onToggleBrowserSidebar={props.onToggleBrowserSidebar}
         isGitRepo={props.isGitRepo}
-        filesAvailable={props.openInCwd !== null}
-        browserAvailable={props.browserAvailable}
         diffStats={props.diffStats}
       />
     </div>
@@ -334,7 +303,6 @@ function buildChatHeaderActionsProps(
     onToggleFilesSidebar: props.onToggleFilesSidebar,
     onToggleBrowserSidebar: props.onToggleBrowserSidebar,
     onSelectChatView: props.onSelectChatView,
-    splitActions: props.splitActions,
     handoffAction: props.handoffAction,
   }
 }
