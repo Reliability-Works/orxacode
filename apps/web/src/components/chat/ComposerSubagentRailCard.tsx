@@ -76,7 +76,7 @@ function SubagentRow({ item }: { item: RailSubagentItem }) {
 export function ComposerSubagentRailCard() {
   const c = useChatViewCtx()
   const threads = useStore(store => store.threads)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   const items = useMemo(
     () => deriveRailSubagentItems(threads, c.td.activeThread?.id ?? null),

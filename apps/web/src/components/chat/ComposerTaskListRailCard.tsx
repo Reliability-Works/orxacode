@@ -143,7 +143,7 @@ export function ComposerTaskListRailCard() {
   const c = useChatViewCtx()
   const activePlan = c.p.activePlan
   const sidebarProposedPlan = c.p.sidebarProposedPlan
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   if (!activePlan && !sidebarProposedPlan) {
     return null
