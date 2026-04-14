@@ -35,6 +35,7 @@ interface PoolEntry {
   refCount: number
   shutdownTimer: ReturnType<typeof setTimeout> | null
   shuttingDown: Promise<void> | null
+  pid: number | undefined
 }
 
 const pool = new Map<string, PoolEntry>()
@@ -77,6 +78,7 @@ function wrapHandle(entry: PoolEntry, server: StartedOpencodeServer): StartedOpe
   return {
     client: server.client,
     port: server.port,
+    pid: server.pid,
     shutdown: async () => {
       if (released) return
       released = true
@@ -104,6 +106,7 @@ export async function acquireSharedOpencodeServer(
     entry.refCount += 1
     try {
       const server = await entry.promise
+      entry.pid = server.pid
       return wrapHandle(entry, server)
     } catch (error) {
       // The shared spawn failed. Release the refcount we optimistically
@@ -120,11 +123,13 @@ export async function acquireSharedOpencodeServer(
     refCount: 1,
     shutdownTimer: null,
     shuttingDown: null,
+    pid: undefined,
   }
   pool.set(key, entry)
 
   try {
     const server = await promise
+    entry.pid = server.pid
     return wrapHandle(entry, server)
   } catch (error) {
     // Spawn failed — evict so the next acquire retries from scratch.
@@ -134,10 +139,11 @@ export async function acquireSharedOpencodeServer(
 }
 
 /**
- * Test-only: forcibly drain the pool. Useful for vitest between cases that
- * don't want state from a previous test leaking across.
+ * Gracefully shut down every pooled `opencode serve` subprocess. Called from
+ * the server's SIGINT/SIGTERM handlers so orphaned children don't survive the
+ * parent process. Safe to call multiple times.
  */
-export async function drainOpencodeServerPoolForTests(): Promise<void> {
+export async function shutdownAllPooledOpencodeServers(): Promise<void> {
   const entries = Array.from(pool.values())
   pool.clear()
   await Promise.all(
@@ -151,4 +157,51 @@ export async function drainOpencodeServerPoolForTests(): Promise<void> {
       }
     })
   )
+}
+
+/** Test-only alias retained for backward compatibility. */
+export const drainOpencodeServerPoolForTests = shutdownAllPooledOpencodeServers
+
+/**
+ * Best-effort synchronous SIGTERM to every tracked pooled child. Used from
+ * `process.on('exit', ...)` where we can't await. Children that ignore
+ * SIGTERM will still be reaped by the OS when this process dies, but only if
+ * they weren't detached — which they aren't (default `detached: false`).
+ */
+export function killAllPooledOpencodeServersSync(): void {
+  for (const entry of pool.values()) {
+    if (entry.pid !== undefined) {
+      try {
+        process.kill(entry.pid, 'SIGTERM')
+      } catch {
+        // Process may already be gone.
+      }
+    }
+  }
+}
+
+let shutdownHandlersInstalled = false
+
+/**
+ * Install process-level signal and exit hooks that drain the opencode pool
+ * before this Node process exits. Idempotent. Call once from the server
+ * entrypoint.
+ */
+export function installOpencodeServerPoolShutdownHandlers(): void {
+  if (shutdownHandlersInstalled) return
+  shutdownHandlersInstalled = true
+
+  // SIGINT/SIGTERM: async drain races alongside Effect's own fiber-interrupt
+  // handler; whichever finishes first leaves the other with nothing to do.
+  // `exit`: synchronous SIGTERM to any still-tracked child as a
+  // belt-and-suspenders for abrupt exits (uncaught exceptions, etc.).
+  process.on('SIGINT', () => {
+    void shutdownAllPooledOpencodeServers()
+  })
+  process.on('SIGTERM', () => {
+    void shutdownAllPooledOpencodeServers()
+  })
+  process.on('exit', () => {
+    killAllPooledOpencodeServersSync()
+  })
 }

@@ -6,7 +6,10 @@ import { Command } from 'effect/unstable/cli'
 
 import { NetService } from '@orxa-code/shared/Net'
 import { cli } from './cli'
+import { installOpencodeServerPoolShutdownHandlers } from './provider/opencodeServerPool'
 import { version } from '../package.json' with { type: 'json' }
+
+installOpencodeServerPoolShutdownHandlers()
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer)
 

@@ -40,6 +40,7 @@ export type OpencodeModelSelection = Extract<
 export interface OpencodeClientRuntime {
   readonly client: OpencodeClient
   readonly port: number
+  readonly pid?: number | undefined
   readonly shutdown: () => Promise<void>
 }
 

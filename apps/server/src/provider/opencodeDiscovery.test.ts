@@ -29,6 +29,7 @@ function makeFakeStartServer(input: FakeServerInput): {
   const start: StartOpencodeServerFn = async () => {
     const fakeStarted: StartedOpencodeServer = {
       port: 4242,
+      pid: undefined,
       shutdown: async () => {
         shutdownCalls.value += 1
       },

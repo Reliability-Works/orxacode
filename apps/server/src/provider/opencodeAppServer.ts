@@ -119,6 +119,7 @@ export interface StartOpencodeServerInput {
 export interface StartedOpencodeServer {
   readonly client: OpencodeClient
   readonly port: number
+  readonly pid: number | undefined
   readonly shutdown: () => Promise<void>
 }
 
@@ -333,7 +334,7 @@ export async function startOpencodeServer(
   }
 
   const client = clientFactory({ baseUrl })
-  return { client, port, shutdown }
+  return { client, port, pid: ctx.child.pid, shutdown }
 }
 
 interface ProviderListResponseLike {
