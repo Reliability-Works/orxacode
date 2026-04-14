@@ -12,6 +12,7 @@ import {
   InfoIcon,
   LoaderCircleIcon,
   TriangleAlertIcon,
+  XIcon,
 } from 'lucide-react'
 
 import { cn } from '~/lib/utils'
@@ -30,6 +31,17 @@ const TOAST_ICONS = {
   success: CircleCheckIcon,
   warning: TriangleAlertIcon,
 } as const
+
+function CloseToastButton() {
+  return (
+    <Toast.Close
+      className="shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground opacity-60 transition-opacity hover:opacity-100"
+      title="Dismiss"
+    >
+      <XIcon className="size-3.5" />
+    </Toast.Close>
+  )
+}
 
 function CopyErrorButton({ text }: { text: string }) {
   const { copyToClipboard, isCopied } = useCopyToClipboard()
@@ -253,6 +265,7 @@ function StandardToastBody(props: {
   icon: (typeof TOAST_ICONS)[keyof typeof TOAST_ICONS] | null
   isErrorWithDescription: boolean
   justifyBetweenTitle: boolean
+  showDismiss?: boolean
   description?: string
 }) {
   return (
@@ -273,9 +286,12 @@ function StandardToastBody(props: {
             )}
           >
             <Toast.Title className="min-w-0 break-words font-medium" data-slot="toast-title" />
-            {props.isErrorWithDescription && props.description && (
-              <CopyErrorButton text={props.description} />
-            )}
+            <div className="flex shrink-0 items-center gap-0.5">
+              {props.isErrorWithDescription && props.description && (
+                <CopyErrorButton text={props.description} />
+              )}
+              {props.showDismiss && <CloseToastButton />}
+            </div>
           </div>
           <Toast.Description
             className="min-w-0 select-text break-words text-muted-foreground"
@@ -362,6 +378,7 @@ function ViewportToastItem(props: {
           props.toast.type === 'error' && typeof props.toast.description === 'string'
         }
         justifyBetweenTitle
+        showDismiss={!props.toast.data?.dismissAfterVisibleMs}
         {...(typeof props.toast.description === 'string'
           ? { description: props.toast.description }
           : {})}
