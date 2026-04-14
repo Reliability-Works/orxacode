@@ -15,7 +15,6 @@ import {
   type ProviderInteractionMode,
 } from '@orxa-code/contracts'
 import { type TerminalContextDraft } from '../../lib/terminalContext'
-import { newCommandId } from '~/lib/utils'
 import {
   parseStandaloneComposerSlashCommand,
   type ParsedStandaloneComposerSlashCommand,
@@ -171,10 +170,13 @@ function queueSendWhileTurnRunning(
   input: SendActionInput,
   promptForSend: string,
   preCtx: PreSendContext
-): Promise<boolean> | boolean {
+): boolean {
   if (!input.isTurnRunning) {
     return false
   }
+  // Passive queue: hold the message client-side and let it drain once the
+  // current turn settles naturally. Users can still force an explicit
+  // interrupt via the per-message "send now" action in the queued tray.
   input.queueFollowUp(
     createQueuedComposerMessage({
       prompt: promptForSend,
@@ -190,28 +192,7 @@ function queueSendWhileTurnRunning(
     })
   )
   clearComposerAfterQueue(input)
-  const activeThread = input.activeThread
-  if (!activeThread || !input.isServerThread || input.queuedMessageCount > 0) {
-    return true
-  }
-  const api = readNativeApi()
-  if (!api) {
-    return true
-  }
-  return api.orchestration
-    .dispatchCommand({
-      type: 'thread.turn.interrupt',
-      commandId: newCommandId(),
-      threadId: activeThread.id,
-      createdAt: new Date().toISOString(),
-    })
-    .catch(error => {
-      input.setThreadError(
-        activeThread.id,
-        error instanceof Error ? error.message : 'Failed to interrupt running turn.'
-      )
-    })
-    .then(() => true)
+  return true
 }
 
 async function executeImmediateSend(
@@ -294,7 +275,7 @@ async function runSendFlow(input: SendActionInput): Promise<void> {
   if (await tryHandleStandaloneSlashCommand(input, preCtx)) return
   if (handleEmptyContentIfNeeded(preCtx)) return
   if (!input.activeProject) return
-  if (await queueSendWhileTurnRunning(input, promptForSend, preCtx)) {
+  if (queueSendWhileTurnRunning(input, promptForSend, preCtx)) {
     return
   }
   await executeImmediateSend(input, api, promptForSend, preCtx)
