@@ -1,4 +1,8 @@
-import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from '@orxa-code/contracts'
+import {
+  PROVIDER_DISPLAY_NAMES,
+  type ModelSelection,
+  type ProviderKind,
+} from '@orxa-code/contracts'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRightLeftIcon, ChevronDownIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -12,7 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../ui/menu'
-import { HandoffDialog } from './HandoffDialog'
+import { HandoffDialog, type HandoffProviderModelOption } from './HandoffDialog'
 import {
   buildWorktreeHandoffContext,
   getHandoffTargetProviders,
@@ -55,6 +59,7 @@ function HandoffDropdown(props: {
 export function ThreadHandoffMenu(props: {
   thread: Thread
   project: Project | null
+  modelOptionsByProvider: Record<ProviderKind, ReadonlyArray<HandoffProviderModelOption>>
   onOpenPullRequestDialog?: (reference?: string, bootstrapPrompt?: string | null) => void
 }) {
   const navigate = useNavigate()
@@ -70,7 +75,10 @@ export function ThreadHandoffMenu(props: {
     return null
   }
 
-  async function confirmHandoff(appendedPrompt: string | null) {
+  async function confirmHandoff(args: {
+    appendedPrompt: string | null
+    modelSelection: ModelSelection
+  }) {
     if (!dialogProvider) {
       return
     }
@@ -82,7 +90,8 @@ export function ThreadHandoffMenu(props: {
         thread: props.thread,
         project: props.project,
         targetProvider,
-        appendedPrompt,
+        appendedPrompt: args.appendedPrompt,
+        modelSelection: args.modelSelection,
       })
       setDialogProvider(null)
     } catch (error) {
@@ -113,8 +122,10 @@ export function ThreadHandoffMenu(props: {
         open={dialogProvider !== null}
         targetProvider={dialogProvider}
         isSubmitting={pendingProvider !== null}
+        modelOptionsByProvider={props.modelOptionsByProvider}
+        projectDefaultModelSelection={props.project?.defaultModelSelection ?? null}
         onCancel={() => setDialogProvider(null)}
-        onConfirm={appendedPrompt => void confirmHandoff(appendedPrompt)}
+        onConfirm={args => void confirmHandoff(args)}
       />
     </>
   )

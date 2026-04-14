@@ -32,6 +32,7 @@ function HandoffMenuAction() {
     <ThreadHandoffMenu
       thread={c.td.activeThread}
       project={c.td.activeProject ?? null}
+      modelOptionsByProvider={c.td.modelOptionsByProvider}
       {...(c.td.canCheckoutPullRequestIntoThread
         ? { onOpenPullRequestDialog: c.openPullRequestDialog }
         : {})}

@@ -147,6 +147,7 @@ export async function startThreadHandoff(input: {
   readonly project: Project | null
   readonly targetProvider: ProviderKind
   readonly appendedPrompt?: string | null
+  readonly modelSelection?: ModelSelection
 }) {
   const api = readNativeApi()
   if (!api) {
@@ -154,7 +155,8 @@ export async function startThreadHandoff(input: {
   }
   const threadId = newThreadId()
   const createdAt = new Date().toISOString()
-  const modelSelection = resolveTargetModelSelection(input.targetProvider, input.project)
+  const modelSelection =
+    input.modelSelection ?? resolveTargetModelSelection(input.targetProvider, input.project)
   const bootstrapText = buildHandoffContext(input.thread, input.appendedPrompt)
 
   await api.orchestration.dispatchCommand({

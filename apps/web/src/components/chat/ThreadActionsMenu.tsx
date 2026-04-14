@@ -1,4 +1,4 @@
-import { PROVIDER_DISPLAY_NAMES } from '@orxa-code/contracts'
+import { PROVIDER_DISPLAY_NAMES, type ModelSelection } from '@orxa-code/contracts'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelTopOpenIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -14,6 +14,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '../ui/men
 import { toastManager } from '../ui/toastState'
 import { HandoffDialog } from './HandoffDialog'
 import { getHandoffTargetProviders, startThreadHandoff } from './ThreadHandoffMenu.helpers'
+import { useChatViewCtx } from './ChatViewContext'
 import { useIsMobile } from '~/hooks/useMediaQuery'
 
 function showActionError(title: string, error: unknown) {
@@ -78,7 +79,10 @@ function useThreadActionHandoff(thread: Thread, project: Project | null) {
       setDialogProvider(null)
     }
   }
-  const confirmHandoff = async (appendedPrompt: string | null) => {
+  const confirmHandoff = async (args: {
+    appendedPrompt: string | null
+    modelSelection: ModelSelection
+  }) => {
     if (!dialogProvider) {
       return
     }
@@ -90,7 +94,8 @@ function useThreadActionHandoff(thread: Thread, project: Project | null) {
         thread,
         project,
         targetProvider,
-        appendedPrompt,
+        appendedPrompt: args.appendedPrompt,
+        modelSelection: args.modelSelection,
       })
       setDialogProvider(null)
     } catch (error) {
@@ -173,6 +178,7 @@ function ThreadActionsMenuItems(props: {
 
 export function ThreadActionsMenu(props: { thread: Thread; project: Project | null }) {
   const isMobile = useIsMobile()
+  const c = useChatViewCtx()
   const { archiveThread } = useThreadActions()
   const pinnedThreadIds = useUiStateStore(store => store.pinnedThreadIds)
   const pinThread = useUiStateStore(store => store.pinThread)
@@ -231,8 +237,10 @@ export function ThreadActionsMenu(props: { thread: Thread; project: Project | nu
         open={dialogProvider !== null}
         targetProvider={dialogProvider}
         isSubmitting={pendingProvider !== null}
+        modelOptionsByProvider={c.td.modelOptionsByProvider}
+        projectDefaultModelSelection={props.project?.defaultModelSelection ?? null}
         onCancel={cancelHandoff}
-        onConfirm={appendedPrompt => void confirmHandoff(appendedPrompt)}
+        onConfirm={args => void confirmHandoff(args)}
       />
     </>
   )
