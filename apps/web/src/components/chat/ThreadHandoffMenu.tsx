@@ -4,7 +4,7 @@ import {
   type ProviderKind,
 } from '@orxa-code/contracts'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRightLeftIcon, ChevronDownIcon } from 'lucide-react'
+import { HandshakeIcon, ChevronDownIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { Project, Thread } from '../../types'
@@ -35,7 +35,7 @@ function HandoffDropdown(props: {
         render={<Button size="xs" variant="outline" disabled={props.pendingProvider !== null} />}
       >
         <span className="inline-flex items-center gap-1.5">
-          <ArrowRightLeftIcon className="size-3.5" />
+          <HandshakeIcon className="size-3.5" />
           <span>Handoff</span>
           <ChevronDownIcon className="size-3.5" />
         </span>
