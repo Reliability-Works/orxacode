@@ -1,8 +1,13 @@
+import { ArrowUpIcon, PencilIcon, Trash2Icon } from 'lucide-react'
 import type React from 'react'
 import { Button } from '../ui/button'
+import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { cn } from '~/lib/utils'
 import { useChatViewCtx } from './ChatViewContext'
-import { summarizeQueuedComposerMessage } from './queuedComposerMessages'
+import {
+  summarizeQueuedComposerMessage,
+  type QueuedComposerMessage,
+} from './queuedComposerMessages'
 
 export interface ComposerLiveRailCardProps {
   readonly children: React.ReactNode
@@ -10,12 +15,42 @@ export interface ComposerLiveRailCardProps {
   readonly testId?: string
 }
 
-function ComposerQueuedMessageRow(props: {
-  queueIndex: number
-  message: ReturnType<typeof useChatViewCtx>['ls']['queuedComposerMessages'][number]
+function QueuedMessageActionButton(props: {
+  label: string
+  icon: React.ReactNode
+  onClick: () => void
+  tone?: 'default' | 'destructive'
+  testId?: string
 }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            aria-label={props.label}
+            onClick={props.onClick}
+            className={cn(
+              'text-muted-foreground hover:text-foreground',
+              props.tone === 'destructive' && 'hover:text-destructive-foreground'
+            )}
+            data-testid={props.testId}
+          />
+        }
+      >
+        {props.icon}
+      </TooltipTrigger>
+      <TooltipPopup side="top">{props.label}</TooltipPopup>
+    </Tooltip>
+  )
+}
+
+function ComposerQueuedMessageRow(props: { queueIndex: number; message: QueuedComposerMessage }) {
   const c = useChatViewCtx()
   const summary = summarizeQueuedComposerMessage(props.message)
+  const isHead = props.queueIndex === 0
 
   return (
     <div
@@ -41,26 +76,28 @@ function ComposerQueuedMessageRow(props: {
           <p className="mt-1 text-caption text-muted-foreground/75">{summary.attachmentSummary}</p>
         ) : null}
       </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-7 rounded-full px-2.5 text-xs"
+      <div className="flex shrink-0 items-center gap-0.5">
+        <QueuedMessageActionButton
+          label="Edit"
+          icon={<PencilIcon className="size-3.5" />}
           onClick={() => c.restoreQueuedComposerMessage(props.message)}
-        >
-          Restore
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="h-7 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+          testId="composer-queued-message-edit"
+        />
+        {isHead ? (
+          <QueuedMessageActionButton
+            label="Send now and interrupt"
+            icon={<ArrowUpIcon className="size-3.5" />}
+            onClick={() => void c.onInterrupt()}
+            testId="composer-queued-message-send-now"
+          />
+        ) : null}
+        <QueuedMessageActionButton
+          label="Remove from queue"
+          icon={<Trash2Icon className="size-3.5" />}
           onClick={() => c.removeQueuedComposerMessage(props.message)}
-          aria-label="Remove queued message"
-        >
-          Remove
-        </Button>
+          tone="destructive"
+          testId="composer-queued-message-remove"
+        />
       </div>
     </div>
   )
