@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const originalPlatform = process.platform
+Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+afterAll(() => {
+  Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+})
 
 class FakeEventEmitter {
   private readonly listeners = new Map<string, Set<(...args: unknown[]) => void>>()
