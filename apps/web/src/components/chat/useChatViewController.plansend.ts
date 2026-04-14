@@ -231,14 +231,7 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
     if (!queuedComposerMessage) {
       return
     }
-    if (args.ld.isSendBusy) {
-      return
-    }
-    // Codex supports `turn/steer` — inject the queued message into the running
-    // turn without waiting for it to settle. Claude/Opencode queue passively:
-    // wait for the current turn to finish, then send as a fresh turn.
-    const canSteer = queuedComposerMessage.selectedProvider === 'codex'
-    if (!canSteer && (args.td.phase === 'running' || !args.ad.latestTurnSettled)) {
+    if (args.ld.isSendBusy || args.td.phase === 'running' || !args.ad.latestTurnSettled) {
       return
     }
     args.ls.setQueuedComposerMessages(messages => messages.slice(1))
@@ -251,6 +244,30 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
     queuedComposerMessage,
     sendQueuedMessage,
   ])
+  // Codex-only: after a short grace window, inject the head queued message
+  // into the still-running turn via `turn/steer` (our manager's `sendTurn`
+  // picks the steer path automatically when the session has an active turn).
+  // The grace window gives the user time to edit or remove the message in the
+  // queued tray before it dispatches. Claude and Opencode skip this because
+  // their providers can't accept mid-turn injection.
+  useEffect(() => {
+    if (!queuedComposerMessage || queuedComposerMessage.selectedProvider !== 'codex') {
+      return
+    }
+    if (args.ld.isSendBusy || args.td.phase !== 'running') {
+      return
+    }
+    const CODEX_STEER_GRACE_MS = 1500
+    const timer = window.setTimeout(() => {
+      args.ls.setQueuedComposerMessages(messages =>
+        messages[0]?.id === queuedComposerMessage.id ? messages.slice(1) : messages
+      )
+      void sendQueuedMessage(queuedComposerMessage)
+    }, CODEX_STEER_GRACE_MS)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [args.ld.isSendBusy, args.ls, args.td.phase, queuedComposerMessage, sendQueuedMessage])
   return { sendInFlightRef, ...planActions, onSend }
 }
 

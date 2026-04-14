@@ -51,6 +51,11 @@ function ComposerQueuedMessageRow(props: { queueIndex: number; message: QueuedCo
   const c = useChatViewCtx()
   const summary = summarizeQueuedComposerMessage(props.message)
   const isHead = props.queueIndex === 0
+  // Codex injects the head message into the running turn via `turn/steer`
+  // after a short grace window, so an explicit "Send now and interrupt"
+  // button would both duplicate the auto-steer and throw away the in-flight
+  // turn the user just triggered.
+  const showSendNow = isHead && props.message.selectedProvider !== 'codex'
 
   return (
     <div
@@ -83,7 +88,7 @@ function ComposerQueuedMessageRow(props: { queueIndex: number; message: QueuedCo
           onClick={() => c.restoreQueuedComposerMessage(props.message)}
           testId="composer-queued-message-edit"
         />
-        {isHead ? (
+        {showSendNow ? (
           <QueuedMessageActionButton
             label="Send now and interrupt"
             icon={<ArrowUpIcon className="size-3.5" />}

@@ -118,18 +118,17 @@ export function resultErrorsText(result: SDKResultMessage): string {
 }
 
 export function isInterruptedResult(result: SDKResultMessage): boolean {
-  const errors = resultErrorsText(result)
-  if (errors.includes('interrupt')) {
+  // The SDK signals "abnormal but benign" turn endings (user interrupts,
+  // abort-mid-tool-use) with `subtype: 'error_during_execution'` and
+  // `is_error: false`. The first errors[] entry in that case is often a
+  // `[ede_diagnostic] ...` diagnostic whose text doesn't mention
+  // "interrupt" / "aborted", so matching on error text alone mis-classifies
+  // a user-initiated interrupt as a turn failure and surfaces the raw
+  // diagnostic as a thread error banner.
+  if (result.subtype === 'error_during_execution' && result.is_error === false) {
     return true
   }
-
-  return (
-    result.subtype === 'error_during_execution' &&
-    result.is_error === false &&
-    (errors.includes('request was aborted') ||
-      errors.includes('interrupted by user') ||
-      errors.includes('aborted'))
-  )
+  return resultErrorsText(result).includes('interrupt')
 }
 
 export function asRuntimeItemId(value: string): RuntimeItemId {
