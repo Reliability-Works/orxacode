@@ -26,6 +26,8 @@ import {
   fixtureSessionCreated,
   fixtureSessionError,
   fixtureSessionIdle,
+  fixtureSessionStatusBusy,
+  fixtureSessionStatusIdle,
   fixtureTextPartDelta,
   fixtureTextPartUpdatedCompleted,
   fixtureTextPartUpdatedInProgress,
@@ -95,6 +97,26 @@ describe('mapOpencodeEvent session lifecycle', () => {
     const result = mapOpencodeEvent(fixtureSessionIdle, makeCtx({ turnId: undefined }))
     expect(result).toEqual([])
   })
+
+  it('maps session.status({type: idle}) to turn.completed when a turn is active', () => {
+    const result = mapOpencodeEvent(fixtureSessionStatusIdle, makeCtx())
+    expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({
+      type: 'turn.completed',
+      turnId: TURN_ID,
+      payload: { state: 'completed' },
+    })
+  })
+
+  it('ignores session.status({type: busy})', () => {
+    const result = mapOpencodeEvent(fixtureSessionStatusBusy, makeCtx())
+    expect(result).toEqual([])
+  })
+
+  it('ignores session.status({type: idle}) when no turn is active', () => {
+    const result = mapOpencodeEvent(fixtureSessionStatusIdle, makeCtx({ turnId: undefined }))
+    expect(result).toEqual([])
+  })
 })
 
 describe('mapOpencodeEvent message lifecycle', () => {
@@ -107,24 +129,19 @@ describe('mapOpencodeEvent message lifecycle', () => {
     })
   })
 
-  it('emits token usage and turn.completed when the assistant message completes', () => {
+  it('emits token usage but no turn.completed when the assistant message completes', () => {
     const result = mapOpencodeEvent(fixtureMessageUpdatedCompleted, makeCtx())
-    expect(result).toHaveLength(3)
+    expect(result).toHaveLength(2)
     expect(result[0]?.type).toBe('item.started')
     expect(result[1]).toMatchObject({
       type: 'thread.token-usage.updated',
       payload: { usage: { usedTokens: 350, maxTokens: 1_000_000 } },
     })
-    expect(result[2]).toMatchObject({
-      type: 'turn.completed',
-      turnId: TURN_ID,
-      payload: { state: 'completed' },
-    })
+    expect(result.find(e => e.type === 'turn.completed')).toBeUndefined()
   })
 
-  it('skips turn.completed from message.updated when no turn is tracked', () => {
+  it('still skips turn.completed from message.updated when no turn is tracked', () => {
     const result = mapOpencodeEvent(fixtureMessageUpdatedCompleted, makeCtx({ turnId: undefined }))
-    // item.started (no turnId is fine for items) + token usage, but NO turn.completed
     expect(result.find(e => e.type === 'turn.completed')).toBeUndefined()
   })
 

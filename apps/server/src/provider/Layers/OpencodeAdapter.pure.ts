@@ -135,21 +135,8 @@ export function mapMessageUpdated(
         payload: { usage: extractUsageSnapshot(info) },
         raw: opencodeRawEvent(event),
       })
-      // Authoritative turn-end signal. opencode's `session.idle` event is
-      // unreliable in practice — it can race with our local turnState cleanup
-      // (resulting in `turnId === undefined` at mapper time) or arrive late
-      // enough that the UI is stuck on "Working..." for many seconds after
-      // the assistant has actually finished. The completed assistant
-      // message is a stronger signal: when opencode marks `time.completed`
-      // on the assistant message tied to this thread/turn, the turn is over.
-      if (turnId !== undefined) {
-        events.push({
-          ...makeBaseForTurn(ctx, turnId),
-          type: 'turn.completed',
-          payload: { state: 'completed' },
-          raw: opencodeRawEvent(event),
-        })
-      }
+      // turn-end is `session.status({type:'idle'})`; per-message
+      // `time.completed` fires too early for multi-step tool turns.
     }
   }
   return events
@@ -172,11 +159,15 @@ export function mapMessageRemoved(
   ]
 }
 
-export function mapSessionIdle(
-  event: Extract<OpencodeEvent, { type: 'session.idle' }>,
+// Authoritative turn-end signal — upstream gates send/stop on this event.
+// `session.idle` is the deprecated peer (fires at the same moment); we
+// route it through this same handler by reusing the dispatcher case.
+export function mapSessionTurnEnd(
+  event: Extract<OpencodeEvent, { type: 'session.status' | 'session.idle' }>,
   ctx: OpencodeMapperContext
 ): ReadonlyArray<ProviderRuntimeEvent> {
   if (!matchesThread(ctx, event.properties.sessionID)) return []
+  if (event.type === 'session.status' && event.properties.status.type !== 'idle') return []
   const turnId = turnIdForSession(ctx, event.properties.sessionID)
   if (turnId === undefined) return []
   return [
@@ -503,6 +494,7 @@ export function mapTurnAbort(
 const HANDLED_EVENT_TYPES = new Set<OpencodeEvent['type']>([
   'session.created',
   'session.idle',
+  'session.status',
   'session.error',
   'session.compacted',
   'message.updated',
@@ -531,7 +523,8 @@ export function mapOpencodeEvent(
     case 'session.created':
       return mapSessionCreated(event, ctx)
     case 'session.idle':
-      return mapSessionIdle(event, ctx)
+    case 'session.status':
+      return mapSessionTurnEnd(event, ctx)
     case 'session.error':
       return mapSessionError(event, ctx)
     case 'message.updated':

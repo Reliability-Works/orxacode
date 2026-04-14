@@ -202,6 +202,22 @@ export const fixtureSessionIdle: Extract<OpencodeEvent, { type: 'session.idle' }
   properties: { sessionID: FIXTURE_PROVIDER_SESSION_ID },
 }
 
+export const fixtureSessionStatusIdle: Extract<OpencodeEvent, { type: 'session.status' }> = {
+  type: 'session.status',
+  properties: {
+    sessionID: FIXTURE_PROVIDER_SESSION_ID,
+    status: { type: 'idle' },
+  },
+}
+
+export const fixtureSessionStatusBusy: Extract<OpencodeEvent, { type: 'session.status' }> = {
+  type: 'session.status',
+  properties: {
+    sessionID: FIXTURE_PROVIDER_SESSION_ID,
+    status: { type: 'busy' },
+  },
+}
+
 export const fixtureSessionError: Extract<OpencodeEvent, { type: 'session.error' }> = {
   type: 'session.error',
   properties: {
