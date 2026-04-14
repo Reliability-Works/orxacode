@@ -26,6 +26,7 @@ import {
   type ClaudeCodeEffort,
 } from '@orxa-code/contracts'
 import { resolveApiModelId, resolveEffort } from '@orxa-code/shared/model'
+import { lookupModelContextWindow } from '@orxa-code/shared/modelContextWindow'
 
 import {
   type ProviderAdapterError,
@@ -474,12 +475,17 @@ export function applyResultUsageSnapshot(
     context.lastKnownContextWindow = resultContextWindow
   }
 
-  const accumulatedSnapshot = normalizeClaudeTokenUsage(
-    resultUsage,
-    resultContextWindow ?? context.lastKnownContextWindow
-  )
+  // Static-registry fallback: when neither the current result nor any prior
+  // turn supplied `contextWindow`, look it up from the model id so the meter
+  // still shows a percentage on the very first turn instead of a raw token
+  // count.
+  const fallbackContextWindow =
+    resultContextWindow ??
+    context.lastKnownContextWindow ??
+    lookupModelContextWindow(context.currentApiModelId)
+  const accumulatedSnapshot = normalizeClaudeTokenUsage(resultUsage, fallbackContextWindow)
   const lastGoodUsage = context.lastKnownTokenUsage
-  const maxTokens = resultContextWindow ?? context.lastKnownContextWindow
+  const maxTokens = fallbackContextWindow
   return lastGoodUsage
     ? {
         ...lastGoodUsage,

@@ -11,6 +11,7 @@
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { RuntimeTaskId } from '@orxa-code/contracts'
 import { Effect } from 'effect'
+import { lookupModelContextWindow } from '@orxa-code/shared/modelContextWindow'
 
 import type { ClaudeAdapterDeps } from './ClaudeAdapter.deps.ts'
 import { normalizeClaudeTokenUsage } from './ClaudeAdapter.pure.ts'
@@ -67,7 +68,13 @@ export const emitSystemUsageUpdate = Effect.fn('emitSystemUsageUpdate')(function
     return
   }
 
-  const normalizedUsage = normalizeClaudeTokenUsage(usage, context.lastKnownContextWindow)
+  // Fall back to the static model→context-window registry when the SDK
+  // hasn't yet supplied a `contextWindow` via `result.modelUsage`. Without
+  // this fallback, the composer's "% of context used" meter renders raw
+  // token counts (no maxTokens, no percentage) for the first turn.
+  const fallbackContextWindow =
+    context.lastKnownContextWindow ?? lookupModelContextWindow(context.currentApiModelId)
+  const normalizedUsage = normalizeClaudeTokenUsage(usage, fallbackContextWindow)
   if (!normalizedUsage) {
     return
   }
