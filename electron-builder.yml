@@ -1,12 +1,12 @@
 appId: com.orxa.code
-productName: Orxa Code (Beta)
+productName: Orxa Code
 artifactName: orxa-code-${version}-${os}-${arch}.${ext}
 mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
 protocols:
-  - name: Orxa Code (Beta)
+  - name: Orxa Code
     schemes:
       - orxa
 publish:

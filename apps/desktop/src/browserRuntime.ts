@@ -70,7 +70,9 @@ export interface BrowserRuntimeController {
   enableInspect(): Promise<{ ok: boolean }>
   disableInspect(): Promise<{ ok: boolean }>
   pollInspectAnnotation(): Promise<DesktopBrowserAnnotationCandidate | null>
-  inspectAtPoint(point: DesktopBrowserInspectPoint): Promise<DesktopBrowserAnnotationCandidate | null>
+  inspectAtPoint(
+    point: DesktopBrowserInspectPoint
+  ): Promise<DesktopBrowserAnnotationCandidate | null>
 }
 
 interface BrowserRuntimeHost {
@@ -218,7 +220,9 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
   }
 
   private canAttachActiveView(): boolean {
-    return Boolean(this.bounds && this.bounds.width > 0 && this.bounds.height > 0 && this.bounds.x > 0)
+    return Boolean(
+      this.bounds && this.bounds.width > 0 && this.bounds.height > 0 && this.bounds.x > 0
+    )
   }
 
   private attachActiveView(): void {
@@ -292,7 +296,8 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
       }
     })
     view.webContents.on('page-title-updated', (_event, title: unknown) => {
-      tab.title = typeof title === 'string' && title.trim() ? title.trim() : getFallbackTitle(tab.url)
+      tab.title =
+        typeof title === 'string' && title.trim() ? title.trim() : getFallbackTitle(tab.url)
     })
     view.webContents.on('did-navigate', refresh)
     view.webContents.on('did-navigate-in-page', refresh)
@@ -398,7 +403,7 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
   }
 
   async openTab(url?: string): Promise<DesktopBrowserState> {
-    const normalized = url ? normalizeBrowserUrl(url) ?? DEFAULT_URL : DEFAULT_URL
+    const normalized = url ? (normalizeBrowserUrl(url) ?? DEFAULT_URL) : DEFAULT_URL
     this.createTab(normalized, true)
     return this.buildState()
   }
@@ -418,7 +423,8 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
     tab.view.webContents.destroy()
 
     if (wasActive) {
-      this.activeTabId = this.tabOrder[index] ?? this.tabOrder[index - 1] ?? this.tabOrder[0] ?? null
+      this.activeTabId =
+        this.tabOrder[index] ?? this.tabOrder[index - 1] ?? this.tabOrder[0] ?? null
       this.ensureAttachedIfNeeded()
     }
 
@@ -477,9 +483,10 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
     if (!activeTab || !this.inspectEnabled) {
       return null
     }
-    const raw = await activeTab.view.webContents.executeJavaScript<DesktopBrowserAnnotationCandidate | null>(
-      buildInspectGetAnnotationScript()
-    )
+    const raw =
+      await activeTab.view.webContents.executeJavaScript<DesktopBrowserAnnotationCandidate | null>(
+        buildInspectGetAnnotationScript()
+      )
     return normalizeAnnotationCandidate(raw)
   }
 
@@ -493,9 +500,10 @@ class BrowserRuntimeControllerImpl implements BrowserRuntimeController {
 
     const localX = Math.max(0, Math.floor(point.x - this.bounds.x))
     const localY = Math.max(0, Math.floor(point.y - this.bounds.y))
-    const raw = await activeTab.view.webContents.executeJavaScript<DesktopBrowserAnnotationCandidate | null>(
-      buildInspectScript(localX, localY)
-    )
+    const raw =
+      await activeTab.view.webContents.executeJavaScript<DesktopBrowserAnnotationCandidate | null>(
+        buildInspectScript(localX, localY)
+      )
     return normalizeAnnotationCandidate(raw)
   }
 }
@@ -506,7 +514,8 @@ export function createBrowserRuntimeController(
 ): BrowserRuntimeController {
   const openExternal = deps.openExternal ?? (url => void shell.openExternal(url))
   const randomId = deps.randomId ?? (() => randomUUID())
-  const createBrowserView = deps.createBrowserView ?? (() => createElectronBrowserView(openExternal))
+  const createBrowserView =
+    deps.createBrowserView ?? (() => createElectronBrowserView(openExternal))
   return new BrowserRuntimeControllerImpl(host, {
     openExternal,
     randomId,

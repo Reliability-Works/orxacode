@@ -33,13 +33,11 @@ export function logResolvedReconcile(
     readonly logData: Record<string, unknown>
     readonly disposed: boolean
     readonly hasConfig: boolean
-    readonly snapshot:
-      | {
-          readonly snapshotSequence: number
-          readonly projects: ReadonlyArray<unknown>
-          readonly threads: ReadonlyArray<unknown>
-        }
-      | null
+    readonly snapshot: {
+      readonly snapshotSequence: number
+      readonly projects: ReadonlyArray<unknown>
+      readonly threads: ReadonlyArray<unknown>
+    } | null
   }
 ) {
   log('reconcile resolved', {

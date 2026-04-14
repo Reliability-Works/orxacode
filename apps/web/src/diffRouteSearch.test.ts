@@ -32,7 +32,9 @@ describe('parseDiffRouteSearch', () => {
 })
 
 describe('stripDiffSearchParams', () => {
-  it('removes split-pane search keys while preserving unrelated params', () => {
+  it('sets split-pane keys to undefined while preserving unrelated params', () => {
+    // Explicit undefined (not deleted keys) is required so the route's
+    // retainSearchParams middleware treats them as cleared.
     expect(
       stripDiffSearchParams({
         split: '1',
@@ -42,6 +44,10 @@ describe('stripDiffSearchParams', () => {
         tab: 'files',
       })
     ).toEqual({
+      split: undefined,
+      secondaryThreadId: undefined,
+      focusedPane: undefined,
+      maximizedPane: undefined,
       tab: 'files',
     })
   })

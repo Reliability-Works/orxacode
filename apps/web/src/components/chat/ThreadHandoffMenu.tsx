@@ -12,11 +12,45 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../ui/menu'
+import { HandoffDialog } from './HandoffDialog'
 import {
   buildWorktreeHandoffContext,
   getHandoffTargetProviders,
   startThreadHandoff,
 } from './ThreadHandoffMenu.helpers'
+
+function HandoffDropdown(props: {
+  targetProviders: ReadonlyArray<ProviderKind>
+  pendingProvider: ProviderKind | null
+  onSelectProvider: (provider: ProviderKind) => void
+  onSelectPullRequest: (() => void) | null
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={<Button size="xs" variant="outline" disabled={props.pendingProvider !== null} />}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <ArrowRightLeftIcon className="size-3.5" />
+          <span>Handoff</span>
+          <ChevronDownIcon className="size-3.5" />
+        </span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {props.targetProviders.map(provider => (
+          <DropdownMenuItem key={provider} onClick={() => props.onSelectProvider(provider)}>
+            {props.pendingProvider === provider ? 'Starting...' : PROVIDER_DISPLAY_NAMES[provider]}
+          </DropdownMenuItem>
+        ))}
+        {props.onSelectPullRequest ? (
+          <DropdownMenuItem onClick={props.onSelectPullRequest}>
+            Fork / Worktree Thread...
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export function ThreadHandoffMenu(props: {
   thread: Thread
@@ -25,6 +59,7 @@ export function ThreadHandoffMenu(props: {
 }) {
   const navigate = useNavigate()
   const [pendingProvider, setPendingProvider] = useState<ProviderKind | null>(null)
+  const [dialogProvider, setDialogProvider] = useState<ProviderKind | null>(null)
 
   const targetProviders = useMemo(
     () => getHandoffTargetProviders(props.thread.modelSelection.provider),
@@ -35,16 +70,21 @@ export function ThreadHandoffMenu(props: {
     return null
   }
 
-  async function handoffToProvider(targetProvider: ProviderKind) {
+  async function confirmHandoff(appendedPrompt: string | null) {
+    if (!dialogProvider) {
+      return
+    }
+    const targetProvider = dialogProvider
     setPendingProvider(targetProvider)
-
     try {
       await startThreadHandoff({
         navigate,
         thread: props.thread,
         project: props.project,
         targetProvider,
+        appendedPrompt,
       })
+      setDialogProvider(null)
     } catch (error) {
       toastManager.add({
         type: 'error',
@@ -56,33 +96,26 @@ export function ThreadHandoffMenu(props: {
     }
   }
 
-  function handoffToPullRequestThread() {
-    props.onOpenPullRequestDialog?.(undefined, buildWorktreeHandoffContext(props.thread))
-  }
+  const onOpenPullRequestDialog = props.onOpenPullRequestDialog
+  const onSelectPullRequest = onOpenPullRequestDialog
+    ? () => onOpenPullRequestDialog(undefined, buildWorktreeHandoffContext(props.thread))
+    : null
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button size="xs" variant="outline" disabled={pendingProvider !== null} />}
-      >
-        <span className="inline-flex items-center gap-1.5">
-          <ArrowRightLeftIcon className="size-3.5" />
-          <span>Handoff</span>
-          <ChevronDownIcon className="size-3.5" />
-        </span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {targetProviders.map(provider => (
-          <DropdownMenuItem key={provider} onClick={() => void handoffToProvider(provider)}>
-            {pendingProvider === provider ? 'Starting...' : PROVIDER_DISPLAY_NAMES[provider]}
-          </DropdownMenuItem>
-        ))}
-        {props.onOpenPullRequestDialog ? (
-          <DropdownMenuItem onClick={handoffToPullRequestThread}>
-            Fork / Worktree Thread...
-          </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <HandoffDropdown
+        targetProviders={targetProviders}
+        pendingProvider={pendingProvider}
+        onSelectProvider={setDialogProvider}
+        onSelectPullRequest={onSelectPullRequest}
+      />
+      <HandoffDialog
+        open={dialogProvider !== null}
+        targetProvider={dialogProvider}
+        isSubmitting={pendingProvider !== null}
+        onCancel={() => setDialogProvider(null)}
+        onConfirm={appendedPrompt => void confirmHandoff(appendedPrompt)}
+      />
+    </>
   )
 }

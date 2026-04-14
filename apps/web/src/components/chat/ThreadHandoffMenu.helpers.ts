@@ -56,8 +56,17 @@ function buildImportedContextSections(thread: Thread): {
   return { details, transcript }
 }
 
-export function buildHandoffContext(thread: Thread): string {
+function normalizeAppendedPrompt(appendedPrompt: string | null | undefined): string | null {
+  if (!appendedPrompt) {
+    return null
+  }
+  const trimmed = appendedPrompt.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+export function buildHandoffContext(thread: Thread, appendedPrompt?: string | null): string {
   const { details, transcript } = buildImportedContextSections(thread)
+  const guidance = normalizeAppendedPrompt(appendedPrompt)
 
   return [
     'Continue this conversation in the target provider.',
@@ -67,14 +76,23 @@ export function buildHandoffContext(thread: Thread): string {
     '',
     'Recent transcript:',
     transcript.length > 0 ? transcript : 'No messages yet.',
+    ...(guidance
+      ? ['', "User's guidance for this handoff (treat as the primary task brief):", guidance]
+      : []),
     '',
     'Next step:',
-    'Pick up from the imported context and continue the task without asking to restate the history unless genuinely required.',
+    guidance
+      ? "Follow the user's guidance above, using the imported context as background. Do not ask the user to restate history unless genuinely required."
+      : 'Pick up from the imported context and continue the task without asking to restate the history unless genuinely required.',
   ].join('\n')
 }
 
-export function buildWorktreeHandoffContext(thread: Thread): string {
+export function buildWorktreeHandoffContext(
+  thread: Thread,
+  appendedPrompt?: string | null
+): string {
   const { details, transcript } = buildImportedContextSections(thread)
+  const guidance = normalizeAppendedPrompt(appendedPrompt)
 
   return [
     'Continue this conversation in the pull request thread.',
@@ -84,9 +102,14 @@ export function buildWorktreeHandoffContext(thread: Thread): string {
     '',
     'Recent transcript:',
     transcript.length > 0 ? transcript : 'No messages yet.',
+    ...(guidance
+      ? ['', "User's guidance for this handoff (treat as the primary task brief):", guidance]
+      : []),
     '',
     'Next step:',
-    'Use the imported context to continue the task in this pull request workspace without asking to restate the prior thread unless genuinely required.',
+    guidance
+      ? "Follow the user's guidance above while working in this pull request workspace. Do not ask the user to restate the prior thread unless genuinely required."
+      : 'Use the imported context to continue the task in this pull request workspace without asking to restate the prior thread unless genuinely required.',
   ].join('\n')
 }
 
@@ -123,6 +146,7 @@ export async function startThreadHandoff(input: {
   readonly thread: Thread
   readonly project: Project | null
   readonly targetProvider: ProviderKind
+  readonly appendedPrompt?: string | null
 }) {
   const api = readNativeApi()
   if (!api) {
@@ -131,7 +155,7 @@ export async function startThreadHandoff(input: {
   const threadId = newThreadId()
   const createdAt = new Date().toISOString()
   const modelSelection = resolveTargetModelSelection(input.targetProvider, input.project)
-  const bootstrapText = buildHandoffContext(input.thread)
+  const bootstrapText = buildHandoffContext(input.thread, input.appendedPrompt)
 
   await api.orchestration.dispatchCommand({
     type: 'thread.create',

@@ -156,7 +156,9 @@ function useComposerMenuItems(params: {
   selectedProvider: ProviderKind
   modelOptionsByProvider: ThreadDerived['modelOptionsByProvider']
   composerHighlightedItemId: string | null
-  nativeSlashCommandItems: ReadonlyArray<Extract<ComposerCommandItem, { type: 'native-slash-command' }>>
+  nativeSlashCommandItems: ReadonlyArray<
+    Extract<ComposerCommandItem, { type: 'native-slash-command' }>
+  >
   skillItems: ReadonlyArray<Extract<ComposerCommandItem, { type: 'skill' }>>
 }) {
   const { composerTrigger, workspaceEntries, lockedProvider, selectedProvider } = params
@@ -188,10 +190,7 @@ function useComposerMenuItems(params: {
       return items
     }
     if (composerTrigger.kind === 'slash-command') {
-      const items = [
-        ...buildSlashCommandItems(selectedProvider),
-        ...params.nativeSlashCommandItems,
-      ]
+      const items = [...buildSlashCommandItems(selectedProvider), ...params.nativeSlashCommandItems]
       const query = composerTrigger.query.trim().toLowerCase()
       if (!query) return [...items]
       return items.filter(
@@ -293,7 +292,7 @@ export function useChatViewDerivedComposer(
         discovery.skillsQuery.isLoading ||
         discovery.skillsQuery.isFetching)) ||
     (composerTriggerKind === 'slash-command' &&
-      ((discovery.nativeCommandsQuery.isLoading || discovery.nativeCommandsQuery.isFetching)))
+      (discovery.nativeCommandsQuery.isLoading || discovery.nativeCommandsQuery.isFetching))
   const shortcutLabels = useShortcutLabels(keybindings, Boolean(terminalState.terminalOpen))
   const nonPersistedComposerImageIdSet = useMemo(
     () => new Set(store.nonPersistedComposerImageIds),

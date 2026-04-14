@@ -5,7 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>Orxa Code (Beta)</title>
+    <title>Orxa Code</title>
+    <script>
+      // Pre-hydration theme boot: matches logic in hooks/useTheme.ts getStored().
+      // Runs synchronously before any CSS/JS loads to prevent a white flash between
+      // HTML parse and React hydration applying the theme class.
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('orxa:theme')
+          var isDark
+          if (raw === 'light') isDark = false
+          else if (raw === 'dark' || raw === 'glass') isDark = true
+          else if (raw === 'system')
+            isDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          else isDark = true // default
+          if (isDark) document.documentElement.classList.add('dark')
+          document.documentElement.style.backgroundColor = isDark ? '#0e1017' : '#ffffff'
+        } catch (_) {
+          document.documentElement.classList.add('dark')
+          document.documentElement.style.backgroundColor = '#0e1017'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

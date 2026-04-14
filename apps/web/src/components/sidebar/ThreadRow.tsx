@@ -1,8 +1,9 @@
 import { ArchiveIcon, TerminalIcon } from 'lucide-react'
-import type { MouseEvent } from 'react'
+import type { DragEvent, MouseEvent } from 'react'
 import { ThreadId } from '@orxa-code/contracts'
 import type { Thread } from '../../types'
 import { formatRelativeTimeLabel } from '../../timestampFormat'
+import { THREAD_DRAG_MIME, useThreadDragStore } from '../../threadDragStore'
 import { useIsMobile } from '~/hooks/useMediaQuery'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import { SidebarMenuSubButton, SidebarMenuSubItem } from '../ui/sidebar'
@@ -268,6 +269,24 @@ function createContextMenuHandler(opts: {
   }
 }
 
+function useThreadRowDragHandlers(thread: SidebarThreadSnapshot) {
+  const setDraggingThread = useThreadDragStore(store => store.setDraggingThread)
+  const onDragStart = (event: DragEvent<Element>) => {
+    if (!event.dataTransfer) return
+    event.dataTransfer.effectAllowed = 'link'
+    event.dataTransfer.setData(
+      THREAD_DRAG_MIME,
+      JSON.stringify({ threadId: thread.id, projectId: thread.projectId })
+    )
+    event.dataTransfer.setData('text/plain', thread.title)
+    setDraggingThread({ threadId: thread.id, projectId: thread.projectId })
+  }
+  const onDragEnd = () => {
+    setDraggingThread(null)
+  }
+  return { onDragStart, onDragEnd }
+}
+
 function ThreadRowButton(
   props: ThreadRowProps & { handleContextMenu: (e: React.MouseEvent) => void }
 ) {
@@ -296,21 +315,18 @@ function ThreadRowButton(
     showThreadJumpHints,
     handleContextMenu,
   } = props
+  const dragHandlers = useThreadRowDragHandlers(thread)
+  const style =
+    nestingLevel > 0 ? { paddingLeft: `${(isMobile ? 10 : 8) + nestingLevel * 22}px` } : undefined
   return (
     <SidebarMenuSubButton
-      render={<div role="button" tabIndex={0} />}
+      render={<div role="button" tabIndex={0} draggable {...dragHandlers} />}
       size={isMobile ? 'md' : 'sm'}
       isActive={isActive}
       data-testid={`thread-row-${thread.id}`}
-      className={`${rowClassName} relative isolate`}
-      style={
-        nestingLevel > 0
-          ? { paddingLeft: `${(isMobile ? 10 : 8) + nestingLevel * 22}px` }
-          : undefined
-      }
-      onClick={event => {
-        onThreadClick(event, thread.id, orderedProjectThreadIds)
-      }}
+      className={`${rowClassName} relative isolate select-none`}
+      style={style}
+      onClick={event => onThreadClick(event, thread.id, orderedProjectThreadIds)}
       onKeyDown={event => {
         if (event.key !== 'Enter' && event.key !== ' ') return
         event.preventDefault()

@@ -8,9 +8,7 @@ interface ResolveDesktopRemoteAccessSnapshotInput {
   store: DesktopRemoteAccessPreferencesStore
 }
 
-export function resolveDesktopRemoteAccessSnapshot(
-  input: ResolveDesktopRemoteAccessSnapshotInput
-) {
+export function resolveDesktopRemoteAccessSnapshot(input: ResolveDesktopRemoteAccessSnapshotInput) {
   const remoteAccessState = input.store.get()
   return resolveRemoteAccessSnapshot({
     enabled: remoteAccessState.enabled,

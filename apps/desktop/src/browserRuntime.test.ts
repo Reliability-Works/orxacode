@@ -57,9 +57,7 @@ class MockWebContents extends EventEmitter {
     return this.inspectResult
   }
 
-  setWindowOpenHandler(
-    handler: (details: { url: string }) => { action: 'deny' | 'allow' }
-  ) {
+  setWindowOpenHandler(handler: (details: { url: string }) => { action: 'deny' | 'allow' }) {
     this.windowOpenHandler = handler
   }
 
@@ -193,7 +191,6 @@ describe('createBrowserRuntimeController tab state', () => {
     expect(switched.activeTabId).toBe('tab-1')
     expect(switched.tabs.find(tab => tab.id === 'tab-1')?.isActive).toBe(true)
   })
-
 })
 
 describe('createBrowserRuntimeController embedded bounds', () => {
@@ -247,7 +244,6 @@ describe('createBrowserRuntimeController embedded bounds', () => {
       height: 590,
     })
   })
-
 })
 
 describe('createBrowserRuntimeController inspect tools', () => {

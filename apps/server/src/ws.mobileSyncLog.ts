@@ -9,8 +9,7 @@ export function logWebSocketUpgradeRequest(request: HttpServerRequest.HttpServer
     revision: MOBILE_SYNC_TRACE_REVISION,
     event: 'upgrade-request',
     pathname: Option.isSome(requestUrl) ? requestUrl.value.pathname : null,
-    hasSessionTokenQuery:
-      Option.isSome(requestUrl) && requestUrl.value.searchParams.has('token'),
+    hasSessionTokenQuery: Option.isSome(requestUrl) && requestUrl.value.searchParams.has('token'),
     hasAuthorizationHeader: typeof request.headers.authorization === 'string',
     origin: typeof request.headers.origin === 'string' ? request.headers.origin : null,
     userAgent:
@@ -32,10 +31,7 @@ export function logWebSocketUpgradeAuthenticated(input: {
   })
 }
 
-export function logWebSocketUpgradeAuthError(input: {
-  message: string
-  status: number
-}) {
+export function logWebSocketUpgradeAuthError(input: { message: string; status: number }) {
   console.error('[mobile-sync] ws route', {
     revision: MOBILE_SYNC_TRACE_REVISION,
     event: 'upgrade-auth-error',

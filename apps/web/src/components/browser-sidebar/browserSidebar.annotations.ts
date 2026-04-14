@@ -8,7 +8,10 @@ export interface BrowserAnnotation extends DesktopBrowserAnnotationCandidate {
   timestamp: number
 }
 
-function buildAnnotationsMarkdown(activeUrl: string | null, annotations: BrowserAnnotation[]): string {
+function buildAnnotationsMarkdown(
+  activeUrl: string | null,
+  annotations: BrowserAnnotation[]
+): string {
   const lines = ['## Browser Annotations', '']
   if (activeUrl) {
     lines.push(`**URL:** ${activeUrl}`, '')

@@ -53,8 +53,7 @@ const browserApi = {
 }
 
 contextBridge.exposeInMainWorld('desktopBridge', {
-  getLocalEnvironmentBootstrap: () =>
-    ipcRenderer.invoke(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL),
+  getLocalEnvironmentBootstrap: () => ipcRenderer.invoke(GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL),
   setRemoteAccessPreferences: input =>
     ipcRenderer.invoke(SET_REMOTE_ACCESS_PREFERENCES_CHANNEL, input),
   getRemoteAccessSnapshot: () => ipcRenderer.invoke(GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL),

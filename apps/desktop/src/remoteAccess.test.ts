@@ -77,9 +77,7 @@ describe('resolveRemoteAccessSnapshot', () => {
     expect(snapshot.endpoints[0]?.url).toBe(
       'http://10.0.0.15:3773/pair?v=fresh-view#token=bootstrap-token'
     )
-    expect(snapshot.endpoints[0]?.sessionUrl).toBe(
-      'http://10.0.0.15:3773/'
-    )
+    expect(snapshot.endpoints[0]?.sessionUrl).toBe('http://10.0.0.15:3773/')
   })
 
   it('reports unavailable when remote access is enabled without external IPv4 interfaces', () => {

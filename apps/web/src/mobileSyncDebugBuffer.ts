@@ -181,9 +181,7 @@ export function filterMobileSyncDebugEntries(
     case 'key':
       return sourceEntries.filter(isKeyMobileSyncEntry)
     case 'errors':
-      return sourceEntries.filter(
-        entry => entry.level === 'error' || /\berror\b/i.test(entry.text)
-      )
+      return sourceEntries.filter(entry => entry.level === 'error' || /\berror\b/i.test(entry.text))
     case 'pair':
       return sourceEntries.filter(entry =>
         matchesAnyPattern(entry.text, [

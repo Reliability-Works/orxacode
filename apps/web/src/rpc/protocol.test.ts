@@ -59,7 +59,9 @@ describe('createLoggedWebSocketConstructor', () => {
   })
 
   it('force-closes sockets that never reach open', async () => {
-    const constructor = createLoggedWebSocketConstructor(MockWebSocket as unknown as typeof WebSocket)
+    const constructor = createLoggedWebSocketConstructor(
+      MockWebSocket as unknown as typeof WebSocket
+    )
     const socket = constructor('ws://localhost:3020/ws') as unknown as MockWebSocket
 
     await vi.advanceTimersByTimeAsync(3_100)
@@ -69,7 +71,9 @@ describe('createLoggedWebSocketConstructor', () => {
   })
 
   it('does not close sockets that reach open before the timeout', async () => {
-    const constructor = createLoggedWebSocketConstructor(MockWebSocket as unknown as typeof WebSocket)
+    const constructor = createLoggedWebSocketConstructor(
+      MockWebSocket as unknown as typeof WebSocket
+    )
     const socket = constructor('ws://localhost:3020/ws') as unknown as MockWebSocket
 
     socket.open()

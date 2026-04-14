@@ -17,6 +17,8 @@ import { GitSidebar } from '../git-sidebar/GitSidebar'
 import { BrowserSidebar } from '../browser-sidebar/BrowserSidebar'
 import { Sheet, SheetPopup } from '../ui/sheet'
 import { ChatViewHeaderPanel } from './ChatViewHeaderPanel'
+import { ChatViewSecondaryHeaderPanel } from './ChatViewSecondaryHeaderPanel'
+import { useChatSplitPaneContext } from './ChatSplitPaneContext'
 import { ChatViewMessagesPane } from './ChatViewMessagesPane'
 import { ChatViewComposerBody } from './ChatViewComposerBody'
 import { ChatViewImageOverlayCtx } from './ChatViewImageOverlayCtx'
@@ -197,10 +199,16 @@ function ChatViewTerminalDrawerBlock() {
 export function ChatViewInner({ showHeader = true }: { showHeader?: boolean }) {
   const c = useChatViewCtx()
   const isMobile = useIsMobile()
+  const split = useChatSplitPaneContext()
+  const isSecondaryPane = split?.splitOpen === true && split.pane === 'secondary'
   if (!c.td.activeThread) return null
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-background">
-      {showHeader ? <ChatViewHeaderPanel /> : null}
+      {isSecondaryPane ? (
+        <ChatViewSecondaryHeaderPanel />
+      ) : showHeader ? (
+        <ChatViewHeaderPanel />
+      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <ChatViewMessagesPane />

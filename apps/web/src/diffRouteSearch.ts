@@ -40,13 +40,27 @@ function parseSplitRouteSearch(search: Record<string, unknown>) {
 
 export function stripDiffSearchParams<T extends Record<string, unknown>>(
   params: T
-): Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'> {
-  const nextParams = { ...params }
-  delete nextParams.split
-  delete nextParams.secondaryThreadId
-  delete nextParams.focusedPane
-  delete nextParams.maximizedPane
-  return nextParams as Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'>
+): Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'> & {
+  split: undefined
+  secondaryThreadId: undefined
+  focusedPane: undefined
+  maximizedPane: undefined
+} {
+  // Explicit undefined values (rather than deleted keys) are required so the
+  // route's `retainSearchParams` middleware treats these as "cleared by the
+  // user" and does not re-populate them from the prior URL.
+  return {
+    ...params,
+    split: undefined,
+    secondaryThreadId: undefined,
+    focusedPane: undefined,
+    maximizedPane: undefined,
+  } as Omit<T, 'split' | 'secondaryThreadId' | 'focusedPane' | 'maximizedPane'> & {
+    split: undefined
+    secondaryThreadId: undefined
+    focusedPane: undefined
+    maximizedPane: undefined
+  }
 }
 
 export function parseDiffRouteSearch(search: Record<string, unknown>): DiffRouteSearch {

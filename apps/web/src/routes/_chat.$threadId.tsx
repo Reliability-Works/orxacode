@@ -56,6 +56,24 @@ function useThreadRouteActions(params: {
     if (!projectId) return
     requestSplitNewSession(projectId)
   }, [projectId, requestSplitNewSession])
+
+  const openSecondaryWithThread = useCallback(
+    (secondaryThreadId: ThreadId) => {
+      if (secondaryThreadId === threadId) return
+      void navigate({
+        to: '/$threadId',
+        params: { threadId },
+        search: previous => ({
+          ...previous,
+          split: '1',
+          secondaryThreadId,
+          focusedPane: 'secondary',
+          maximizedPane: undefined,
+        }),
+      })
+    },
+    [navigate, threadId]
+  )
   const toggleSplit = useCallback(() => {
     if (splitOpen) {
       closeSplit()
@@ -91,7 +109,7 @@ function useThreadRouteActions(params: {
     [navigate, splitOpen, threadId]
   )
 
-  return { toggleSplit, focusPane, toggleMaximize }
+  return { toggleSplit, focusPane, toggleMaximize, openSecondaryWithThread }
 }
 
 function ChatThreadRouteView() {
@@ -104,6 +122,11 @@ function ChatThreadRouteView() {
   const requestNewSessionModal = useUiStateStore(store => store.requestNewSessionModal)
   const { routeThreadExists } = useChatThreadRouteState(threadId)
   const splitState = useSplitSearchState(search, threadId)
+  const secondaryThread = useStore(store =>
+    splitState.secondaryThreadId
+      ? (store.threads.find(thread => thread.id === splitState.secondaryThreadId) ?? null)
+      : null
+  )
   const activeProjectId = routeThread?.projectId ?? draftThread?.projectId ?? null
   const actions = useThreadRouteActions({
     navigate,
@@ -125,12 +148,36 @@ function ChatThreadRouteView() {
     void navigate({ to: '/', replace: true })
   }, [bootstrapComplete, navigate, routeThreadExists])
 
+  // Auto-close the split pane when the secondary session is archived or removed
+  // (deletion strips it from the store). Leaving it in place would show a stale
+  // thread the user can no longer interact with.
+  useEffect(() => {
+    if (!bootstrapComplete) return
+    if (!splitState.splitOpen || !splitState.secondaryThreadId) return
+    const secondaryGone = secondaryThread === null
+    const secondaryArchived = secondaryThread?.archivedAt != null
+    if (!secondaryGone && !secondaryArchived) return
+    void navigate({
+      to: '/$threadId',
+      params: { threadId },
+      search: previous => stripDiffSearchParams(previous),
+    })
+  }, [
+    bootstrapComplete,
+    navigate,
+    secondaryThread,
+    splitState.secondaryThreadId,
+    splitState.splitOpen,
+    threadId,
+  ])
+
   if (!bootstrapComplete || !routeThreadExists) {
     return null
   }
 
   const layoutProps = {
     threadId,
+    projectId: activeProjectId,
     secondaryThreadId: splitState.secondaryThreadId,
     splitOpen: splitState.splitOpen,
     focusedPane: splitState.focusedPane,
@@ -138,6 +185,7 @@ function ChatThreadRouteView() {
     onToggleSplit: actions.toggleSplit,
     onFocusPane: actions.focusPane,
     onToggleMaximize: actions.toggleMaximize,
+    onOpenSecondary: actions.openSecondaryWithThread,
   }
   return <ChatThreadInlineLayout {...layoutProps} />
 }

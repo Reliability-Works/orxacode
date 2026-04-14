@@ -9,7 +9,9 @@ import {
 import { skillsListQueryOptions } from '~/lib/skillsReactQuery'
 import type { ComposerCommandItem } from './ComposerCommandMenu'
 
-function buildSkillCommandItems(skills: readonly Skill[]): ReadonlyArray<Extract<ComposerCommandItem, { type: 'skill' }>> {
+function buildSkillCommandItems(
+  skills: readonly Skill[]
+): ReadonlyArray<Extract<ComposerCommandItem, { type: 'skill' }>> {
   return skills.map(skill => ({
     id: `skill:${skill.provider}:${skill.id}`,
     type: 'skill',
@@ -46,16 +48,19 @@ export function useProviderDiscoveryMenuData(params: {
         skill.tags.some(tag => tag.toLowerCase().includes(query))
       )
     })
-  }, [capabilitiesQuery.data?.supportsSkillDiscovery, params.pathTriggerQuery, skillsQuery.data?.skills])
+  }, [
+    capabilitiesQuery.data?.supportsSkillDiscovery,
+    params.pathTriggerQuery,
+    skillsQuery.data?.skills,
+  ])
 
   const nativeSlashCommandItems = useMemo<
     ReadonlyArray<Extract<ComposerCommandItem, { type: 'native-slash-command' }>>
   >(
     () =>
-      (
-        capabilitiesQuery.data?.supportsNativeSlashCommandDiscovery
-          ? nativeCommandsQuery.data?.commands ?? []
-          : []
+      (capabilitiesQuery.data?.supportsNativeSlashCommandDiscovery
+        ? (nativeCommandsQuery.data?.commands ?? [])
+        : []
       ).map(command => ({
         id: `native-slash:${params.provider}:${command.name}`,
         type: 'native-slash-command',

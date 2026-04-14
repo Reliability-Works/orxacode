@@ -238,9 +238,7 @@ export interface ServerAuthShape {
   readonly revokeOtherClientSessions: (
     currentSessionId: string
   ) => import('effect').Effect.Effect<number>
-  readonly revokeSessionsByRole: (
-    role: AuthSessionRole
-  ) => import('effect').Effect.Effect<number>
+  readonly revokeSessionsByRole: (role: AuthSessionRole) => import('effect').Effect.Effect<number>
   readonly registerLiveSocket: (
     registration: LiveSessionSocketRegistration
   ) => import('effect').Effect.Effect<string>

@@ -18,9 +18,11 @@ let flushScheduled = false
 let flushInFlight = false
 
 function isMobileSyncLogRelayEnabled() {
-  const env = (import.meta as ImportMeta & {
-    readonly env?: Record<string, string | boolean | undefined>
-  }).env
+  const env = (
+    import.meta as ImportMeta & {
+      readonly env?: Record<string, string | boolean | undefined>
+    }
+  ).env
   const devValue = env?.DEV
 
   return (
@@ -39,7 +41,12 @@ function normalizeLogUrl(httpBaseUrl: string): string {
 }
 
 async function flushEntries(): Promise<void> {
-  if (flushInFlight || pendingEntries.length === 0 || relayContext === null || typeof window === 'undefined') {
+  if (
+    flushInFlight ||
+    pendingEntries.length === 0 ||
+    relayContext === null ||
+    typeof window === 'undefined'
+  ) {
     return
   }
 

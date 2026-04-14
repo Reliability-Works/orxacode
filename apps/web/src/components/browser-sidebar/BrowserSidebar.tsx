@@ -21,9 +21,7 @@ import {
   BrowserSidebarLoadedBody,
   BrowserUnavailableState,
 } from './BrowserSidebar.parts'
-import {
-  BrowserAnnotationsPanel,
-} from './BrowserSidebarInspect'
+import { BrowserAnnotationsPanel } from './BrowserSidebarInspect'
 
 const EMPTY_BROWSER_STATE: DesktopBrowserState = {
   tabs: [],
@@ -45,7 +43,6 @@ function normalizeUrlInput(value: string): string {
   if (!trimmed) return ''
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
 }
-
 
 function useBrowserViewportReporter(
   hostRef: RefObject<HTMLDivElement | null>,
@@ -156,14 +153,22 @@ function useBrowserSidebarState() {
     }
     ensuredInitialTabRef.current = true
     void runAction(() => browserApi.openTab())
-  }, [browserApi, runAction, stateQuery.data?.tabs.length, stateQuery.isError, stateQuery.isPending])
+  }, [
+    browserApi,
+    runAction,
+    stateQuery.data?.tabs.length,
+    stateQuery.isError,
+    stateQuery.isPending,
+  ])
   return { browserApi, stateQuery, actionPending, runAction }
 }
 
 function useBrowserInspectSession(
   browserApi: DesktopBrowserBridge,
   inspectMode: boolean,
-  addAnnotation: (annotation: import('@orxa-code/contracts').DesktopBrowserAnnotationCandidate) => void
+  addAnnotation: (
+    annotation: import('@orxa-code/contracts').DesktopBrowserAnnotationCandidate
+  ) => void
 ) {
   useEffect(() => {
     if (!inspectMode) return

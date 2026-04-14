@@ -276,7 +276,10 @@ export function parseStandaloneComposerSlashCommand(
     return null
   }
   const command = rawCommand as Exclude<ComposerSlashCommand, 'model'>
-  if ((command === 'plan' || command === 'default' || command === 'status') && argument.length > 0) {
+  if (
+    (command === 'plan' || command === 'default' || command === 'status') &&
+    argument.length > 0
+  ) {
     return null
   }
   return {

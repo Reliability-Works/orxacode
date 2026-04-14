@@ -4,8 +4,8 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 
 const DIST_DIR = path.resolve(process.cwd(), 'dist')
-const APP_NAME = 'Orxa Code (Beta)'
-const APP_FALLBACK_MAC_NAME = 'Orxa Code'
+const APP_NAME = 'Orxa Code'
+const APP_FALLBACK_MAC_NAME = 'Orxa Code (Beta)'
 const APP_FALLBACK_LINUX_BINARY = 'orxa-code'
 
 async function pathExists(targetPath) {

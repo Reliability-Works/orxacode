@@ -34,9 +34,11 @@ export function AppTopLeftBar() {
         <span className="truncate text-sm font-medium tracking-tight text-muted-foreground">
           {APP_BASE_NAME}
         </span>
-        <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
-          {APP_STAGE_LABEL}
-        </span>
+        {APP_STAGE_LABEL ? (
+          <span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-micro font-medium uppercase tracking-wider text-muted-foreground/60">
+            {APP_STAGE_LABEL}
+          </span>
+        ) : null}
       </div>
     </div>
   )

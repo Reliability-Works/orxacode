@@ -22,10 +22,7 @@ export interface ServerConfigUpdatedNotification {
   readonly source: ServerConfigUpdateSource
 }
 
-type ServerStateClient = Pick<
-  WsRpcClient['server'],
-  'subscribeConfig' | 'subscribeLifecycle'
->
+type ServerStateClient = Pick<WsRpcClient['server'], 'subscribeConfig' | 'subscribeLifecycle'>
 
 function makeStateAtom<A>(label: string, initialValue: A) {
   return Atom.make(initialValue).pipe(Atom.keepAlive, Atom.withLabel(label))

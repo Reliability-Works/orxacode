@@ -22,7 +22,8 @@ function useNavigateInFocusedPane(
 ) {
   const routeThreadId = useParams({
     strict: false,
-    select: currentParams => (currentParams.threadId ? ThreadId.makeUnsafe(currentParams.threadId) : null),
+    select: currentParams =>
+      currentParams.threadId ? ThreadId.makeUnsafe(currentParams.threadId) : null,
   })
   const routeSearch = useSearch({ strict: false })
 
@@ -50,7 +51,15 @@ function useNavigateInFocusedPane(
       }
       void navigate({ to: '/$threadId', params: { threadId } })
     },
-    [clearSelection, navigate, routeSearch.focusedPane, routeSearch.split, routeThreadId, selectedThreadCount, setSelectionAnchor]
+    [
+      clearSelection,
+      navigate,
+      routeSearch.focusedPane,
+      routeSearch.split,
+      routeThreadId,
+      selectedThreadCount,
+      setSelectionAnchor,
+    ]
   )
 }
 

@@ -12,6 +12,7 @@ import { useCopyToClipboard } from '../../hooks/useCopyToClipboard'
 import { Button } from '../ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '../ui/menu'
 import { toastManager } from '../ui/toastState'
+import { HandoffDialog } from './HandoffDialog'
 import { getHandoffTargetProviders, startThreadHandoff } from './ThreadHandoffMenu.helpers'
 import { useIsMobile } from '~/hooks/useMediaQuery'
 
@@ -62,11 +63,26 @@ function useThreadActionHandoff(thread: Thread, project: Project | null) {
   const [pendingProvider, setPendingProvider] = useState<
     Thread['modelSelection']['provider'] | null
   >(null)
+  const [dialogProvider, setDialogProvider] = useState<Thread['modelSelection']['provider'] | null>(
+    null
+  )
   const targetProviders = useMemo(
     () => getHandoffTargetProviders(thread.modelSelection.provider),
     [thread.modelSelection.provider]
   )
-  const handoffToProvider = async (targetProvider: Thread['modelSelection']['provider']) => {
+  const requestHandoff = (targetProvider: Thread['modelSelection']['provider']) => {
+    setDialogProvider(targetProvider)
+  }
+  const cancelHandoff = () => {
+    if (pendingProvider === null) {
+      setDialogProvider(null)
+    }
+  }
+  const confirmHandoff = async (appendedPrompt: string | null) => {
+    if (!dialogProvider) {
+      return
+    }
+    const targetProvider = dialogProvider
     setPendingProvider(targetProvider)
     try {
       await startThreadHandoff({
@@ -74,14 +90,23 @@ function useThreadActionHandoff(thread: Thread, project: Project | null) {
         thread,
         project,
         targetProvider,
+        appendedPrompt,
       })
+      setDialogProvider(null)
     } catch (error) {
       showActionError('Failed to hand off thread', error)
     } finally {
       setPendingProvider(null)
     }
   }
-  return { pendingProvider, targetProviders, handoffToProvider }
+  return {
+    pendingProvider,
+    dialogProvider,
+    targetProviders,
+    requestHandoff,
+    cancelHandoff,
+    confirmHandoff,
+  }
 }
 
 function ThreadActionsMenuItems(props: {
@@ -155,45 +180,60 @@ export function ThreadActionsMenu(props: { thread: Thread; project: Project | nu
   const isPinned = pinnedThreadIds.includes(props.thread.id)
   const workingDirectory = props.thread.worktreePath ?? props.project?.cwd ?? null
   const { copyWorkingDirectory } = useThreadActionClipboard()
-  const { pendingProvider, targetProviders, handoffToProvider } = useThreadActionHandoff(
-    props.thread,
-    props.project
-  )
+  const {
+    pendingProvider,
+    dialogProvider,
+    targetProviders,
+    requestHandoff,
+    cancelHandoff,
+    confirmHandoff,
+  } = useThreadActionHandoff(props.thread, props.project)
 
   return (
-    <Menu>
-      <MenuTrigger
-        render={
-          <Button
-            type="button"
-            size={isMobile ? 'icon-sm' : 'icon-xs'}
-            variant="ghost"
-            className="shrink-0 translate-y-px gap-0 [&_svg]:mx-0"
-            aria-label="Thread actions"
+    <>
+      <Menu>
+        <MenuTrigger
+          render={
+            <Button
+              type="button"
+              size={isMobile ? 'icon-sm' : 'icon-xs'}
+              variant="ghost"
+              className="shrink-0 translate-y-px gap-0 [&_svg]:mx-0"
+              aria-label="Thread actions"
+            />
+          }
+        >
+          <PanelTopOpenIcon className={isMobile ? 'size-4' : 'size-3.5'} />
+        </MenuTrigger>
+        <MenuPopup align="start" className="min-w-56">
+          <ThreadActionsMenuItems
+            thread={props.thread}
+            isPinned={isPinned}
+            workingDirectory={workingDirectory}
+            onPinToggle={() =>
+              isPinned ? unpinThread(props.thread.id) : pinThread(props.thread.id)
+            }
+            onArchive={() => {
+              void archiveThread(props.thread.id).catch(error =>
+                showActionError('Failed to archive thread', error)
+              )
+            }}
+            copyWorkingDirectory={copyWorkingDirectory}
+            pendingProvider={pendingProvider}
+            targetProviders={targetProviders}
+            onHandoff={targetProvider => {
+              requestHandoff(targetProvider)
+            }}
           />
-        }
-      >
-        <PanelTopOpenIcon className={isMobile ? 'size-4' : 'size-3.5'} />
-      </MenuTrigger>
-      <MenuPopup align="start" className="min-w-56">
-        <ThreadActionsMenuItems
-          thread={props.thread}
-          isPinned={isPinned}
-          workingDirectory={workingDirectory}
-          onPinToggle={() => (isPinned ? unpinThread(props.thread.id) : pinThread(props.thread.id))}
-          onArchive={() => {
-            void archiveThread(props.thread.id).catch(error =>
-              showActionError('Failed to archive thread', error)
-            )
-          }}
-          copyWorkingDirectory={copyWorkingDirectory}
-          pendingProvider={pendingProvider}
-          targetProviders={targetProviders}
-          onHandoff={targetProvider => {
-            void handoffToProvider(targetProvider)
-          }}
-        />
-      </MenuPopup>
-    </Menu>
+        </MenuPopup>
+      </Menu>
+      <HandoffDialog
+        open={dialogProvider !== null}
+        targetProvider={dialogProvider}
+        isSubmitting={pendingProvider !== null}
+        onCancel={cancelHandoff}
+        onConfirm={appendedPrompt => void confirmHandoff(appendedPrompt)}
+      />
+    </>
   )
 }

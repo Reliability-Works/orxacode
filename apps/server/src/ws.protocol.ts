@@ -32,27 +32,29 @@ const createClose =
     return Fiber.interrupt(connectionFiber).pipe(Effect.forkDetach, Effect.asVoid)
   }
 
-const createClientWrite = ({
-  close,
-  parser,
-  writeRaw,
-}: {
-  readonly close: (closeEvent?: Socket.CloseEvent) => Effect.Effect<void>
-  readonly parser: RpcParser
-  readonly writeRaw: (
-    chunk: Uint8Array | string | Socket.CloseEvent
-  ) => Effect.Effect<void, Socket.SocketError>
-}) => (response: unknown) => {
-  try {
-    const encoded = parser.encode(response)
-    if (encoded === undefined) {
-      return Effect.void
+const createClientWrite =
+  ({
+    close,
+    parser,
+    writeRaw,
+  }: {
+    readonly close: (closeEvent?: Socket.CloseEvent) => Effect.Effect<void>
+    readonly parser: RpcParser
+    readonly writeRaw: (
+      chunk: Uint8Array | string | Socket.CloseEvent
+    ) => Effect.Effect<void, Socket.SocketError>
+  }) =>
+  (response: unknown) => {
+    try {
+      const encoded = parser.encode(response)
+      if (encoded === undefined) {
+        return Effect.void
+      }
+      return writeRaw(encoded).pipe(Effect.orDie)
+    } catch {
+      return close(new Socket.CloseEvent(1011, 'RPC encoding failed'))
     }
-    return writeRaw(encoded).pipe(Effect.orDie)
-  } catch {
-    return close(new Socket.CloseEvent(1011, 'RPC encoding failed'))
   }
-}
 
 const dispatchDecodedMessages = ({
   clientId,
@@ -79,85 +81,92 @@ const dispatchDecodedMessages = ({
   })
 }
 
-const createSocketMessageHandler = ({
-  clientId,
-  close,
-  headers,
-  parser,
-  protocolState,
-}: {
-  readonly clientId: number
-  readonly close: (closeEvent?: Socket.CloseEvent) => Effect.Effect<void>
-  readonly headers: RpcHeaders
-  readonly parser: RpcParser
-  readonly protocolState: TrackedProtocolState
-}) => (data: string | Uint8Array) => {
-  try {
-    const decoded = parser.decode(data) as Array<RpcMessage>
-    if (decoded.length === 0) {
-      return Effect.void
-    }
-    return dispatchDecodedMessages({
-      clientId,
-      decoded,
-      headers,
-      writeRequest: protocolState.writeRequest,
-    })
-  } catch {
-    return close(new Socket.CloseEvent(1011, 'RPC decoding failed'))
-  }
-}
-
-const createOnSocket = ({
-  protocolState,
-  registry,
-  serverAuth,
-}: {
-  readonly protocolState: TrackedProtocolState
-  readonly registry: TrackedClientRegistry
-  readonly serverAuth: typeof ServerAuth.Service
-}) => (
-  socket: Socket.Socket,
-  headers: RpcHeaders,
-  session: AuthenticatedSession,
-  connectionFiber: Fiber.Fiber<unknown, unknown>
-) =>
-  Effect.gen(function* () {
-    const parser = RpcSerialization.json.makeUnsafe()
-    const clientId = protocolState.nextClientId++
-    const writeRaw = yield* socket.writer
-    const close = createClose(connectionFiber)
-    const connectionId = yield* serverAuth.registerLiveSocket({
-      sessionId: session.sessionId,
-      role: session.role,
-      close,
-    })
-
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        registry.clients.delete(clientId)
-        registry.clientIds.delete(clientId)
-        yield* serverAuth.unregisterLiveSocket(connectionId)
-        yield* Queue.offer(registry.disconnects, clientId)
+const createSocketMessageHandler =
+  ({
+    clientId,
+    close,
+    headers,
+    parser,
+    protocolState,
+  }: {
+    readonly clientId: number
+    readonly close: (closeEvent?: Socket.CloseEvent) => Effect.Effect<void>
+    readonly headers: RpcHeaders
+    readonly parser: RpcParser
+    readonly protocolState: TrackedProtocolState
+  }) =>
+  (data: string | Uint8Array) => {
+    try {
+      const decoded = parser.decode(data) as Array<RpcMessage>
+      if (decoded.length === 0) {
+        return Effect.void
+      }
+      return dispatchDecodedMessages({
+        clientId,
+        decoded,
+        headers,
+        writeRequest: protocolState.writeRequest,
       })
-    )
+    } catch {
+      return close(new Socket.CloseEvent(1011, 'RPC decoding failed'))
+    }
+  }
 
-    const write = createClientWrite({ close, parser, writeRaw })
-    registry.clients.set(clientId, { write, close })
-    registry.clientIds.add(clientId)
+const createOnSocket =
+  ({
+    protocolState,
+    registry,
+    serverAuth,
+  }: {
+    readonly protocolState: TrackedProtocolState
+    readonly registry: TrackedClientRegistry
+    readonly serverAuth: typeof ServerAuth.Service
+  }) =>
+  (
+    socket: Socket.Socket,
+    headers: RpcHeaders,
+    session: AuthenticatedSession,
+    connectionFiber: Fiber.Fiber<unknown, unknown>
+  ) =>
+    Effect.gen(function* () {
+      const parser = RpcSerialization.json.makeUnsafe()
+      const clientId = protocolState.nextClientId++
+      const writeRaw = yield* socket.writer
+      const close = createClose(connectionFiber)
+      const connectionId = yield* serverAuth.registerLiveSocket({
+        sessionId: session.sessionId,
+        role: session.role,
+        close,
+      })
 
-    yield* socket
-      .runRaw(
-        createSocketMessageHandler({
-          clientId,
-          close,
-          headers,
-          parser,
-          protocolState,
+      yield* Effect.addFinalizer(() =>
+        Effect.gen(function* () {
+          registry.clients.delete(clientId)
+          registry.clientIds.delete(clientId)
+          yield* serverAuth.unregisterLiveSocket(connectionId)
+          yield* Queue.offer(registry.disconnects, clientId)
         })
       )
-      .pipe(Effect.catchTag('SocketError', () => Effect.void), Effect.orDie)
-  })
+
+      const write = createClientWrite({ close, parser, writeRaw })
+      registry.clients.set(clientId, { write, close })
+      registry.clientIds.add(clientId)
+
+      yield* socket
+        .runRaw(
+          createSocketMessageHandler({
+            clientId,
+            close,
+            headers,
+            parser,
+            protocolState,
+          })
+        )
+        .pipe(
+          Effect.catchTag('SocketError', () => Effect.void),
+          Effect.orDie
+        )
+    })
 
 const createProtocol = ({
   protocolState,
@@ -172,8 +181,9 @@ const createProtocol = ({
       disconnects: registry.disconnects,
       send: (clientId, response) => registry.clients.get(clientId)?.write(response) ?? Effect.void,
       end: clientId =>
-        registry.clients.get(clientId)?.close(new Socket.CloseEvent(1000, 'RPC connection ended')) ??
-        Effect.void,
+        registry.clients
+          .get(clientId)
+          ?.close(new Socket.CloseEvent(1000, 'RPC connection ended')) ?? Effect.void,
       clientIds: Effect.sync(() => registry.clientIds),
       initialMessage: Effect.succeedNone,
       supportsAck: true,

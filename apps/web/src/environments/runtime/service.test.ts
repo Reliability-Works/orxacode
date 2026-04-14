@@ -7,13 +7,19 @@ import {
   getEnvironmentRuntimeDebugState,
   resetEnvironmentRuntimeForTests,
 } from './service'
-import { getSavedEnvironmentRecord, readSavedEnvironmentBearerToken, resetSavedEnvironmentRegistryForTests } from './catalog'
+import {
+  getSavedEnvironmentRecord,
+  readSavedEnvironmentBearerToken,
+  resetSavedEnvironmentRegistryForTests,
+} from './catalog'
 
-function mockPairingFetchSequence(responses: ReadonlyArray<{
-  readonly environmentId: string
-  readonly label: string
-  readonly sessionToken: string
-}>) {
+function mockPairingFetchSequence(
+  responses: ReadonlyArray<{
+    readonly environmentId: string
+    readonly label: string
+    readonly sessionToken: string
+  }>
+) {
   const fetchMock = vi.fn()
   for (const response of responses) {
     fetchMock
@@ -66,9 +72,12 @@ describe('ephemeral remote runtime connections', () => {
       },
     ])
 
-    const connection = await connectRemoteEnvironment({
-      pairingUrl: 'https://remote.example.com/pair#token=PAIR1234CODE',
-    }, 'test-pair')
+    const connection = await connectRemoteEnvironment(
+      {
+        pairingUrl: 'https://remote.example.com/pair#token=PAIR1234CODE',
+      },
+      'test-pair'
+    )
 
     expect(connection.environmentId).toBe('environment-remote')
     expect(getSavedEnvironmentRecord('environment-remote')).toBeNull()
@@ -89,13 +98,19 @@ describe('ephemeral remote runtime connections', () => {
       },
     ])
 
-    const firstConnection = await connectRemoteEnvironment({
-      pairingUrl: 'https://remote-one.example.com/pair#token=PAIR1111',
-    }, 'test-first')
+    const firstConnection = await connectRemoteEnvironment(
+      {
+        pairingUrl: 'https://remote-one.example.com/pair#token=PAIR1111',
+      },
+      'test-first'
+    )
     const debugAfterFirst = getEnvironmentRuntimeDebugState()
-    const secondConnection = await connectRemoteEnvironment({
-      pairingUrl: 'https://remote-two.example.com/pair#token=PAIR2222',
-    }, 'test-second')
+    const secondConnection = await connectRemoteEnvironment(
+      {
+        pairingUrl: 'https://remote-two.example.com/pair#token=PAIR2222',
+      },
+      'test-second'
+    )
     const debugAfterSecond = getEnvironmentRuntimeDebugState()
 
     expect(secondConnection).not.toBe(firstConnection)

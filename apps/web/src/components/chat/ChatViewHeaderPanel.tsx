@@ -41,8 +41,8 @@ function HandoffMenuAction() {
 
 function ChatHeaderSplitActions() {
   const split = useChatSplitPaneContext()
-  if (!split || !split.splitOpen) {
-    if (!split) return null
+  if (!split) return null
+  if (!split.splitOpen) {
     return (
       <Tooltip>
         <TooltipTrigger
@@ -62,45 +62,28 @@ function ChatHeaderSplitActions() {
     )
   }
 
+  // Split is open: drop the (redundant) Columns2 toggle — the secondary pane
+  // carries its own close (X) control. Keep the Maximize affordance so the
+  // primary pane can still be expanded to full width.
   const isSplitMaximized = split.maximizedPane === split.pane
-
   return (
-    <div className="flex items-center gap-1.5">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              size="xs"
-              variant={isSplitMaximized ? 'secondary' : 'outline'}
-              onClick={isSplitMaximized ? split.toggleMaximize : split.toggleSplit}
-              aria-label={isSplitMaximized ? 'Restore split view' : 'Close split view'}
-            />
-          }
-        >
-          <Columns2Icon className="size-3.5" />
-        </TooltipTrigger>
-        <TooltipPopup side="bottom">
-          {isSplitMaximized ? 'Restore split view' : 'Close split view'}
-        </TooltipPopup>
-      </Tooltip>
-      {!isSplitMaximized ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                size="xs"
-                variant="outline"
-                onClick={split.toggleMaximize}
-                aria-label={`Maximize ${split.pane} pane`}
-              />
-            }
-          >
-            <Maximize2Icon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">{`Maximize ${split.pane} pane`}</TooltipPopup>
-        </Tooltip>
-      ) : null}
-    </div>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            size="xs"
+            variant={isSplitMaximized ? 'secondary' : 'outline'}
+            onClick={split.toggleMaximize}
+            aria-label={isSplitMaximized ? 'Restore split view' : `Maximize ${split.pane} pane`}
+          />
+        }
+      >
+        <Maximize2Icon className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="bottom">
+        {isSplitMaximized ? 'Restore split view' : `Maximize ${split.pane} pane`}
+      </TooltipPopup>
+    </Tooltip>
   )
 }
 

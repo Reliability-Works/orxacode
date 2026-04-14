@@ -1,4 +1,7 @@
-import type { OrchestrationReadModel, ServerConfig as ContractServerConfig } from '@orxa-code/contracts'
+import type {
+  OrchestrationReadModel,
+  ServerConfig as ContractServerConfig,
+} from '@orxa-code/contracts'
 import { Effect } from 'effect'
 
 import { ServerConfig } from '../config'

@@ -1,10 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 
-import {
-  connectRemoteEnvironment,
-  getEnvironmentRuntimeDebugState,
-} from '../environments/runtime'
+import { connectRemoteEnvironment, getEnvironmentRuntimeDebugState } from '../environments/runtime'
 import {
   peekPairingTokenFromUrl,
   resolveInitialPrimaryAuthGateState,
@@ -123,7 +120,7 @@ function useAutoPairingBootstrap(
     setErrorMessage(null)
     void connectRemoteEnvironment(
       {
-      pairingUrl: `${window.location.origin}/pair#token=${encodeURIComponent(token)}`,
+        pairingUrl: `${window.location.origin}/pair#token=${encodeURIComponent(token)}`,
       },
       'pair-auto-bootstrap'
     )
@@ -164,10 +161,13 @@ async function submitManualPairing(input: {
       pairingCodeLength: input.pairingCode.length,
       runtime: getEnvironmentRuntimeDebugState(),
     })
-    const connection = await connectRemoteEnvironment({
-      host: input.host,
-      pairingCode: input.pairingCode,
-    }, 'pair-manual-submit')
+    const connection = await connectRemoteEnvironment(
+      {
+        host: input.host,
+        pairingCode: input.pairingCode,
+      },
+      'pair-manual-submit'
+    )
     console.info('[mobile-sync] pair manual submit runtime initialized', {
       revision: 'mobile-reopen-probe-1',
       connectionId: connection.connectionId,

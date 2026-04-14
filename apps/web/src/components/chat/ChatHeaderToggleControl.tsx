@@ -33,10 +33,10 @@ export function ChatHeaderToggleControl(props: {
             onPressedChange={onToggle}
             aria-label={ariaLabel}
             variant="outline"
-            size="sm"
+            size="xs"
             disabled={disabled}
           >
-            <Icon className={iconClassName ?? 'size-4'} />
+            <Icon className={iconClassName ?? 'size-3.5'} />
           </Toggle>
         }
       />

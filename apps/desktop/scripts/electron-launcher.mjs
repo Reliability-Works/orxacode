@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const APP_DISPLAY_NAME = 'Orxa Code (Beta)'
+const APP_DISPLAY_NAME = 'Orxa Code'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 export const desktopDir = resolve(__dirname, '..')

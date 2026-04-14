@@ -101,13 +101,7 @@ export function resolveRemoteAccessSnapshot(
       return priorityDelta !== 0 ? priorityDelta : left.localeCompare(right)
     })
     .map(address =>
-      buildEndpoint(
-        address,
-        input.port,
-        input.environmentId,
-        input.bootstrapToken ?? '',
-        cacheKey
-      )
+      buildEndpoint(address, input.port, input.environmentId, input.bootstrapToken ?? '', cacheKey)
     )
 
   return {

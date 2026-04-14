@@ -4,7 +4,10 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MobileSyncDebugDock } from './MobileSyncDebugOverlay'
-import { installMobileSyncDebugBuffer, resetMobileSyncDebugBufferForTests } from '../mobileSyncDebugBuffer'
+import {
+  installMobileSyncDebugBuffer,
+  resetMobileSyncDebugBufferForTests,
+} from '../mobileSyncDebugBuffer'
 
 describe('MobileSyncDebugDock', () => {
   beforeEach(() => {

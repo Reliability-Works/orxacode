@@ -29,8 +29,7 @@ let primaryEnvironmentDescriptorPromise: Promise<ExecutionEnvironmentDescriptor>
 function isPrimaryEnvironmentAvailabilityError(error: unknown): boolean {
   return (
     error instanceof PrimaryEnvironmentUnavailableError ||
-    (error instanceof Error &&
-      (error.message === 'Failed to fetch' || error.name === 'TypeError'))
+    (error instanceof Error && (error.message === 'Failed to fetch' || error.name === 'TypeError'))
   )
 }
 

@@ -129,8 +129,8 @@ function SidebarProvider({
 
   return (
     <SidebarContext.Provider value={contextValue}>
-        <div
-          className={cn(
+      <div
+        className={cn(
           'group/sidebar-wrapper flex h-full min-h-0 w-full has-data-[variant=inset]:bg-sidebar',
           className
         )}

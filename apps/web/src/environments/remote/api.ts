@@ -112,10 +112,9 @@ async function fetchRemoteJson<T>(input: {
       durationMs,
       message,
     })
-    throw new Error(
-      `Failed to fetch remote auth endpoint ${requestUrl} (${message}).`,
-      { cause: error }
-    )
+    throw new Error(`Failed to fetch remote auth endpoint ${requestUrl} (${message}).`, {
+      cause: error,
+    })
   }
   clearTimeout(timeoutId)
 
@@ -129,7 +128,10 @@ async function fetchRemoteJson<T>(input: {
 
   if (!response.ok) {
     throw new RemoteEnvironmentAuthHttpError(
-      await readRemoteAuthErrorMessage(response, `Remote auth request failed (${response.status}).`),
+      await readRemoteAuthErrorMessage(
+        response,
+        `Remote auth request failed (${response.status}).`
+      ),
       response.status
     )
   }

@@ -3,11 +3,7 @@ import { Effect, FileSystem, Path } from 'effect'
 import { HttpClient } from 'effect/unstable/http'
 import * as Http from 'node:http'
 
-import {
-  buildAppUnderTest,
-  getHttpServerUrl,
-  provideServerTest,
-} from './server.test.helpers.ts'
+import { buildAppUnderTest, getHttpServerUrl, provideServerTest } from './server.test.helpers.ts'
 
 it.effect('serves static index content for GET / when staticDir is configured', () =>
   provideServerTest(
@@ -167,78 +163,84 @@ it.effect('exchanges bootstrap credentials for bearer sessions', () =>
   )
 )
 
-it.effect('revokes prior client bearer sessions when a new bootstrap bearer session is issued', () =>
-  provideServerTest(
-    Effect.gen(function* () {
-      yield* buildAppUnderTest({
-        config: {
-          remoteAccessBootstrapToken: 'bootstrap-token',
-          remoteAccessEnvironmentId: 'environment-1',
-        },
+it.effect(
+  'revokes prior client bearer sessions when a new bootstrap bearer session is issued',
+  () =>
+    provideServerTest(
+      Effect.gen(function* () {
+        yield* buildAppUnderTest({
+          config: {
+            remoteAccessBootstrapToken: 'bootstrap-token',
+            remoteAccessEnvironmentId: 'environment-1',
+          },
+        })
+
+        const bootstrapUrl = yield* getHttpServerUrl('/api/auth/bootstrap/bearer')
+        const firstBootstrapResponse = yield* Effect.tryPromise(() =>
+          fetch(bootstrapUrl, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              credential: 'bootstrap-token',
+            }),
+          })
+        )
+        const firstPayload = (yield* Effect.tryPromise(() => firstBootstrapResponse.json())) as {
+          sessionToken: string
+        }
+        const secondBootstrapResponse = yield* Effect.tryPromise(() =>
+          fetch(bootstrapUrl, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              credential: 'bootstrap-token',
+            }),
+          })
+        )
+        const secondPayload = (yield* Effect.tryPromise(() => secondBootstrapResponse.json())) as {
+          sessionToken: string
+        }
+
+        assert.equal(firstBootstrapResponse.status, 200)
+        assert.equal(secondBootstrapResponse.status, 200)
+        assert.notEqual(firstPayload.sessionToken, secondPayload.sessionToken)
+
+        const sessionUrl = yield* getHttpServerUrl('/api/auth/session')
+        const firstSessionResponse = yield* Effect.tryPromise(() =>
+          fetch(sessionUrl, {
+            headers: {
+              authorization: `Bearer ${firstPayload.sessionToken}`,
+            },
+          })
+        )
+        const firstSessionPayload = (yield* Effect.tryPromise(() =>
+          firstSessionResponse.json()
+        )) as {
+          authenticated: boolean
+        }
+        const secondSessionResponse = yield* Effect.tryPromise(() =>
+          fetch(sessionUrl, {
+            headers: {
+              authorization: `Bearer ${secondPayload.sessionToken}`,
+            },
+          })
+        )
+        const secondSessionPayload = (yield* Effect.tryPromise(() =>
+          secondSessionResponse.json()
+        )) as {
+          authenticated: boolean
+        }
+
+        assert.equal(firstSessionResponse.status, 200)
+        assert.equal(firstSessionPayload.authenticated, false)
+        assert.equal(secondSessionResponse.status, 200)
+        assert.equal(secondSessionPayload.authenticated, true)
       })
-
-      const bootstrapUrl = yield* getHttpServerUrl('/api/auth/bootstrap/bearer')
-      const firstBootstrapResponse = yield* Effect.tryPromise(() =>
-        fetch(bootstrapUrl, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            credential: 'bootstrap-token',
-          }),
-        })
-      )
-      const firstPayload = (yield* Effect.tryPromise(() => firstBootstrapResponse.json())) as {
-        sessionToken: string
-      }
-      const secondBootstrapResponse = yield* Effect.tryPromise(() =>
-        fetch(bootstrapUrl, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            credential: 'bootstrap-token',
-          }),
-        })
-      )
-      const secondPayload = (yield* Effect.tryPromise(() => secondBootstrapResponse.json())) as {
-        sessionToken: string
-      }
-
-      assert.equal(firstBootstrapResponse.status, 200)
-      assert.equal(secondBootstrapResponse.status, 200)
-      assert.notEqual(firstPayload.sessionToken, secondPayload.sessionToken)
-
-      const sessionUrl = yield* getHttpServerUrl('/api/auth/session')
-      const firstSessionResponse = yield* Effect.tryPromise(() =>
-        fetch(sessionUrl, {
-          headers: {
-            authorization: `Bearer ${firstPayload.sessionToken}`,
-          },
-        })
-      )
-      const firstSessionPayload = (yield* Effect.tryPromise(() => firstSessionResponse.json())) as {
-        authenticated: boolean
-      }
-      const secondSessionResponse = yield* Effect.tryPromise(() =>
-        fetch(sessionUrl, {
-          headers: {
-            authorization: `Bearer ${secondPayload.sessionToken}`,
-          },
-        })
-      )
-      const secondSessionPayload = (yield* Effect.tryPromise(() => secondSessionResponse.json())) as {
-        authenticated: boolean
-      }
-
-      assert.equal(firstSessionResponse.status, 200)
-      assert.equal(firstSessionPayload.authenticated, false)
-      assert.equal(secondSessionResponse.status, 200)
-      assert.equal(secondSessionPayload.authenticated, true)
-    })
-  )
+    )
 )
 
 it.effect('serves mobile sync bootstrap snapshots for authenticated client sessions', () =>
@@ -354,33 +356,35 @@ it.effect('accepts authenticated mobile sync log relay batches', () =>
   )
 )
 
-it.effect('answers auth bootstrap preflight requests for desktop dev cross-origin auth bootstrap', () =>
-  provideServerTest(
-    Effect.gen(function* () {
-      yield* buildAppUnderTest({
-        config: {
-          remoteAccessBootstrapToken: 'bootstrap-token',
-        },
-      })
-
-      const bootstrapUrl = yield* getHttpServerUrl('/api/auth/bootstrap')
-      const response = yield* Effect.tryPromise(() =>
-        fetch(bootstrapUrl, {
-          method: 'OPTIONS',
-          headers: {
-            origin: 'http://localhost:5733',
-            'access-control-request-method': 'POST',
-            'access-control-request-headers': 'content-type',
+it.effect(
+  'answers auth bootstrap preflight requests for desktop dev cross-origin auth bootstrap',
+  () =>
+    provideServerTest(
+      Effect.gen(function* () {
+        yield* buildAppUnderTest({
+          config: {
+            remoteAccessBootstrapToken: 'bootstrap-token',
           },
         })
-      )
 
-      assert.equal(response.status, 204)
-      assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5733')
-      assert.equal(response.headers.get('access-control-allow-credentials'), 'true')
-      assert.include(response.headers.get('access-control-allow-methods') ?? '', 'POST')
-    })
-  )
+        const bootstrapUrl = yield* getHttpServerUrl('/api/auth/bootstrap')
+        const response = yield* Effect.tryPromise(() =>
+          fetch(bootstrapUrl, {
+            method: 'OPTIONS',
+            headers: {
+              origin: 'http://localhost:5733',
+              'access-control-request-method': 'POST',
+              'access-control-request-headers': 'content-type',
+            },
+          })
+        )
+
+        assert.equal(response.status, 204)
+        assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5733')
+        assert.equal(response.headers.get('access-control-allow-credentials'), 'true')
+        assert.include(response.headers.get('access-control-allow-methods') ?? '', 'POST')
+      })
+    )
 )
 
 it.effect('serves the well-known environment descriptor', () =>

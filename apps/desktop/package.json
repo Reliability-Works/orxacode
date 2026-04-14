@@ -1,6 +1,6 @@
 {
   "name": "@orxa-code/desktop",
-  "version": "0.0.15",
+  "version": "0.1.0",
   "private": true,
   "main": "dist-electron/main.js",
   "scripts": {
@@ -26,5 +26,5 @@
     "typescript": "*",
     "vitest": "*"
   },
-  "productName": "Orxa Code (Beta)"
+  "productName": "Orxa Code"
 }

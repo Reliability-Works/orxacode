@@ -90,11 +90,11 @@ function createBrowserBridge() {
 
   const getState = vi.fn<DesktopBrowserBridge['getState']>().mockResolvedValue(firstState)
   const openTab = vi.fn<DesktopBrowserBridge['openTab']>().mockResolvedValue(openedState)
-  const navigate = vi
-    .fn<DesktopBrowserBridge['navigate']>()
-    .mockResolvedValue(navigatedState)
+  const navigate = vi.fn<DesktopBrowserBridge['navigate']>().mockResolvedValue(navigatedState)
 
-  const enableInspect = vi.fn<DesktopBrowserBridge['enableInspect']>().mockResolvedValue({ ok: true })
+  const enableInspect = vi
+    .fn<DesktopBrowserBridge['enableInspect']>()
+    .mockResolvedValue({ ok: true })
   const disableInspect = vi
     .fn<DesktopBrowserBridge['disableInspect']>()
     .mockResolvedValue({ ok: true })

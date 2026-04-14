@@ -90,6 +90,11 @@ export function createMainWindow(host: CreateWindowHost): BrowserWindow {
     minWidth: 840,
     minHeight: 620,
     show: false,
+    // Matches the default dark theme `--background` (oklch 0.145 0.008 264) so the
+    // window doesn't flash white between becoming visible and the renderer CSS applying.
+    // Light-theme users get a brief dark frame which is a deliberate tradeoff — the
+    // inline FOUC script in index.html overrides to white for them as soon as HTML parses.
+    backgroundColor: '#0e1017',
     autoHideMenuBar: true,
     ...getIconOption(host),
     title: config.displayName,
@@ -137,11 +142,14 @@ export function createMainWindow(host: CreateWindowHost): BrowserWindow {
     surfaceWindow()
   })
 
-  if (config.deferInitialLoad) {
-    surfaceWindow()
-  } else {
+  if (!config.deferInitialLoad) {
     loadMainWindowContent(window, config)
   }
+  // When deferInitialLoad is true, the window stays hidden until the deferred
+  // loadMainWindowContent() call completes (triggered by bootstrap() after the
+  // backend is ready). did-finish-load / ready-to-show will then surface it.
+  // Showing an empty window during backend startup caused a white-flash + the
+  // appearance of a slow startup, so we intentionally wait for real content.
 
   window.on('closed', () => {
     if (host.isMainWindow(window)) {

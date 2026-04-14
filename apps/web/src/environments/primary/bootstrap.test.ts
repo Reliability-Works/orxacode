@@ -111,7 +111,10 @@ describe('primary environment bootstrap', () => {
 
   it('treats desktop-managed fetch failures as an unavailable descriptor instead of crashing boot', async () => {
     installDesktopBootstrap()
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'))
+    )
 
     await expect(tryResolveInitialPrimaryEnvironmentDescriptor()).resolves.toBeNull()
   })

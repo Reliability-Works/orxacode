@@ -21,7 +21,11 @@ import {
 import { revokeBlobPreviewUrl } from '../ChatView.logic'
 import { randomUUID, newThreadId } from '~/lib/utils'
 import { setupProjectScript } from '../../projectScripts'
-import { useComposerDraftStore, type ComposerImageAttachment, type DraftThreadEnvMode } from '../../composerDraftStore'
+import {
+  useComposerDraftStore,
+  type ComposerImageAttachment,
+  type DraftThreadEnvMode,
+} from '../../composerDraftStore'
 import type { useChatViewStoreSelectors } from './useChatViewStoreSelectors'
 import type { useChatViewLocalState } from './useChatViewLocalState'
 import type { useChatViewDerivedThread } from './useChatViewDerivedThread'

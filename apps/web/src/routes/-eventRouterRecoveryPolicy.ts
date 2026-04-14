@@ -1,8 +1,6 @@
 import type { OrchestrationRecoveryState } from '../orchestrationRecovery'
 
-export type ConnectionReconcileAction =
-  | 'skip'
-  | 'reconcile-only'
+export type ConnectionReconcileAction = 'skip' | 'reconcile-only'
 
 export function resolveConnectionReconcileAction(
   state: Pick<OrchestrationRecoveryState, 'bootstrapped' | 'inFlight'>

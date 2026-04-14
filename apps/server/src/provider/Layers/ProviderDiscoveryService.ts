@@ -6,11 +6,18 @@ import type {
 } from '@orxa-code/contracts'
 import { Effect, Layer } from 'effect'
 
-import { ProviderDiscoveryService, type ProviderDiscoveryServiceShape } from '../Services/ProviderDiscoveryService.ts'
+import {
+  ProviderDiscoveryService,
+  type ProviderDiscoveryServiceShape,
+} from '../Services/ProviderDiscoveryService.ts'
 import { listClaudePlugins, listCodexPlugins } from './ProviderDiscoveryService.fs.ts'
 import { listOpencodePlugins } from './ProviderDiscoveryService.opencode.ts'
 
-const ALL_PROVIDERS = ['codex', 'claudeAgent', 'opencode'] as const satisfies ReadonlyArray<ProviderKind>
+const ALL_PROVIDERS = [
+  'codex',
+  'claudeAgent',
+  'opencode',
+] as const satisfies ReadonlyArray<ProviderKind>
 
 const CLAUDE_NATIVE_COMMANDS: ReadonlyArray<ProviderNativeCommandDescriptor> = [
   { name: 'clear', description: 'Clear the current Claude conversation context' },

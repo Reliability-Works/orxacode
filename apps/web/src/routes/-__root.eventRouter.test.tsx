@@ -4,9 +4,7 @@ import { render, waitFor } from '@testing-library/react'
 import { useEffect, useRef } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import {
-  useEventRouterWelcomeHandler,
-} from './-__root.eventRouter'
+import { useEventRouterWelcomeHandler } from './-__root.eventRouter'
 import { AppAtomRegistryProvider } from '../rpc/atomRegistry'
 import {
   emitWelcome,
@@ -14,9 +12,7 @@ import {
   useServerWelcomeSubscription,
 } from '../rpc/serverState'
 
-function WelcomeReplayProbe(props: {
-  readonly callLog: string[]
-}) {
+function WelcomeReplayProbe(props: { readonly callLog: string[] }) {
   const disposedRef = useRef(false)
   const handledBootstrapThreadIdRef = useRef<string | null>(null)
   const pathnameRef = useRef('/')

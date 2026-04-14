@@ -56,7 +56,9 @@ function readPersistedSavedEnvironmentRecords(): SavedEnvironmentRecord[] {
     .filter((value): value is SavedEnvironmentRecord => value !== null)
 }
 
-function writePersistedSavedEnvironmentRecords(records: ReadonlyArray<SavedEnvironmentRecord>): void {
+function writePersistedSavedEnvironmentRecords(
+  records: ReadonlyArray<SavedEnvironmentRecord>
+): void {
   localPersistence.setSavedEnvironmentRegistry(records)
 }
 

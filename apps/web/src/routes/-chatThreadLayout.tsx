@@ -1,4 +1,4 @@
-import { type ThreadId } from '@orxa-code/contracts'
+import { type ProjectId, type ThreadId } from '@orxa-code/contracts'
 import {
   type PointerEvent as ReactPointerEvent,
   type RefObject,
@@ -9,6 +9,7 @@ import {
 import * as Schema from 'effect/Schema'
 
 import ChatView from '../components/ChatView'
+import { ChatSplitDropZone } from '../components/chat/ChatSplitDropZone'
 import { ChatSplitPaneContext, type ChatSplitPane } from '../components/chat/ChatSplitPaneContext'
 import { useLocalStorage } from '../hooks/useLocalStorage'
 import { SidebarInset } from '~/components/ui/sidebar'
@@ -60,7 +61,7 @@ function SplitAwareChatThreadShell(props: {
 
   return (
     <ChatSplitPaneContext.Provider value={controls}>
-        <SidebarInset
+      <SidebarInset
         className={cn(
           'h-full min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground',
           isMobile && openMobile && 'invisible pointer-events-none'
@@ -228,6 +229,7 @@ function ChatSplitInlineLayout(props: {
 
 type ChatThreadSplitLayoutProps = {
   threadId: ThreadId
+  projectId: ProjectId | null
   secondaryThreadId: ThreadId | null
   splitOpen: boolean
   focusedPane: ChatSplitPane
@@ -235,6 +237,7 @@ type ChatThreadSplitLayoutProps = {
   onToggleSplit: () => void
   onFocusPane: (pane: ChatSplitPane) => void
   onToggleMaximize: (pane: ChatSplitPane) => void
+  onOpenSecondary: (threadId: ThreadId) => void
 }
 
 export function ChatThreadInlineLayout(props: ChatThreadSplitLayoutProps) {
@@ -247,15 +250,22 @@ export function ChatThreadSheetLayout(props: ChatThreadSplitLayoutProps) {
 
 function ChatThreadSplitLayoutContent(props: ChatThreadSplitLayoutProps) {
   return (
-    <ChatSplitInlineLayout
+    <ChatSplitDropZone
       primaryThreadId={props.threadId}
+      primaryProjectId={props.projectId}
       secondaryThreadId={props.secondaryThreadId}
-      splitOpen={props.splitOpen}
-      focusedPane={props.focusedPane}
-      maximizedPane={props.maximizedPane}
-      onToggleSplit={props.onToggleSplit}
-      onFocusPane={props.onFocusPane}
-      onToggleMaximize={props.onToggleMaximize}
-    />
+      onOpenSecondary={props.onOpenSecondary}
+    >
+      <ChatSplitInlineLayout
+        primaryThreadId={props.threadId}
+        secondaryThreadId={props.secondaryThreadId}
+        splitOpen={props.splitOpen}
+        focusedPane={props.focusedPane}
+        maximizedPane={props.maximizedPane}
+        onToggleSplit={props.onToggleSplit}
+        onFocusPane={props.onFocusPane}
+        onToggleMaximize={props.onToggleMaximize}
+      />
+    </ChatSplitDropZone>
   )
 }

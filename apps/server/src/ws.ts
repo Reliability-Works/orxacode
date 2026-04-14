@@ -1,16 +1,36 @@
+/* eslint-disable max-lines */
 import { Effect, Layer, Queue, Ref, Schema, Stream } from 'effect'
 import {
-  type ClientOrchestrationCommand, type OrchestrationGetFullThreadDiffInput,
+  type ClientOrchestrationCommand,
+  type OrchestrationGetFullThreadDiffInput,
   OrchestrationDispatchCommandError,
-  type OrchestrationGetTurnDiffInput, type OrchestrationEvent, type OrchestrationReplayEventsInput,
-  type OpenInEditorInput, OrchestrationGetFullThreadDiffError, OrchestrationGetSnapshotError,
-  OrchestrationGetTurnDiffError, ORCHESTRATION_WS_METHODS, type ProjectListEntriesInput,
-  ProjectListEntriesError, type ProjectReadFileInput, ProjectReadFileError,
-  type ProjectSearchEntriesInput, ProjectSearchEntriesError, type ProjectWriteFileInput,
-  ProjectWriteFileError, type ProviderListAgentsInput, type ProviderListAgentsResult,
-  OrchestrationReplayEventsError, type ServerSettingsPatch, type ServerUpsertKeybindingInput,
-  type TerminalEvent, type TerminalClearInput, type TerminalCloseInput, type TerminalOpenInput,
-  type TerminalResizeInput, type TerminalRestartInput,
+  type OrchestrationGetTurnDiffInput,
+  type OrchestrationEvent,
+  type OrchestrationReplayEventsInput,
+  type OpenInEditorInput,
+  OrchestrationGetFullThreadDiffError,
+  OrchestrationGetSnapshotError,
+  OrchestrationGetTurnDiffError,
+  ORCHESTRATION_WS_METHODS,
+  type ProjectListEntriesInput,
+  ProjectListEntriesError,
+  type ProjectReadFileInput,
+  ProjectReadFileError,
+  type ProjectSearchEntriesInput,
+  ProjectSearchEntriesError,
+  type ProjectWriteFileInput,
+  ProjectWriteFileError,
+  type ProviderListAgentsInput,
+  type ProviderListAgentsResult,
+  OrchestrationReplayEventsError,
+  type ServerSettingsPatch,
+  type ServerUpsertKeybindingInput,
+  type TerminalEvent,
+  type TerminalClearInput,
+  type TerminalCloseInput,
+  type TerminalOpenInput,
+  type TerminalResizeInput,
+  type TerminalRestartInput,
   type TerminalWriteInput,
   WS_METHODS,
   WsRpcGroup,
@@ -46,7 +66,11 @@ import { WorkspacePathOutsideRootError } from './workspace/Services/WorkspacePat
 import { createDashboardMethods } from './ws.dashboard'
 import { createGitMethods } from './ws.git'
 import { loadServerConfigSnapshot } from './mobileSync/bootstrap'
-import { logWebSocketUpgradeAuthenticated, logWebSocketUpgradeAuthError, logWebSocketUpgradeRequest } from './ws.mobileSyncLog'
+import {
+  logWebSocketUpgradeAuthenticated,
+  logWebSocketUpgradeAuthError,
+  logWebSocketUpgradeRequest,
+} from './ws.mobileSyncLog'
 import { logWsRpcError, logWsRpcInfo } from './ws.rpc.mobileSyncLog'
 import { createServerConfigStream, createServerLifecycleStream } from './ws.serverStreams'
 import { createProviderMethods } from './ws.provider'
@@ -54,15 +78,24 @@ import { createSkillsMethods } from './ws.skills'
 import { createTrackedWebSocketProtocol } from './ws.protocol'
 
 type WsRpcDependencies = {
-  readonly dashboardQuery: typeof DashboardQuery.Service; readonly providerUsageQuery: typeof ProviderUsageQuery.Service
-  readonly skillsService: typeof SkillsService.Service; readonly orchestrationEngine: typeof OrchestrationEngineService.Service
-  readonly checkpointDiffQuery: typeof CheckpointDiffQuery.Service; readonly keybindings: typeof Keybindings.Service
-  readonly open: typeof Open.Service; readonly gitManager: typeof GitManager.Service
-  readonly git: typeof GitCore.Service; readonly gitHubCli: typeof GitHubCli.Service
-  readonly terminalManager: typeof TerminalManager.Service; readonly providerRegistry: typeof ProviderRegistry.Service
-  readonly opencodeAdapter: typeof OpencodeAdapter.Service; readonly providerDiscoveryService: typeof ProviderDiscoveryService.Service
-  readonly config: typeof ServerConfig.Service; readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
-  readonly serverSettings: typeof ServerSettingsService.Service; readonly startup: typeof ServerRuntimeStartup.Service
+  readonly dashboardQuery: typeof DashboardQuery.Service
+  readonly providerUsageQuery: typeof ProviderUsageQuery.Service
+  readonly skillsService: typeof SkillsService.Service
+  readonly orchestrationEngine: typeof OrchestrationEngineService.Service
+  readonly checkpointDiffQuery: typeof CheckpointDiffQuery.Service
+  readonly keybindings: typeof Keybindings.Service
+  readonly open: typeof Open.Service
+  readonly gitManager: typeof GitManager.Service
+  readonly git: typeof GitCore.Service
+  readonly gitHubCli: typeof GitHubCli.Service
+  readonly terminalManager: typeof TerminalManager.Service
+  readonly providerRegistry: typeof ProviderRegistry.Service
+  readonly opencodeAdapter: typeof OpencodeAdapter.Service
+  readonly providerDiscoveryService: typeof ProviderDiscoveryService.Service
+  readonly config: typeof ServerConfig.Service
+  readonly lifecycleEvents: typeof ServerLifecycleEvents.Service
+  readonly serverSettings: typeof ServerSettingsService.Service
+  readonly startup: typeof ServerRuntimeStartup.Service
   readonly workspaceEntries: typeof WorkspaceEntries.Service
   readonly workspaceFileSystem: typeof WorkspaceFileSystem.Service
 }
@@ -165,9 +198,7 @@ const createReplayEventsHandler =
           })
       )
     )
-const createServerGetSettingsHandler = (
-  serverSettings: WsRpcDependencies['serverSettings']
-) =>
+const createServerGetSettingsHandler = (serverSettings: WsRpcDependencies['serverSettings']) =>
   Effect.sync(() => {
     logWsRpcInfo('serverGetSettings:start', {})
   }).pipe(
@@ -185,17 +216,14 @@ const createServerGetSettingsHandler = (
         logWsRpcError('serverGetSettings:error', {
           cause,
         })
-        })
-      )
+      })
     )
+  )
 const createOrchestrationMethods = ({
   checkpointDiffQuery,
   orchestrationEngine,
   startup,
-}: Pick<
-  WsRpcDependencies,
-  'checkpointDiffQuery' | 'orchestrationEngine' | 'startup'
->) => ({
+}: Pick<WsRpcDependencies, 'checkpointDiffQuery' | 'orchestrationEngine' | 'startup'>) => ({
   [ORCHESTRATION_WS_METHODS.getSnapshot]: () =>
     Effect.sync(() => {
       logWsRpcInfo('orchestration.getSnapshot:start', {})
@@ -260,7 +288,10 @@ const createServerMethods = ({
   opencodeAdapter,
   providerRegistry,
   serverSettings,
-}: Pick<WsRpcDependencies, 'keybindings' | 'lifecycleEvents' | 'opencodeAdapter' | 'providerRegistry' | 'serverSettings'> & {
+}: Pick<
+  WsRpcDependencies,
+  'keybindings' | 'lifecycleEvents' | 'opencodeAdapter' | 'providerRegistry' | 'serverSettings'
+> & {
   readonly loadServerConfig: ReturnType<typeof createLoadServerConfig>
 }) => ({
   [WS_METHODS.serverGetConfig]: () =>

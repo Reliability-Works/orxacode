@@ -128,7 +128,7 @@ describe('createMainWindow', () => {
     expect(window.focus).toHaveBeenCalledTimes(1)
   })
 
-  it('surfaces a deferred-load window immediately without waiting for app content', async () => {
+  it('keeps a deferred-load window hidden until app content finishes loading', async () => {
     const { createMainWindow, loadMainWindowContent } = await import('./main.window')
     const { app } = await import('electron')
     const host = {
@@ -151,17 +151,23 @@ describe('createMainWindow', () => {
       throw new Error('Expected a BrowserWindow instance')
     }
 
-    expect(app.focus).toHaveBeenCalledTimes(1)
-    expect(window.show).toHaveBeenCalledTimes(1)
-    expect(window.focus).toHaveBeenCalledTimes(1)
+    // Deferred load: no content requested yet, so window stays hidden.
     expect(window.loadURL).not.toHaveBeenCalled()
+    expect(window.show).not.toHaveBeenCalled()
+    expect(app.focus).not.toHaveBeenCalled()
 
+    // A did-finish-load without a content request (e.g. about:blank) must not surface.
     window.webContents.emit('did-finish-load')
     expect(host.notifyDidFinishLoad).not.toHaveBeenCalled()
+    expect(window.show).not.toHaveBeenCalled()
 
+    // Once content is requested and finishes loading, the window surfaces.
     loadMainWindowContent(window as never, host.config)
     window.webContents.emit('did-finish-load')
     expect(window.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3773')
     expect(host.notifyDidFinishLoad).toHaveBeenCalledTimes(1)
+    expect(window.show).toHaveBeenCalledTimes(1)
+    expect(window.focus).toHaveBeenCalledTimes(1)
+    expect(app.focus).toHaveBeenCalledTimes(1)
   })
 })
