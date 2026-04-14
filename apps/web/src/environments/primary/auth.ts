@@ -21,6 +21,7 @@ export type PrimaryAuthGateState =
 
 let bootstrapPromise: Promise<PrimaryAuthGateState> | null = null
 let primarySessionToken: string | null = null
+const PRIMARY_AUTH_BOOTSTRAP_TIMEOUT_MS = 3_000
 
 function unauthenticatedSessionState(): AuthSessionState {
   return {
@@ -78,6 +79,7 @@ async function exchangeBootstrapCredential(credential: string): Promise<AuthBoot
   const response = await fetch(resolvePrimaryEnvironmentHttpUrl('/api/auth/bootstrap'), {
     method: 'POST',
     credentials: 'include',
+    signal: AbortSignal.timeout(PRIMARY_AUTH_BOOTSTRAP_TIMEOUT_MS),
     headers: {
       'content-type': 'application/json',
     },
@@ -150,6 +152,7 @@ export function resetPrimaryAuthGateStateForTests(): void {
 }
 
 export async function resolvePrimaryWebSocketConnectionUrl(wsBaseUrl: string): Promise<string> {
+  await refreshPrimaryAuthSession()
   const url = new URL(wsBaseUrl, window.location.origin)
   url.pathname = '/ws'
   url.search = ''
@@ -158,4 +161,18 @@ export async function resolvePrimaryWebSocketConnectionUrl(wsBaseUrl: string): P
     url.searchParams.set('token', primarySessionToken)
   }
   return url.toString()
+}
+
+export async function refreshPrimaryAuthSession(): Promise<void> {
+  const bootstrap = await resolvePrimaryEnvironmentBootstrap()
+  if (readPrimaryEnvironmentTarget().source !== 'desktop-managed') {
+    return
+  }
+  const bootstrapCredential = bootstrap?.bootstrapToken?.trim() ?? ''
+  if (!bootstrapCredential) {
+    throw new Error('Desktop-managed primary environment is missing its bootstrap token.')
+  }
+
+  primarySessionToken = null
+  await exchangeBootstrapCredential(bootstrapCredential)
 }

@@ -1,6 +1,7 @@
 export {
   fetchSessionState,
   peekPairingTokenFromUrl,
+  refreshPrimaryAuthSession,
   resolveInitialPrimaryAuthGateState,
   resolvePrimaryWebSocketConnectionUrl,
   resetPrimaryAuthGateStateForTests,

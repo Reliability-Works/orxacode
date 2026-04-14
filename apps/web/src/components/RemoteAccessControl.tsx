@@ -2,8 +2,11 @@ import { type DesktopRemoteAccessSnapshot } from '@orxa-code/contracts'
 import { CheckIcon, CopyIcon, QrCodeIcon, RefreshCwIcon, SmartphoneIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { reconnectActiveEnvironment } from '../environments/runtime'
+import { beginExpectedReconnectWindow } from '../rpc/wsConnectionState'
 import { useCopyToClipboard } from '~/hooks/useCopyToClipboard'
 import { cn } from '~/lib/utils'
+import { updateRemoteAccessPreference } from './remoteAccessControl.logic'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -120,17 +123,15 @@ function useRemoteAccessSnapshot(open: boolean): RemoteAccessState {
   }, [])
 
   const setEnabled = useCallback(async (enabled: boolean) => {
-    const bridge = window.desktopBridge
-    if (!bridge?.setRemoteAccessPreferences || !bridge.getRemoteAccessSnapshot) {
-      setErrorMessage('Remote access is only available from the desktop app.')
-      return
-    }
-
     setIsLoading(true)
     setErrorMessage(null)
     try {
-      await bridge.setRemoteAccessPreferences({ enabled })
-      const nextSnapshot = await bridge.getRemoteAccessSnapshot()
+      beginExpectedReconnectWindow('remote-access-toggle', 15_000)
+      const nextSnapshot = await updateRemoteAccessPreference({
+        bridge: window.desktopBridge,
+        enabled,
+        reconnect: () => reconnectActiveEnvironment(),
+      })
       setSnapshot(nextSnapshot)
     } catch (error) {
       setErrorMessage(

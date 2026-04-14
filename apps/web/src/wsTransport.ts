@@ -9,10 +9,13 @@ import {
 import { RpcClient } from 'effect/unstable/rpc'
 import { isTransportConnectionErrorMessage } from './rpc/transportError'
 import {
+  getWsConnectionStatus,
+  isExpectedReconnectActive,
   recordWsConnectionAttempt,
   recordWsConnectionClosed,
   recordWsConnectionErrored,
   recordWsConnectionOpened,
+  waitForExpectedReconnectWindow,
 } from './rpc/wsConnectionState'
 
 interface SubscribeOptions {
@@ -99,6 +102,16 @@ function logTransportError(event: string, data: Record<string, unknown>) {
     return
   }
 
+  if (isExpectedReconnectActive(getWsConnectionStatus())) {
+    console.info('[mobile-sync] transport', {
+      event,
+      revision: 'mobile-reopen-probe-1',
+      suppressedDuringExpectedReconnect: true,
+      ...data,
+    })
+    return
+  }
+
   console.error('[mobile-sync] transport', {
     event,
     revision: 'mobile-reopen-probe-1',
@@ -169,6 +182,9 @@ function createSubscriptionCompletion<TValue>(params: {
             params.onTransportResult({ disconnected, shouldRetry: disconnected })
             if (!params.activeRef() || params.isDisposed()) {
               return Effect.interrupt
+            }
+            if (isExpectedReconnectActive(getWsConnectionStatus())) {
+              return Effect.void
             }
             return Effect.sync(() => {
               console.warn('WebSocket RPC subscription disconnected', {
@@ -271,6 +287,9 @@ export class WsTransport {
   }
 
   private async resolveConnectionUrl(): Promise<string | undefined> {
+    if (isExpectedReconnectActive(getWsConnectionStatus())) {
+      await waitForExpectedReconnectWindow()
+    }
     logTransport('resolve-connection-url-start', {
       hasUrlProvider: this.urlProvider !== undefined,
       urlProviderType: typeof this.urlProvider,
@@ -297,13 +316,11 @@ export class WsTransport {
     logTransport('create-connection-start', {
       disposed: this.disposed,
     })
-    let connection:
-      | {
-          runtime: ManagedRuntime.ManagedRuntime<RpcClient.Protocol, never>
-          clientScope: Scope.Closeable
-          clientPromise: Promise<WsRpcProtocolClient>
-        }
-      | null = null
+    let connection: {
+      runtime: ManagedRuntime.ManagedRuntime<RpcClient.Protocol, never>
+      clientScope: Scope.Closeable
+      clientPromise: Promise<WsRpcProtocolClient>
+    } | null = null
     try {
       const resolvedUrl = await this.resolveConnectionUrl()
       recordWsConnectionAttempt(resolvedUrl ?? window.location.origin)
@@ -389,6 +406,10 @@ export class WsTransport {
 
   async reconnect() {
     await this.resetConnection()
+    if (this.disposed) {
+      throw new Error('Transport disposed')
+    }
+    await this.getConnection()
   }
 
   async request<TSuccess>(
@@ -470,6 +491,20 @@ export class WsTransport {
       onCancelCurrent: cancel => {
         cancelCurrent = cancel
       },
+    }).catch(error => {
+      if (!active || this.disposed) {
+        return
+      }
+      const message = formatErrorMessage(error)
+      if (isExpectedReconnectActive(getWsConnectionStatus())) {
+        console.info('WebSocket RPC subscription ended during expected reconnect', {
+          error: message,
+        })
+        return
+      }
+      console.error('WebSocket RPC subscription terminated', {
+        error: message,
+      })
     })
 
     return () => {

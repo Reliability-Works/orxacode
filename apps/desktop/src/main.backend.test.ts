@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createDesktopBootstrapPayload } from './main.backend'
+import { createDesktopBootstrapPayload, shouldRestartBackendAfterExit } from './main.backend'
 
 describe('createDesktopBootstrapPayload', () => {
   it('binds the desktop backend on all interfaces for local phone access', () => {
@@ -22,6 +22,7 @@ describe('createDesktopBootstrapPayload', () => {
       process: null,
       restartTimer: null,
       restartAttempt: 0,
+      expectedExitChildren: new WeakSet(),
     } as Parameters<typeof createDesktopBootstrapPayload>[0])
 
     expect(payload).toMatchObject({
@@ -34,5 +35,25 @@ describe('createDesktopBootstrapPayload', () => {
       remoteAccessBootstrapToken: 'bootstrap-token',
       remoteAccessEnvironmentId: 'environment-1',
     })
+  })
+})
+
+describe('shouldRestartBackendAfterExit', () => {
+  it('skips restart for intentional backend stops', () => {
+    expect(
+      shouldRestartBackendAfterExit({
+        expectedExit: true,
+        isQuitting: false,
+      })
+    ).toBe(false)
+  })
+
+  it('restarts unexpected backend exits while the app is still running', () => {
+    expect(
+      shouldRestartBackendAfterExit({
+        expectedExit: false,
+        isQuitting: false,
+      })
+    ).toBe(true)
   })
 })

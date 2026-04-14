@@ -3,123 +3,18 @@ import type { Scope } from 'effect'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { WsTransport } from './wsTransport'
-
-type WsEventType = 'open' | 'message' | 'close' | 'error'
-type WsEvent = { code?: number; data?: unknown; reason?: string; type?: string }
-type WsListener = (event?: WsEvent) => void
-
-const sockets: MockWebSocket[] = []
-
-class MockWebSocket {
-  static readonly CONNECTING = 0
-  static readonly OPEN = 1
-  static readonly CLOSING = 2
-  static readonly CLOSED = 3
-
-  readyState = MockWebSocket.CONNECTING
-  readonly sent: string[] = []
-  readonly url: string
-  private readonly listeners = new Map<WsEventType, Set<WsListener>>()
-
-  constructor(url: string) {
-    this.url = url
-    sockets.push(this)
-  }
-
-  addEventListener(type: WsEventType, listener: WsListener) {
-    const listeners = this.listeners.get(type) ?? new Set<WsListener>()
-    listeners.add(listener)
-    this.listeners.set(type, listeners)
-  }
-
-  removeEventListener(type: WsEventType, listener: WsListener) {
-    this.listeners.get(type)?.delete(listener)
-  }
-
-  send(data: string) {
-    this.sent.push(data)
-  }
-
-  close(code = 1000, reason = '') {
-    this.readyState = MockWebSocket.CLOSED
-    this.emit('close', { code, reason, type: 'close' })
-  }
-
-  open() {
-    this.readyState = MockWebSocket.OPEN
-    this.emit('open', { type: 'open' })
-  }
-
-  serverMessage(data: unknown) {
-    this.emit('message', { data, type: 'message' })
-  }
-
-  private emit(type: WsEventType, event?: WsEvent) {
-    const listeners = this.listeners.get(type)
-    if (!listeners) return
-    for (const listener of listeners) {
-      listener(event)
-    }
-  }
-}
+import {
+  createWelcomeEvent,
+  emitRequestChunk,
+  emitSuccessfulExit,
+  emitSuccessfulExitWithValue,
+  getSocket,
+  MockWebSocket,
+  parseRequestMessages,
+  sockets,
+} from './wsTransport.test.helpers'
 
 const originalWebSocket = globalThis.WebSocket
-
-function getSocket(): MockWebSocket {
-  const socket = sockets.at(-1)
-  if (!socket) {
-    throw new Error('Expected a websocket instance')
-  }
-  return socket
-}
-
-function parseRequestMessages(socket: MockWebSocket) {
-  return socket.sent
-    .map(message => JSON.parse(message) as { _tag?: string; id?: string; tag?: string })
-    .filter(
-      (message): message is { _tag: 'Request'; id: string; tag: string } =>
-        message._tag === 'Request'
-    )
-}
-
-function emitRequestChunk(socket: MockWebSocket, requestId: string, value: unknown) {
-  socket.serverMessage(
-    JSON.stringify({
-      _tag: 'Chunk',
-      requestId,
-      values: [value],
-    })
-  )
-}
-
-function emitSuccessfulExit(socket: MockWebSocket, requestId: string) {
-  emitSuccessfulExitWithValue(socket, requestId, null)
-}
-
-function emitSuccessfulExitWithValue(socket: MockWebSocket, requestId: string, value: unknown) {
-  socket.serverMessage(
-    JSON.stringify({
-      _tag: 'Exit',
-      requestId,
-      exit: {
-        _tag: 'Success',
-        value,
-      },
-    })
-  )
-}
-
-function createWelcomeEvent(sequence: number, cwd: string, projectName: string) {
-  return {
-    version: 1,
-    sequence,
-    type: 'welcome',
-    payload: {
-      cwd,
-      projectName,
-    },
-  } as const
-}
 
 async function waitFor(assertion: () => void, timeoutMs = 1_000): Promise<void> {
   const startedAt = Date.now()
@@ -173,7 +68,11 @@ function subscribeServerLifecycle(transport: WsTransport, listener?: () => void)
   )
 }
 
-async function waitForSingleSocket() { await waitFor(() => { expect(sockets).toHaveLength(1) }) }
+async function waitForSingleSocket() {
+  await waitFor(() => {
+    expect(sockets).toHaveLength(1)
+  })
+}
 
 async function openSocketAndWaitForLifecycleRequest(socket: MockWebSocket) {
   socket.open()
@@ -264,20 +163,25 @@ describe('WsTransport connection setup', () => {
     await waitFor(() => {
       expect(urlProvider).toHaveBeenCalledTimes(1)
     })
-    await expect(transport.reconnect()).resolves.toBeUndefined()
+    const reconnectPromise = transport.reconnect()
 
-    const listener = vi.fn()
-    const unsubscribe = subscribeServerLifecycle(transport, listener)
     await waitFor(() => {
       expect(urlProvider).toHaveBeenCalledTimes(2)
       expect(sockets).toHaveLength(1)
     })
     const socket = getSocket()
-    await openSocketAndWaitForLifecycleRequest(socket)
+    await openSocketAndCompleteHandshake(socket)
+    await expect(reconnectPromise).resolves.toBeUndefined()
+
+    const listener = vi.fn()
+    const unsubscribe = subscribeServerLifecycle(transport, listener)
+    await waitFor(() => {
+      const lifecycleRequest = parseRequestMessages(socket)[1]
+      expect(lifecycleRequest?.tag).toBe(WS_METHODS.subscribeServerLifecycle)
+    })
     unsubscribe()
     await transport.dispose()
   })
-
 })
 
 describe('WsTransport unary requests', () => {
@@ -334,7 +238,6 @@ describe('WsTransport unary requests', () => {
       keybindings: [],
       issues: [],
     })
-
     await transport.dispose()
   })
 })
@@ -352,27 +255,21 @@ describe('WsTransport streaming subscriptions bootstrap retry', () => {
       listener,
       { retryDelay: 1 }
     )
-
     await waitFor(() => {
       expect(urlProvider).toHaveBeenCalledTimes(2)
       expect(sockets).toHaveLength(1)
     }, 3_000)
-
     const socket = getSocket()
     await openSocketAndWaitForLifecycleRequest(socket)
-
     const requestMessage = parseRequestMessages(socket)[1]
     if (!requestMessage) {
       throw new Error('Expected a subscription request message.')
     }
-
     const welcomeEvent = createWelcomeEvent(1, '/tmp/workspace', 'orxa-code')
     emitRequestChunk(socket, requestMessage.id, welcomeEvent)
-
     await waitFor(() => {
       expect(listener).toHaveBeenCalledWith(welcomeEvent)
     })
-
     unsubscribe()
     await transport.dispose()
   })
@@ -382,7 +279,6 @@ describe('WsTransport streaming subscriptions', () => {
   it('delivers stream chunks to subscribers', async () => {
     const transport = new WsTransport('ws://localhost:3020')
     const listener = vi.fn()
-
     const unsubscribe = transport.subscribe(
       client => client[WS_METHODS.subscribeServerLifecycle]({}),
       listener
@@ -399,14 +295,11 @@ describe('WsTransport streaming subscriptions', () => {
       throw new Error('Expected a stream request')
     }
     expect(requestMessage.tag).toBe(WS_METHODS.subscribeServerLifecycle)
-
     const welcomeEvent = createWelcomeEvent(1, '/tmp/workspace', 'workspace')
     emitRequestChunk(socket, requestMessage.id, welcomeEvent)
-
     await waitFor(() => {
       expect(listener).toHaveBeenCalledWith(welcomeEvent)
     })
-
     unsubscribe()
     await transport.dispose()
   })
@@ -416,7 +309,6 @@ describe('WsTransport streaming subscriptions resubscribe', () => {
   it('re-subscribes stream listeners after the stream exits', async () => {
     const transport = new WsTransport('ws://localhost:3020')
     const listener = vi.fn()
-
     const unsubscribe = transport.subscribe(
       client => client[WS_METHODS.subscribeServerLifecycle]({}),
       listener
@@ -452,14 +344,11 @@ describe('WsTransport streaming subscriptions resubscribe', () => {
     }
     expect(secondRequest.tag).toBe(WS_METHODS.subscribeServerLifecycle)
     expect(secondRequest.id).not.toBe(firstRequest.id)
-
     const secondEvent = createWelcomeEvent(2, '/tmp/two', 'two')
     emitRequestChunk(socket, secondRequest.id, secondEvent)
-
     await waitFor(() => {
       expect(listener).toHaveBeenLastCalledWith(secondEvent)
     })
-
     unsubscribe()
     await transport.dispose()
   })
@@ -501,10 +390,8 @@ describe('WsTransport finite streams', () => {
       phase: 'commit',
       label: 'Committing...',
     } as const
-
     emitRequestChunk(socket, requestMessage.id, progressEvent)
     emitSuccessfulExit(socket, requestMessage.id)
-
     await expect(requestPromise).resolves.toBeUndefined()
     expect(listener).toHaveBeenCalledWith(progressEvent)
     expect(
@@ -558,21 +445,16 @@ describe('WsTransport disposal', () => {
         resetPromise: Promise<void> | null
       }
     ).resetPromise = null
-
     void transport.dispose()
-
     await waitFor(() => {
       expect(runtime.runPromise).toHaveBeenCalledTimes(1)
     })
     expect(runtime.dispose).not.toHaveBeenCalled()
     expect((transport as unknown as { disposed: boolean }).disposed).toBe(true)
-
     resolveClose()
-
     await waitFor(() => {
       expect(runtime.dispose).toHaveBeenCalledTimes(1)
     })
-
     expect(callOrder).toEqual(['close:start', 'close:done', 'runtime:dispose'])
   })
 })

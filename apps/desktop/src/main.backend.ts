@@ -38,6 +38,7 @@ interface BackendRuntime {
   process: ChildProcess.ChildProcess | null
   restartTimer: ReturnType<typeof setTimeout> | null
   restartAttempt: number
+  expectedExitChildren: WeakSet<ChildProcess.ChildProcess>
 }
 
 export function createDesktopBootstrapPayload(rt: BackendRuntime) {
@@ -51,6 +52,13 @@ export function createDesktopBootstrapPayload(rt: BackendRuntime) {
     remoteAccessBootstrapToken: rt.host.getRemoteAccessBootstrapToken(),
     remoteAccessEnvironmentId: rt.host.getRemoteAccessEnvironmentId(),
   }
+}
+
+export function shouldRestartBackendAfterExit(input: {
+  readonly expectedExit: boolean
+  readonly isQuitting: boolean
+}): boolean {
+  return !input.isQuitting && !input.expectedExit
 }
 
 function scheduleRestart(rt: BackendRuntime, reason: string): void {
@@ -88,20 +96,23 @@ function attachChildHandlers(rt: BackendRuntime, child: ChildProcess.ChildProces
     rt.restartAttempt = 0
   })
   child.on('error', error => {
+    const expectedExit = rt.expectedExitChildren.delete(child)
     if (rt.process === child) {
       rt.process = null
     }
     closeBackendSession(`pid=${child.pid ?? 'unknown'} error=${error.message}`)
+    if (!shouldRestartBackendAfterExit({ expectedExit, isQuitting: rt.host.isQuitting() })) return
     scheduleRestart(rt, error.message)
   })
   child.on('exit', (code, signal) => {
+    const expectedExit = rt.expectedExitChildren.delete(child)
     if (rt.process === child) {
       rt.process = null
     }
     closeBackendSession(
       `pid=${child.pid ?? 'unknown'} code=${code ?? 'null'} signal=${signal ?? 'null'}`
     )
-    if (rt.host.isQuitting()) return
+    if (!shouldRestartBackendAfterExit({ expectedExit, isQuitting: rt.host.isQuitting() })) return
     scheduleRestart(rt, `code=${code ?? 'null'} signal=${signal ?? 'null'}`)
   })
 }
@@ -141,6 +152,7 @@ function stop(rt: BackendRuntime): void {
   const child = rt.process
   rt.process = null
   if (!child) return
+  rt.expectedExitChildren.add(child)
   if (child.exitCode === null && child.signalCode === null) {
     child.kill('SIGTERM')
     setTimeout(() => {
@@ -160,6 +172,7 @@ async function stopAndWaitForExit(rt: BackendRuntime, timeoutMs = 5_000): Promis
   rt.process = null
   if (!child) return
   if (child.exitCode !== null || child.signalCode !== null) return
+  rt.expectedExitChildren.add(child)
 
   await new Promise<void>(resolve => {
     let settled = false
@@ -193,6 +206,7 @@ export function createBackendController(host: BackendHost): BackendController {
     process: null,
     restartTimer: null,
     restartAttempt: 0,
+    expectedExitChildren: new WeakSet(),
   }
   return {
     start: () => start(rt),

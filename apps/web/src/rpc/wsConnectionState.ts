@@ -15,6 +15,8 @@ export interface WsConnectionStatus {
   readonly closeReason: string | null
   readonly connectedAt: string | null
   readonly disconnectedAt: string | null
+  readonly expectedReconnectReason: string | null
+  readonly expectedReconnectUntil: string | null
   readonly hasConnected: boolean
   readonly lastError: string | null
   readonly lastErrorAt: string | null
@@ -33,6 +35,8 @@ const INITIAL_WS_CONNECTION_STATUS: WsConnectionStatus = Object.freeze({
   closeReason: null,
   connectedAt: null,
   disconnectedAt: null,
+  expectedReconnectReason: null,
+  expectedReconnectUntil: null,
   hasConnected: false,
   lastError: null,
   lastErrorAt: null,
@@ -45,10 +49,17 @@ const INITIAL_WS_CONNECTION_STATUS: WsConnectionStatus = Object.freeze({
   socketUrl: null,
 })
 
-const useWsConnectionStore = create<{ status: WsConnectionStatus; setStatus: (status: WsConnectionStatus) => void }>()(set => ({
+const useWsConnectionStore = create<{
+  status: WsConnectionStatus
+  setStatus: (status: WsConnectionStatus) => void
+}>()(set => ({
   status: INITIAL_WS_CONNECTION_STATUS,
   setStatus: status => set({ status }),
 }))
+
+let expectedReconnectTimer: ReturnType<typeof setTimeout> | null = null
+let expectedReconnectPromise: Promise<void> | null = null
+let resolveExpectedReconnectPromise: (() => void) | null = null
 
 function isoNow() {
   return new Date().toISOString()
@@ -72,6 +83,10 @@ export function useWsConnectionStatus(): WsConnectionStatus {
 
 export function getWsConnectionUiState(status: WsConnectionStatus): WsConnectionUiState {
   if (status.phase === 'connected') {
+    return 'connected'
+  }
+
+  if (isExpectedReconnectActive(status) && status.hasConnected) {
     return 'connected'
   }
 
@@ -99,12 +114,15 @@ export function recordWsConnectionAttempt(socketUrl: string): WsConnectionStatus
 }
 
 export function recordWsConnectionOpened(): WsConnectionStatus {
+  resolveExpectedReconnectWindow()
   return updateWsConnectionStatus(current => ({
     ...current,
     closeCode: null,
     closeReason: null,
     connectedAt: isoNow(),
     disconnectedAt: null,
+    expectedReconnectReason: null,
+    expectedReconnectUntil: null,
     hasConnected: true,
     nextRetryAt: null,
     phase: 'connected',
@@ -151,7 +169,69 @@ export function resetWsReconnectBackoff(): WsConnectionStatus {
 }
 
 export function resetWsConnectionStateForTests(): void {
+  resolveExpectedReconnectWindow()
   useWsConnectionStore.getState().setStatus(INITIAL_WS_CONNECTION_STATUS)
+}
+
+export function beginExpectedReconnectWindow(reason: string, graceMs: number): WsConnectionStatus {
+  if (expectedReconnectTimer) {
+    clearTimeout(expectedReconnectTimer)
+  }
+  if (!expectedReconnectPromise) {
+    expectedReconnectPromise = new Promise<void>(resolve => {
+      resolveExpectedReconnectPromise = resolve
+    })
+  }
+  expectedReconnectTimer = setTimeout(
+    () => {
+      resolveExpectedReconnectWindow()
+      updateWsConnectionStatus(current => ({
+        ...current,
+        expectedReconnectReason: null,
+        expectedReconnectUntil: null,
+      }))
+    },
+    Math.max(0, graceMs)
+  )
+  return updateWsConnectionStatus(current => ({
+    ...current,
+    expectedReconnectReason: reason,
+    expectedReconnectUntil: new Date(Date.now() + Math.max(0, graceMs)).toISOString(),
+  }))
+}
+
+export function completeExpectedReconnectWindow(): WsConnectionStatus {
+  resolveExpectedReconnectWindow()
+  return updateWsConnectionStatus(current => ({
+    ...current,
+    expectedReconnectReason: null,
+    expectedReconnectUntil: null,
+  }))
+}
+
+export function isExpectedReconnectActive(
+  status: WsConnectionStatus,
+  nowMs: number = Date.now()
+): boolean {
+  if (!status.expectedReconnectUntil) {
+    return false
+  }
+  const untilMs = Date.parse(status.expectedReconnectUntil)
+  return Number.isFinite(untilMs) && untilMs > nowMs
+}
+
+export async function waitForExpectedReconnectWindow(): Promise<void> {
+  await expectedReconnectPromise
+}
+
+function resolveExpectedReconnectWindow(): void {
+  if (expectedReconnectTimer) {
+    clearTimeout(expectedReconnectTimer)
+    expectedReconnectTimer = null
+  }
+  resolveExpectedReconnectPromise?.()
+  resolveExpectedReconnectPromise = null
+  expectedReconnectPromise = null
 }
 
 export function getWsReconnectDelayMsForRetry(retryIndex: number): number | null {
@@ -182,7 +262,9 @@ function applyDisconnectState(
     ...updates,
     disconnectedAt,
     nextRetryAt:
-      nextRetryDelayMs === null ? current.nextRetryAt : new Date(Date.now() + nextRetryDelayMs).toISOString(),
+      nextRetryDelayMs === null
+        ? current.nextRetryAt
+        : new Date(Date.now() + nextRetryDelayMs).toISOString(),
     phase: 'disconnected',
     reconnectPhase:
       current.reconnectPhase === 'waiting' || current.reconnectPhase === 'exhausted'

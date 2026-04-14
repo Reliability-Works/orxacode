@@ -8,6 +8,7 @@ import { readNativeApi } from '../nativeApi'
 import { deriveOrchestrationBatchEffects } from '../orchestrationEventEffects'
 import { createOrchestrationRecoveryCoordinator } from '../orchestrationRecovery'
 import { getWsRpcClient } from '../wsRpcClient'
+import { getWsConnectionStatus, isExpectedReconnectActive } from '../rpc/wsConnectionState'
 import {
   REPLAY_RECOVERY_TIMEOUT_MS,
   retryTransportRecoveryOperation,
@@ -29,7 +30,11 @@ type ReplayRecoveryReason = 'sequence-gap' | 'resubscribe'
 
 type SnapshotSyncParams = Pick<
   RuntimeSyncOptions,
-  'activeEnvironmentId' | 'removeOrphanedTerminalStates' | 'syncProjects' | 'syncServerReadModel' | 'syncThreads'
+  | 'activeEnvironmentId'
+  | 'removeOrphanedTerminalStates'
+  | 'syncProjects'
+  | 'syncServerReadModel'
+  | 'syncThreads'
 >
 
 type SnapshotRecoveryParams = SnapshotSyncParams & {
@@ -69,6 +74,14 @@ function logRecoveryWarn(event: string, data: Record<string, unknown>) {
 }
 
 function logRecoveryError(event: string, data: Record<string, unknown>) {
+  if (isExpectedReconnectActive(getWsConnectionStatus())) {
+    console.info('[mobile-sync] ' + event, {
+      revision: 'mobile-reopen-probe-1',
+      suppressedDuringExpectedReconnect: true,
+      ...data,
+    })
+    return
+  }
   console.error('[mobile-sync] ' + event, {
     revision: 'mobile-reopen-probe-1',
     ...data,
@@ -255,11 +268,7 @@ function createRunForegroundReconcile({
     }
     logRecoveryInfo('reconcile start', logData)
     try {
-      const snapshot = await resolveForegroundReconcilePayload(
-        api,
-        isDisposed,
-        canRecoverSnapshot
-      )
+      const snapshot = await resolveForegroundReconcilePayload(api, isDisposed, canRecoverSnapshot)
       logResolvedReconcile(logRecoveryInfo, {
         logData,
         disposed: isDisposed(),
@@ -316,9 +325,7 @@ function createRecoverFromSequenceGap({
   recovery,
   runSnapshotRecovery,
 }: ReplayRecoveryParams) {
-  return async function recoverFromSequenceGap(
-    reason: ReplayRecoveryReason
-  ): Promise<void> {
+  return async function recoverFromSequenceGap(reason: ReplayRecoveryReason): Promise<void> {
     if (!recovery.beginReplayRecovery(reason)) {
       return
     }

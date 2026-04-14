@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   fetchSessionState,
+  refreshPrimaryAuthSession,
   resetPrimaryAuthGateStateForTests,
   resolveInitialPrimaryAuthGateState,
   resolvePrimaryWebSocketConnectionUrl,
@@ -29,28 +30,65 @@ function installDesktopBootstrap() {
   })
 }
 
-describe('primary auth bootstrap', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks()
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      value: {
-        location: new URL('http://localhost:5733/'),
-        history: {
-          replaceState: vi.fn(),
+function mockSuccessfulBootstrapFetch(sessionToken = 'fresh-session-token') {
+  const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        authenticated: true,
+        role: 'owner',
+        sessionMethod: 'browser-session-cookie',
+        expiresAt: '2026-05-01T12:00:00.000Z',
+        sessionToken,
+      }),
+      {
+        headers: {
+          'content-type': 'application/json',
         },
-        desktopBridge: undefined,
+        status: 200,
+      }
+    )
+  )
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
+function expectBootstrapFetch(fetchMock: ReturnType<typeof mockSuccessfulBootstrapFetch>) {
+  expect(fetchMock).toHaveBeenCalledWith(
+    'http://127.0.0.1:3773/api/auth/bootstrap',
+    expect.objectContaining({
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
       },
+      body: JSON.stringify({ credential: 'desktop-bootstrap-token' }),
+      signal: expect.any(AbortSignal),
     })
-  })
+  )
+}
 
-  afterEach(() => {
-    resetPrimaryAuthGateStateForTests()
-    resetPrimaryEnvironmentTargetForTests()
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
+beforeEach(() => {
+  vi.restoreAllMocks()
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      location: new URL('http://localhost:5733/'),
+      history: {
+        replaceState: vi.fn(),
+      },
+      desktopBridge: undefined,
+    },
   })
+})
 
+afterEach(() => {
+  resetPrimaryAuthGateStateForTests()
+  resetPrimaryEnvironmentTargetForTests()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+describe('primary auth session bootstrap behavior', () => {
   it('treats same-origin html auth responses as unauthenticated instead of crashing bootstrap', async () => {
     vi.stubGlobal(
       'fetch',
@@ -82,10 +120,25 @@ describe('primary auth bootstrap', () => {
 
     expect(fetchMock).not.toHaveBeenCalled()
   })
+})
+
+describe('primary auth session recovery', () => {
+  it('can refresh the desktop-managed primary auth session explicitly', async () => {
+    installDesktopBootstrap()
+    const fetchMock = mockSuccessfulBootstrapFetch()
+
+    await refreshPrimaryAuthSession()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expectBootstrapFetch(fetchMock)
+  })
 
   it('falls back to requires-auth when desktop-managed session bootstrap fetch fails', async () => {
     installDesktopBootstrap()
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch')))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError('Failed to fetch'))
+    )
 
     await expect(resolveInitialPrimaryAuthGateState()).resolves.toEqual({
       status: 'requires-auth',

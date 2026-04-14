@@ -2,22 +2,22 @@ import * as Crypto from 'node:crypto'
 import * as FS from 'node:fs'
 import * as OS from 'node:os'
 import * as Path from 'node:path'
-import { app, BrowserWindow, dialog, protocol } from 'electron'
+import { app, BrowserWindow, protocol } from 'electron'
 import * as Effect from 'effect/Effect'
 import { NetService } from '@orxa-code/shared/Net'
 import {
   configureAppIdentity as configureAppIdentityImpl,
-  resolveResourcePath,
   resolveUserDataPath,
 } from './main.identity'
 import {
   createDesktopLoggingState,
-  formatErrorMessage,
   initializePackagedLogging as initializePackagedLoggingImpl,
   writeDesktopLogHeader as writeDesktopLogHeaderImpl,
 } from './main.logging'
 import { syncShellEnvironment } from './syncShellEnvironment'
 import { createUpdaterController } from './main.updater'
+import { checkForDesktopUpdatesFromMenu, handleDesktopFatalStartupError } from './main.runtimeUi'
+import { registerDesktopFileProtocol } from './main.protocol'
 import {
   configureApplicationMenu as configureApplicationMenuImpl,
   type MenuHost,
@@ -28,10 +28,13 @@ import { registerIpcHandlers as registerIpcHandlersImpl, type IpcHost } from './
 import { IPC_CHANNELS, MENU_ACTION_CHANNEL, UPDATE_STATE_CHANNEL } from './main.ipc.config'
 import { createBackendController, type BackendHost } from './main.backend'
 import { runSmokeTest } from './main.smoke'
-import { createMainWindow, type CreateWindowHost } from './main.window'
+import { createMainWindow, loadMainWindowContent, type CreateWindowHost } from './main.window'
+import { createDesktopWindowHost, resolveDesktopIconPath } from './main.windowHost'
 import { resolveDesktopRuntimeInfo } from './runtimeArch'
 import { createDesktopRemoteAccessPreferencesStore } from './remoteAccessPreferences'
 import { applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl } from './remoteAccessRuntime'
+import { resolveRemoteAccessRuntimeState } from './remoteAccessRuntimeState'
+import { waitForBackendReady } from './backendReady'
 import {
   createDesktopUpdatePreferencesStore,
   resolveDesktopUpdateFeedChannel,
@@ -66,6 +69,7 @@ let backendPort = 0
 let backendAuthToken = ''
 let remoteAccessBootstrapToken: string | undefined
 let remoteAccessEnvironmentId: string | undefined
+let backendReadyForWindowContent = false
 let isQuitting = false
 let desktopProtocolRegistered = false
 let aboutCommitHashCache: string | null | undefined
@@ -222,64 +226,17 @@ function resolveDesktopStaticPath(staticRoot: string, requestUrl: string): strin
 
   return Path.join(staticRoot, 'index.html')
 }
-function isStaticAssetRequest(requestUrl: string): boolean {
-  try {
-    const url = new URL(requestUrl)
-    return Path.extname(url.pathname).length > 0
-  } catch {
-    return false
-  }
-}
-
-function handleFatalStartupError(stage: string, error: unknown): void {
-  const message = formatErrorMessage(error)
-  const detail = error instanceof Error && typeof error.stack === 'string' ? `\n${error.stack}` : ''
-  writeDesktopLogHeader(`fatal startup error stage=${stage} message=${message}`)
-  console.error(`[desktop] fatal startup error (${stage})`, error)
-  if (!isQuitting) {
-    isQuitting = true
-    dialog.showErrorBox('Orxa Code failed to start', `Stage: ${stage}\n${message}${detail}`)
-  }
-  stopBackend()
-  loggingState.restoreStdIoCapture?.()
-  app.quit()
-}
 function registerDesktopProtocol(): void {
-  if (isDevelopment || desktopProtocolRegistered) return
-
-  const staticRoot = resolveDesktopStaticDir()
-  if (!staticRoot) {
-    throw new Error('Desktop static bundle missing. Build apps/server (with bundled client) first.')
-  }
-
-  const staticRootResolved = Path.resolve(staticRoot)
-  const staticRootPrefix = `${staticRootResolved}${Path.sep}`
-  const fallbackIndex = Path.join(staticRootResolved, 'index.html')
-
-  protocol.registerFileProtocol(DESKTOP_SCHEME, (request, callback) => {
-    try {
-      const candidate = resolveDesktopStaticPath(staticRootResolved, request.url)
-      const resolvedCandidate = Path.resolve(candidate)
-      const isInRoot =
-        resolvedCandidate === fallbackIndex || resolvedCandidate.startsWith(staticRootPrefix)
-      const isAssetRequest = isStaticAssetRequest(request.url)
-
-      if (!isInRoot || !FS.existsSync(resolvedCandidate)) {
-        if (isAssetRequest) {
-          callback({ error: -6 })
-          return
-        }
-        callback({ path: fallbackIndex })
-        return
-      }
-
-      callback({ path: resolvedCandidate })
-    } catch {
-      callback({ path: fallbackIndex })
-    }
+  registerDesktopFileProtocol({
+    isDevelopment,
+    alreadyRegistered: desktopProtocolRegistered,
+    desktopScheme: DESKTOP_SCHEME,
+    resolveDesktopStaticDir,
+    resolveDesktopStaticPath,
+    markRegistered: () => {
+      desktopProtocolRegistered = true
+    },
   })
-
-  desktopProtocolRegistered = true
 }
 const menuHost: MenuHost = {
   menuActionChannel: MENU_ACTION_CHANNEL,
@@ -293,30 +250,13 @@ const menuHost: MenuHost = {
   checkForUpdatesFromMenu: () => checkForUpdatesFromMenu(),
 }
 async function checkForUpdatesFromMenu(): Promise<void> {
-  await updaterController.checkForUpdates('menu')
-  const state = updaterController.getState()
-  if (state.status === 'up-to-date') {
-    void dialog.showMessageBox({
-      type: 'info',
-      title: "You're up to date!",
-      message: `Orxa Code ${state.currentVersion} is currently the newest version available.`,
-      buttons: ['OK'],
-    })
-  } else if (state.status === 'error') {
-    void dialog.showMessageBox({
-      type: 'warning',
-      title: 'Update check failed',
-      message: 'Could not check for updates.',
-      detail: state.message ?? 'An unknown error occurred. Please try again later.',
-      buttons: ['OK'],
-    })
-  }
+  await checkForDesktopUpdatesFromMenu({
+    checkForUpdates: source => updaterController.checkForUpdates(source),
+    getState: () => updaterController.getState(),
+  })
 }
 function configureApplicationMenu(): void {
   configureApplicationMenuImpl(menuHost)
-}
-function resolveIconPath(ext: 'ico' | 'icns' | 'png'): string | null {
-  return resolveResourcePath(ROOT_DIR, `icon.${ext}`)
 }
 function configureAppIdentity(): void {
   configureAppIdentityImpl({
@@ -326,7 +266,7 @@ function configureAppIdentity(): void {
     commitHash: resolveAboutCommitHash(),
     legacyUserDataDirName: LEGACY_USER_DATA_DIR_NAME,
     linuxDesktopEntryName: LINUX_DESKTOP_ENTRY_NAME,
-    resolveIconPath,
+    resolveIconPath: ext => resolveDesktopIconPath(ROOT_DIR, ext),
   })
 }
 const backendHost: BackendHost = {
@@ -345,12 +285,24 @@ const startBackend = (): void => backendController.start()
 const stopBackend = (): void => backendController.stop()
 const stopBackendAndWaitForExit = (timeoutMs?: number): Promise<void> =>
   backendController.stopAndWaitForExit(timeoutMs)
+function refreshRemoteAccessRuntimeState(): void {
+  const { environmentId, bootstrapToken } = resolveRemoteAccessRuntimeState({
+    store: remoteAccessPreferencesStore,
+    previousBootstrapToken: remoteAccessBootstrapToken,
+  })
+  remoteAccessEnvironmentId = environmentId
+  remoteAccessBootstrapToken = bootstrapToken
+}
 const remoteAccessRuntimeHost = {
   store: remoteAccessPreferencesStore,
   writeLog: writeDesktopLogHeader,
   restartBackend: async () => {
+    refreshRemoteAccessRuntimeState()
     await stopBackendAndWaitForExit()
-    if (!isQuitting) startBackend()
+    if (!isQuitting) {
+      startBackend()
+      await waitForBackendReady({ log: writeDesktopLogHeader, port: backendPort })
+    }
   },
 }
 const ipcHost: IpcHost = {
@@ -389,16 +341,13 @@ const ipcHost: IpcHost = {
 function registerIpcHandlers(): void {
   registerIpcHandlersImpl(ipcHost)
 }
-const createWindowHost: CreateWindowHost = {
-  get config() {
-    return {
-      displayName: APP_DISPLAY_NAME,
-      desktopScheme: DESKTOP_SCHEME,
-      isDevelopment,
-      backendPort: backendPort || null,
-    }
-  },
-  resolveIconPath: ext => resolveIconPath(ext),
+const createWindowHost: CreateWindowHost = createDesktopWindowHost({
+  displayName: APP_DISPLAY_NAME,
+  desktopScheme: DESKTOP_SCHEME,
+  isDevelopment,
+  getBackendPort: () => backendPort || null,
+  shouldDeferInitialLoad: () => !isDevelopment && !backendReadyForWindowContent,
+  resolveIconPath: ext => resolveDesktopIconPath(ROOT_DIR, ext),
   notifyDidFinishLoad: () => {
     updaterController.setState({})
   },
@@ -406,7 +355,7 @@ const createWindowHost: CreateWindowHost = {
     mainWindow = window
   },
   isMainWindow: window => mainWindow === window,
-}
+})
 
 function createWindow(): BrowserWindow {
   return createMainWindow(createWindowHost)
@@ -429,24 +378,6 @@ app.setPath(
   })
 )
 configureAppIdentity()
-async function waitForBackendReady(port: number, maxWaitMs = 15_000): Promise<void> {
-  const intervalMs = 200
-  const maxAttempts = Math.ceil(maxWaitMs / intervalMs)
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/.well-known/orxa/environment`)
-      if (response.ok) {
-        writeDesktopLogHeader(`backend ready after ${attempt + 1} attempts`)
-        return
-      }
-    } catch {
-      // Server not listening yet
-    }
-    await new Promise(resolve => setTimeout(resolve, intervalMs))
-  }
-  writeDesktopLogHeader(`backend readiness check timed out after ${maxWaitMs}ms, proceeding anyway`)
-}
-
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap start')
   backendPort = await Effect.service(NetService).pipe(
@@ -456,22 +387,23 @@ async function bootstrap(): Promise<void> {
   )
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`)
   backendAuthToken = Crypto.randomBytes(24).toString('hex')
-  const remoteAccessState = remoteAccessPreferencesStore.get()
-  remoteAccessEnvironmentId = remoteAccessState.environmentId
-  remoteAccessBootstrapToken = remoteAccessState.enabled
-    ? Crypto.randomBytes(24).toString('hex')
-    : undefined
+  refreshRemoteAccessRuntimeState()
+  backendReadyForWindowContent = false
   const baseUrl = `ws://127.0.0.1:${backendPort}`
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`)
   registerIpcHandlers()
   writeDesktopLogHeader('bootstrap ipc handlers registered')
-  startBackend()
-  writeDesktopLogHeader('bootstrap backend start requested')
-  await waitForBackendReady(backendPort)
   mainWindow = createWindow()
   writeDesktopLogHeader('bootstrap main window created')
+  startBackend()
+  writeDesktopLogHeader('bootstrap backend start requested')
+  await waitForBackendReady({ log: writeDesktopLogHeader, port: backendPort })
+  backendReadyForWindowContent = true
+  if (mainWindow && !mainWindow.isDestroyed() && !isDevelopment) {
+    loadMainWindowContent(mainWindow, createWindowHost.config)
+    writeDesktopLogHeader('bootstrap main window content load requested')
+  }
 }
-
 app.on('before-quit', () => {
   isQuitting = true
   updaterController.setInstallInFlight(false)
@@ -496,7 +428,19 @@ app
           isQuitting = value
         },
       }).catch(error => {
-        handleFatalStartupError('smoke-test', error)
+        handleDesktopFatalStartupError({
+          stage: 'smoke-test',
+          error,
+          isQuitting,
+          setQuitting: value => {
+            isQuitting = value
+          },
+          writeLog: writeDesktopLogHeader,
+          stopBackend,
+          restoreLogging: () => {
+            loggingState.restoreStdIoCapture?.()
+          },
+        })
       })
       return
     }
@@ -504,9 +448,20 @@ app
     registerDesktopProtocol()
     updaterController.configure()
     void bootstrap().catch(error => {
-      handleFatalStartupError('bootstrap', error)
+      handleDesktopFatalStartupError({
+        stage: 'bootstrap',
+        error,
+        isQuitting,
+        setQuitting: value => {
+          isQuitting = value
+        },
+        writeLog: writeDesktopLogHeader,
+        stopBackend,
+        restoreLogging: () => {
+          loggingState.restoreStdIoCapture?.()
+        },
+      })
     })
-
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         mainWindow = createWindow()
@@ -514,15 +469,25 @@ app
     })
   })
   .catch(error => {
-    handleFatalStartupError('whenReady', error)
+    handleDesktopFatalStartupError({
+      stage: 'whenReady',
+      error,
+      isQuitting,
+      setQuitting: value => {
+        isQuitting = value
+      },
+      writeLog: writeDesktopLogHeader,
+      stopBackend,
+      restoreLogging: () => {
+        loggingState.restoreStdIoCapture?.()
+      },
+    })
   })
-
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin' && !isQuitting) {
     app.quit()
   }
 })
-
 if (process.platform !== 'win32') {
   process.on('SIGINT', () => quitFromSignal('SIGINT'))
   process.on('SIGTERM', () => quitFromSignal('SIGTERM'))

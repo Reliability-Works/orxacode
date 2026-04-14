@@ -1,6 +1,6 @@
 import * as Path from 'node:path'
 
-import { BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, Menu, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 
 import { getSafeExternalUrl } from './main.logging'
@@ -10,6 +10,7 @@ export interface CreateWindowConfig {
   readonly desktopScheme: string
   readonly isDevelopment: boolean
   readonly backendPort: number | null
+  readonly deferInitialLoad?: boolean
 }
 
 export interface CreateWindowHost {
@@ -19,6 +20,8 @@ export interface CreateWindowHost {
   setMainWindow(window: BrowserWindow | null): void
   isMainWindow(window: BrowserWindow): boolean
 }
+
+const appContentRequestedWindows = new WeakSet<BrowserWindow>()
 
 function getIconOption(host: CreateWindowHost): { icon: string } | Record<string, never> {
   if (process.platform === 'darwin') return {}
@@ -63,6 +66,22 @@ function attachWindowOpenHandler(window: BrowserWindow): void {
   })
 }
 
+export function loadMainWindowContent(window: BrowserWindow, config: CreateWindowConfig): void {
+  appContentRequestedWindows.add(window)
+  if (config.isDevelopment) {
+    void window.loadURL(process.env.VITE_DEV_SERVER_URL as string)
+    window.webContents.openDevTools({ mode: 'detach' })
+    return
+  }
+
+  if (config.backendPort) {
+    void window.loadURL(`http://127.0.0.1:${config.backendPort}`)
+    return
+  }
+
+  void window.loadURL(`${config.desktopScheme}://app/index.html`)
+}
+
 export function createMainWindow(host: CreateWindowHost): BrowserWindow {
   const { config } = host
   const window = new BrowserWindow({
@@ -87,25 +106,41 @@ export function createMainWindow(host: CreateWindowHost): BrowserWindow {
   attachContextMenu(window)
   attachWindowOpenHandler(window)
 
+  let surfaced = false
+  const surfaceWindow = (): void => {
+    if (surfaced || window.isDestroyed()) return
+    surfaced = true
+    if (process.platform === 'darwin') {
+      app.focus({ steal: true })
+    }
+    if (!window.isVisible()) {
+      window.show()
+    }
+    if (!window.isFocused()) {
+      window.focus()
+    }
+  }
+
   window.on('page-title-updated', event => {
     event.preventDefault()
     window.setTitle(config.displayName)
   })
   window.webContents.on('did-finish-load', () => {
+    if (!appContentRequestedWindows.has(window)) {
+      return
+    }
     window.setTitle(config.displayName)
     host.notifyDidFinishLoad()
+    surfaceWindow()
   })
   window.once('ready-to-show', () => {
-    window.show()
+    surfaceWindow()
   })
 
-  if (config.isDevelopment) {
-    void window.loadURL(process.env.VITE_DEV_SERVER_URL as string)
-    window.webContents.openDevTools({ mode: 'detach' })
-  } else if (config.backendPort) {
-    void window.loadURL(`http://127.0.0.1:${config.backendPort}`)
+  if (config.deferInitialLoad) {
+    surfaceWindow()
   } else {
-    void window.loadURL(`${config.desktopScheme}://app/index.html`)
+    loadMainWindowContent(window, config)
   }
 
   window.on('closed', () => {
