@@ -15,6 +15,8 @@ import {
 } from '@orxa-code/contracts'
 import { Schema } from 'effect'
 
+import { resolveModelContextWindow } from '@orxa-code/shared/modelContextWindow'
+
 export function asObject(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object') {
     return undefined
@@ -91,7 +93,20 @@ function assignTokenUsageSnapshotField<K extends keyof ThreadTokenUsageSnapshot>
   }
 }
 
-export function normalizeCodexTokenUsage(value: unknown): ThreadTokenUsageSnapshot | undefined {
+function extractCodexModelId(usage: Record<string, unknown> | undefined): string | undefined {
+  return (
+    asString(usage?.model) ??
+    asString(usage?.modelName) ??
+    asString(usage?.model_name) ??
+    asString(usage?.model_id) ??
+    asString(usage?.modelId)
+  )
+}
+
+export function normalizeCodexTokenUsage(
+  value: unknown,
+  fallbackModelId?: string | null
+): ThreadTokenUsageSnapshot | undefined {
   const usage = asObject(value)
   const totalUsage = asObject(usage?.total_token_usage ?? usage?.total)
   const lastUsage = asObject(usage?.last_token_usage ?? usage?.last)
@@ -102,7 +117,17 @@ export function normalizeCodexTokenUsage(value: unknown): ThreadTokenUsageSnapsh
     return undefined
   }
 
-  const maxTokens = readCodexNumber(usage, 'model_context_window', 'modelContextWindow')
+  // Codex's token-usage event has historically carried `model_context_window`
+  // alongside the token totals, but recent CLI versions sometimes omit it. We
+  // fall back to (a) any model id mentioned on the event payload itself, then
+  // (b) the caller-supplied fallback (the model the session was started with),
+  // resolved against the static registry. Without this fallback the composer's
+  // context window meter renders raw token counts (e.g. "184") instead of a
+  // percentage.
+  const maxTokens = resolveModelContextWindow({
+    fromSdk: readCodexNumber(usage, 'model_context_window', 'modelContextWindow'),
+    modelId: extractCodexModelId(usage) ?? fallbackModelId ?? undefined,
+  })
   const inputTokens = readCodexNumber(lastUsage, 'input_tokens', 'inputTokens')
   const cachedInputTokens = readCodexNumber(lastUsage, 'cached_input_tokens', 'cachedInputTokens')
   const outputTokens = readCodexNumber(lastUsage, 'output_tokens', 'outputTokens')
