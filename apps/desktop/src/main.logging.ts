@@ -196,5 +196,6 @@ export function backendChildEnv(): NodeJS.ProcessEnv {
   delete env.ORXA_NO_BROWSER
   delete env.ORXA_HOST
   delete env.ORXA_DESKTOP_WS_URL
+  env.ORXA_PACKAGED = app.isPackaged ? '1' : '0'
   return env
 }

@@ -33,6 +33,7 @@ import { layerConfig as SqlitePersistenceLayerLive } from './persistence/Layers/
 import { ServerLifecycleEventsLive } from './serverLifecycleEvents'
 import { AnalyticsServiceLayerLive } from './telemetry/Layers/AnalyticsService'
 import { makeEventNdjsonLogger } from './provider/Layers/EventNdjsonLogger'
+import { isDevBuild } from './runtimeMode'
 import { ProviderSessionDirectoryLive } from './provider/Layers/ProviderSessionDirectory'
 import { ProviderSessionRuntimeRepositoryLive } from './persistence/Layers/ProviderSessionRuntime'
 import { makeCodexAdapterLive } from './provider/Layers/CodexAdapter'
@@ -126,12 +127,16 @@ const CheckpointingLayerLive = Layer.empty.pipe(
 const ProviderLayerLive = Layer.unwrap(
   Effect.gen(function* () {
     const { providerEventLogPath } = yield* ServerConfig
-    const nativeEventLogger = yield* makeEventNdjsonLogger(providerEventLogPath, {
-      stream: 'native',
-    })
-    const canonicalEventLogger = yield* makeEventNdjsonLogger(providerEventLogPath, {
-      stream: 'canonical',
-    })
+    // NDJSON event logging is a dev-only diagnostic: it retains full raw
+    // provider payloads on disk (MB/min on busy sessions) and in-memory via
+    // the batched logger. In packaged builds we skip it entirely — adapters
+    // and ProviderService accept undefined loggers and no-op.
+    const nativeEventLogger = isDevBuild()
+      ? yield* makeEventNdjsonLogger(providerEventLogPath, { stream: 'native' })
+      : undefined
+    const canonicalEventLogger = isDevBuild()
+      ? yield* makeEventNdjsonLogger(providerEventLogPath, { stream: 'canonical' })
+      : undefined
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive)
     )

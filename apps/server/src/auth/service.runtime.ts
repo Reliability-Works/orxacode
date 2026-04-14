@@ -4,6 +4,7 @@ import * as HttpServerRequest from 'effect/unstable/http/HttpServerRequest'
 import * as Socket from 'effect/unstable/socket/Socket'
 
 import { ServerConfig } from '../config'
+import { isDevBuild } from '../runtimeMode'
 import { createBootstrapExchangeStateMutation } from './service.bootstrap'
 import {
   createCloseLiveSession,
@@ -32,6 +33,7 @@ import {
 } from './service.types'
 
 function logWebSocketAuthInfo(event: string, data: Record<string, unknown>) {
+  if (!isDevBuild()) return
   console.info('[mobile-sync] ws auth', {
     revision: 'mobile-reopen-probe-1',
     event,
@@ -40,6 +42,7 @@ function logWebSocketAuthInfo(event: string, data: Record<string, unknown>) {
 }
 
 function logWebSocketAuthError(event: string, data: Record<string, unknown>) {
+  if (!isDevBuild()) return
   console.error('[mobile-sync] ws auth', {
     revision: 'mobile-reopen-probe-1',
     event,

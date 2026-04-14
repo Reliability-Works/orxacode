@@ -1,9 +1,12 @@
 import { Option } from 'effect'
 import * as HttpServerRequest from 'effect/unstable/http/HttpServerRequest'
 
+import { isDevBuild } from './runtimeMode'
+
 const MOBILE_SYNC_TRACE_REVISION = 'mobile-reopen-probe-1'
 
 export function logWebSocketUpgradeRequest(request: HttpServerRequest.HttpServerRequest) {
+  if (!isDevBuild()) return
   const requestUrl = HttpServerRequest.toURL(request)
   console.info('[mobile-sync] ws route', {
     revision: MOBILE_SYNC_TRACE_REVISION,
@@ -22,6 +25,7 @@ export function logWebSocketUpgradeAuthenticated(input: {
   role: string
   method: string
 }) {
+  if (!isDevBuild()) return
   console.info('[mobile-sync] ws route', {
     revision: MOBILE_SYNC_TRACE_REVISION,
     event: 'upgrade-authenticated',
@@ -32,6 +36,7 @@ export function logWebSocketUpgradeAuthenticated(input: {
 }
 
 export function logWebSocketUpgradeAuthError(input: { message: string; status: number }) {
+  if (!isDevBuild()) return
   console.error('[mobile-sync] ws route', {
     revision: MOBILE_SYNC_TRACE_REVISION,
     event: 'upgrade-auth-error',
