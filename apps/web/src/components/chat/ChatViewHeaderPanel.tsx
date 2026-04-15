@@ -9,6 +9,7 @@ import { cn } from '~/lib/utils'
 import { isElectron } from '../../env'
 import { APP_TOP_LEFT_BAR_WIDTH } from '../AppTopLeftBar'
 import { ChatHeader } from './ChatHeader'
+import { ZenGate } from '../ZenGate'
 import { getHeaderDiffStats } from './ChatViewHeaderPanel.logic'
 import { ProviderStatusBanner } from './ProviderStatusBanner'
 import { ThreadErrorBanner } from './ThreadErrorBanner'
@@ -20,6 +21,7 @@ import { ThreadActionsMenu } from './ThreadActionsMenu'
 import { useThreadById } from '../../storeSelectors'
 import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useZenMode } from '../../hooks/useZenMode'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()
@@ -90,7 +92,8 @@ export function ChatViewHeaderPanel() {
   const { keybindings, availableEditors, terminalState } = store
   const { state } = useSidebar()
   const isMobile = useIsMobile()
-  const collapsed = state === 'collapsed'
+  const zen = useZenMode()
+  const collapsed = state === 'collapsed' || zen.enabled
   const diffStats = useHeaderDiffStats(c.panelDiffQuery.data, c.ls.gitDiffScope)
   if (!activeThread) return null
   const lastInvokedScriptId = activeProject
@@ -104,7 +107,11 @@ export function ChatViewHeaderPanel() {
           'border-b border-border px-3 sm:px-5',
           isElectron ? 'drag-region flex h-[52px] items-center' : 'py-2 sm:py-3'
         )}
-        style={!isMobile && collapsed ? { paddingInlineStart: APP_TOP_LEFT_BAR_WIDTH } : undefined}
+        style={
+          !isMobile && collapsed
+            ? { paddingInlineStart: zen.enabled ? '98px' : APP_TOP_LEFT_BAR_WIDTH }
+            : undefined
+        }
       >
         <ChatHeader
           activeThreadId={activeThread.id}
@@ -136,7 +143,9 @@ export function ChatViewHeaderPanel() {
           browserAvailable={browserAvailable}
           handoffAction={<HandoffMenuAction />}
           threadActionsMenu={
-            <ThreadActionsMenu thread={activeThread} project={activeProject ?? null} />
+            <ZenGate id="chat.threadActions">
+              <ThreadActionsMenu thread={activeThread} project={activeProject ?? null} />
+            </ZenGate>
           }
         />
       </header>

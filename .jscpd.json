@@ -9,7 +9,8 @@
     "**/coverage/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "**/test/**"
+    "**/test/**",
+    "**/routeTree.gen.ts"
   ],
   "absolute": false,
   "gitignore": true

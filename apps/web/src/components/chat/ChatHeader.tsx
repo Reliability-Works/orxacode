@@ -6,16 +6,19 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import { GitBranchIcon } from 'lucide-react'
+import { FocusIcon, GitBranchIcon, MinimizeIcon } from 'lucide-react'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import type { NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
+import { Button } from '../ui/button'
 import { OpenInPicker } from './OpenInPicker'
 import type { ChatAuxSidebarMode } from './useChatViewLocalState'
 import { cn } from '~/lib/utils'
 import type { ReactNode } from 'react'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSidebar } from '../ui/sidebar.shared'
+import { useZenMode } from '../../hooks/useZenMode'
+import { ZenGate } from '../ZenGate'
 import { ChatHeaderMobileActions, ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
 import { ChatHeaderViewsGroup } from './ChatHeaderViewsGroup'
 
@@ -100,15 +103,52 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
   return (
     <>
       {activeProjectName && (
-        <OpenInPicker
-          keybindings={keybindings}
-          availableEditors={availableEditors}
-          openInCwd={openInCwd}
-        />
+        <ZenGate id="chat.openIn">
+          <OpenInPicker
+            keybindings={keybindings}
+            availableEditors={availableEditors}
+            openInCwd={openInCwd}
+          />
+        </ZenGate>
       )}
-      {activeProjectName && <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />}
-      {handoffAction}
+      {activeProjectName && (
+        <ZenGate id="chat.gitActions">
+          <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />
+        </ZenGate>
+      )}
+      {handoffAction ? <ZenGate id="chat.handoff">{handoffAction}</ZenGate> : null}
     </>
+  )
+}
+
+function ZenToggleButton() {
+  const zen = useZenMode()
+  const label = zen.enabled ? 'Exit zen mode' : 'Enter zen mode'
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => zen.toggleZen()}
+            aria-label={label}
+            className="shrink-0 gap-1.5"
+          >
+            {zen.enabled ? (
+              <>
+                <MinimizeIcon className="size-3" />
+                Unzen
+              </>
+            ) : (
+              <FocusIcon className="size-3" />
+            )}
+          </Button>
+        }
+      />
+      <TooltipPopup side="bottom">{label} (⇧⌘Z)</TooltipPopup>
+    </Tooltip>
   )
 }
 
@@ -163,12 +203,14 @@ function ChatHeaderSidebarActions(props: {
 }) {
   const { auxSidebarMode, onToggleGitSidebar, isGitRepo, diffStats } = props
   return (
-    <GitSidebarToggle
-      isGitRepo={isGitRepo}
-      gitSidebarOpen={auxSidebarMode === 'git'}
-      onToggleGitSidebar={onToggleGitSidebar}
-      diffStats={diffStats}
-    />
+    <ZenGate id="chat.gitSidebarToggle">
+      <GitSidebarToggle
+        isGitRepo={isGitRepo}
+        gitSidebarOpen={auxSidebarMode === 'git'}
+        onToggleGitSidebar={onToggleGitSidebar}
+        diffStats={diffStats}
+      />
+    </ZenGate>
   )
 }
 
@@ -190,17 +232,19 @@ interface ChatHeaderActionsProps extends ProjectActionProps {
 function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
   return (
     <div className="flex shrink-0 items-center justify-end gap-2 @3xl/header-actions:gap-3">
-      <ChatHeaderViewsGroup
-        auxSidebarMode={props.auxSidebarMode}
-        filesAvailable={props.openInCwd !== null}
-        browserAvailable={props.browserAvailable}
-        terminalAvailable={props.terminalAvailable}
-        terminalOpen={props.terminalOpen}
-        terminalToggleLabel={props.terminalToggleLabel}
-        onToggleFilesSidebar={props.onToggleFilesSidebar}
-        onToggleBrowserSidebar={props.onToggleBrowserSidebar}
-        onToggleTerminal={props.onToggleTerminal}
-      />
+      <ZenGate id="chat.views">
+        <ChatHeaderViewsGroup
+          auxSidebarMode={props.auxSidebarMode}
+          filesAvailable={props.openInCwd !== null}
+          browserAvailable={props.browserAvailable}
+          terminalAvailable={props.terminalAvailable}
+          terminalOpen={props.terminalOpen}
+          terminalToggleLabel={props.terminalToggleLabel}
+          onToggleFilesSidebar={props.onToggleFilesSidebar}
+          onToggleBrowserSidebar={props.onToggleBrowserSidebar}
+          onToggleTerminal={props.onToggleTerminal}
+        />
+      </ZenGate>
       <ChatHeaderProjectActions
         activeThreadId={props.activeThreadId}
         activeProjectName={props.activeProjectName}
@@ -222,6 +266,7 @@ function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
         isGitRepo={props.isGitRepo}
         diffStats={props.diffStats}
       />
+      <ZenToggleButton />
     </div>
   )
 }

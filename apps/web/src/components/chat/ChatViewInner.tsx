@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '~/lib/utils'
 import { gitDiscoverReposQueryOptions } from '~/lib/gitReactQuery'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { useZenMode } from '../../hooks/useZenMode'
 import BranchToolbar from '../BranchToolbar'
 import { FilesSidebar } from '../files-sidebar/FilesSidebar'
 import ThreadTerminalDrawer from '../ThreadTerminalDrawer'
@@ -115,7 +116,9 @@ function ChatViewAuxSidebarShell(props: { children: React.ReactNode }) {
 function ChatViewAuxSidebarBlock() {
   const c = useChatViewCtx()
   const isMobile = useIsMobile()
+  const zen = useZenMode()
   const { gitCwd, td } = c
+  if (zen.enabled) return null
   if (c.ls.auxSidebarMode === 'none') return null
 
   let content: React.ReactNode = null
@@ -167,8 +170,10 @@ function ChatViewAuxSidebarBlock() {
 
 function ChatViewTerminalDrawerBlock() {
   const c = useChatViewCtx()
+  const zen = useZenMode()
   const { store, gitCwd } = c
   const { activeThread, activeProject } = c.td
+  if (zen.enabled) return null
   if (c.td.isSubagentThread || !store.terminalState.terminalOpen || !activeProject || !activeThread)
     return null
   return (

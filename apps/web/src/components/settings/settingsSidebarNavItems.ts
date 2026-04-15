@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import {
   ArchiveIcon,
+  FocusIcon,
   InfoIcon,
   PaletteIcon,
   Plug2Icon,
@@ -13,6 +14,7 @@ export type SettingsSectionPath =
   | '/settings/appearance'
   | '/settings/providers'
   | '/settings/advanced'
+  | '/settings/zen'
   | '/settings/about'
   | '/settings/archived'
 
@@ -25,6 +27,7 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: 'Appearance', to: '/settings/appearance', icon: PaletteIcon },
   { label: 'Providers', to: '/settings/providers', icon: Plug2Icon },
   { label: 'Advanced', to: '/settings/advanced', icon: Settings2Icon },
+  { label: 'Zen mode', to: '/settings/zen', icon: FocusIcon },
   { label: 'About', to: '/settings/about', icon: InfoIcon },
   { label: 'Archive', to: '/settings/archived', icon: ArchiveIcon },
 ]

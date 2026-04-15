@@ -28,6 +28,12 @@ export const UiScale = Schema.Literals(['small', 'default', 'large'])
 export type UiScale = typeof UiScale.Type
 export const DEFAULT_UI_SCALE: UiScale = 'default'
 
+export const ZenMode = Schema.Struct({
+  enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  topbarAllowlist: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(() => [])),
+})
+export type ZenMode = typeof ZenMode.Type
+
 export const ClientSettingsSchema = Schema.Struct({
   confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
@@ -40,6 +46,7 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   timestampFormat: TimestampFormat.pipe(Schema.withDecodingDefault(() => DEFAULT_TIMESTAMP_FORMAT)),
   uiScale: UiScale.pipe(Schema.withDecodingDefault(() => DEFAULT_UI_SCALE)),
+  zenMode: ZenMode.pipe(Schema.withDecodingDefault(() => ({}))),
 })
 export type ClientSettings = typeof ClientSettingsSchema.Type
 

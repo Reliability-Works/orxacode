@@ -8,14 +8,18 @@
 import { APP_BASE_NAME, APP_STAGE_LABEL, APP_VERSION } from '../branding'
 import { isElectron } from '../env'
 import { useIsMobile } from '../hooks/useMediaQuery'
+import { useZenMode } from '../hooks/useZenMode'
 import { cn } from '~/lib/utils'
 import { SidebarTrigger } from './ui/sidebar'
+import { ZenGate } from './ZenGate'
 
 export const APP_TOP_LEFT_BAR_WIDTH = '272px'
 
 export function AppTopLeftBar() {
   const isMobile = useIsMobile()
+  const zen = useZenMode()
   if (isMobile) return null
+  if (zen.enabled) return null
 
   return (
     <div
@@ -26,7 +30,9 @@ export function AppTopLeftBar() {
       style={{ width: APP_TOP_LEFT_BAR_WIDTH }}
       data-slot="app-top-left-bar"
     >
-      <SidebarTrigger className="pointer-events-auto size-7 shrink-0" />
+      <ZenGate id="app.sidebarTrigger">
+        <SidebarTrigger className="pointer-events-auto size-7 shrink-0" />
+      </ZenGate>
       <div
         className="pointer-events-auto flex min-w-0 flex-1 items-center gap-1 cursor-default"
         title={`Version ${APP_VERSION}`}

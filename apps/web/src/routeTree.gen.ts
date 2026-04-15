@@ -16,6 +16,7 @@ import { Route as PairRouteImport } from './routes/pair'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
+import { Route as SettingsZenRouteImport } from './routes/settings.zen'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
@@ -57,6 +58,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => ChatRoute,
+} as any)
+const SettingsZenRoute = SettingsZenRouteImport.update({
+  id: '/zen',
+  path: '/zen',
+  getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
@@ -108,6 +114,7 @@ export interface FileRoutesByFullPath {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/zen': typeof SettingsZenRoute
 }
 export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
@@ -122,6 +129,7 @@ export interface FileRoutesByTo {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/zen': typeof SettingsZenRoute
   '/': typeof ChatIndexRoute
 }
 export interface FileRoutesById {
@@ -139,6 +147,7 @@ export interface FileRoutesById {
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
+  '/settings/zen': typeof SettingsZenRoute
   '/_chat/': typeof ChatIndexRoute
 }
 export interface FileRouteTypes {
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
+    | '/settings/zen'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/dashboard'
@@ -171,6 +181,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
+    | '/settings/zen'
     | '/'
   id:
     | '__root__'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
+    | '/settings/zen'
     | '/_chat/'
   fileRoutesById: FileRoutesById
 }
@@ -249,6 +261,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatIndexRouteImport
       parentRoute: typeof ChatRoute
+    }
+    '/settings/zen': {
+      id: '/settings/zen'
+      path: '/zen'
+      fullPath: '/settings/zen'
+      preLoaderRoute: typeof SettingsZenRouteImport
+      parentRoute: typeof SettingsRoute
     }
     '/settings/providers': {
       id: '/settings/providers'
@@ -321,6 +340,7 @@ interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
+  SettingsZenRoute: typeof SettingsZenRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -330,6 +350,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
+  SettingsZenRoute: SettingsZenRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
