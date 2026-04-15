@@ -180,6 +180,7 @@ const openTurn = Effect.fn('opencode.openTurn')(function* (
     },
     inFlightToolParts: new Map(),
     streamedPartIds: new Set(),
+    contextWindowEmitted: false,
   }
   context.turnState = turnState
   context.session = {

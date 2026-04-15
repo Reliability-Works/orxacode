@@ -63,6 +63,13 @@ export interface OpencodeTurnState {
   // text). The final `completed` snapshot is still emitted so downstream
   // consumers can persist the authoritative finished text.
   readonly streamedPartIds: Set<string>
+  // Flipped the first time an assistant `message.updated` event resolves
+  // a model id whose max-context-window we can look up. Used to emit one
+  // early `thread.token-usage.updated` so the composer's % meter shows a
+  // non-null maxTokens immediately rather than after the full turn
+  // completes. The final message-completed path still emits an updated
+  // snapshot with the authoritative used-token totals.
+  contextWindowEmitted: boolean
 }
 
 export interface OpencodeTurnStartupTrace {

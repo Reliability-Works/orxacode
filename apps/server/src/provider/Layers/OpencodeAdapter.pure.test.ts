@@ -66,6 +66,33 @@ function makeCtx(overrides?: Partial<OpencodeMapperContext>): OpencodeMapperCont
   }
 }
 
+describe('mapOpencodeEvent eager context-window', () => {
+  it('emits one thread.token-usage.updated on first in-progress assistant message', () => {
+    const ref = { emitted: false }
+    const ctx = makeCtx({ contextWindowRef: ref })
+    const result = mapOpencodeEvent(fixtureMessageUpdatedInProgress, ctx)
+    expect(ref.emitted).toBe(true)
+    const usage = result.find(e => e.type === 'thread.token-usage.updated')
+    expect(usage).toBeDefined()
+    expect(usage).toMatchObject({
+      payload: { usage: { maxTokens: expect.any(Number) } },
+    })
+  })
+
+  it('does not re-emit the eager usage on subsequent message.updated events', () => {
+    const ref = { emitted: false }
+    const ctx = makeCtx({ contextWindowRef: ref })
+    mapOpencodeEvent(fixtureMessageUpdatedInProgress, ctx)
+    const second = mapOpencodeEvent(fixtureMessageUpdatedInProgress, ctx)
+    expect(second.filter(e => e.type === 'thread.token-usage.updated')).toHaveLength(0)
+  })
+
+  it('skips the eager emission when contextWindowRef is absent', () => {
+    const result = mapOpencodeEvent(fixtureMessageUpdatedInProgress, makeCtx())
+    expect(result.filter(e => e.type === 'thread.token-usage.updated')).toHaveLength(0)
+  })
+})
+
 describe('mapOpencodeEvent streamed-part dedup', () => {
   it('suppresses intermediate in-progress snapshot after a delta arrives', () => {
     const streamedPartIds = new Set<string>()

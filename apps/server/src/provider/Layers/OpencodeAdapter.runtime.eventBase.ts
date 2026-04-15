@@ -96,7 +96,19 @@ export const prepareMapperContext = Effect.fn('prepareMapperContext')(function* 
     providerSessionId: context.providerSessionId,
     relatedSessionIds: context.relatedSessionIds,
     childDelegationsBySessionId: context.childDelegationsBySessionId,
-    ...(context.turnState ? { streamedPartIds: context.turnState.streamedPartIds } : {}),
+    ...(context.turnState
+      ? {
+          streamedPartIds: context.turnState.streamedPartIds,
+          contextWindowRef: {
+            get emitted(): boolean {
+              return context.turnState?.contextWindowEmitted ?? true
+            },
+            set emitted(value: boolean) {
+              if (context.turnState) context.turnState.contextWindowEmitted = value
+            },
+          },
+        }
+      : {}),
     nextStamp: (): OpencodeEventStamp => {
       const stamp = stamps[cursor]
       if (stamp === undefined) {

@@ -66,6 +66,12 @@ export interface OpencodeMapperContext {
   // intermediate in-progress redelivery. Optional because the abort-path
   // builds ad-hoc contexts outside a turn.
   readonly streamedPartIds?: Set<string>
+  // Mutable flag shared with the per-turn runtime state. Lets
+  // `mapMessageUpdated` emit one early `thread.token-usage.updated` so the
+  // composer meter shows the context window before the assistant message
+  // finishes. Shaped as a one-element ref so the pure mapper can flip it
+  // without reaching into the Effect runtime.
+  readonly contextWindowRef?: { emitted: boolean }
 }
 
 function makeBase(ctx: OpencodeMapperContext, providerItemId?: string): BaseFields {
@@ -132,6 +138,18 @@ export function mapMessageUpdated(
       payload: { itemType: 'assistant_message', status: 'inProgress' },
       raw: opencodeRawEvent(event),
     })
+    if (ctx.contextWindowRef && !ctx.contextWindowRef.emitted) {
+      const eager = extractUsageSnapshot(info)
+      if (typeof eager.maxTokens === 'number') {
+        ctx.contextWindowRef.emitted = true
+        events.push({
+          ...makeBaseForTurn(ctx, turnId, info.id),
+          type: 'thread.token-usage.updated',
+          payload: { usage: eager },
+          raw: opencodeRawEvent(event),
+        })
+      }
+    }
     if (typeof info.time.completed === 'number') {
       events.push({
         ...makeBaseForTurn(ctx, turnId, info.id),
