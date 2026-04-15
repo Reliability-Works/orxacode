@@ -55,6 +55,14 @@ export interface OpencodeTurnState {
   // synthesize terminal `item.completed{status:'declined'}` events for each
   // so the UI doesn't leave tool spinners running.
   readonly inFlightToolParts: Map<string, ToolLifecycleItemType>
+  // Part ids that have already delivered content via `message.part.delta`
+  // events. When `message.part.updated` fires for a streaming text/reasoning
+  // part already covered by deltas, the mapper suppresses the intermediate
+  // in-progress snapshot to avoid double-delivering the body (deltas carry
+  // the live stream, snapshot re-delivery causes the renderer to duplicate
+  // text). The final `completed` snapshot is still emitted so downstream
+  // consumers can persist the authoritative finished text.
+  readonly streamedPartIds: Set<string>
 }
 
 export interface OpencodeTurnStartupTrace {

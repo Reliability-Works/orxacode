@@ -164,6 +164,12 @@ function textOrReasoningPartEvents(
   const itemId = runtimeItemIdFromPartId(part.id)
   const itemType = canonicalPartItemType(part)
   const ended = part.time?.end !== undefined
+  // Dedup: when this part has already been streaming via `message.part.delta`
+  // events, the intermediate in-progress snapshot redelivers the full
+  // cumulative text and causes the renderer to double-append. Skip it. The
+  // terminal `completed` snapshot is still emitted so consumers can persist
+  // the authoritative final text.
+  if (!ended && ctx.streamedPartIds?.has(part.id)) return []
   return [
     buildPartItemEvent({
       ctx,
@@ -217,6 +223,7 @@ export function mapMessagePartDelta(
   const partType = partHint?.partType
   const streamKind = streamKindForField(event.properties.field, partType)
   if (streamKind === 'unknown') return []
+  ctx.streamedPartIds?.add(event.properties.partID)
   return [
     {
       ...makeBaseForTurn(ctx, turnId, event.properties.partID),

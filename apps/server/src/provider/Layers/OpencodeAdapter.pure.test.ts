@@ -66,6 +66,36 @@ function makeCtx(overrides?: Partial<OpencodeMapperContext>): OpencodeMapperCont
   }
 }
 
+describe('mapOpencodeEvent streamed-part dedup', () => {
+  it('suppresses intermediate in-progress snapshot after a delta arrives', () => {
+    const streamedPartIds = new Set<string>()
+    const ctx = makeCtx({ streamedPartIds })
+    const delta = mapOpencodeEvent(fixtureTextPartDelta, ctx)
+    expect(delta).toHaveLength(1)
+    expect(streamedPartIds.has(FIXTURE_TEXT_PART_ID)).toBe(true)
+    const snapshot = mapOpencodeEvent(fixtureTextPartUpdatedInProgress, ctx)
+    expect(snapshot).toEqual([])
+  })
+
+  it('still emits the terminal completed snapshot after deltas', () => {
+    const streamedPartIds = new Set<string>()
+    const ctx = makeCtx({ streamedPartIds })
+    mapOpencodeEvent(fixtureTextPartDelta, ctx)
+    const completed = mapOpencodeEvent(fixtureTextPartUpdatedCompleted, ctx)
+    expect(completed).toHaveLength(1)
+    expect(completed[0]).toMatchObject({
+      type: 'item.completed',
+      payload: { status: 'completed', detail: 'Hello world' },
+    })
+  })
+
+  it('falls through when no streamedPartIds set is provided (abort-path context)', () => {
+    const ctx = makeCtx()
+    const snapshot = mapOpencodeEvent(fixtureTextPartUpdatedInProgress, ctx)
+    expect(snapshot).toHaveLength(1)
+  })
+})
+
 describe('mapOpencodeEvent session lifecycle', () => {
   it('maps session.created to session.started', () => {
     const result = mapOpencodeEvent(fixtureSessionCreated, makeCtx({ turnId: undefined }))

@@ -61,6 +61,11 @@ export interface OpencodeMapperContext {
   readonly relatedSessionIds: ReadonlySet<string>
   readonly childDelegationsBySessionId: ReadonlyMap<string, OpencodeChildDelegation>
   readonly nextStamp: () => OpencodeEventStamp
+  // Shared mutable set tracked by the per-turn state. Deltas stamp part ids
+  // here as they stream so `message.part.updated` snapshots can skip the
+  // intermediate in-progress redelivery. Optional because the abort-path
+  // builds ad-hoc contexts outside a turn.
+  readonly streamedPartIds?: Set<string>
 }
 
 function makeBase(ctx: OpencodeMapperContext, providerItemId?: string): BaseFields {

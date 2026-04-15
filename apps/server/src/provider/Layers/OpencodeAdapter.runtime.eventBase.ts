@@ -96,6 +96,7 @@ export const prepareMapperContext = Effect.fn('prepareMapperContext')(function* 
     providerSessionId: context.providerSessionId,
     relatedSessionIds: context.relatedSessionIds,
     childDelegationsBySessionId: context.childDelegationsBySessionId,
+    ...(context.turnState ? { streamedPartIds: context.turnState.streamedPartIds } : {}),
     nextStamp: (): OpencodeEventStamp => {
       const stamp = stamps[cursor]
       if (stamp === undefined) {
