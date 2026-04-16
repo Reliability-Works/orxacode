@@ -207,7 +207,7 @@ function makeClaudeFastModeEffect() {
         diffPatch: 'diff --git a/README.md b/README.md',
         modelSelection: {
           provider: 'claudeAgent',
-          model: 'claude-opus-4-6',
+          model: 'claude-opus-4-7',
           options: {
             effort: 'max',
             fastMode: true,

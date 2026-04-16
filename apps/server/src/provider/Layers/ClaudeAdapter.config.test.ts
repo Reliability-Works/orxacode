@@ -103,7 +103,7 @@ it.effect('forwards claude effort levels into query options', () => {
       provider: 'claudeAgent',
       modelSelection: {
         provider: 'claudeAgent',
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-7',
         options: {
           effort: 'max',
         },
@@ -230,7 +230,7 @@ it.effect('forwards claude fast mode into SDK settings', () => {
       provider: 'claudeAgent',
       modelSelection: {
         provider: 'claudeAgent',
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-7',
         options: {
           fastMode: true,
         },
