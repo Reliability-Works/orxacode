@@ -4,6 +4,7 @@ import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 
 import {
   buildServerProvider,
+  type CommandResult,
   DEFAULT_TIMEOUT_MS,
   parseGenericCliVersion,
   providerModelsFromSettings,
@@ -30,8 +31,10 @@ import { ServerSettingsService } from '../../serverSettings'
 import { ServerSettingsError } from '@orxa-code/contracts'
 import {
   BUILT_IN_CODEX_MODELS,
+  discoveredCodexModelsToServerModels,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
+  type CodexCatalogSnapshot,
   type CodexAccountSnapshot,
 } from './CodexProvider.metadata'
 
@@ -97,20 +100,38 @@ function resolveCodexAccountState(input: {
   resolveAccount?: (input: {
     readonly binaryPath: string
     readonly homePath?: string
-  }) => Effect.Effect<CodexAccountSnapshot | undefined>
+  }) => Effect.Effect<CodexAccountSnapshot | CodexCatalogSnapshot | undefined>
 }) {
   return Effect.gen(function* () {
-    const account = input.resolveAccount
+    const resolved = input.resolveAccount
       ? yield* input.resolveAccount({
           binaryPath: input.codexSettings.binaryPath,
           homePath: input.codexSettings.homePath,
         })
       : undefined
+    const catalog = isCodexCatalogSnapshot(resolved) ? resolved : undefined
+    const account = catalog ? catalog.account : (resolved as CodexAccountSnapshot | undefined)
+    const baseModels =
+      catalog && catalog.models.length > 0
+        ? discoveredCodexModelsToServerModels(catalog.models)
+        : input.context.models
     return {
       account,
-      resolvedModels: adjustCodexModelsForAccount(input.context.models, account),
+      resolvedModels: adjustCodexModelsForAccount(baseModels, account),
     }
   })
+}
+
+function isCodexCatalogSnapshot(
+  value: CodexAccountSnapshot | CodexCatalogSnapshot | undefined
+): value is CodexCatalogSnapshot {
+  return (
+    value !== undefined &&
+    typeof value === 'object' &&
+    'account' in value &&
+    'models' in value &&
+    Array.isArray(value.models)
+  )
 }
 
 function buildCodexInstalledStatusProvider(input: {
@@ -180,11 +201,45 @@ function buildCodexReadyProvider(input: {
   })
 }
 
+function resolveCodexAuthProvider(input: {
+  authProbe: Result.Result<Option.Option<CommandResult>, unknown>
+  account: CodexAccountSnapshot | undefined
+  context: CodexProviderStatusContext
+  parsedVersion: string | null
+  resolvedModels: ReadonlyArray<ServerProviderModel>
+}): ServerProvider {
+  if (Result.isFailure(input.authProbe)) {
+    return buildAuthProbeFailureProvider(CODEX_STATUS_BUILDER, {
+      context: input.context,
+      error: input.authProbe.failure,
+      parsedVersion: input.parsedVersion,
+      resolvedModels: input.resolvedModels,
+    })
+  }
+
+  if (Option.isNone(input.authProbe.success)) {
+    return buildAuthProbeTimeoutProvider(CODEX_STATUS_BUILDER, {
+      context: input.context,
+      parsedVersion: input.parsedVersion,
+      resolvedModels: input.resolvedModels,
+    })
+  }
+
+  const parsed = parseAuthStatusFromOutput(input.authProbe.success.value)
+  return buildCodexReadyProvider({
+    account: input.account,
+    context: input.context,
+    parsed,
+    parsedVersion: input.parsedVersion,
+    resolvedModels: input.resolvedModels,
+  })
+}
+
 export const checkCodexProviderStatus = Effect.fn('checkCodexProviderStatus')(function* (
   resolveAccount?: (input: {
     readonly binaryPath: string
     readonly homePath?: string
-  }) => Effect.Effect<CodexAccountSnapshot | undefined>
+  }) => Effect.Effect<CodexAccountSnapshot | CodexCatalogSnapshot | undefined>
 ): Effect.fn.Return<
   ServerProvider,
   ServerSettingsError,
@@ -241,24 +296,11 @@ export const checkCodexProviderStatus = Effect.fn('checkCodexProviderStatus')(fu
     context,
     ...(resolveAccount ? { resolveAccount } : {}),
   })
-
-  if (Result.isFailure(authProbe)) {
-    return buildAuthProbeFailureProvider(CODEX_STATUS_BUILDER, {
-      context,
-      error: authProbe.failure,
-      parsedVersion,
-      resolvedModels,
-    })
-  }
-
-  if (Option.isNone(authProbe.success)) {
-    return buildAuthProbeTimeoutProvider(CODEX_STATUS_BUILDER, {
-      context,
-      parsedVersion,
-      resolvedModels,
-    })
-  }
-
-  const parsed = parseAuthStatusFromOutput(authProbe.success.value)
-  return buildCodexReadyProvider({ account, context, parsed, parsedVersion, resolvedModels })
+  return resolveCodexAuthProvider({
+    authProbe,
+    account: account as CodexAccountSnapshot | undefined,
+    context,
+    parsedVersion,
+    resolvedModels,
+  })
 })

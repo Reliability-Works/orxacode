@@ -1,13 +1,18 @@
 import * as OS from 'node:os'
 import { Effect, FileSystem, Option, Path, Result } from 'effect'
 import type {
+  EffortOption,
   ModelCapabilities,
   ServerProviderAuth,
   ServerProviderModel,
   ServerProviderState,
 } from '@orxa-code/contracts'
 import type { CodexAccountSnapshot } from '../codexAccount'
-import { probeCodexAccount } from '../codexAppServer'
+import {
+  probeCodexCatalog,
+  type CodexCatalogSnapshot,
+  type CodexListedModel,
+} from '../codexAppServer'
 import { ServerSettingsService } from '../../serverSettings'
 import { type CommandResult } from '../providerSnapshot'
 import { parseProviderAuthStatusFromOutput } from './Provider.shared'
@@ -45,6 +50,8 @@ export const BUILT_IN_CODEX_MODELS: ReadonlyArray<ServerProviderModel> = [
   makeStandardCodexModel('gpt-5.3-codex-spark', 'GPT-5.3 Codex Spark'),
   makeStandardCodexModel('gpt-5.2-codex', 'GPT-5.2 Codex'),
   makeStandardCodexModel('gpt-5.2', 'GPT-5.2'),
+  makeStandardCodexModel('gpt-5.1-codex-max', 'GPT-5.1 Codex Max'),
+  makeStandardCodexModel('gpt-5.1-codex-mini', 'GPT-5.1 Codex Mini'),
 ]
 
 export function getCodexModelCapabilities(model: string | null | undefined): ModelCapabilities {
@@ -126,7 +133,7 @@ export const probeCodexCapabilities = (input: {
   readonly binaryPath: string
   readonly homePath?: string
 }) =>
-  Effect.tryPromise(signal => probeCodexAccount({ ...input, signal })).pipe(
+  Effect.tryPromise(signal => probeCodexCatalog({ ...input, signal })).pipe(
     Effect.timeoutOption(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.result,
     Effect.map(result => {
@@ -135,4 +142,89 @@ export const probeCodexCapabilities = (input: {
     })
   )
 
-export type { CodexAccountSnapshot }
+function normalizeEffortLabel(value: string): string {
+  switch (value) {
+    case 'xhigh':
+      return 'Extra High'
+    case 'high':
+      return 'High'
+    case 'medium':
+      return 'Medium'
+    case 'low':
+      return 'Low'
+    case 'minimal':
+      return 'Minimal'
+    case 'none':
+      return 'None'
+    default:
+      return value
+  }
+}
+
+function codexEffortOptions(model: CodexListedModel): ReadonlyArray<EffortOption> {
+  return model.supportedReasoningEfforts.map(option => ({
+    value: option.reasoningEffort,
+    label: normalizeEffortLabel(option.reasoningEffort),
+    ...(option.reasoningEffort === model.defaultReasoningEffort ? { isDefault: true } : {}),
+  }))
+}
+
+function capabilitiesFromDiscoveredModel(model: CodexListedModel): ModelCapabilities {
+  return {
+    reasoningEffortLevels: codexEffortOptions(model),
+    supportsFastMode: true,
+    supportsThinkingToggle: false,
+    contextWindowOptions: [],
+    promptInjectedEffortLevels: [],
+  }
+}
+
+function titleCaseToken(value: string): string {
+  return value[0] ? value[0].toUpperCase() + value.slice(1).toLowerCase() : value
+}
+
+function normalizeCodexDisplayName(model: CodexListedModel): string {
+  const normalizedId = model.id.trim().toLowerCase()
+  if (normalizedId.length === 0) {
+    return model.displayName
+  }
+
+  const gptMatch = normalizedId.match(/^gpt-(\d+(?:\.\d+)?)(?:-(.+))?$/)
+  if (gptMatch) {
+    const version = gptMatch[1]
+    const suffix = gptMatch[2]
+    if (!suffix) {
+      return `GPT-${version}`
+    }
+    const words = suffix
+      .split('-')
+      .filter(Boolean)
+      .map(part => {
+        if (part === 'codex') return 'Codex'
+        return titleCaseToken(part)
+      })
+    return `GPT-${version} ${words.join(' ')}`
+  }
+
+  if (normalizedId.startsWith('gpt-oss-')) {
+    return normalizedId.toUpperCase()
+  }
+
+  return model.displayName
+}
+
+export function discoveredCodexModelsToServerModels(
+  models: ReadonlyArray<CodexListedModel>
+): ReadonlyArray<ServerProviderModel> {
+  return models
+    .filter(model => !model.hidden)
+    .map(model => ({
+      slug: model.id,
+      name: normalizeCodexDisplayName(model),
+      isCustom: false,
+      supportsReasoning: model.supportedReasoningEfforts.length > 0,
+      capabilities: capabilitiesFromDiscoveredModel(model),
+    }))
+}
+
+export type { CodexAccountSnapshot, CodexCatalogSnapshot }

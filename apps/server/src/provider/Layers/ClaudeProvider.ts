@@ -82,8 +82,8 @@ const CLAUDE_PROMPT_INJECTED_EFFORT_LEVELS: ModelCapabilities['promptInjectedEff
 
 const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
   {
-    slug: 'claude-opus-4-6',
-    name: 'Claude Opus 4.6',
+    slug: 'claude-opus-4-7',
+    name: 'Claude Opus 4.7',
     isCustom: false,
     supportsReasoning: false,
     capabilities: {

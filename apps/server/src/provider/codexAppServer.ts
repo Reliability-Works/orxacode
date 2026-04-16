@@ -3,6 +3,22 @@ import readline from 'node:readline'
 import { readCodexAccountSnapshot, type CodexAccountSnapshot } from './codexAccount'
 import { killChildProcessTree } from '../processTreeKill'
 
+export interface CodexListedModel {
+  readonly id: string
+  readonly displayName: string
+  readonly hidden: boolean
+  readonly supportedReasoningEfforts: ReadonlyArray<{
+    readonly reasoningEffort: string
+    readonly description: string | null
+  }>
+  readonly defaultReasoningEffort: string | null
+}
+
+export interface CodexCatalogSnapshot {
+  readonly account: CodexAccountSnapshot
+  readonly models: ReadonlyArray<CodexListedModel>
+}
+
 interface JsonRpcProbeResponse {
   readonly id?: unknown
   readonly result?: unknown
@@ -38,17 +54,75 @@ function writeProbeMessage(
   child.stdin.write(`${JSON.stringify(message)}\n`)
 }
 
-function handleProbeResponse(input: {
-  fail: (error: unknown) => void
-  finishWithResult: (result: CodexAccountSnapshot) => void
+function resolveCodexAccountProbe(response: JsonRpcProbeResponse): CodexAccountSnapshot {
+  return readCodexAccountSnapshot(response.result)
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function readCodexModelList(response: JsonRpcProbeResponse): ReadonlyArray<CodexListedModel> {
+  const record = asObject(response.result)
+  const data = Array.isArray(record?.data) ? record.data : []
+
+  return data.flatMap(entry => {
+    const model = asObject(entry)
+    const id = asString(model?.id)
+    if (!id) {
+      return []
+    }
+
+    const displayName = asString(model?.displayName) ?? id
+    const hidden = model?.hidden === true
+    const defaultReasoningEffort = asString(model?.defaultReasoningEffort) ?? null
+    const supportedReasoningEfforts = Array.isArray(model?.supportedReasoningEfforts)
+      ? model.supportedReasoningEfforts.flatMap(option => {
+          const record = asObject(option)
+          const reasoningEffort = asString(record?.reasoningEffort)
+          if (!reasoningEffort) {
+            return []
+          }
+          return [
+            {
+              reasoningEffort,
+              description: asString(record?.description) ?? null,
+            },
+          ]
+        })
+      : []
+
+    return [
+      {
+        id,
+        displayName,
+        hidden,
+        supportedReasoningEfforts,
+        defaultReasoningEffort,
+      } satisfies CodexListedModel,
+    ]
+  })
+}
+
+function handleCatalogProbeLine(input: {
   line: string
+  fail: (error: unknown) => void
   writeMessage: (message: unknown) => void
+  finishWithResult: () => void
+  setAccount: (account: CodexAccountSnapshot) => void
+  setModels: (models: ReadonlyArray<CodexListedModel>) => void
 }): void {
   let parsed: unknown
   try {
     parsed = JSON.parse(input.line)
   } catch {
-    input.fail(new Error('Received invalid JSON from codex app-server during account probe.'))
+    input.fail(new Error('Received invalid JSON from codex app-server during capability probe.'))
     return
   }
 
@@ -66,6 +140,7 @@ function handleProbeResponse(input: {
 
     input.writeMessage({ method: 'initialized' })
     input.writeMessage({ id: 2, method: 'account/read', params: {} })
+    input.writeMessage({ id: 3, method: 'model/list', params: { limit: 200 } })
     return
   }
 
@@ -76,12 +151,21 @@ function handleProbeResponse(input: {
       return
     }
 
-    input.finishWithResult(resolveCodexAccountProbe(response))
+    input.setAccount(resolveCodexAccountProbe(response))
+    input.finishWithResult()
+    return
   }
-}
 
-function resolveCodexAccountProbe(response: JsonRpcProbeResponse): CodexAccountSnapshot {
-  return readCodexAccountSnapshot(response.result)
+  if (response.id === 3) {
+    const errorMessage = readErrorMessage(response)
+    if (errorMessage) {
+      input.fail(new Error(`model/list failed: ${errorMessage}`))
+      return
+    }
+
+    input.setModels(readCodexModelList(response))
+    input.finishWithResult()
+  }
 }
 
 function registerAbortHandler(
@@ -113,11 +197,11 @@ export function killCodexChildProcess(child: ChildProcessWithoutNullStreams): vo
   killChildProcessTree(child)
 }
 
-export async function probeCodexAccount(input: {
+export async function probeCodexCatalog(input: {
   readonly binaryPath: string
   readonly homePath?: string
   readonly signal?: AbortSignal
-}): Promise<CodexAccountSnapshot> {
+}): Promise<CodexCatalogSnapshot> {
   return await new Promise((resolve, reject) => {
     const child = spawn(input.binaryPath, ['app-server'], {
       env: createCodexProbeEnv(input.homePath),
@@ -127,6 +211,8 @@ export async function probeCodexAccount(input: {
     const output = readline.createInterface({ input: child.stdout })
 
     let completed = false
+    let account: CodexAccountSnapshot | undefined
+    let models: ReadonlyArray<CodexListedModel> | undefined
 
     const cleanup = () => {
       output.removeAllListeners()
@@ -145,14 +231,35 @@ export async function probeCodexAccount(input: {
     }
 
     const fail = (error: unknown) => finish(() => reject(createCodexProbeError(error)))
-    const finishWithResult = (result: CodexAccountSnapshot) => finish(() => resolve(result))
+    const finishWithResult = () => {
+      if (!account || !models) {
+        return
+      }
+      const resolvedAccount = account
+      const resolvedModels = models
+      finish(() => resolve({ account: resolvedAccount, models: resolvedModels }))
+    }
 
     if (registerAbortHandler(input.signal, fail)) {
       return
     }
+
     const writeMessage = (message: unknown) => writeProbeMessage(child, message, fail)
 
-    output.on('line', line => handleProbeResponse({ fail, finishWithResult, line, writeMessage }))
+    output.on('line', line =>
+      handleCatalogProbeLine({
+        line,
+        fail,
+        writeMessage,
+        finishWithResult,
+        setAccount: nextAccount => {
+          account = nextAccount
+        },
+        setModels: nextModels => {
+          models = nextModels
+        },
+      })
+    )
 
     child.once('error', fail)
     child.once('exit', (code, signal) => {
@@ -170,4 +277,12 @@ export async function probeCodexAccount(input: {
       params: buildCodexInitializeParams(),
     })
   })
+}
+
+export async function probeCodexAccount(input: {
+  readonly binaryPath: string
+  readonly homePath?: string
+  readonly signal?: AbortSignal
+}): Promise<CodexAccountSnapshot> {
+  return (await probeCodexCatalog(input)).account
 }

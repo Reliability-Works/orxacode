@@ -20,6 +20,79 @@ const codexBaseTest = Effect.gen(function* () {
   return yield* checkCodexProviderStatus()
 })
 
+const STANDARD_CODEX_REASONING = [
+  { reasoningEffort: 'low', description: 'Fast responses with lighter reasoning' },
+  {
+    reasoningEffort: 'medium',
+    description: 'Balances speed and reasoning depth for everyday tasks',
+  },
+  { reasoningEffort: 'high', description: 'Greater reasoning depth for complex problems' },
+  {
+    reasoningEffort: 'xhigh',
+    description: 'Extra high reasoning depth for complex problems',
+  },
+] as const
+
+function discoveredCatalogFixture() {
+  return {
+    account: {
+      type: 'chatgpt' as const,
+      planType: 'pro' as const,
+      sparkEnabled: true,
+    },
+    models: [
+      {
+        id: 'gpt-5.4',
+        displayName: 'gpt-5.4',
+        hidden: false,
+        supportedReasoningEfforts: STANDARD_CODEX_REASONING,
+        defaultReasoningEffort: 'medium',
+      },
+      {
+        id: 'gpt-5.1-codex-max',
+        displayName: 'gpt-5.1-codex-max',
+        hidden: false,
+        supportedReasoningEfforts: STANDARD_CODEX_REASONING,
+        defaultReasoningEffort: 'medium',
+      },
+      {
+        id: 'gpt-5.1-codex-mini',
+        displayName: 'gpt-5.1-codex-mini',
+        hidden: false,
+        supportedReasoningEfforts: [
+          {
+            reasoningEffort: 'medium',
+            description: 'Dynamically adjusts reasoning based on the task',
+          },
+          {
+            reasoningEffort: 'high',
+            description: 'Maximizes reasoning depth for complex or ambiguous problems',
+          },
+        ],
+        defaultReasoningEffort: 'medium',
+      },
+    ],
+  }
+}
+
+function expectDiscoveredCatalogModels() {
+  return Effect.gen(function* () {
+    yield* withTempCodexHome()
+    const status = yield* checkCodexProviderStatus(() => Effect.succeed(discoveredCatalogFixture()))
+
+    assert.deepStrictEqual(
+      status.models.map(model => model.slug),
+      ['gpt-5.4', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini']
+    )
+    assert.deepStrictEqual(
+      status.models.map(model => model.name),
+      ['GPT-5.4', 'GPT-5.1 Codex Max', 'GPT-5.1 Codex Mini']
+    )
+    assert.strictEqual(status.models[1]?.capabilities?.supportsFastMode, true)
+    assert.strictEqual(status.models[2]?.capabilities?.reasoningEffortLevels[0]?.value, 'medium')
+  }).pipe(provideCodexLayer(codexReadySpawnerLayer()))
+}
+
 describe('checkCodexProviderStatus ready states', () => {
   it.effect('returns ready when codex is installed and authenticated', () =>
     codexBaseTest.pipe(
@@ -33,6 +106,10 @@ describe('checkCodexProviderStatus ready states', () => {
         })
       )
     )
+  )
+
+  it.effect('prefers the live codex app-server model catalog when available', () =>
+    expectDiscoveredCatalogModels()
   )
 
   it.effect('returns the codex plan type in auth and keeps spark for supported plans', () =>

@@ -38,6 +38,7 @@ const GLM_45_CONTEXT = 128_000
  */
 const CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   // ── Claude (anthropic) ──────────────────────────────────────────────
+  'claude-opus-4-7': CLAUDE_200K,
   'claude-opus-4-6': CLAUDE_200K,
   'claude-opus-4-5': CLAUDE_200K,
   'claude-opus-4-1': CLAUDE_200K,
@@ -59,6 +60,9 @@ const CONTEXT_WINDOWS: Readonly<Record<string, number>> = {
   'gpt-5.2': GPT_5_CONTEXT,
   'gpt-5.2-codex': GPT_5_CONTEXT,
   'gpt-5.1': GPT_5_CONTEXT,
+  'gpt-5.1-codex': GPT_5_CONTEXT,
+  'gpt-5.1-codex-max': GPT_5_CONTEXT,
+  'gpt-5.1-codex-mini': GPT_5_CONTEXT,
   'gpt-5': GPT_5_CONTEXT,
   'gpt-5-codex': GPT_5_CONTEXT,
 
