@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   connectRemoteEnvironment,
   getEnvironmentRuntimeDebugState,
+  initializeSavedRemoteEnvironmentRuntime,
   resetEnvironmentRuntimeForTests,
 } from './service'
 import {
   getSavedEnvironmentRecord,
-  readSavedEnvironmentBearerToken,
+  readSavedEnvironmentSecret,
   resetSavedEnvironmentRegistryForTests,
 } from './catalog'
 
@@ -62,8 +63,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('ephemeral remote runtime connections', () => {
-  it('connects from pairing input without persisting remote credentials', async () => {
+describe('saved remote runtime connections', () => {
+  it('connects from pairing input and persists the remote credential for reuse', async () => {
     mockPairingFetchSequence([
       {
         environmentId: 'environment-remote',
@@ -80,43 +81,48 @@ describe('ephemeral remote runtime connections', () => {
     )
 
     expect(connection.environmentId).toBe('environment-remote')
-    expect(getSavedEnvironmentRecord('environment-remote')).toBeNull()
-    expect(readSavedEnvironmentBearerToken('environment-remote')).toBeNull()
+    expect(getSavedEnvironmentRecord('environment-remote')).toMatchObject({
+      environmentId: 'environment-remote',
+      httpBaseUrl: 'https://remote.example.com/',
+      wsBaseUrl: 'wss://remote.example.com/',
+      label: 'Remote environment',
+    })
+    expect(readSavedEnvironmentSecret('environment-remote')).toBe('PAIR1234CODE')
   })
 
-  it('replaces the active remote connection on a new pairing session', async () => {
+  it('reuses a saved remote credential to resume without a new pairing token', async () => {
     mockPairingFetchSequence([
       {
-        environmentId: 'environment-one',
-        label: 'Remote one',
-        sessionToken: 'bearer-one',
+        environmentId: 'environment-remote',
+        label: 'Remote environment',
+        sessionToken: 'bearer-first',
       },
       {
-        environmentId: 'environment-two',
-        label: 'Remote two',
-        sessionToken: 'bearer-two',
+        environmentId: 'environment-remote',
+        label: 'Remote environment',
+        sessionToken: 'bearer-second',
       },
     ])
 
     const firstConnection = await connectRemoteEnvironment(
       {
-        pairingUrl: 'https://remote-one.example.com/pair#token=PAIR1111',
+        pairingUrl: 'https://remote.example.com/pair#token=PAIR1234CODE',
       },
       'test-first'
     )
     const debugAfterFirst = getEnvironmentRuntimeDebugState()
-    const secondConnection = await connectRemoteEnvironment(
-      {
-        pairingUrl: 'https://remote-two.example.com/pair#token=PAIR2222',
-      },
-      'test-second'
-    )
+    const secondConnection = await initializeSavedRemoteEnvironmentRuntime('test-resume')
     const debugAfterSecond = getEnvironmentRuntimeDebugState()
 
     expect(secondConnection).not.toBe(firstConnection)
     expect(secondConnection.connectionId).not.toBe(firstConnection.connectionId)
     expect(debugAfterSecond.runtimeGeneration).toBeGreaterThan(debugAfterFirst.runtimeGeneration)
-    expect(getSavedEnvironmentRecord('environment-one')).toBeNull()
-    expect(getSavedEnvironmentRecord('environment-two')).toBeNull()
+    expect(getSavedEnvironmentRecord('environment-remote')).toMatchObject({
+      environmentId: 'environment-remote',
+      httpBaseUrl: 'https://remote.example.com/',
+      wsBaseUrl: 'wss://remote.example.com/',
+      label: 'Remote environment',
+    })
+    expect(readSavedEnvironmentSecret('environment-remote')).toBe('PAIR1234CODE')
   })
 })

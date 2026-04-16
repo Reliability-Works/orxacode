@@ -122,6 +122,14 @@ export function getSavedEnvironmentRecord(environmentId: string): SavedEnvironme
   return useSavedEnvironmentRegistryStore.getState().byId[environmentId] ?? null
 }
 
+export function upsertSavedEnvironmentRecord(record: SavedEnvironmentRecord): void {
+  useSavedEnvironmentRegistryStore.getState().upsert(record)
+}
+
+export function removeSavedEnvironmentRecord(environmentId: string): void {
+  useSavedEnvironmentRegistryStore.getState().remove(environmentId)
+}
+
 export function hasSavedEnvironmentRecords(): boolean {
   return listSavedEnvironmentRecords().length > 0
 }
@@ -147,19 +155,20 @@ export function resolveActiveSavedEnvironmentRecord(): SavedEnvironmentRecord | 
   return records.find(record => record.environmentId === activeEnvironmentId) ?? records[0] ?? null
 }
 
-export function readSavedEnvironmentBearerToken(environmentId: string): string | null {
+export function markSavedEnvironmentConnected(environmentId: string, connectedAt: string): void {
+  useSavedEnvironmentRegistryStore.getState().markConnected(environmentId, connectedAt)
+}
+
+export function readSavedEnvironmentSecret(environmentId: string): string | null {
   const value = localPersistence.getSavedEnvironmentSecret(environmentId)
   return isNonEmptyString(value) ? value : null
 }
 
-export function writeSavedEnvironmentBearerToken(
-  environmentId: string,
-  bearerToken: string
-): boolean {
-  return localPersistence.setSavedEnvironmentSecret(environmentId, bearerToken)
+export function writeSavedEnvironmentSecret(environmentId: string, secret: string): boolean {
+  return localPersistence.setSavedEnvironmentSecret(environmentId, secret)
 }
 
-export function removeSavedEnvironmentBearerToken(environmentId: string): void {
+export function removeSavedEnvironmentSecret(environmentId: string): void {
   localPersistence.removeSavedEnvironmentSecret(environmentId)
 }
 

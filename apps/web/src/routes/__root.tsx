@@ -18,17 +18,15 @@ import { Button } from '../components/ui/button'
 import { AnchoredToastProvider, ToastProvider } from '../components/ui/toast'
 import {
   getActiveEnvironmentConnection,
-  getActiveEnvironmentConnectionOrNull,
   getEnvironmentRuntimeDebugState,
-  initializePrimaryEnvironmentRuntime,
+  SavedRemoteEnvironmentReauthRequiredError,
 } from '../environments/runtime'
 import { fetchRemoteMobileSyncBootstrap } from '../environments/remote'
 import {
-  peekPairingTokenFromUrl,
   resolveInitialPrimaryAuthGateState,
   tryResolveInitialPrimaryEnvironmentDescriptor,
 } from '../environments/primary'
-import { resolveRootRuntimeBootStrategy } from './rootRuntimeBootStrategy'
+import { runRootRuntimeBoot } from './__root.runtimeBoot'
 import {
   getServerConfig,
   setServerConfigSnapshot,
@@ -115,34 +113,8 @@ function useRootRuntimeBoot(
 
     const boot = async () => {
       try {
-        if (getActiveEnvironmentConnectionOrNull()) {
-          if (!cancelled) {
-            console.info('[mobile-sync] root boot ready', {
-              revision: 'mobile-reopen-probe-1',
-              runtime: getEnvironmentRuntimeDebugState(),
-            })
-            setBootState('ready')
-          }
-          return
-        }
-        const strategy = resolveRootRuntimeBootStrategy({
-          authStatus,
-          hasDesktopManagedPrimary: Boolean(window.desktopBridge?.getLocalEnvironmentBootstrap),
-          hasPairingToken: Boolean(peekPairingTokenFromUrl()),
-        })
-        console.info('[mobile-sync] root boot strategy', {
-          revision: 'mobile-reopen-probe-1',
-          authStatus,
-          strategy,
-          hasPairingToken: Boolean(peekPairingTokenFromUrl()),
-          existingConnectionId: getActiveEnvironmentConnectionOrNull()?.connectionId ?? null,
-          existingEnvironmentId: getActiveEnvironmentConnectionOrNull()?.environmentId ?? null,
-          runtime: getEnvironmentRuntimeDebugState(),
-        })
-
-        if (strategy === 'primary') {
-          await initializePrimaryEnvironmentRuntime('root-boot-primary')
-        } else {
+        const result = await runRootRuntimeBoot(authStatus)
+        if (result === 'pair') {
           if (!cancelled) {
             setBootState('redirecting')
             await navigate({ to: '/pair', replace: true })
@@ -151,13 +123,16 @@ function useRootRuntimeBoot(
         }
 
         if (!cancelled) {
-          console.info('[mobile-sync] root boot ready', {
-            revision: 'mobile-reopen-probe-1',
-            runtime: getEnvironmentRuntimeDebugState(),
-          })
           setBootState('ready')
         }
       } catch (error) {
+        if (error instanceof SavedRemoteEnvironmentReauthRequiredError) {
+          if (!cancelled) {
+            setBootState('redirecting')
+            await navigate({ to: '/pair', replace: true })
+          }
+          return
+        }
         if (!cancelled) {
           console.error('[mobile-sync] root boot error', {
             revision: 'mobile-reopen-probe-1',

@@ -3,8 +3,6 @@ import * as FS from 'node:fs'
 import * as OS from 'node:os'
 import * as Path from 'node:path'
 import { app, BrowserWindow, protocol } from 'electron'
-import * as Effect from 'effect/Effect'
-import { NetService } from '@orxa-code/shared/Net'
 import {
   configureAppIdentity as configureAppIdentityImpl,
   resolveUserDataPath,
@@ -35,6 +33,7 @@ import { createDesktopRemoteAccessPreferencesStore } from './remoteAccessPrefere
 import { applyRemoteAccessPreferences as applyRemoteAccessPreferencesImpl } from './remoteAccessRuntime'
 import { resolveRemoteAccessRuntimeState } from './remoteAccessRuntimeState'
 import { waitForBackendReady } from './backendReady'
+import { ensureDesktopBackendPortAvailable, resolveDesktopBackendPort } from './backendPort'
 import {
   createDesktopUpdatePreferencesStore,
   resolveDesktopUpdateFeedChannel,
@@ -380,12 +379,9 @@ app.setPath(
 configureAppIdentity()
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader('bootstrap start')
-  backendPort = await Effect.service(NetService).pipe(
-    Effect.flatMap(net => net.reserveLoopbackPort()),
-    Effect.provide(NetService.layer),
-    Effect.runPromise
-  )
-  writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`)
+  backendPort = resolveDesktopBackendPort()
+  await ensureDesktopBackendPortAvailable(backendPort)
+  writeDesktopLogHeader(`using pinned desktop backend port=${backendPort}`)
   backendAuthToken = Crypto.randomBytes(24).toString('hex')
   refreshRemoteAccessRuntimeState()
   backendReadyForWindowContent = false

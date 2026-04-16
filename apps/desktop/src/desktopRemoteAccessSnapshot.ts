@@ -1,5 +1,6 @@
 import { resolveRemoteAccessSnapshot } from './remoteAccess'
 import type { DesktopRemoteAccessPreferencesStore } from './remoteAccessPreferences'
+import { resolveTailscaleServeHostname } from './tailscaleServe'
 
 interface ResolveDesktopRemoteAccessSnapshotInput {
   backendPort: number
@@ -15,5 +16,8 @@ export function resolveDesktopRemoteAccessSnapshot(input: ResolveDesktopRemoteAc
     environmentId: input.remoteAccessEnvironmentId ?? remoteAccessState.environmentId ?? '',
     bootstrapToken: input.remoteAccessBootstrapToken ?? null,
     port: input.backendPort,
+    tailscaleServeHostname: resolveTailscaleServeHostname({
+      backendPort: input.backendPort,
+    }),
   })
 }

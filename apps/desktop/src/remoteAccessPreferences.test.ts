@@ -60,4 +60,20 @@ describe('createDesktopRemoteAccessPreferencesStore', () => {
     expect(afterDisable.enabled).toBe(false)
     expect(afterDisable.environmentId).toBe(enabled.environmentId)
   })
+
+  it('persists and clears the bootstrap token separately from the public preferences', () => {
+    const store = createStore()
+
+    expect(store.getBootstrapToken()).toBeUndefined()
+    store.setBootstrapToken('bootstrap-token')
+    expect(store.getBootstrapToken()).toBe('bootstrap-token')
+
+    const reloadedStore = createDesktopRemoteAccessPreferencesStore(
+      Path.join(tempDirs[tempDirs.length - 1]!, 'remote-access-preferences.json')
+    )
+    expect(reloadedStore.getBootstrapToken()).toBe('bootstrap-token')
+
+    reloadedStore.setBootstrapToken(undefined)
+    expect(reloadedStore.getBootstrapToken()).toBeUndefined()
+  })
 })

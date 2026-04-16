@@ -1,12 +1,25 @@
 import { type DesktopRemoteAccessSnapshot } from '@orxa-code/contracts'
-import { CheckIcon, CopyIcon, QrCodeIcon, RefreshCwIcon, SmartphoneIcon } from 'lucide-react'
+import { RefreshCwIcon, SmartphoneIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { reconnectActiveEnvironment } from '../environments/runtime'
 import { beginExpectedReconnectWindow } from '../rpc/wsConnectionState'
 import { useCopyToClipboard } from '~/hooks/useCopyToClipboard'
 import { cn } from '~/lib/utils'
+import {
+  isStableRemoteAccessEndpoint,
+  resolveManualPairingValues,
+  resolvePreferredRemoteAccessEndpoint,
+  resolveSecondaryRemoteAccessEndpoints,
+} from './remoteAccessControl.helpers'
 import { updateRemoteAccessPreference } from './remoteAccessControl.logic'
+import {
+  AdvancedRemoteAccessCard,
+  DirectFallbackCard,
+  RemoteAccessQrCode,
+  RemoteAccessReadyCard,
+  TailscaleServeCard,
+} from './RemoteAccessControl.parts'
 import { Button } from './ui/button'
 import {
   Dialog,
@@ -26,71 +39,6 @@ interface RemoteAccessState {
   errorMessage: string | null
   setEnabled: (enabled: boolean) => Promise<void>
   refresh: () => Promise<void>
-}
-
-function RemoteAccessQrCode(props: { value: string }) {
-  const [dataUrl, setDataUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    void import('qrcode')
-      .then(module =>
-        module.toDataURL(props.value, {
-          errorCorrectionLevel: 'M',
-          margin: 1,
-          scale: 8,
-          width: 224,
-        })
-      )
-      .then(url => {
-        if (!cancelled) {
-          setDataUrl(url)
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setDataUrl(null)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [props.value])
-
-  return (
-    <div className="flex h-56 w-56 items-center justify-center rounded-2xl border bg-white p-3 shadow-sm">
-      {dataUrl ? (
-        <img src={dataUrl} alt="QR code for Orxa Code remote access" className="h-full w-full" />
-      ) : (
-        <RefreshCwIcon className="size-5 animate-spin text-zinc-500" />
-      )}
-    </div>
-  )
-}
-
-function EndpointRow(props: {
-  label: string
-  address: string
-  url: string
-  isCopied: boolean
-  onCopy: (value: string) => void
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border bg-card px-3 py-3">
-      <div className="min-w-0 flex-1">
-        <div className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          {props.label}
-        </div>
-        <div className="truncate font-mono text-sm text-foreground">{props.address}</div>
-      </div>
-      <Button size="sm" variant="outline" onClick={() => props.onCopy(props.url)}>
-        {props.isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-        {props.isCopied ? 'Copied' : 'Copy link'}
-      </Button>
-    </div>
-  )
 }
 
 function useRemoteAccessSnapshot(open: boolean): RemoteAccessState {
@@ -152,14 +100,14 @@ function useRemoteAccessSnapshot(open: boolean): RemoteAccessState {
 
 function resolveDialogDescription(snapshot: DesktopRemoteAccessSnapshot | null): string {
   if (!snapshot || snapshot.status === 'disabled') {
-    return 'Phone access is off. Turn it on when you want this Mac to generate a QR code and private-network links.'
+    return 'Turn this on when you want to expose a direct private-network link or a Tailscale Serve target for this Mac.'
   }
 
   if (snapshot.status === 'unavailable') {
-    return 'Phone access is on, but this Mac does not currently have a reachable IPv4 address. Join Wi-Fi, Ethernet, or Tailscale and refresh.'
+    return 'Phone access is on, but this Mac does not currently expose a reachable IPv4 address. Join Wi-Fi, Ethernet, or Tailscale and refresh.'
   }
 
-  return 'Connect your phone over the same Wi-Fi or any private network that can reach this Mac, including Tailscale.'
+  return 'Prefer Tailscale Serve for a stable private URL. QR and direct network links stay available as fallback paths.'
 }
 
 function RemoteAccessToggleCard(props: {
@@ -217,10 +165,20 @@ function RemoteAccessAvailableState(props: {
   onCopy: (value: string) => void
   state: Pick<RemoteAccessState, 'isLoading' | 'setEnabled'>
 }) {
-  const primaryEndpoint = useMemo(
-    () => props.snapshot.endpoints[0] ?? null,
-    [props.snapshot.endpoints]
+  const preferredEndpoint = useMemo(
+    () => resolvePreferredRemoteAccessEndpoint(props.snapshot),
+    [props.snapshot]
   )
+  const secondaryEndpoints = useMemo(
+    () => resolveSecondaryRemoteAccessEndpoints(props.snapshot),
+    [props.snapshot]
+  )
+  const manualPairingValues = useMemo(
+    () => resolveManualPairingValues(preferredEndpoint),
+    [preferredEndpoint]
+  )
+  const hasStableEndpoint = isStableRemoteAccessEndpoint(preferredEndpoint)
+  const showDiagnostics = import.meta.env.DEV
 
   return (
     <div className="space-y-4">
@@ -229,41 +187,109 @@ function RemoteAccessAvailableState(props: {
         isLoading={props.state.isLoading}
         onEnabledChange={props.state.setEnabled}
       />
-      <div className="grid gap-6 md:grid-cols-[240px_minmax(0,1fr)]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            <QrCodeIcon className="size-3.5" />
-            Scan
-          </div>
-          <RemoteAccessQrCode value={primaryEndpoint?.bootstrapUrl ?? ''} />
-          <p className="text-center text-xs text-muted-foreground">
-            The QR uses the first reachable address for this Mac.
-          </p>
-        </div>
-        <div className="space-y-3">
-          {props.snapshot.endpoints.map(endpoint => (
-            <EndpointRow
-              key={endpoint.id}
-              label={endpoint.label}
-              address={endpoint.address}
-              url={endpoint.bootstrapUrl ?? ''}
-              isCopied={props.isCopied && props.copiedUrl === endpoint.bootstrapUrl}
-              onCopy={props.onCopy}
-            />
-          ))}
-          <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 text-sm text-muted-foreground">
-            Same Wi-Fi is not required if your phone can reach this Mac over a private network. If
-            you use Tailscale, connect both devices to the same tailnet and use the{' '}
-            <span className="font-medium text-foreground">Tailnet / VPN</span> address when it is
-            available.
-          </div>
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-muted-foreground">
-            Anyone who can reach one of these links can control your Orxa session while the app is
-            open. This is still a local/private-network path, not the final public relay flow.
+      <div className="grid gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <div className="rounded-2xl border bg-card p-4">
+            <div className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              Direct Link QR
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <RemoteAccessQrCode value={preferredEndpoint?.bootstrapUrl ?? ''} />
+              <p className="text-center text-xs text-muted-foreground">
+                {preferredEndpoint
+                  ? `Uses ${preferredEndpoint.label.toLowerCase()} as the pairing route.`
+                  : 'No direct endpoint is available yet.'}
+              </p>
+            </div>
           </div>
         </div>
+        <RemoteAccessAvailableCards
+          hasStableEndpoint={hasStableEndpoint}
+          snapshot={props.snapshot}
+          preferredEndpoint={preferredEndpoint}
+          secondaryEndpoints={secondaryEndpoints}
+          manualPairingValues={manualPairingValues}
+          copiedUrl={props.copiedUrl}
+          isCopied={props.isCopied}
+          onCopy={props.onCopy}
+          showDiagnostics={showDiagnostics}
+        />
       </div>
     </div>
+  )
+}
+
+type RemoteAccessDetailProps = {
+  snapshot: DesktopRemoteAccessSnapshot
+  preferredEndpoint: ReturnType<typeof resolvePreferredRemoteAccessEndpoint>
+  secondaryEndpoints: ReturnType<typeof resolveSecondaryRemoteAccessEndpoints>
+  manualPairingValues: ReturnType<typeof resolveManualPairingValues>
+  copiedUrl: string | null
+  isCopied: boolean
+  onCopy: (value: string) => void
+  showDiagnostics: boolean
+}
+
+function RemoteAccessAvailableCards(
+  props: RemoteAccessDetailProps & {
+    hasStableEndpoint: boolean
+  }
+) {
+  const { hasStableEndpoint, ...detailProps } = props
+  const primaryCards =
+    hasStableEndpoint && props.preferredEndpoint ? (
+      <RemoteAccessReadyCard
+        endpoint={props.preferredEndpoint}
+        copiedUrl={props.copiedUrl}
+        isCopied={props.isCopied}
+        onCopy={props.onCopy}
+      />
+    ) : (
+      <>
+        <div>
+          <TailscaleServeCard
+            port={props.snapshot.port}
+            copiedUrl={props.copiedUrl}
+            isCopied={props.isCopied}
+            onCopy={props.onCopy}
+          />
+        </div>
+        <DirectFallbackCard
+          endpoint={props.preferredEndpoint}
+          copiedUrl={props.copiedUrl}
+          isCopied={props.isCopied}
+          onCopy={props.onCopy}
+        />
+      </>
+    )
+
+  return (
+    <div className="space-y-3">
+      {primaryCards}
+      <RemoteAccessDetails {...detailProps} />
+    </div>
+  )
+}
+
+function RemoteAccessDetails(props: RemoteAccessDetailProps) {
+  return (
+    <>
+      <AdvancedRemoteAccessCard
+        copiedUrl={props.copiedUrl}
+        isCopied={props.isCopied}
+        manualPairingValues={props.manualPairingValues}
+        onCopy={props.onCopy}
+        preferredEndpoint={props.preferredEndpoint}
+        secondaryEndpoints={props.secondaryEndpoints}
+        showDiagnostics={props.showDiagnostics}
+        snapshot={props.snapshot}
+      />
+
+      <div className="rounded-2xl border border-border/70 bg-card/60 p-4 text-sm text-muted-foreground">
+        Remote access stays private to networks that can already reach this Mac. When Tailscale
+        Serve is active, the QR and primary copy flow should use the stable `ts.net` host.
+      </div>
+    </>
   )
 }
 
@@ -386,7 +412,7 @@ export function RemoteAccessControl({
       >
         <SmartphoneIcon className={cn(iconClassName ?? 'size-4')} />
       </DialogTrigger>
-      <DialogPopup className="max-w-3xl">
+      <DialogPopup className="max-w-5xl">
         <DialogHeader>
           <DialogTitle>Open on phone</DialogTitle>
           <DialogDescription>{resolveDialogDescription(state.snapshot)}</DialogDescription>

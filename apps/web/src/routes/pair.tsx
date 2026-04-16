@@ -67,10 +67,10 @@ function PairRouteView() {
             <span className="text-sm font-medium">Pairing code</span>
             <input
               className="w-full rounded-xl border border-border bg-background px-3 py-2 font-mono text-sm uppercase outline-none transition focus:border-foreground/40"
-              placeholder="ABCD2345EFGH"
+              placeholder="Paste the exact token from Orxa"
               value={pairingCode}
-              onChange={event => setPairingCode(event.target.value.toUpperCase())}
-              autoCapitalize="characters"
+              onChange={event => setPairingCode(event.target.value)}
+              autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
             />

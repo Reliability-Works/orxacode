@@ -1,7 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
 import { setActiveEnvironmentHttpOrigin } from '../../environmentRuntimeState'
-import { localPersistence } from '../../localPersistence'
 import { setMobileSyncLogRelayContext } from '../../mobileSyncLogRelay'
 import { setActiveNativeApi } from '../../nativeApi'
 import { setActiveWsRpcClient, createWsRpcClient } from '../../wsRpcClient'
@@ -9,12 +8,19 @@ import { createWsNativeApiForRpcClient } from '../../wsNativeApi'
 import {
   bootstrapRemoteBearerSession,
   fetchRemoteEnvironmentDescriptor,
+  isRemoteEnvironmentAuthHttpError,
   resolveRemotePairingTarget,
   resolveRemoteWebSocketConnectionUrl,
 } from '../remote'
 import { getPrimaryKnownEnvironment, resolvePrimaryWebSocketConnectionUrl } from '../primary'
 import { WsTransport } from '../../wsTransport'
 import type { ActiveEnvironmentConnection } from './connection'
+import {
+  clearSavedRemoteEnvironment,
+  persistSavedRemoteEnvironment,
+  readActiveSavedRemoteCredential,
+  SavedRemoteEnvironmentReauthRequiredError,
+} from './savedRemote'
 
 export type EnvironmentRuntimeState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error'
 
@@ -221,8 +227,47 @@ function createRemoteEnvironmentConnection(input: {
   }
 }
 
-function clearSavedEnvironmentPersistence() {
-  localPersistence.clearSavedEnvironmentState()
+async function connectResolvedRemoteEnvironment(input: {
+  readonly credential: string
+  readonly httpBaseUrl: string
+  readonly wsBaseUrl: string
+  readonly label?: string
+  readonly source: string
+  readonly createdAt?: string
+  readonly persistCredential?: boolean
+}): Promise<ActiveEnvironmentConnection> {
+  const descriptor = await fetchRemoteEnvironmentDescriptor({
+    httpBaseUrl: input.httpBaseUrl,
+  })
+  const bearerSession = await bootstrapRemoteBearerSession({
+    httpBaseUrl: input.httpBaseUrl,
+    credential: input.credential,
+  })
+
+  const nextConnection = createRemoteEnvironmentConnection({
+    bearerToken: bearerSession.sessionToken,
+    environmentId: descriptor.environmentId,
+    httpBaseUrl: input.httpBaseUrl,
+    label: input.label?.trim() || descriptor.label,
+    wsBaseUrl: input.wsBaseUrl,
+  })
+  logRuntime('connect-remote-environment', {
+    source: input.source,
+    connectionId: nextConnection.connectionId,
+    environmentId: nextConnection.environmentId,
+    httpBaseUrl: nextConnection.httpBaseUrl,
+    wsBaseUrl: nextConnection.wsBaseUrl,
+  })
+  await switchActiveConnection(nextConnection, input.source)
+  updateSnapshot('connected', nextConnection, null)
+  if (input.persistCredential !== false) {
+    persistSavedRemoteEnvironment({
+      connection: nextConnection,
+      secret: input.credential,
+      ...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+    })
+  }
+  return nextConnection
 }
 
 async function connectPrimaryEnvironment(source: string): Promise<ActiveEnvironmentConnection> {
@@ -327,36 +372,18 @@ export async function connectRemoteEnvironment(
   updateSnapshot('connecting', activeConnection, null)
 
   try {
-    clearSavedEnvironmentPersistence()
     const resolvedTarget = resolveRemotePairingTarget({
       ...(input.pairingUrl !== undefined ? { pairingUrl: input.pairingUrl } : {}),
       ...(input.host !== undefined ? { host: input.host } : {}),
       ...(input.pairingCode !== undefined ? { pairingCode: input.pairingCode } : {}),
     })
-    const descriptor = await fetchRemoteEnvironmentDescriptor({
-      httpBaseUrl: resolvedTarget.httpBaseUrl,
-    })
-    const bearerSession = await bootstrapRemoteBearerSession({
-      httpBaseUrl: resolvedTarget.httpBaseUrl,
+    const nextConnection = await connectResolvedRemoteEnvironment({
       credential: resolvedTarget.credential,
-    })
-
-    const nextConnection = createRemoteEnvironmentConnection({
-      bearerToken: bearerSession.sessionToken,
-      environmentId: descriptor.environmentId,
       httpBaseUrl: resolvedTarget.httpBaseUrl,
-      label: input.label?.trim() || descriptor.label,
       wsBaseUrl: resolvedTarget.wsBaseUrl,
-    })
-    logRuntime('connect-remote-environment', {
       source,
-      connectionId: nextConnection.connectionId,
-      environmentId: nextConnection.environmentId,
-      httpBaseUrl: nextConnection.httpBaseUrl,
-      wsBaseUrl: nextConnection.wsBaseUrl,
+      ...(input.label !== undefined ? { label: input.label } : {}),
     })
-    await switchActiveConnection(nextConnection, source)
-    updateSnapshot('connected', nextConnection, null)
     logRuntime('connect-remote-done', {
       source,
       runtimeGeneration,
@@ -376,6 +403,62 @@ export async function connectRemoteEnvironment(
       'error',
       activeConnection,
       error instanceof Error ? error.message : 'Unable to connect to the remote environment.'
+    )
+    throw error
+  }
+}
+
+export async function initializeSavedRemoteEnvironmentRuntime(
+  source = 'unspecified'
+): Promise<ActiveEnvironmentConnection> {
+  const savedRemoteCredential = readActiveSavedRemoteCredential()
+  if (!savedRemoteCredential) {
+    throw new SavedRemoteEnvironmentReauthRequiredError()
+  }
+  const { savedEnvironment, savedSecret } = savedRemoteCredential
+
+  logRuntime('initialize-saved-remote-start', {
+    source,
+    runtimeGeneration,
+    environmentId: savedEnvironment.environmentId,
+    httpBaseUrl: savedEnvironment.httpBaseUrl,
+  })
+  updateSnapshot('connecting', activeConnection, null)
+
+  try {
+    const connection = await connectResolvedRemoteEnvironment({
+      credential: savedSecret,
+      httpBaseUrl: savedEnvironment.httpBaseUrl,
+      wsBaseUrl: savedEnvironment.wsBaseUrl,
+      label: savedEnvironment.label,
+      source,
+      createdAt: savedEnvironment.createdAt,
+    })
+    logRuntime('initialize-saved-remote-done', {
+      source,
+      runtimeGeneration,
+      connectionId: connection.connectionId,
+      activeEnvironmentId: connection.environmentId,
+    })
+    return connection
+  } catch (error) {
+    if (isRemoteEnvironmentAuthHttpError(error) && (error.status === 401 || error.status === 403)) {
+      clearSavedRemoteEnvironment({ environmentId: savedEnvironment.environmentId })
+      const reauthError = new SavedRemoteEnvironmentReauthRequiredError()
+      updateSnapshot('error', activeConnection, reauthError.message)
+      throw reauthError
+    }
+    logRuntimeError('initialize-saved-remote-error', {
+      source,
+      runtimeGeneration,
+      activeConnectionId: activeConnection?.connectionId ?? null,
+      activeEnvironmentId: activeConnection?.environmentId ?? null,
+      error,
+    })
+    updateSnapshot(
+      'error',
+      activeConnection,
+      error instanceof Error ? error.message : 'Unable to connect to the saved remote environment.'
     )
     throw error
   }

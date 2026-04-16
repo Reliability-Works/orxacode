@@ -62,6 +62,7 @@ describe('resolveRemoteAccessSnapshot', () => {
       environmentId: 'environment-1',
       bootstrapToken: 'bootstrap-token',
       port: 3773,
+      tailscaleServeHostname: 'remote-host.example.ts.net',
       networkInterfaces: LAN_NETWORK_INTERFACES,
     })
 
@@ -69,15 +70,21 @@ describe('resolveRemoteAccessSnapshot', () => {
     expect(snapshot.status).toBe('available')
     expect(snapshot.environment?.environmentId).toBe('environment-1')
     expect(snapshot.endpoints.map(endpoint => endpoint.address)).toEqual([
+      'remote-host.example.ts.net',
       '10.0.0.15',
       '192.168.1.24',
       '100.80.4.7',
     ])
-    expect(snapshot.endpoints[2]?.label).toBe('Tailnet / VPN')
+    expect(snapshot.endpoints[0]?.label).toBe('Tailscale Serve')
     expect(snapshot.endpoints[0]?.url).toBe(
+      'https://remote-host.example.ts.net/pair?v=fresh-view#token=bootstrap-token'
+    )
+    expect(snapshot.endpoints[0]?.sessionUrl).toBe('https://remote-host.example.ts.net/')
+    expect(snapshot.endpoints[3]?.label).toBe('Tailnet / VPN')
+    expect(snapshot.endpoints[1]?.url).toBe(
       'http://10.0.0.15:3773/pair?v=fresh-view#token=bootstrap-token'
     )
-    expect(snapshot.endpoints[0]?.sessionUrl).toBe('http://10.0.0.15:3773/')
+    expect(snapshot.endpoints[1]?.sessionUrl).toBe('http://10.0.0.15:3773/')
   })
 
   it('reports unavailable when remote access is enabled without external IPv4 interfaces', () => {

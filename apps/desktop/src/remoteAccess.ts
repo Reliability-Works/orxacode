@@ -12,6 +12,7 @@ interface ResolveRemoteAccessSnapshotInput {
   environmentId: string
   bootstrapToken: string | null
   port: number
+  tailscaleServeHostname?: string | null
   networkInterfaces?: typeof OS.networkInterfaces
 }
 
@@ -64,6 +65,28 @@ function buildEndpoint(
   }
 }
 
+function buildTailscaleServeEndpoint(
+  hostname: string,
+  environmentId: string,
+  bootstrapToken: string,
+  cacheKey: string
+): DesktopRemoteAccessEndpoint {
+  const sessionUrl = `https://${hostname}/`
+  const pairUrl = `https://${hostname}/pair?v=${encodeURIComponent(cacheKey)}#token=${encodeURIComponent(bootstrapToken)}`
+  return {
+    id: `tailscale-serve:${hostname}`,
+    environmentId,
+    label: 'Tailscale Serve',
+    address: hostname,
+    transport: 'wss',
+    url: pairUrl,
+    pairUrl,
+    bootstrapUrl: pairUrl,
+    sessionUrl,
+    authMode: 'bootstrap',
+  }
+}
+
 export function resolveRemoteAccessSnapshot(
   input: ResolveRemoteAccessSnapshotInput
 ): DesktopRemoteAccessSnapshot {
@@ -95,7 +118,7 @@ export function resolveRemoteAccessSnapshot(
     }
   }
 
-  const endpoints = Array.from(addresses)
+  const networkEndpoints = Array.from(addresses)
     .sort((left, right) => {
       const priorityDelta = endpointPriority(left) - endpointPriority(right)
       return priorityDelta !== 0 ? priorityDelta : left.localeCompare(right)
@@ -103,6 +126,20 @@ export function resolveRemoteAccessSnapshot(
     .map(address =>
       buildEndpoint(address, input.port, input.environmentId, input.bootstrapToken ?? '', cacheKey)
     )
+
+  const tailscaleServeEndpoint =
+    input.tailscaleServeHostname && input.bootstrapToken
+      ? buildTailscaleServeEndpoint(
+          input.tailscaleServeHostname,
+          input.environmentId,
+          input.bootstrapToken,
+          cacheKey
+        )
+      : null
+
+  const endpoints = tailscaleServeEndpoint
+    ? [tailscaleServeEndpoint, ...networkEndpoints]
+    : networkEndpoints
 
   return {
     enabled: true,

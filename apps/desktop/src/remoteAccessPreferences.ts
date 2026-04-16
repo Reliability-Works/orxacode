@@ -10,11 +10,14 @@ const DEFAULT_REMOTE_ACCESS_PREFERENCES: DesktopRemoteAccessPreferences = {
 
 interface PersistedRemoteAccessPreferences extends DesktopRemoteAccessPreferences {
   version: 1
+  bootstrapToken?: string
 }
 
 export interface DesktopRemoteAccessPreferencesStore {
   get(): DesktopRemoteAccessPreferences
   set(input: Partial<DesktopRemoteAccessPreferences>): DesktopRemoteAccessPreferences
+  getBootstrapToken(): string | undefined
+  setBootstrapToken(token: string | undefined): void
 }
 
 export function sanitizeRemoteAccessEnabled(value: unknown): boolean {
@@ -54,6 +57,9 @@ function sanitizePersistedRemoteAccessPreferences(raw: unknown): PersistedRemote
       next.enabled === undefined ? defaults.enabled : sanitizeRemoteAccessEnabled(next.enabled),
     ...(typeof next.environmentId === 'string' && next.environmentId.length > 0
       ? { environmentId: next.environmentId }
+      : {}),
+    ...(typeof next.bootstrapToken === 'string' && next.bootstrapToken.length > 0
+      ? { bootstrapToken: next.bootstrapToken }
       : {}),
   }
 }
@@ -96,10 +102,27 @@ export function createDesktopRemoteAccessPreferencesStore(
       version: persisted.version,
       enabled,
       environmentId,
+      ...(enabled && persisted.bootstrapToken ? { bootstrapToken: persisted.bootstrapToken } : {}),
     } satisfies PersistedRemoteAccessPreferences
     writePersisted(next)
     return toPublicPreferences(next)
   }
 
-  return { get, set }
+  function getBootstrapToken(): string | undefined {
+    return readPersisted().bootstrapToken
+  }
+
+  function setBootstrapToken(token: string | undefined): void {
+    const persisted = readPersisted()
+    const next: PersistedRemoteAccessPreferences = {
+      ...persisted,
+      ...(token ? { bootstrapToken: token } : {}),
+    }
+    if (!token) {
+      delete next.bootstrapToken
+    }
+    writePersisted(next)
+  }
+
+  return { get, set, getBootstrapToken, setBootstrapToken }
 }

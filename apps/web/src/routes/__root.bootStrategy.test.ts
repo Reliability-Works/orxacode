@@ -9,6 +9,7 @@ describe('root runtime boot strategy', () => {
         authStatus: 'requires-auth',
         hasDesktopManagedPrimary: true,
         hasPairingToken: false,
+        hasSavedRemote: false,
       })
     ).toBe('primary')
   })
@@ -19,6 +20,7 @@ describe('root runtime boot strategy', () => {
         authStatus: 'authenticated',
         hasDesktopManagedPrimary: false,
         hasPairingToken: false,
+        hasSavedRemote: false,
       })
     ).toBe('primary')
   })
@@ -29,8 +31,20 @@ describe('root runtime boot strategy', () => {
         authStatus: 'requires-auth',
         hasDesktopManagedPrimary: false,
         hasPairingToken: false,
+        hasSavedRemote: false,
       })
     ).toBe('pair')
+  })
+
+  it('uses the saved remote environment when a trusted remote device exists', () => {
+    expect(
+      resolveRootRuntimeBootStrategy({
+        authStatus: 'requires-auth',
+        hasDesktopManagedPrimary: false,
+        hasPairingToken: false,
+        hasSavedRemote: true,
+      })
+    ).toBe('saved-remote')
   })
 
   it('always prefers the pairing flow when a pairing token is present', () => {
@@ -39,6 +53,7 @@ describe('root runtime boot strategy', () => {
         authStatus: 'authenticated',
         hasDesktopManagedPrimary: true,
         hasPairingToken: true,
+        hasSavedRemote: true,
       })
     ).toBe('pair')
   })

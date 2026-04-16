@@ -62,6 +62,19 @@ describe('remote pairing target', () => {
       wsBaseUrl: 'wss://remote.example.com/',
     })
   })
+
+  it('preserves manual pairing codes exactly as entered', () => {
+    expect(
+      resolveRemotePairingTarget({
+        host: 'remote-host.example.ts.net',
+        pairingCode: '8e45682894d0e2e22f87d6e160cee93291d4f16d003ee2cf',
+      })
+    ).toEqual({
+      credential: '8e45682894d0e2e22f87d6e160cee93291d4f16d003ee2cf',
+      httpBaseUrl: 'https://remote-host.example.ts.net/',
+      wsBaseUrl: 'wss://remote-host.example.ts.net/',
+    })
+  })
 })
 
 describe('remote environment api', () => {

@@ -8,7 +8,7 @@ import type {
 const MOBILE_SYNC_TRACE_REVISION = 'mobile-reopen-probe-1'
 const REMOTE_AUTH_REQUEST_TIMEOUT_MS = 10_000
 
-class RemoteEnvironmentAuthHttpError extends Error {
+export class RemoteEnvironmentAuthHttpError extends Error {
   readonly status: number
 
   constructor(message: string, status: number) {
@@ -16,6 +16,12 @@ class RemoteEnvironmentAuthHttpError extends Error {
     this.name = 'RemoteEnvironmentAuthHttpError'
     this.status = status
   }
+}
+
+export function isRemoteEnvironmentAuthHttpError(
+  error: unknown
+): error is RemoteEnvironmentAuthHttpError {
+  return error instanceof RemoteEnvironmentAuthHttpError
 }
 
 function remoteEndpointUrl(httpBaseUrl: string, pathname: string): string {
