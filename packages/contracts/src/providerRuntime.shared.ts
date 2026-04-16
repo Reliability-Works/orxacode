@@ -112,6 +112,26 @@ export function isToolLifecycleItemType(value: string): value is ToolLifecycleIt
   return TOOL_LIFECYCLE_ITEM_TYPES.includes(value as ToolLifecycleItemType)
 }
 
+export const TOOL_LIFECYCLE_ACTIONS = [
+  'read',
+  'edit',
+  'create',
+  'delete',
+  'search',
+  'list',
+  'command',
+  'web',
+  'todo',
+  'tool',
+] as const
+
+export const ToolLifecycleAction = Schema.Literals(TOOL_LIFECYCLE_ACTIONS)
+export type ToolLifecycleAction = typeof ToolLifecycleAction.Type
+
+export function isToolLifecycleAction(value: string): value is ToolLifecycleAction {
+  return TOOL_LIFECYCLE_ACTIONS.includes(value as ToolLifecycleAction)
+}
+
 export const CanonicalItemType = Schema.Literals([
   'user_message',
   'assistant_message',

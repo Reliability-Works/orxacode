@@ -24,6 +24,7 @@ import {
   type ClaudeCodeEffort,
   type ApprovalRequestId,
   type ProviderSendTurnInput,
+  type ToolLifecycleAction,
 } from '@orxa-code/contracts'
 import { applyClaudePromptEffortPrefix, trimOrNull } from '@orxa-code/shared/model'
 import { Cause, Effect, FileSystem } from 'effect'
@@ -307,6 +308,98 @@ export function classifyToolItemType(toolName: string): CanonicalItemType {
     return 'image_view'
   }
   return 'dynamic_tool_call'
+}
+
+const BASH_READ_COMMANDS = new Set(['cat', 'head', 'tail', 'less', 'more', 'bat', 'zcat', 'nl'])
+const BASH_SEARCH_COMMANDS = new Set(['grep', 'rg', 'ripgrep', 'ag', 'ack', 'find', 'fd'])
+const BASH_LIST_COMMANDS = new Set(['ls', 'tree', 'stat', 'file', 'du', 'df'])
+const BASH_WEB_COMMANDS = new Set(['curl', 'wget', 'http', 'httpie'])
+const BASH_CREATE_COMMANDS = new Set(['touch', 'mkdir'])
+const BASH_EDIT_COMMANDS = new Set(['mv', 'cp'])
+const BASH_DELETE_COMMANDS = new Set(['rm', 'rmdir', 'unlink'])
+
+function sedActionFromFlags(command: string): ToolLifecycleAction {
+  return /\s-\S*i\S*(\s|$)/u.test(command) ? 'edit' : 'read'
+}
+
+function bashTokenAction(token: string, command: string): ToolLifecycleAction | undefined {
+  if (token === 'sed') return sedActionFromFlags(command)
+  if (BASH_READ_COMMANDS.has(token)) return 'read'
+  if (BASH_SEARCH_COMMANDS.has(token)) return 'search'
+  if (BASH_LIST_COMMANDS.has(token)) return 'list'
+  if (BASH_WEB_COMMANDS.has(token)) return 'web'
+  if (BASH_CREATE_COMMANDS.has(token)) return 'create'
+  if (BASH_EDIT_COMMANDS.has(token)) return 'edit'
+  if (BASH_DELETE_COMMANDS.has(token)) return 'delete'
+  return undefined
+}
+
+export function classifyBashCommandAction(
+  command: string | undefined
+): ToolLifecycleAction | undefined {
+  if (!command) return undefined
+  const trimmed = command.trim()
+  if (trimmed.length === 0) return undefined
+  const stripped = trimmed.replace(/^(?:[A-Z_][A-Z0-9_]*=\S+\s+)+/u, '')
+  const firstToken = stripped.split(/\s+/u, 1)[0]
+  if (!firstToken) return undefined
+  const base = (firstToken.split(/[\\/]/).pop() ?? firstToken).toLowerCase()
+  return bashTokenAction(base, stripped)
+}
+
+const CLAUDE_TOOL_ACTION_EXACT: Record<string, ToolLifecycleAction> = {
+  read: 'read',
+  notebookread: 'read',
+  view: 'read',
+  edit: 'edit',
+  multiedit: 'edit',
+  notebookedit: 'edit',
+  write: 'create',
+  create: 'create',
+  ls: 'list',
+  list: 'list',
+  glob: 'list',
+  grep: 'search',
+  search: 'search',
+  websearch: 'web',
+  webfetch: 'web',
+  todowrite: 'todo',
+  todo: 'todo',
+}
+
+function claudeBashInputCommand(input: Record<string, unknown> | undefined): string | undefined {
+  if (typeof input?.command === 'string') return input.command
+  if (typeof input?.cmd === 'string') return input.cmd
+  return undefined
+}
+
+function actionFromItemType(itemType: CanonicalItemType): ToolLifecycleAction {
+  switch (itemType) {
+    case 'command_execution':
+      return 'command'
+    case 'file_change':
+      return 'edit'
+    case 'web_search':
+      return 'web'
+    default:
+      return 'tool'
+  }
+}
+
+export function classifyToolAction(
+  toolName: string,
+  input: Record<string, unknown> | undefined
+): ToolLifecycleAction {
+  const normalized = toolName.toLowerCase()
+  const exact = CLAUDE_TOOL_ACTION_EXACT[normalized]
+  if (exact) return exact
+  if (normalized === 'bash' || normalized === 'shell' || normalized === 'terminal') {
+    return classifyBashCommandAction(claudeBashInputCommand(input)) ?? 'command'
+  }
+  if (normalized.includes('todo')) return 'todo'
+  if (normalized.includes('web')) return 'web'
+  if (normalized === 'task' || normalized.includes('agent')) return 'tool'
+  return actionFromItemType(classifyToolItemType(toolName))
 }
 
 export function isReadOnlyToolName(toolName: string): boolean {

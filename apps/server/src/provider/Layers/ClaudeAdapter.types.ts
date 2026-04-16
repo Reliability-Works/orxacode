@@ -29,6 +29,7 @@ import type {
   RuntimeContentStreamKind,
   ThreadId,
   ThreadTokenUsageSnapshot,
+  ToolLifecycleAction,
   TurnId,
   UserInputQuestion,
 } from '@orxa-code/contracts'
@@ -104,6 +105,7 @@ export interface ToolInFlight {
   readonly toolName: string
   readonly title: string
   readonly detail?: string
+  readonly action: ToolLifecycleAction
   readonly input: Record<string, unknown>
   readonly partialInputJson: string
   readonly lastEmittedInputFingerprint?: string

@@ -11,6 +11,7 @@ import {
   RuntimeSessionState,
   RuntimeThreadState,
   RuntimeTurnState,
+  ToolLifecycleAction,
   TrimmedNonEmptyStringSchema,
   UnknownRecordSchema,
 } from './providerRuntime.shared'
@@ -154,12 +155,21 @@ export const TurnDiffUpdatedPayload = Schema.Struct({
 })
 export type TurnDiffUpdatedPayload = typeof TurnDiffUpdatedPayload.Type
 
+export const ToolFilePatch = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  action: ToolLifecycleAction,
+  patchText: Schema.String,
+})
+export type ToolFilePatch = typeof ToolFilePatch.Type
+
 export const ItemLifecyclePayload = Schema.Struct({
   itemType: CanonicalItemType,
   status: Schema.optional(RuntimeItemStatus),
   title: Schema.optional(TrimmedNonEmptyStringSchema),
   detail: Schema.optional(TrimmedNonEmptyStringSchema),
+  action: Schema.optional(ToolLifecycleAction),
   data: Schema.optional(Schema.Unknown),
+  filePatches: Schema.optional(Schema.Array(ToolFilePatch)),
 })
 export type ItemLifecyclePayload = typeof ItemLifecyclePayload.Type
 

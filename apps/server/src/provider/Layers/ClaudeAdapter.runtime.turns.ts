@@ -139,6 +139,7 @@ export const completePendingTurnTools = Effect.fn('completePendingTurnTools')(fu
         status: status === 'completed' ? 'completed' : 'failed',
         title: tool.title,
         ...(tool.detail ? { detail: tool.detail } : {}),
+        action: tool.action,
         data: {
           toolName: tool.toolName,
           input: tool.input,

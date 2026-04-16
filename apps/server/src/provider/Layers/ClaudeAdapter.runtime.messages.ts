@@ -11,11 +11,14 @@
  * @module ClaudeAdapter.runtime.messages
  */
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ToolFilePatch } from '@orxa-code/contracts'
 import { Effect } from 'effect'
 
 import type { ClaudeAdapterDeps } from './ClaudeAdapter.deps.ts'
+import { buildClaudeToolFilePatches } from './ClaudeAdapter.filePatches.ts'
 import {
   asRuntimeItemId,
+  classifyToolAction,
   classifyToolItemType,
   summarizeToolRequest,
   titleForTool,
@@ -60,16 +63,19 @@ import {
 type ToolItemEventStatus = 'inProgress' | 'failed' | 'completed'
 
 function buildToolItemPayload(
-  tool: Pick<ToolInFlight, 'itemType' | 'title' | 'detail'>,
+  tool: Pick<ToolInFlight, 'itemType' | 'title' | 'detail' | 'action'>,
   status: ToolItemEventStatus,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  filePatches?: ReadonlyArray<ToolFilePatch>
 ) {
   return {
     itemType: tool.itemType,
     status,
     title: tool.title,
     ...(tool.detail ? { detail: tool.detail } : {}),
+    action: tool.action,
     data,
+    ...(filePatches && filePatches.length > 0 ? { filePatches } : {}),
   }
 }
 
@@ -166,11 +172,13 @@ export const emitInputJsonToolDelta = Effect.fn('emitInputJsonToolDelta')(functi
   const partialInputJson = tool.partialInputJson + event.delta.partial_json
   const parsedInput = tryParseJsonRecord(partialInputJson)
   const detail = parsedInput ? summarizeToolRequest(tool.toolName, parsedInput) : tool.detail
+  const action = parsedInput ? classifyToolAction(tool.toolName, parsedInput) : tool.action
   let nextTool: ToolInFlight = {
     ...tool,
     partialInputJson,
     ...(parsedInput ? { input: parsedInput } : {}),
     ...(detail ? { detail } : {}),
+    action,
   }
 
   const nextFingerprint =
@@ -238,6 +246,7 @@ export const handleStreamBlockStart = Effect.fn('handleStreamBlockStart')(functi
       ? (block.input as Record<string, unknown>)
       : {}
   const detail = summarizeToolRequest(toolName, toolInput)
+  const action = classifyToolAction(toolName, toolInput)
   const inputFingerprint =
     Object.keys(toolInput).length > 0 ? toolInputFingerprint(toolInput) : undefined
 
@@ -247,6 +256,7 @@ export const handleStreamBlockStart = Effect.fn('handleStreamBlockStart')(functi
     toolName,
     title: titleForTool(itemType),
     detail,
+    action,
     input: toolInput,
     partialInputJson: '',
     ...(inputFingerprint ? { lastEmittedInputFingerprint: inputFingerprint } : {}),
@@ -380,10 +390,14 @@ export const emitUserToolResultCompletion = Effect.fn('emitUserToolResultComplet
   }
 ) {
   const completedStamp = yield* deps.makeEventStamp()
+  const filePatches =
+    itemStatus === 'completed' && tool.itemType === 'file_change'
+      ? buildClaudeToolFilePatches(toolData.toolName, toolData.input, tool.action)
+      : []
   yield* deps.offerRuntimeEvent({
     type: 'item.completed',
     ...buildToolItemEventBase(context, completedStamp, tool.itemId),
-    payload: buildToolItemPayload(tool, itemStatus, toolData),
+    payload: buildToolItemPayload(tool, itemStatus, toolData, filePatches),
     raw: buildClaudeUserToolRaw(message),
   })
 })

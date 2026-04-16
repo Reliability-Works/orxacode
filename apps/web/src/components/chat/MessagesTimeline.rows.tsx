@@ -1,9 +1,12 @@
 import { type MessageId, type ThreadId, type TurnId } from '@orxa-code/contracts'
 import { type TimestampFormat } from '@orxa-code/contracts/settings'
-import { Undo2Icon } from 'lucide-react'
+import { ChevronDownIcon, Undo2Icon } from 'lucide-react'
+
+import { cn } from '~/lib/utils'
 
 import { formatElapsed } from '../../session-logic'
 import { stripPromotedTaskListFromMessage } from '../../session-logic.plan'
+import { synthesizeWorkGroupHeading } from '../../session-logic.workHeading'
 import { type TurnDiffSummary } from '../../types'
 import { summarizeTurnDiffStats } from '../../lib/turnDiffTree'
 import { formatTimestamp } from '../../timestampFormat'
@@ -19,8 +22,6 @@ import { ProposedPlanCard } from './ProposedPlanCard'
 import { UserMessageBody } from './MessagesTimeline.user'
 import { SimpleWorkEntryRow } from './MessagesTimeline.work'
 import { deriveDisplayedUserMessageState } from '~/lib/terminalContext'
-
-const MAX_VISIBLE_WORK_LOG_ENTRIES = 6
 
 export type SharedTimelineRowProps = {
   expandedWorkGroups: Record<string, boolean>
@@ -74,6 +75,7 @@ export function TimelineRowContent(props: TimelineRowContentProps) {
           row={row}
           expandedWorkGroups={props.expandedWorkGroups}
           onToggleWorkGroup={props.onToggleWorkGroup}
+          workspaceRoot={props.workspaceRoot}
         />
       )}
       {row.kind === 'message' && row.message.role === 'user' && (
@@ -117,47 +119,113 @@ export function TimelineRowContent(props: TimelineRowContentProps) {
   )
 }
 
+type WorkGroupedEntry = Extract<TimelineRow, { kind: 'work' }>['groupedEntries'][number]
+type FileChangeAction = 'edit' | 'create' | 'delete'
+
+function resolvePathAction(
+  entry: WorkGroupedEntry,
+  fallback: FileChangeAction,
+  filePath: string
+): FileChangeAction {
+  const perPath = entry.perPathActions?.[filePath]
+  if (perPath === 'edit' || perPath === 'create' || perPath === 'delete') return perPath
+  return fallback
+}
+
+function filePatchesForPath(
+  entry: WorkGroupedEntry,
+  filePath: string
+): WorkGroupedEntry['filePatches'] {
+  const patches = entry.filePatches
+  if (!patches || patches.length === 0) return undefined
+  const matching = patches.filter(patch => patch.path === filePath)
+  return matching.length > 0 ? matching : undefined
+}
+
+function splatFileChangeEntry(
+  entry: WorkGroupedEntry,
+  action: FileChangeAction
+): WorkGroupedEntry[] {
+  const files = entry.changedFiles
+  if (!files || files.length === 0) return [entry]
+  if (files.length === 1) {
+    const [filePath] = files
+    if (!filePath) return [entry]
+    const effective = resolvePathAction(entry, action, filePath)
+    return [effective !== action ? { ...entry, action: effective } : entry]
+  }
+  return files.map(filePath => {
+    const patches = filePatchesForPath(entry, filePath)
+    return {
+      ...entry,
+      id: `${entry.id}:${filePath}`,
+      changedFiles: [filePath],
+      action: resolvePathAction(entry, action, filePath),
+      ...(patches ? { filePatches: patches } : {}),
+    }
+  })
+}
+
+function splatEntriesByChangedFiles(
+  entries: ReadonlyArray<WorkGroupedEntry>
+): Extract<TimelineRow, { kind: 'work' }>['groupedEntries'] {
+  const splat: Extract<TimelineRow, { kind: 'work' }>['groupedEntries'] = []
+  for (const entry of entries) {
+    const action = entry.action
+    const isFileAction = action === 'edit' || action === 'create' || action === 'delete'
+    if (!isFileAction) {
+      splat.push(entry)
+      continue
+    }
+    splat.push(...splatFileChangeEntry(entry, action))
+  }
+  return splat
+}
+
 function WorkTimelineRow(props: {
   row: Extract<TimelineRow, { kind: 'work' }>
   expandedWorkGroups: Record<string, boolean>
   onToggleWorkGroup: (groupId: string) => void
+  workspaceRoot: string | undefined
 }) {
   const groupId = props.row.id
   const groupedEntries = props.row.groupedEntries
   const isExpanded = props.expandedWorkGroups[groupId] ?? false
-  const hasOverflow = groupedEntries.length > MAX_VISIBLE_WORK_LOG_ENTRIES
-  const visibleEntries =
-    hasOverflow && !isExpanded
-      ? groupedEntries.slice(-MAX_VISIBLE_WORK_LOG_ENTRIES)
-      : groupedEntries
-  const hiddenCount = groupedEntries.length - visibleEntries.length
-  const onlyToolEntries = groupedEntries.every(entry => entry.tone === 'tool')
-  const showHeader = hasOverflow || !onlyToolEntries
-  const groupLabel = onlyToolEntries ? 'Tool calls' : 'Work log'
+  const groupLabel = synthesizeWorkGroupHeading(groupedEntries)
+  const toggleLabel = isExpanded ? `Hide ${groupLabel}` : `Show ${groupLabel}`
+  const displayedEntries = splatEntriesByChangedFiles(groupedEntries)
 
   return (
-    <div className="rounded-xl border border-border/45 bg-card/25 px-2 py-1.5">
-      {showHeader && (
-        <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
-          <p className="text-micro uppercase tracking-wider text-muted-foreground/55">
-            {groupLabel} ({groupedEntries.length})
-          </p>
-          {hasOverflow && (
-            <button
-              type="button"
-              className="text-micro uppercase tracking-wider text-muted-foreground/55 transition-colors duration-150 hover:text-foreground/75"
-              onClick={() => props.onToggleWorkGroup(groupId)}
-            >
-              {isExpanded ? 'Show less' : `Show ${hiddenCount} more`}
-            </button>
+    <div className="px-0.5 py-0.5">
+      <button
+        type="button"
+        aria-expanded={isExpanded}
+        aria-label={toggleLabel}
+        className={cn(
+          'inline-flex items-center gap-1 text-muted-foreground/60 transition-colors duration-150 hover:text-foreground/80',
+          isExpanded ? 'mb-1.5' : ''
+        )}
+        onClick={() => props.onToggleWorkGroup(groupId)}
+      >
+        <span className="text-mini font-medium">{groupLabel}</span>
+        <ChevronDownIcon
+          className={cn(
+            'size-3.5 transition-transform duration-150',
+            isExpanded ? '' : '-rotate-90'
           )}
+        />
+      </button>
+      {isExpanded && (
+        <div className="space-y-0.5 pl-0.5">
+          {displayedEntries.map(workEntry => (
+            <SimpleWorkEntryRow
+              key={`work-row:${workEntry.id}`}
+              workEntry={workEntry}
+              workspaceRoot={props.workspaceRoot}
+            />
+          ))}
         </div>
       )}
-      <div className="space-y-0.5">
-        {visibleEntries.map(workEntry => (
-          <SimpleWorkEntryRow key={`work-row:${workEntry.id}`} workEntry={workEntry} />
-        ))}
-      </div>
     </div>
   )
 }

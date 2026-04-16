@@ -2,16 +2,25 @@ import {
   isToolLifecycleItemType,
   type OrchestrationLatestTurn,
   type OrchestrationThreadActivity,
+  type ToolFilePatch,
+  type ToolLifecycleAction,
   type ToolLifecycleItemType,
   type TurnId,
 } from '@orxa-code/contracts'
 import { asObjectRecord, asTrimmedString } from '@orxa-code/shared/records'
 
 import { isOpencodeStartupTelemetryActivity } from './opencodeStartupTelemetry'
+import { extractFilePatches } from './session-logic.filePatches'
+import { isFileActionKind, resolveEffectivePathAction } from './session-logic.perPathActions'
 import {
   deriveSubagentToolLifecycleCollapseKey,
   isVisibleSubagentToolStartActivity,
 } from './session-logic.subagentWorklog'
+import { extractWorkLogAction, fallbackWorkLogAction } from './session-logic.workAction'
+import {
+  extractChangedFilesFromCommand,
+  extractChangedFilesFromPayload,
+} from './session-logic.workLogChangedFiles'
 import type { ChatMessage, ProposedPlan, TurnDiffSummary } from './types'
 
 export interface WorkLogEntry {
@@ -25,6 +34,9 @@ export interface WorkLogEntry {
   toolTitle?: string
   itemType?: ToolLifecycleItemType
   requestKind?: 'command' | 'file-read' | 'file-change'
+  action?: ToolLifecycleAction
+  perPathActions?: Readonly<Record<string, ToolLifecycleAction>>
+  filePatches?: ReadonlyArray<ToolFilePatch>
 }
 
 interface DerivedWorkLogEntry extends WorkLogEntry {
@@ -32,25 +44,28 @@ interface DerivedWorkLogEntry extends WorkLogEntry {
   collapseKey?: string
 }
 
+function annotateEntriesWithPerPathActions(
+  entries: ReadonlyArray<DerivedWorkLogEntry>,
+  initialWrittenPaths: ReadonlySet<string>
+): DerivedWorkLogEntry[] {
+  const writtenPaths = new Set(initialWrittenPaths)
+  return entries.map(entry => {
+    const { action, changedFiles } = entry
+    if (!action || !isFileActionKind(action) || !changedFiles || changedFiles.length === 0) {
+      return entry
+    }
+    const perPathActions: Record<string, ToolLifecycleAction> = {}
+    for (const path of changedFiles) {
+      perPathActions[path] = resolveEffectivePathAction(action, path, writtenPaths)
+    }
+    return { ...entry, perPathActions }
+  })
+}
+
 export type TimelineEntry =
-  | {
-      id: string
-      kind: 'message'
-      createdAt: string
-      message: ChatMessage
-    }
-  | {
-      id: string
-      kind: 'proposed-plan'
-      createdAt: string
-      proposedPlan: ProposedPlan
-    }
-  | {
-      id: string
-      kind: 'work'
-      createdAt: string
-      entry: WorkLogEntry
-    }
+  | { id: string; kind: 'message'; createdAt: string; message: ChatMessage }
+  | { id: string; kind: 'proposed-plan'; createdAt: string; proposedPlan: ProposedPlan }
+  | { id: string; kind: 'work'; createdAt: string; entry: WorkLogEntry }
 
 function toWorkLogEntry(entry: DerivedWorkLogEntry): WorkLogEntry {
   return {
@@ -64,6 +79,9 @@ function toWorkLogEntry(entry: DerivedWorkLogEntry): WorkLogEntry {
     ...(entry.toolTitle !== undefined ? { toolTitle: entry.toolTitle } : {}),
     ...(entry.itemType !== undefined ? { itemType: entry.itemType } : {}),
     ...(entry.requestKind !== undefined ? { requestKind: entry.requestKind } : {}),
+    ...(entry.action !== undefined ? { action: entry.action } : {}),
+    ...(entry.perPathActions !== undefined ? { perPathActions: entry.perPathActions } : {}),
+    ...(entry.filePatches !== undefined ? { filePatches: entry.filePatches } : {}),
   }
 }
 
@@ -101,10 +119,13 @@ function extractToolCommand(payload: Record<string, unknown> | null): string | n
   const item = asObjectRecord(data?.item)
   const itemResult = asObjectRecord(item?.result)
   const itemInput = asObjectRecord(item?.input)
+  const dataInput = asObjectRecord(data?.input)
   const candidates = [
     normalizeCommandValue(item?.command),
     normalizeCommandValue(itemInput?.command),
     normalizeCommandValue(itemResult?.command),
+    normalizeCommandValue(dataInput?.command),
+    normalizeCommandValue(dataInput?.cmd),
     normalizeCommandValue(data?.command),
   ]
   return candidates.find(candidate => candidate !== null) ?? null
@@ -155,73 +176,11 @@ function extractWorkLogRequestKind(
   return requestKindFromRequestType(payload?.requestType)
 }
 
-function pushChangedFile(target: string[], seen: Set<string>, value: unknown) {
-  const normalized = asTrimmedString(value)
-  if (!normalized || seen.has(normalized)) {
-    return
-  }
-  seen.add(normalized)
-  target.push(normalized)
-}
-
-function collectChangedFiles(value: unknown, target: string[], seen: Set<string>, depth: number) {
-  if (depth > 4 || target.length >= 12) {
-    return
-  }
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      collectChangedFiles(entry, target, seen, depth + 1)
-      if (target.length >= 12) {
-        return
-      }
-    }
-    return
-  }
-
-  const record = asObjectRecord(value)
-  if (!record) {
-    return
-  }
-
-  pushChangedFile(target, seen, record.path)
-  pushChangedFile(target, seen, record.filePath)
-  pushChangedFile(target, seen, record.relativePath)
-  pushChangedFile(target, seen, record.filename)
-  pushChangedFile(target, seen, record.newPath)
-  pushChangedFile(target, seen, record.oldPath)
-
-  for (const nestedKey of [
-    'item',
-    'result',
-    'input',
-    'data',
-    'changes',
-    'files',
-    'edits',
-    'patch',
-    'patches',
-    'operations',
-  ]) {
-    if (!(nestedKey in record)) {
-      continue
-    }
-    collectChangedFiles(record[nestedKey], target, seen, depth + 1)
-    if (target.length >= 12) {
-      return
-    }
-  }
-}
-
 function extractChangedFiles(payload: Record<string, unknown> | null): string[] {
   const itemType = extractWorkLogItemType(payload)
   const requestKind = extractWorkLogRequestKind(payload)
-  if (itemType !== 'file_change' && requestKind !== 'file-change') {
-    return []
-  }
-  const changedFiles: string[] = []
-  const seen = new Set<string>()
-  collectChangedFiles(asObjectRecord(payload?.data), changedFiles, seen, 0)
-  return changedFiles
+  const isFileChange = itemType === 'file_change' || requestKind === 'file-change'
+  return extractChangedFilesFromPayload(payload, isFileChange)
 }
 
 function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): boolean {
@@ -296,6 +255,20 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (requestKind) {
     entry.requestKind = requestKind
   }
+  const action = extractWorkLogAction(payload) ?? fallbackWorkLogAction(itemType, title, command)
+  if (action) {
+    entry.action = action === 'create' ? 'edit' : action
+  }
+  if (!entry.changedFiles && command && isFileActionKind(action)) {
+    const commandFiles = extractChangedFilesFromCommand(command)
+    if (commandFiles.length > 0) {
+      entry.changedFiles = commandFiles
+    }
+  }
+  const filePatches = extractFilePatches(payload)
+  if (filePatches.length > 0) {
+    entry.filePatches = filePatches
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry, payload)
   if (collapseKey) {
     entry.collapseKey = collapseKey
@@ -333,52 +306,42 @@ function collapseDerivedWorkLogEntries(
   return collapsed
 }
 
+const MERGE_PREFER_NEXT_KEYS = [
+  'detail',
+  'command',
+  'toolTitle',
+  'itemType',
+  'requestKind',
+  'action',
+  'collapseKey',
+] as const satisfies ReadonlyArray<keyof DerivedWorkLogEntry>
+
+function assignPreferredField<K extends (typeof MERGE_PREFER_NEXT_KEYS)[number]>(
+  target: DerivedWorkLogEntry,
+  previous: DerivedWorkLogEntry,
+  next: DerivedWorkLogEntry,
+  key: K
+) {
+  const value = next[key] ?? previous[key]
+  if (value) {
+    ;(target as unknown as Record<string, unknown>)[key] = value
+  }
+}
+
 function mergeDerivedWorkLogEntries(
   previous: DerivedWorkLogEntry,
   next: DerivedWorkLogEntry
 ): DerivedWorkLogEntry {
+  const merged: DerivedWorkLogEntry = { ...previous, ...next }
+  for (const key of MERGE_PREFER_NEXT_KEYS) {
+    assignPreferredField(merged, previous, next, key)
+  }
   const changedFiles = [
     ...new Set([...(previous.changedFiles ?? []), ...(next.changedFiles ?? [])]),
   ]
-  const merged: DerivedWorkLogEntry = {
-    ...previous,
-    ...next,
-  }
-
-  const detail = next.detail ?? previous.detail
-  if (detail) {
-    merged.detail = detail
-  }
-
-  const command = next.command ?? previous.command
-  if (command) {
-    merged.command = command
-  }
-
-  if (changedFiles.length > 0) {
-    merged.changedFiles = changedFiles
-  }
-
-  const toolTitle = next.toolTitle ?? previous.toolTitle
-  if (toolTitle) {
-    merged.toolTitle = toolTitle
-  }
-
-  const itemType = next.itemType ?? previous.itemType
-  if (itemType) {
-    merged.itemType = itemType
-  }
-
-  const requestKind = next.requestKind ?? previous.requestKind
-  if (requestKind) {
-    merged.requestKind = requestKind
-  }
-
-  const collapseKey = next.collapseKey ?? previous.collapseKey
-  if (collapseKey) {
-    merged.collapseKey = collapseKey
-  }
-
+  if (changedFiles.length > 0) merged.changedFiles = changedFiles
+  const mergedFilePatches = [...(previous.filePatches ?? []), ...(next.filePatches ?? [])]
+  if (mergedFilePatches.length > 0) merged.filePatches = mergedFilePatches
   return merged
 }
 
@@ -427,23 +390,51 @@ function compareActivityLifecycleRank(kind: string): number {
   return 1
 }
 
+function collectPriorTurnWrittenPaths(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined
+): Set<string> {
+  const writtenPaths = new Set<string>()
+  if (!latestTurnId) return writtenPaths
+  for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
+    if (activity.turnId === latestTurnId) break
+    if (activity.kind !== 'tool.completed' || isPlanBoundaryToolActivity(activity)) continue
+    const { action, changedFiles } = toDerivedWorkLogEntry(activity)
+    if (!action || !isFileActionKind(action) || !changedFiles?.length) continue
+    for (const path of changedFiles) {
+      if (action === 'delete') writtenPaths.delete(path)
+      else writtenPaths.add(path)
+    }
+  }
+  return writtenPaths
+}
+
+function isDisplayableWorkActivity(
+  activity: OrchestrationThreadActivity,
+  latestTurnId: TurnId | undefined
+): boolean {
+  if (latestTurnId && activity.turnId !== latestTurnId) return false
+  if (activity.kind === 'tool.started' && !isVisibleSubagentToolStartActivity(activity))
+    return false
+  if (activity.kind === 'task.started' || activity.kind === 'task.completed') return false
+  if (activity.kind === 'context-window.updated') return false
+  if (activity.summary === 'Checkpoint captured') return false
+  if (isOpencodeStartupTelemetryActivity(activity)) return false
+  if (isPlanBoundaryToolActivity(activity)) return false
+  return true
+}
+
 export function deriveWorkLogEntries(
   activities: ReadonlyArray<OrchestrationThreadActivity>,
   latestTurnId: TurnId | undefined
 ): WorkLogEntry[] {
+  const priorWrittenPaths = collectPriorTurnWrittenPaths(activities, latestTurnId)
   const entries = [...activities]
     .toSorted(compareActivitiesByOrder)
-    .filter(activity => (latestTurnId ? activity.turnId === latestTurnId : true))
-    .filter(
-      activity => activity.kind !== 'tool.started' || isVisibleSubagentToolStartActivity(activity)
-    )
-    .filter(activity => activity.kind !== 'task.started' && activity.kind !== 'task.completed')
-    .filter(activity => activity.kind !== 'context-window.updated')
-    .filter(activity => activity.summary !== 'Checkpoint captured')
-    .filter(activity => !isOpencodeStartupTelemetryActivity(activity))
-    .filter(activity => !isPlanBoundaryToolActivity(activity))
+    .filter(activity => isDisplayableWorkActivity(activity, latestTurnId))
     .map(toDerivedWorkLogEntry)
-  return collapseDerivedWorkLogEntries(entries).map(toWorkLogEntry)
+  const collapsed = collapseDerivedWorkLogEntries(entries)
+  return annotateEntriesWithPerPathActions(collapsed, priorWrittenPaths).map(toWorkLogEntry)
 }
 
 export function deriveTimelineEntries(

@@ -421,8 +421,13 @@ function buildToolLifecyclePayload(
   return {
     itemType: event.payload.itemType,
     ...(input?.status ? { status: input.status } : {}),
+    ...(event.payload.title ? { title: event.payload.title } : {}),
+    ...(event.payload.action ? { action: event.payload.action } : {}),
     ...(event.payload.detail ? { detail: truncateDetail(event.payload.detail) } : {}),
     ...(event.payload.data !== undefined ? { data: event.payload.data } : {}),
+    ...(event.payload.filePatches && event.payload.filePatches.length > 0
+      ? { filePatches: event.payload.filePatches }
+      : {}),
   }
 }
 

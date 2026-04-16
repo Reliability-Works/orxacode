@@ -13,6 +13,9 @@ import {
   ThreadId,
   TurnId,
 } from '@orxa-code/contracts'
+
+import { classifyCodexAction } from './CodexRuntimeEventMapper.actions.ts'
+import { buildCodexFileChangePatches } from './CodexRuntimeEventMapper.filePatches.ts'
 import { Schema } from 'effect'
 
 import { resolveModelContextWindow } from '@orxa-code/shared/modelContextWindow'
@@ -514,6 +517,12 @@ export function mapItemLifecycle(
         ? 'completed'
         : undefined
 
+  const action = classifyCodexAction(itemType, source, payload)
+  const filePatches =
+    lifecycle === 'item.completed' && itemType === 'file_change'
+      ? buildCodexFileChangePatches(source, payload)
+      : []
+
   return {
     ...runtimeEventBase(event, canonicalThreadId),
     type: lifecycle,
@@ -522,7 +531,9 @@ export function mapItemLifecycle(
       ...(status ? { status } : {}),
       ...(itemTitle(itemType) ? { title: itemTitle(itemType) } : {}),
       ...(itemDetail(source, payload ?? {}) ? { detail: itemDetail(source, payload ?? {}) } : {}),
+      ...(action ? { action } : {}),
       ...(event.payload !== undefined ? { data: event.payload } : {}),
+      ...(filePatches.length > 0 ? { filePatches } : {}),
     },
   }
 }

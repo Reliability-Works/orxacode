@@ -1,4 +1,4 @@
-import type { ToolLifecycleItemType } from '@orxa-code/contracts'
+import type { ToolLifecycleAction, ToolLifecycleItemType } from '@orxa-code/contracts'
 
 import type { OpencodePart } from './OpencodeAdapter.types.ts'
 
@@ -151,6 +151,71 @@ export function toolLifecycleItemTypeForTool(tool: string): ToolLifecycleItemTyp
       return 'web_search'
     default:
       return 'mcp_tool_call'
+  }
+}
+
+function applyPatchAction(part: ToolPartSummary): ToolLifecycleAction {
+  const files = metadataForPart(part)?.files
+  if (!Array.isArray(files) || files.length === 0) return 'edit'
+  const statuses = files
+    .map(fileValue => {
+      const file = asRecord(fileValue)
+      if (!file) return undefined
+      return (
+        asTrimmedString(file.status) ??
+        asTrimmedString(file.changeType) ??
+        asTrimmedString(file.operation) ??
+        asTrimmedString(file.type)
+      )
+    })
+    .filter((value): value is string => value !== undefined)
+    .map(value => value.toLowerCase())
+  if (statuses.length === 0) return 'edit'
+  const hasCreate = statuses.some(value =>
+    ['add', 'added', 'create', 'created', 'new'].includes(value)
+  )
+  const hasDelete = statuses.some(value =>
+    ['delete', 'deleted', 'remove', 'removed'].includes(value)
+  )
+  const hasUpdate = statuses.some(value =>
+    ['update', 'updated', 'modify', 'modified', 'edit', 'edited', 'change', 'changed'].includes(
+      value
+    )
+  )
+  if (hasCreate && !hasDelete && !hasUpdate) return 'create'
+  if (hasDelete && !hasCreate && !hasUpdate) return 'delete'
+  return 'edit'
+}
+
+export function toolActionForPart(part: ToolPartSummary): ToolLifecycleAction {
+  switch (part.tool) {
+    case 'bash':
+      return 'command'
+    case 'read':
+      return 'read'
+    case 'list':
+    case 'glob':
+      return 'list'
+    case 'grep':
+      return 'search'
+    case 'webfetch':
+    case 'websearch':
+    case 'codesearch':
+      return 'web'
+    case 'edit':
+      return 'edit'
+    case 'write':
+      return 'create'
+    case 'apply_patch':
+      return applyPatchAction(part)
+    case 'task':
+    case 'skill':
+    case 'question':
+      return 'tool'
+    case 'todowrite':
+      return 'todo'
+    default:
+      return 'tool'
   }
 }
 

@@ -1,9 +1,13 @@
 import {
   type RuntimeItemId,
   type ProviderRuntimeEvent,
+  type ToolFilePatch,
+  type ToolLifecycleAction,
   type ToolLifecycleItemType,
 } from '@orxa-code/contracts'
+import { buildOpencodeToolFilePatches } from './OpencodeAdapter.filePatches.ts'
 import {
+  toolActionForPart,
   toolDataForPart,
   toolDetailForPart,
   toolLifecycleItemTypeForTool,
@@ -44,7 +48,9 @@ function buildPartItemEvent(input: {
   readonly status: 'inProgress' | 'completed' | 'failed' | 'declined'
   readonly title?: string
   readonly detail: string | undefined
+  readonly action?: ToolLifecycleAction
   readonly data: Record<string, unknown> | undefined
+  readonly filePatches?: ReadonlyArray<ToolFilePatch>
   readonly raw: ReturnType<typeof opencodeRawEvent>
 }): ProviderRuntimeEvent | null {
   if (
@@ -64,7 +70,11 @@ function buildPartItemEvent(input: {
       status: input.status,
       ...(input.title ? { title: input.title } : {}),
       ...(input.detail ? { detail: input.detail } : {}),
+      ...(input.action ? { action: input.action } : {}),
       ...(input.data ? { data: input.data } : {}),
+      ...(input.filePatches && input.filePatches.length > 0
+        ? { filePatches: input.filePatches }
+        : {}),
     },
     raw: input.raw,
   }
@@ -79,6 +89,7 @@ function toolPartEvents(
   const itemType = toolLifecycleItemTypeForTool(part.tool)
   const title = toolTitleForPart(part)
   const detail = toolDetailForPart(part)
+  const action = toolActionForPart(part)
   const data = toolDataForPart(part)
   const raw = opencodeRawEvent(event)
   const base = {
@@ -89,6 +100,7 @@ function toolPartEvents(
     itemType,
     title,
     detail,
+    action,
     data,
     raw,
   } as const
@@ -107,10 +119,17 @@ function toolPartEvents(
       })
       return startedEvent ? [startedEvent, ...(updateEvent ? [updateEvent] : [])] : []
     }
-    case 'completed':
+    case 'completed': {
+      const filePatches = buildOpencodeToolFilePatches(part)
       return [
-        buildPartItemEvent({ ...base, eventType: 'item.completed', status: 'completed' }),
+        buildPartItemEvent({
+          ...base,
+          eventType: 'item.completed',
+          status: 'completed',
+          ...(filePatches.length > 0 ? { filePatches } : {}),
+        }),
       ].filter((event): event is ProviderRuntimeEvent => event !== null)
+    }
     case 'error':
       return [
         buildPartItemEvent({
@@ -142,6 +161,7 @@ function subtaskPartEvents(
       status: 'inProgress',
       title: part.agent,
       detail: part.description || part.prompt,
+      action: 'tool',
       data: {
         item: {
           agent_label: part.agent,

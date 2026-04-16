@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import {
   BotIcon,
   CheckIcon,
@@ -15,7 +15,9 @@ import {
 
 import { normalizeCompactToolLabel } from './MessagesTimeline.logic'
 import { type TimelineWorkEntry } from './MessagesTimeline.model'
+import { ToolCallInlineDiff } from './ToolCallInlineDiff'
 import { cn } from '~/lib/utils'
+import { relativizeWorkspacePathsInText, toWorkspaceRelativePath } from '~/lib/workspacePath'
 
 function workToneIcon(tone: TimelineWorkEntry['tone']): {
   icon: LucideIcon
@@ -34,17 +36,58 @@ function workToneClass(tone: 'thinking' | 'tool' | 'info' | 'error'): string {
   return 'text-muted-foreground/40'
 }
 
+function extractFromJsonDetail(body: string): string | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const record = parsed as Record<string, unknown>
+  const stringKey = (value: unknown): string | null => (typeof value === 'string' ? value : null)
+  return (
+    stringKey(record.file_path) ??
+    stringKey(record.filePath) ??
+    stringKey(record.path) ??
+    stringKey(record.pattern) ??
+    stringKey(record.command) ??
+    stringKey(record.url) ??
+    stringKey(record.query) ??
+    (Array.isArray(record.todos) ? `${record.todos.length} todos` : null)
+  )
+}
+
+function prettifyDetail(detail: string): string {
+  const trimmed = detail.trim()
+  const match = /^(?<name>[A-Za-z][\w-]*):\s*(?<body>[\s\S]+)$/u.exec(trimmed)
+  const bodyFromMatch = match?.groups?.body?.trim()
+  const body = bodyFromMatch && bodyFromMatch.length > 0 ? bodyFromMatch : trimmed
+  if (body.startsWith('{') || body.startsWith('[')) {
+    const extracted = extractFromJsonDetail(body)
+    if (extracted) return extracted
+  }
+  return body
+}
+
 function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, 'detail' | 'command' | 'changedFiles'>
+  workEntry: Pick<TimelineWorkEntry, 'detail' | 'command' | 'changedFiles'>,
+  workspaceRoot: string | undefined
 ) {
-  if (workEntry.command) return workEntry.command
-  if (workEntry.detail) return workEntry.detail
-  if ((workEntry.changedFiles?.length ?? 0) === 0) return null
-  const [firstPath] = workEntry.changedFiles ?? []
-  if (!firstPath) return null
-  return workEntry.changedFiles!.length === 1
-    ? firstPath
-    : `${firstPath} +${workEntry.changedFiles!.length - 1} more`
+  if ((workEntry.changedFiles?.length ?? 0) > 0) {
+    const [firstPath] = workEntry.changedFiles ?? []
+    if (firstPath) {
+      const displayPath = toWorkspaceRelativePath(firstPath, workspaceRoot)
+      return workEntry.changedFiles!.length === 1
+        ? displayPath
+        : `${displayPath} +${workEntry.changedFiles!.length - 1} more`
+    }
+  }
+  if (workEntry.command) return relativizeWorkspacePathsInText(workEntry.command, workspaceRoot)
+  if (workEntry.detail) {
+    return relativizeWorkspacePathsInText(prettifyDetail(workEntry.detail), workspaceRoot)
+  }
+  return null
 }
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
@@ -73,11 +116,25 @@ function capitalizePhrase(value: string): string {
   return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`
 }
 
+const ACTION_ROW_HEADINGS: Record<NonNullable<TimelineWorkEntry['action']>, string> = {
+  read: 'Read',
+  edit: 'Edit',
+  create: 'Create',
+  delete: 'Delete',
+  search: 'Explore',
+  list: 'List',
+  command: 'Run',
+  web: 'Web search',
+  todo: 'Todo',
+  tool: 'Tool',
+}
+
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
-  if (!workEntry.toolTitle) {
-    return capitalizePhrase(normalizeCompactToolLabel(workEntry.label))
+  if (workEntry.action) return ACTION_ROW_HEADINGS[workEntry.action]
+  if (workEntry.toolTitle) {
+    return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle))
   }
-  return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle))
+  return capitalizePhrase(normalizeCompactToolLabel(workEntry.label))
 }
 
 function renderWorkEntryIcon(workEntry: TimelineWorkEntry, className: string) {
@@ -85,16 +142,67 @@ function renderWorkEntryIcon(workEntry: TimelineWorkEntry, className: string) {
   return <Icon className={className} />
 }
 
+function WorkEntryPreview(props: {
+  preview: string
+  canExpandDiff: boolean
+  isDiffOpen: boolean
+  onToggleDiff: () => void
+}) {
+  if (!props.canExpandDiff) {
+    return <span className="text-muted-foreground/55"> - {props.preview}</span>
+  }
+  return (
+    <>
+      <span className="text-muted-foreground/55"> - </span>
+      <button
+        type="button"
+        className="cursor-pointer text-muted-foreground/70 underline-offset-2 transition-colors duration-150 hover:text-foreground/90 hover:underline"
+        onClick={props.onToggleDiff}
+        aria-expanded={props.isDiffOpen}
+      >
+        {props.preview}
+      </button>
+    </>
+  )
+}
+
+function ChangedFileBadges(props: {
+  workEntry: TimelineWorkEntry
+  workspaceRoot: string | undefined
+}) {
+  const { workEntry, workspaceRoot } = props
+  const count = workEntry.changedFiles?.length ?? 0
+  return (
+    <div className="mt-1 flex flex-wrap gap-1 pl-6">
+      {workEntry.changedFiles?.slice(0, 4).map(filePath => (
+        <span
+          key={`${workEntry.id}:${filePath}`}
+          className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
+          title={filePath}
+        >
+          {toWorkspaceRelativePath(filePath, workspaceRoot)}
+        </span>
+      ))}
+      {count > 4 && <span className="px-1 text-[10px] text-muted-foreground/55">+{count - 4}</span>}
+    </div>
+  )
+}
+
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   workEntry: TimelineWorkEntry
+  workspaceRoot: string | undefined
 }) {
-  const { workEntry } = props
+  const { workEntry, workspaceRoot } = props
   const iconConfig = workToneIcon(workEntry.tone)
   const heading = toolWorkEntryHeading(workEntry)
-  const preview = workEntryPreview(workEntry)
+  const preview = workEntryPreview(workEntry, workspaceRoot)
   const displayText = preview ? `${heading} - ${preview}` : heading
-  const hasChangedFiles = (workEntry.changedFiles?.length ?? 0) > 0
-  const previewIsChangedFiles = hasChangedFiles && !workEntry.command && !workEntry.detail
+  const changedFileCount = workEntry.changedFiles?.length ?? 0
+  const hasMultipleChangedFiles = changedFileCount > 1
+  const previewIsChangedFiles = changedFileCount > 0 && !workEntry.command && !workEntry.detail
+  const filePatch = workEntry.filePatches?.[0]
+  const canExpandDiff = Boolean(filePatch && preview && changedFileCount === 1)
+  const [isDiffOpen, setIsDiffOpen] = useState(false)
 
   return (
     <div className="rounded-lg px-1 py-1">
@@ -116,27 +224,24 @@ export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             <span className={cn('text-foreground/80', workToneClass(workEntry.tone))}>
               {heading}
             </span>
-            {preview && <span className="text-muted-foreground/55"> - {preview}</span>}
+            {preview && (
+              <WorkEntryPreview
+                preview={preview}
+                canExpandDiff={canExpandDiff}
+                isDiffOpen={isDiffOpen}
+                onToggleDiff={() => setIsDiffOpen(open => !open)}
+              />
+            )}
           </p>
         </div>
       </div>
-      {hasChangedFiles && !previewIsChangedFiles && (
-        <div className="mt-1 flex flex-wrap gap-1 pl-6">
-          {workEntry.changedFiles?.slice(0, 4).map(filePath => (
-            <span
-              key={`${workEntry.id}:${filePath}`}
-              className="rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75"
-              title={filePath}
-            >
-              {filePath}
-            </span>
-          ))}
-          {(workEntry.changedFiles?.length ?? 0) > 4 && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
-              +{(workEntry.changedFiles?.length ?? 0) - 4}
-            </span>
-          )}
+      {canExpandDiff && isDiffOpen && filePatch && (
+        <div className="pl-7 pr-1">
+          <ToolCallInlineDiff patchText={filePatch.patchText} filePath={filePatch.path} />
         </div>
+      )}
+      {hasMultipleChangedFiles && !previewIsChangedFiles && (
+        <ChangedFileBadges workEntry={workEntry} workspaceRoot={workspaceRoot} />
       )}
     </div>
   )
