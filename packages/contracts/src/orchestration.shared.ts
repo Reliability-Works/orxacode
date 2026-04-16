@@ -69,6 +69,7 @@ export const threadMetaUpdatableFields = {
   branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   worktreePath: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   gitRoot: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  parentBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 } as const
 
 export const threadTurnStartOptionsFields = {

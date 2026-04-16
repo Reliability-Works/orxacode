@@ -332,9 +332,14 @@ const gitRootWithDefault = Schema.NullOr(TrimmedNonEmptyString).pipe(
   Schema.withDecodingDefault(() => null as string | null)
 )
 
+const parentBranchWithDefault = Schema.NullOr(TrimmedNonEmptyString).pipe(
+  Schema.withDecodingDefault(() => null as string | null)
+)
+
 export const threadCoreFields = {
   ...threadIdentityFields,
   gitRoot: gitRootWithDefault,
+  parentBranch: parentBranchWithDefault,
   runtimeMode: RuntimeMode,
   interactionMode: threadInteractionModeField,
   handoff: Schema.NullOr(OrchestrationThreadHandoff).pipe(Schema.withDecodingDefault(() => null)),
@@ -345,6 +350,7 @@ export const threadCoreFields = {
 
 export const threadCreateCommandFields = {
   ...threadIdentityFields,
+  parentBranch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   runtimeMode: RuntimeMode,
   interactionMode: threadInteractionModeField,
   handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),
@@ -355,6 +361,7 @@ export const threadCreateCommandFields = {
 export const threadCreatedPayloadFields = {
   ...threadIdentityFields,
   gitRoot: gitRootWithDefault,
+  parentBranch: parentBranchWithDefault,
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(() => DEFAULT_RUNTIME_MODE)),
   interactionMode: threadInteractionModeField,
   handoff: Schema.optional(Schema.NullOr(OrchestrationThreadHandoff)),

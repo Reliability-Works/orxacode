@@ -4,14 +4,11 @@ import {
   GitBranchIcon,
   MessageSquareIcon,
   PanelLeftOpenIcon,
-  TerminalSquareIcon,
 } from 'lucide-react'
-import type React from 'react'
 
 import { cn } from '~/lib/utils'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '../ui/menu'
 import { Toggle } from '../ui/toggle'
-import { ChatHeaderToggleControl } from './ChatHeaderToggleControl'
 
 export function ChatHeaderMobileViewToggle(props: {
   activeView: 'threads' | 'chat' | 'files' | 'git'
@@ -68,27 +65,5 @@ export function ChatHeaderMobileViewToggle(props: {
         </MenuItem>
       </MenuPopup>
     </Menu>
-  )
-}
-
-export function ChatHeaderMobileActions(props: {
-  terminalAvailable: boolean
-  terminalOpen: boolean
-  terminalToggleLabel: string
-  onToggleTerminal: () => void
-}) {
-  return (
-    <div className="flex shrink-0 items-center justify-end gap-3">
-      <ChatHeaderToggleControl
-        pressed={props.terminalOpen}
-        onToggle={props.onToggleTerminal}
-        disabled={!props.terminalAvailable}
-        ariaLabel="Toggle terminal drawer"
-        icon={TerminalSquareIcon}
-        tooltipLabel={props.terminalToggleLabel}
-        className="min-w-10 gap-2 px-2.5"
-        iconClassName="size-4"
-      />
-    </div>
   )
 }

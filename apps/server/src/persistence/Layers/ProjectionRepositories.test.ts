@@ -87,6 +87,7 @@ projectionRepositoriesLayer('Projection thread repository', it => {
         branch: null,
         worktreePath: null,
         gitRoot: null,
+        parentBranch: null,
         handoff: null,
         parentLink: null,
         latestTurnId: null,

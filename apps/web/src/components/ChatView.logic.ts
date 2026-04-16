@@ -37,6 +37,7 @@ export function buildLocalDraftThread(
     latestTurn: null,
     branch: draftThread.branch,
     worktreePath: draftThread.worktreePath,
+    parentBranch: null,
     gitRoot: null,
     handoff: null,
     parentLink: null,

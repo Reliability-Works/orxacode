@@ -65,7 +65,7 @@ export function BranchToolbarBranchSelector(props: BranchToolbarBranchSelectorPr
         className="text-muted-foreground/70 hover:text-foreground/80"
         disabled={(s.branchesQuery.isLoading && s.branches.length === 0) || s.isBranchActionPending}
       >
-        <span className="max-w-[240px] truncate">{triggerLabel}</span>
+        <span className="hidden max-w-[240px] truncate sm:inline">{triggerLabel}</span>
         <ChevronDownIcon />
       </ComboboxTrigger>
       <ComboboxPopup align="end" side="top" className="w-80">

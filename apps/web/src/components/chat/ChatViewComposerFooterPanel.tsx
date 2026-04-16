@@ -12,7 +12,6 @@ import { ProviderModelPicker } from './ProviderModelPicker'
 import { CompactComposerControlsMenu } from './CompactComposerControlsMenu'
 import { ComposerPrimaryActions } from './ComposerPrimaryActions'
 import { ComposerPendingApprovalActions } from './ComposerPendingApprovalActions'
-import { ContextWindowMeter } from './ContextWindowMeter'
 import { ChatViewComposerControlsExpanded } from './ChatViewComposerControlsExpanded'
 import { useChatViewCtx } from './ChatViewContext'
 
@@ -90,7 +89,6 @@ function ComposerFooterActions() {
       }
       className="flex shrink-0 flex-nowrap items-center justify-end gap-2.5 md:gap-2"
     >
-      {ad.activeContextWindow ? <ContextWindowMeter usage={ad.activeContextWindow} /> : null}
       {ad.activeRateLimits ? (
         <span className="text-muted-foreground/70 text-xs">{ad.activeRateLimits.summary}</span>
       ) : null}

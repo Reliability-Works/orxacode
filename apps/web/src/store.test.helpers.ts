@@ -77,6 +77,7 @@ export function makeReadModelThread(overrides: Partial<OrchestrationReadModel['t
     branch: null,
     worktreePath: null,
     gitRoot: null,
+    parentBranch: null,
     ...overrides,
     handoff: overrides.handoff ?? null,
     parentLink: overrides.parentLink ?? null,

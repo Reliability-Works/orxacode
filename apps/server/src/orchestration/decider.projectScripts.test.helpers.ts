@@ -65,6 +65,7 @@ export async function createProjectScriptsReadModel(now: string) {
         branch: null,
         worktreePath: null,
         gitRoot: null,
+        parentBranch: null,
         createdAt: now,
         updatedAt: now,
       },

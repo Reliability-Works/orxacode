@@ -93,6 +93,7 @@ export interface WsRpcClient {
     readonly listBranches: RpcUnaryMethod<typeof WS_METHODS.gitListBranches>
     readonly createWorktree: RpcUnaryMethod<typeof WS_METHODS.gitCreateWorktree>
     readonly removeWorktree: RpcUnaryMethod<typeof WS_METHODS.gitRemoveWorktree>
+    readonly pushWorktreeToParent: RpcUnaryMethod<typeof WS_METHODS.gitPushWorktreeToParent>
     readonly createBranch: RpcUnaryMethod<typeof WS_METHODS.gitCreateBranch>
     readonly checkout: RpcUnaryMethod<typeof WS_METHODS.gitCheckout>
     readonly init: RpcUnaryMethod<typeof WS_METHODS.gitInit>
@@ -252,6 +253,8 @@ function createGitApi(transport: WsTransport): WsRpcClient['git'] {
       transport.request(client => client[WS_METHODS.gitCreateWorktree](input)),
     removeWorktree: input =>
       transport.request(client => client[WS_METHODS.gitRemoveWorktree](input)),
+    pushWorktreeToParent: input =>
+      transport.request(client => client[WS_METHODS.gitPushWorktreeToParent](input)),
     createBranch: input => transport.request(client => client[WS_METHODS.gitCreateBranch](input)),
     checkout: input => transport.request(client => client[WS_METHODS.gitCheckout](input)),
     init: input => transport.request(client => client[WS_METHODS.gitInit](input)),

@@ -25,6 +25,17 @@ function buildCreateWorktree(deps: GitCoreInternalDeps): GitCoreShape['createWor
       fallbackErrorMessage: 'git worktree add failed',
     })
 
+    if (input.newBranch) {
+      yield* deps
+        .executeGit(
+          'GitCore.createWorktree.setMergeBase',
+          worktreePath,
+          ['config', `branch.${input.newBranch}.gh-merge-base`, input.branch],
+          { allowNonZeroExit: true }
+        )
+        .pipe(Effect.ignore)
+    }
+
     return {
       worktree: {
         path: worktreePath,

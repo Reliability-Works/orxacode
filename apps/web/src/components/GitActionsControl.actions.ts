@@ -258,12 +258,17 @@ function usePendingDefaultBranchActionHandlers(
 function useQuickActionRunner(
   state: ReturnType<typeof useGitActionsState>,
   runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>,
-  openExistingPr: () => Promise<void>
+  openExistingPr: () => Promise<void>,
+  pushWorktreeIntoParent: (parentBranch: string) => Promise<void>
 ) {
   const { quickAction, pullMutation, threadToastData } = state
   return useCallback(() => {
     if (quickAction.kind === 'open_pr') {
       void openExistingPr()
+      return
+    }
+    if (quickAction.kind === 'push_to_parent' && quickAction.parentBranch) {
+      void pushWorktreeIntoParent(quickAction.parentBranch)
       return
     }
     if (quickAction.kind === 'run_pull') {
@@ -297,13 +302,79 @@ function useQuickActionRunner(
       return
     }
     if (quickAction.action) void runGitActionWithToast({ action: quickAction.action })
-  }, [openExistingPr, pullMutation, quickAction, runGitActionWithToast, threadToastData])
+  }, [
+    openExistingPr,
+    pullMutation,
+    pushWorktreeIntoParent,
+    quickAction,
+    runGitActionWithToast,
+    threadToastData,
+  ])
+}
+
+function usePushWorktreeIntoParent(state: ReturnType<typeof useGitActionsState>) {
+  const { threadToastData, worktreeParent } = state
+  return useCallback(
+    async (parentBranch: string) => {
+      const api = readNativeApi()
+      if (!api || !worktreeParent) {
+        toastManager.add({
+          type: 'error',
+          title: 'Push into parent is unavailable.',
+          data: threadToastData,
+        })
+        return
+      }
+      const toastId = toastManager.add({
+        type: 'loading',
+        title: `Pushing into ${parentBranch}...`,
+        timeout: 0,
+        data: threadToastData,
+      })
+      try {
+        const result = await api.git.pushWorktreeToParent({
+          cwd: worktreeParent.worktreePath,
+          sourceBranch: 'HEAD',
+          parentBranch,
+        })
+        if (result.ok) {
+          toastManager.update(toastId, {
+            type: 'success',
+            title: `Pushed into ${parentBranch}`,
+            data: { ...threadToastData, dismissAfterVisibleMs: 6_000 },
+          })
+          return
+        }
+        const title =
+          result.reason === 'non_fast_forward'
+            ? `${parentBranch} moved ahead`
+            : result.reason === 'protected'
+              ? `${parentBranch} is protected`
+              : 'Push into parent failed'
+        toastManager.update(toastId, {
+          type: 'error',
+          title,
+          description: result.message,
+          data: threadToastData,
+        })
+      } catch (err) {
+        toastManager.update(toastId, {
+          type: 'error',
+          title: 'Push into parent failed',
+          description: err instanceof Error ? err.message : 'An error occurred.',
+          data: threadToastData,
+        })
+      }
+    },
+    [threadToastData, worktreeParent]
+  )
 }
 
 function useOpenDialogForMenuItem(
   state: ReturnType<typeof useGitActionsState>,
   runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>,
-  openExistingPr: () => Promise<void>
+  openExistingPr: () => Promise<void>,
+  pushWorktreeIntoParent: (parentBranch: string) => Promise<void>
 ) {
   const { setIsCommitDialogOpen, setExcludedFiles, setIsEditingFiles } = state
   return useCallback(
@@ -311,6 +382,10 @@ function useOpenDialogForMenuItem(
       if (item.disabled) return
       if (item.kind === 'open_pr') {
         void openExistingPr()
+        return
+      }
+      if (item.kind === 'push_to_parent' && item.parentBranch) {
+        void pushWorktreeIntoParent(item.parentBranch)
         return
       }
       if (item.dialogAction === 'push') {
@@ -327,6 +402,7 @@ function useOpenDialogForMenuItem(
     },
     [
       openExistingPr,
+      pushWorktreeIntoParent,
       runGitActionWithToast,
       setIsCommitDialogOpen,
       setExcludedFiles,
@@ -383,12 +459,14 @@ function useRunCommitDialogAction(
 function useDialogActionHandlers(
   state: ReturnType<typeof useGitActionsState>,
   runGitActionWithToast: (input: RunGitActionWithToastInput) => Promise<void>,
-  openExistingPr: () => Promise<void>
+  openExistingPr: () => Promise<void>,
+  pushWorktreeIntoParent: (parentBranch: string) => Promise<void>
 ) {
   const openDialogForMenuItem = useOpenDialogForMenuItem(
     state,
     runGitActionWithToast,
-    openExistingPr
+    openExistingPr,
+    pushWorktreeIntoParent
   )
   const runDialogAction = useRunCommitDialogAction(state, runGitActionWithToast, {
     featureBranch: false,
@@ -404,12 +482,24 @@ function useDialogActionHandlers(
 export function useGitActions(gitCwd: string | null, state: ReturnType<typeof useGitActionsState>) {
   const runGitActionWithToast = useRunGitActionWithToast(gitCwd, state)
   const openExistingPr = useOpenExistingPr(state)
+  const pushWorktreeIntoParent = usePushWorktreeIntoParent(state)
   const pending = usePendingDefaultBranchActionHandlers(state, runGitActionWithToast)
-  const runQuickAction = useQuickActionRunner(state, runGitActionWithToast, openExistingPr)
-  const dialogHandlers = useDialogActionHandlers(state, runGitActionWithToast, openExistingPr)
+  const runQuickAction = useQuickActionRunner(
+    state,
+    runGitActionWithToast,
+    openExistingPr,
+    pushWorktreeIntoParent
+  )
+  const dialogHandlers = useDialogActionHandlers(
+    state,
+    runGitActionWithToast,
+    openExistingPr,
+    pushWorktreeIntoParent
+  )
   return {
     runGitActionWithToast,
     openExistingPr,
+    pushWorktreeIntoParent,
     ...pending,
     runQuickAction,
     ...dialogHandlers,

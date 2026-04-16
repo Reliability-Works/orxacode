@@ -1,4 +1,10 @@
-import { ChevronDownIcon, CloudUploadIcon, GitCommitIcon, InfoIcon } from 'lucide-react'
+import {
+  ChevronDownIcon,
+  CloudUploadIcon,
+  GitCommitIcon,
+  InfoIcon,
+  TriangleAlertIcon,
+} from 'lucide-react'
 import { GitHubIcon } from './Icons'
 import type {
   GitActionIconName,
@@ -23,6 +29,7 @@ export function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickActio
   const iconClassName = 'size-3.5'
   if (quickAction.kind === 'open_pr') return <GitHubIcon className={iconClassName} />
   if (quickAction.kind === 'run_pull') return <InfoIcon className={iconClassName} />
+  if (quickAction.kind === 'push_to_parent') return <CloudUploadIcon className={iconClassName} />
   if (quickAction.kind === 'run_action') {
     if (quickAction.action === 'commit') return <GitCommitIcon className={iconClassName} />
     if (quickAction.action === 'commit_push') return <CloudUploadIcon className={iconClassName} />
@@ -30,6 +37,15 @@ export function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickActio
   }
   if (quickAction.label === 'Commit') return <GitCommitIcon className={iconClassName} />
   return <InfoIcon className={iconClassName} />
+}
+
+function TrialWarningIcon({ className }: { className?: string }) {
+  return (
+    <TriangleAlertIcon
+      aria-label="Trial feature"
+      className={className ?? 'size-3.5 text-destructive'}
+    />
+  )
 }
 
 interface GitQuickActionButtonProps {
@@ -45,6 +61,9 @@ export function GitQuickActionButton({
   isGitActionRunning,
   onRun,
 }: GitQuickActionButtonProps) {
+  const trialIcon = quickAction.trial ? (
+    <TrialWarningIcon className="ml-1 size-3.5 text-destructive" />
+  ) : null
   if (quickActionDisabledReason) {
     return (
       <Popover>
@@ -60,9 +79,13 @@ export function GitQuickActionButton({
           }
         >
           <GitQuickActionIcon quickAction={quickAction} />
-          <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+          <span
+            className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5 @3xl/header-actions:block @3xl/header-actions:max-w-[10rem] @3xl/header-actions:truncate"
+            title={quickAction.label}
+          >
             {quickAction.label}
           </span>
+          {trialIcon}
         </PopoverTrigger>
         <PopoverPopup tooltipStyle side="bottom" align="start">
           {quickActionDisabledReason}
@@ -78,9 +101,13 @@ export function GitQuickActionButton({
       onClick={onRun}
     >
       <GitQuickActionIcon quickAction={quickAction} />
-      <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+      <span
+        className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5 @3xl/header-actions:block @3xl/header-actions:max-w-[10rem] @3xl/header-actions:truncate"
+        title={quickAction.label}
+      >
         {quickAction.label}
       </span>
+      {trialIcon}
     </Button>
   )
 }
@@ -136,6 +163,47 @@ interface GitActionMenuProps {
   onOpenDialogForMenuItem: (item: GitActionMenuItem) => void
 }
 
+function GitActionMenuItemRow({
+  item,
+  disabledReason,
+  onOpenDialogForMenuItem,
+}: {
+  item: GitActionMenuItem
+  disabledReason: string | null
+  onOpenDialogForMenuItem: (item: GitActionMenuItem) => void
+}) {
+  const trialBadge = item.trial ? (
+    <TrialWarningIcon className="ml-2 size-3.5 text-destructive" />
+  ) : null
+  if (item.disabled && disabledReason) {
+    return (
+      <Popover>
+        <PopoverTrigger
+          openOnHover
+          nativeButton={false}
+          render={<span className="block w-max cursor-not-allowed" />}
+        >
+          <MenuItem className="w-full" disabled>
+            <GitActionItemIcon icon={item.icon} />
+            {item.label}
+            {trialBadge}
+          </MenuItem>
+        </PopoverTrigger>
+        <PopoverPopup tooltipStyle side="left" align="center">
+          {disabledReason}
+        </PopoverPopup>
+      </Popover>
+    )
+  }
+  return (
+    <MenuItem disabled={item.disabled} onClick={() => onOpenDialogForMenuItem(item)}>
+      <GitActionItemIcon icon={item.icon} />
+      {item.label}
+      {trialBadge}
+    </MenuItem>
+  )
+}
+
 export function GitActionMenu({
   gitActionMenuItems,
   gitStatusForActions,
@@ -160,43 +228,19 @@ export function GitActionMenu({
         <ChevronDownIcon aria-hidden="true" className="size-4" />
       </MenuTrigger>
       <MenuPopup align="end" className="w-full">
-        {gitActionMenuItems.map(item => {
-          const disabledReason = getMenuActionDisabledReason({
-            item,
-            gitStatus: gitStatusForActions,
-            isBusy: isGitActionRunning,
-            hasOriginRemote,
-          })
-          if (item.disabled && disabledReason) {
-            return (
-              <Popover key={`${item.id}-${item.label}`}>
-                <PopoverTrigger
-                  openOnHover
-                  nativeButton={false}
-                  render={<span className="block w-max cursor-not-allowed" />}
-                >
-                  <MenuItem className="w-full" disabled>
-                    <GitActionItemIcon icon={item.icon} />
-                    {item.label}
-                  </MenuItem>
-                </PopoverTrigger>
-                <PopoverPopup tooltipStyle side="left" align="center">
-                  {disabledReason}
-                </PopoverPopup>
-              </Popover>
-            )
-          }
-          return (
-            <MenuItem
-              key={`${item.id}-${item.label}`}
-              disabled={item.disabled}
-              onClick={() => onOpenDialogForMenuItem(item)}
-            >
-              <GitActionItemIcon icon={item.icon} />
-              {item.label}
-            </MenuItem>
-          )
-        })}
+        {gitActionMenuItems.map(item => (
+          <GitActionMenuItemRow
+            key={`${item.id}-${item.label}`}
+            item={item}
+            disabledReason={getMenuActionDisabledReason({
+              item,
+              gitStatus: gitStatusForActions,
+              isBusy: isGitActionRunning,
+              hasOriginRemote,
+            })}
+            onOpenDialogForMenuItem={onOpenDialogForMenuItem}
+          />
+        ))}
         <GitMenuStatusMessages
           gitStatusForActions={gitStatusForActions}
           gitStatusError={gitStatusError}

@@ -51,6 +51,51 @@ it.effect('creates worktree with new branch from current branch', () =>
   )
 )
 
+it.effect('createWorktree writes gh-merge-base config pointing at the parent branch', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      const { initialBranch } = yield* initRepoWithCommit(tmp)
+      const wtPath = path.join(tmp, 'wt-merge-base')
+      yield* (yield* GitCore).createWorktree({
+        cwd: tmp,
+        branch: initialBranch,
+        newBranch: 'feature-merge-base',
+        path: wtPath,
+      })
+      const mergeBase = yield* git(wtPath, [
+        'config',
+        '--get',
+        'branch.feature-merge-base.gh-merge-base',
+      ])
+      expect(mergeBase).toBe(initialBranch)
+      yield* (yield* GitCore).removeWorktree({ cwd: tmp, path: wtPath, force: true })
+    })
+  )
+)
+
+it.effect('createWorktree without newBranch does not write gh-merge-base', () =>
+  withGitTestLayer(
+    Effect.gen(function* () {
+      const tmp = yield* makeTmpDir()
+      const { initialBranch } = yield* initRepoWithCommit(tmp)
+      yield* (yield* GitCore).createBranch({ cwd: tmp, branch: 'existing-feature' })
+      const wtPath = path.join(tmp, 'wt-existing')
+      yield* (yield* GitCore).createWorktree({
+        cwd: tmp,
+        branch: 'existing-feature',
+        path: wtPath,
+      })
+      const getConfigResult = yield* Effect.result(
+        git(wtPath, ['config', '--get', 'branch.existing-feature.gh-merge-base'])
+      )
+      expect(getConfigResult._tag).toBe('Failure')
+      yield* (yield* GitCore).removeWorktree({ cwd: tmp, path: wtPath, force: true })
+      void initialBranch
+    })
+  )
+)
+
 it.effect('fetches a GitHub pull request ref into a local branch without checkout', () =>
   withGitTestLayer(
     Effect.gen(function* () {

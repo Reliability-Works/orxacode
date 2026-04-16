@@ -236,6 +236,7 @@ export function mapThread(thread: OrchestrationThread, environmentId?: string): 
     pendingSourceProposedPlan: thread.latestTurn?.sourceProposedPlan,
     branch: thread.branch,
     worktreePath: thread.worktreePath,
+    parentBranch: thread.parentBranch ?? null,
     gitRoot: thread.gitRoot,
     handoff: thread.handoff,
     parentLink: thread.parentLink,

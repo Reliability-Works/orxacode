@@ -85,21 +85,42 @@ function ChatHeaderSubagentBanner() {
   )
 }
 
+function ChatViewHeaderBanners() {
+  const c = useChatViewCtx()
+  const { td, setThreadError } = c
+  const { activeThread, activeProviderStatus } = td
+  if (!activeThread) return null
+  return (
+    <>
+      <ChatHeaderSubagentBanner />
+      <ChatHeaderHandoffBanner />
+      <ProviderStatusBanner status={activeProviderStatus} />
+      <ThreadErrorBanner
+        error={activeThread.error}
+        onDismiss={() => setThreadError(activeThread.id, null)}
+      />
+    </>
+  )
+}
+
 export function ChatViewHeaderPanel() {
   const c = useChatViewCtx()
-  const { td, store, cd, gitCwd, setThreadError } = c
-  const { activeThread, activeProject, activeProviderStatus } = td
-  const { keybindings, availableEditors, terminalState } = store
+  const { td, store, cd, gitCwd } = c
+  const { activeThread, activeProject } = td
+  const { keybindings, availableEditors } = store
   const { state } = useSidebar()
   const isMobile = useIsMobile()
   const zen = useZenMode()
   const collapsed = state === 'collapsed' || zen.enabled
   const diffStats = useHeaderDiffStats(c.panelDiffQuery.data, c.ls.gitDiffScope)
   if (!activeThread) return null
+  const worktreeParent =
+    activeThread.worktreePath && activeThread.parentBranch
+      ? { worktreePath: activeThread.worktreePath, parentBranch: activeThread.parentBranch }
+      : null
   const lastInvokedScriptId = activeProject
     ? (c.ls.lastInvokedScriptByProjectId[activeProject.id] ?? null)
     : null
-  const browserAvailable = Boolean(activeProject) && isElectron
   return (
     <>
       <header
@@ -123,10 +144,8 @@ export function ChatViewHeaderPanel() {
           preferredScriptId={lastInvokedScriptId}
           keybindings={keybindings}
           availableEditors={availableEditors}
-          terminalAvailable={activeProject !== undefined}
-          terminalOpen={terminalState.terminalOpen}
-          terminalToggleShortcutLabel={cd.terminalToggleShortcutLabel}
           gitCwd={gitCwd}
+          worktreeParent={worktreeParent}
           auxSidebarMode={c.ls.auxSidebarMode}
           diffStats={diffStats}
           onRunProjectScript={script => {
@@ -135,12 +154,11 @@ export function ChatViewHeaderPanel() {
           onAddProjectScript={c.saveProjectScript}
           onUpdateProjectScript={c.updateProjectScript}
           onDeleteProjectScript={c.deleteProjectScript}
-          onToggleTerminal={c.toggleTerminalVisibility}
           onToggleGitSidebar={c.toggleGitSidebar}
           onToggleFilesSidebar={c.toggleFilesSidebar}
           onToggleBrowserSidebar={c.toggleBrowserSidebar}
           onSelectChatView={c.closeAuxSidebar}
-          browserAvailable={browserAvailable}
+          browserAvailable={Boolean(activeProject) && isElectron}
           handoffAction={<HandoffMenuAction />}
           threadActionsMenu={
             <ZenGate id="chat.threadActions">
@@ -149,13 +167,7 @@ export function ChatViewHeaderPanel() {
           }
         />
       </header>
-      <ChatHeaderSubagentBanner />
-      <ChatHeaderHandoffBanner />
-      <ProviderStatusBanner status={activeProviderStatus} />
-      <ThreadErrorBanner
-        error={activeThread.error}
-        onDismiss={() => setThreadError(activeThread.id, null)}
-      />
+      <ChatViewHeaderBanners />
     </>
   )
 }

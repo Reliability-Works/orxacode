@@ -117,6 +117,7 @@ async function prepareWorktreeForTurn(
       threadId: params.threadIdForSend,
       branch: result.worktree.branch,
       worktreePath: result.worktree.path,
+      parentBranch: params.baseBranchForWorktree,
     })
     params.setStoreThreadBranch(
       params.threadIdForSend,
@@ -154,6 +155,7 @@ async function createLocalDraftThreadIfNeeded(
     interactionMode: params.interactionMode,
     branch: nextBranch,
     worktreePath: nextWorktreePath,
+    parentBranch: nextBranch ? params.baseBranchForWorktree : null,
     gitRoot: params.thread.gitRoot ?? null,
     createdAt: params.thread.createdAt,
   })

@@ -289,6 +289,7 @@ export const expectedHydratedThreads: OrchestrationReadModel['threads'] = [
     branch: null,
     worktreePath: null,
     gitRoot: null,
+    parentBranch: null,
     handoff: null,
     parentLink: null,
     latestTurn: {

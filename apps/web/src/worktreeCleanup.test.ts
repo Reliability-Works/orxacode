@@ -27,6 +27,7 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     latestTurn: null,
     branch: null,
     worktreePath: null,
+    parentBranch: null,
     gitRoot: null,
     ...overrides,
     handoff: overrides.handoff ?? null,

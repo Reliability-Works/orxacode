@@ -27,6 +27,7 @@ it('applies thread.created events', async () => {
       branch: null,
       worktreePath: null,
       gitRoot: null,
+      parentBranch: null,
       handoff: null,
       parentLink: null,
       latestTurn: null,

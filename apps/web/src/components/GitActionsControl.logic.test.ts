@@ -335,6 +335,98 @@ describe('when: branch has diverged from upstream', () => {
   })
 })
 
+describe('when: worktreeParent is null (non-worktree thread)', () => {
+  it('does not append a push_to_parent item', () => {
+    const items = buildMenuItems(status({ aheadCount: 2, pr: null }), false, true, null)
+    assert.equal(
+      items.find(item => item.id === 'push_to_parent'),
+      undefined
+    )
+  })
+})
+
+describe('when: worktreeParent is present and branch is clean + ahead', () => {
+  it('appends an enabled push_to_parent item with parent branch label and trial badge', () => {
+    const items = buildMenuItems(status({ aheadCount: 2, pr: null }), false, true, {
+      worktreePath: '/tmp/worktree',
+      parentBranch: 'main',
+    })
+    const pushToParent = items.find(item => item.id === 'push_to_parent')
+    assert.deepEqual(pushToParent, {
+      id: 'push_to_parent',
+      label: 'Push into main',
+      disabled: false,
+      icon: 'push',
+      kind: 'push_to_parent',
+      parentBranch: 'main',
+      trial: true,
+    })
+  })
+})
+
+describe('when: worktreeParent is present but there are no local commits ahead', () => {
+  it('disables push_to_parent', () => {
+    const items = buildMenuItems(status({ aheadCount: 0, pr: null }), false, true, {
+      worktreePath: '/tmp/worktree',
+      parentBranch: 'main',
+    })
+    const pushToParent = items.find(item => item.id === 'push_to_parent')
+    assert.equal(pushToParent?.disabled, true)
+  })
+})
+
+describe('when: worktreeParent is present but working tree is dirty', () => {
+  it('disables push_to_parent', () => {
+    const items = buildMenuItems(
+      status({ aheadCount: 2, hasWorkingTreeChanges: true, pr: null }),
+      false,
+      true,
+      { worktreePath: '/tmp/worktree', parentBranch: 'develop' }
+    )
+    const pushToParent = items.find(item => item.id === 'push_to_parent')
+    assert.equal(pushToParent?.disabled, true)
+    assert.equal(pushToParent?.label, 'Push into develop')
+  })
+})
+
+describe('when: worktreeParent is present but branch is behind parent', () => {
+  it('disables push_to_parent', () => {
+    const items = buildMenuItems(status({ aheadCount: 2, behindCount: 1, pr: null }), false, true, {
+      worktreePath: '/tmp/worktree',
+      parentBranch: 'main',
+    })
+    const pushToParent = items.find(item => item.id === 'push_to_parent')
+    assert.equal(pushToParent?.disabled, true)
+  })
+})
+
+describe('when: worktreeParent is present and branch is clean + ahead', () => {
+  it('resolveQuickAction returns push_to_parent instead of push & create PR', () => {
+    const quick = resolveQuickAction(status({ aheadCount: 2, pr: null }), false, false, true, {
+      worktreePath: '/tmp/worktree',
+      parentBranch: 'main',
+    })
+    assert.deepInclude(quick, {
+      kind: 'push_to_parent',
+      label: 'Push into main',
+      disabled: false,
+      parentBranch: 'main',
+      trial: true,
+    })
+  })
+
+  it('resolveQuickAction stays on Commit when working tree is dirty on worktree', () => {
+    const quick = resolveQuickAction(
+      status({ aheadCount: 2, hasWorkingTreeChanges: true }),
+      false,
+      false,
+      true,
+      { worktreePath: '/tmp/worktree', parentBranch: 'main' }
+    )
+    assert.deepInclude(quick, { kind: 'run_action', action: 'commit', label: 'Commit' })
+  })
+})
+
 describe('requiresDefaultBranchConfirmation', () => {
   it('requires confirmation for push actions on default branch', () => {
     assert.isFalse(requiresDefaultBranchConfirmation('commit', true))

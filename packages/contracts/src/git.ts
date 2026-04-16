@@ -111,6 +111,30 @@ export const GitRemoveWorktreeInput = Schema.Struct({
 })
 export type GitRemoveWorktreeInput = typeof GitRemoveWorktreeInput.Type
 
+export const GitPushWorktreeToParentInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  sourceBranch: TrimmedNonEmptyStringSchema,
+  parentBranch: TrimmedNonEmptyStringSchema,
+})
+export type GitPushWorktreeToParentInput = typeof GitPushWorktreeToParentInput.Type
+
+const GitPushWorktreeToParentFailureReason = Schema.Literals([
+  'non_fast_forward',
+  'protected',
+  'other',
+])
+export type GitPushWorktreeToParentFailureReason = typeof GitPushWorktreeToParentFailureReason.Type
+
+export const GitPushWorktreeToParentResult = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true) }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    reason: GitPushWorktreeToParentFailureReason,
+    message: Schema.String,
+  }),
+])
+export type GitPushWorktreeToParentResult = typeof GitPushWorktreeToParentResult.Type
+
 export const GitCreateBranchInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
   branch: TrimmedNonEmptyStringSchema,

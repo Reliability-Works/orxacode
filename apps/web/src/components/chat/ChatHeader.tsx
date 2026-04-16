@@ -6,20 +6,19 @@ import {
 } from '@orxa-code/contracts'
 import { memo } from 'react'
 import GitActionsControl from '../GitActionsControl'
-import { FocusIcon, GitBranchIcon, MinimizeIcon } from 'lucide-react'
+import type { WorktreeParentContext } from '../GitActionsControl.logic'
+import { GitBranchIcon } from 'lucide-react'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '../ui/tooltip'
 import type { NewProjectScriptInput } from '../ProjectScriptsControl'
 import { Toggle } from '../ui/toggle'
-import { Button } from '../ui/button'
 import { OpenInPicker } from './OpenInPicker'
 import type { ChatAuxSidebarMode } from './useChatViewLocalState'
 import { cn } from '~/lib/utils'
 import type { ReactNode } from 'react'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSidebar } from '../ui/sidebar.shared'
-import { useZenMode } from '../../hooks/useZenMode'
 import { ZenGate } from '../ZenGate'
-import { ChatHeaderMobileActions, ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
+import { ChatHeaderMobileViewToggle } from './ChatHeaderMobileActions'
 import { ChatHeaderViewsGroup } from './ChatHeaderViewsGroup'
 
 interface ProjectActionProps {
@@ -31,6 +30,7 @@ interface ProjectActionProps {
   availableEditors: ReadonlyArray<EditorId>
   openInCwd: string | null
   gitCwd: string | null
+  worktreeParent: WorktreeParentContext | null
   onRunProjectScript: (script: ProjectScript) => void
   onAddProjectScript: (input: NewProjectScriptInput) => Promise<void>
   onUpdateProjectScript: (scriptId: string, input: NewProjectScriptInput) => Promise<void>
@@ -47,12 +47,8 @@ interface ChatHeaderProps extends ProjectActionProps {
   activeThreadTitle: string
   isGitRepo: boolean
   browserAvailable: boolean
-  terminalAvailable: boolean
-  terminalOpen: boolean
-  terminalToggleShortcutLabel: string | null
   auxSidebarMode: ChatAuxSidebarMode
   diffStats: DiffStats | null
-  onToggleTerminal: () => void
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
@@ -97,6 +93,7 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
     availableEditors,
     openInCwd,
     gitCwd,
+    worktreeParent,
     handoffAction,
   } = props
 
@@ -113,42 +110,15 @@ function ChatHeaderProjectActions(props: ProjectActionProps) {
       )}
       {activeProjectName && (
         <ZenGate id="chat.gitActions">
-          <GitActionsControl gitCwd={gitCwd} activeThreadId={activeThreadId} />
+          <GitActionsControl
+            gitCwd={gitCwd}
+            activeThreadId={activeThreadId}
+            worktreeParent={worktreeParent}
+          />
         </ZenGate>
       )}
       {handoffAction ? <ZenGate id="chat.handoff">{handoffAction}</ZenGate> : null}
     </>
-  )
-}
-
-function ZenToggleButton() {
-  const zen = useZenMode()
-  const label = zen.enabled ? 'Exit zen mode' : 'Enter zen mode'
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() => zen.toggleZen()}
-            aria-label={label}
-            className="shrink-0 gap-1.5"
-          >
-            {zen.enabled ? (
-              <>
-                <MinimizeIcon className="size-3" />
-                Unzen
-              </>
-            ) : (
-              <FocusIcon className="size-3" />
-            )}
-          </Button>
-        }
-      />
-      <TooltipPopup side="bottom">{label} (⇧⌘Z)</TooltipPopup>
-    </Tooltip>
   )
 }
 
@@ -216,13 +186,9 @@ function ChatHeaderSidebarActions(props: {
 
 interface ChatHeaderActionsProps extends ProjectActionProps {
   browserAvailable: boolean
-  terminalAvailable: boolean
-  terminalOpen: boolean
-  terminalToggleLabel: string
   auxSidebarMode: ChatAuxSidebarMode
   diffStats: DiffStats | null
   isGitRepo: boolean
-  onToggleTerminal: () => void
   onToggleGitSidebar: () => void
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
@@ -237,12 +203,8 @@ function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
           auxSidebarMode={props.auxSidebarMode}
           filesAvailable={props.openInCwd !== null}
           browserAvailable={props.browserAvailable}
-          terminalAvailable={props.terminalAvailable}
-          terminalOpen={props.terminalOpen}
-          terminalToggleLabel={props.terminalToggleLabel}
           onToggleFilesSidebar={props.onToggleFilesSidebar}
           onToggleBrowserSidebar={props.onToggleBrowserSidebar}
-          onToggleTerminal={props.onToggleTerminal}
         />
       </ZenGate>
       <ChatHeaderProjectActions
@@ -254,6 +216,7 @@ function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
         availableEditors={props.availableEditors}
         openInCwd={props.openInCwd}
         gitCwd={props.gitCwd}
+        worktreeParent={props.worktreeParent}
         onRunProjectScript={props.onRunProjectScript}
         onAddProjectScript={props.onAddProjectScript}
         onUpdateProjectScript={props.onUpdateProjectScript}
@@ -266,25 +229,13 @@ function ChatHeaderDesktopActions(props: ChatHeaderActionsProps) {
         isGitRepo={props.isGitRepo}
         diffStats={props.diffStats}
       />
-      <ZenToggleButton />
     </div>
   )
 }
 
 function ChatHeaderActions(props: ChatHeaderActionsProps) {
   const isMobile = useIsMobile()
-
-  if (isMobile) {
-    return (
-      <ChatHeaderMobileActions
-        terminalAvailable={props.terminalAvailable}
-        terminalOpen={props.terminalOpen}
-        terminalToggleLabel={props.terminalToggleLabel}
-        onToggleTerminal={props.onToggleTerminal}
-      />
-    )
-  }
-
+  if (isMobile) return null
   return <ChatHeaderDesktopActions {...props} />
 }
 
@@ -319,10 +270,7 @@ function useMobileHeaderNavigationControl(params: {
   )
 }
 
-function buildChatHeaderActionsProps(
-  props: ChatHeaderProps,
-  terminalToggleLabel: string
-): ChatHeaderActionsProps {
+function buildChatHeaderActionsProps(props: ChatHeaderProps): ChatHeaderActionsProps {
   return {
     activeThreadId: props.activeThreadId,
     activeProjectName: props.activeProjectName,
@@ -332,10 +280,8 @@ function buildChatHeaderActionsProps(
     availableEditors: props.availableEditors,
     openInCwd: props.openInCwd,
     gitCwd: props.gitCwd,
+    worktreeParent: props.worktreeParent,
     browserAvailable: props.browserAvailable,
-    terminalAvailable: props.terminalAvailable,
-    terminalOpen: props.terminalOpen,
-    terminalToggleLabel,
     auxSidebarMode: props.auxSidebarMode,
     diffStats: props.diffStats,
     isGitRepo: props.isGitRepo,
@@ -343,7 +289,6 @@ function buildChatHeaderActionsProps(
     onAddProjectScript: props.onAddProjectScript,
     onUpdateProjectScript: props.onUpdateProjectScript,
     onDeleteProjectScript: props.onDeleteProjectScript,
-    onToggleTerminal: props.onToggleTerminal,
     onToggleGitSidebar: props.onToggleGitSidebar,
     onToggleFilesSidebar: props.onToggleFilesSidebar,
     onToggleBrowserSidebar: props.onToggleBrowserSidebar,
@@ -376,24 +321,7 @@ function ChatHeaderBody(props: {
   )
 }
 
-function resolveTerminalToggleLabel(
-  terminalAvailable: boolean,
-  terminalToggleShortcutLabel: string | null
-) {
-  if (!terminalAvailable) {
-    return 'Terminal is unavailable until this thread has an active project.'
-  }
-  if (terminalToggleShortcutLabel) {
-    return `Toggle terminal drawer (${terminalToggleShortcutLabel})`
-  }
-  return 'Toggle terminal drawer'
-}
-
 export const ChatHeader = memo(function ChatHeader(props: ChatHeaderProps) {
-  const terminalToggleLabel = resolveTerminalToggleLabel(
-    props.terminalAvailable,
-    props.terminalToggleShortcutLabel
-  )
   const isMobile = useIsMobile()
   const mobileNavigationControl = useMobileHeaderNavigationControl({
     isMobile,
@@ -404,7 +332,7 @@ export const ChatHeader = memo(function ChatHeader(props: ChatHeaderProps) {
     onToggleFilesSidebar: props.onToggleFilesSidebar,
     onToggleGitSidebar: props.onToggleGitSidebar,
   })
-  const actionProps = buildChatHeaderActionsProps(props, terminalToggleLabel)
+  const actionProps = buildChatHeaderActionsProps(props)
   const actionCluster = <ChatHeaderActions {...actionProps} />
 
   return (

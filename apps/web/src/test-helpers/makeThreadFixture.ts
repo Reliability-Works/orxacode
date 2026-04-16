@@ -41,6 +41,7 @@ export function createMakeThread(defaults: MakeThreadDefaults) {
       latestTurn: null,
       branch: null,
       worktreePath: null,
+      parentBranch: null,
       gitRoot: null,
       handoff: null,
       parentLink: null,

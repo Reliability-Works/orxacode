@@ -23,6 +23,7 @@ import {
   type GitPreparePullRequestThreadInput,
   type GitPullInput,
   type GitPullRequestRefInput,
+  type GitPushWorktreeToParentInput,
   type GitRemoveWorktreeInput,
   type GitRestoreAllUnstagedInput,
   type GitRestorePathInput,
@@ -169,6 +170,8 @@ export const createGitMethods = ({ git, gitHubCli, gitManager }: GitMethodDepend
   [WS_METHODS.gitListBranches]: (input: GitListBranchesInput) => git.listBranches(input),
   [WS_METHODS.gitCreateWorktree]: (input: GitCreateWorktreeInput) => git.createWorktree(input),
   [WS_METHODS.gitRemoveWorktree]: (input: GitRemoveWorktreeInput) => git.removeWorktree(input),
+  [WS_METHODS.gitPushWorktreeToParent]: (input: GitPushWorktreeToParentInput) =>
+    git.pushWorktreeToParent(input),
   [WS_METHODS.gitCreateBranch]: (input: GitCreateBranchInput) => git.createBranch(input),
   [WS_METHODS.gitCheckout]: (input: GitCheckoutInput) => Effect.scoped(git.checkoutBranch(input)),
   [WS_METHODS.gitInit]: (input: GitInitInput) => git.initRepo(input),

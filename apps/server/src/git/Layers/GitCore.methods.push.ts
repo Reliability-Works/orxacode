@@ -1,5 +1,7 @@
 import { Effect } from 'effect'
 
+import type { GitPushWorktreeToParentResult } from '@orxa-code/contracts'
+
 import type { GitCoreShape } from '../Services/GitCore.ts'
 
 import type { GitCoreInternalDeps } from './GitCore.deps.ts'
@@ -157,6 +159,58 @@ function buildPushCurrentBranch(deps: GitCoreInternalDeps): GitCoreShape['pushCu
   })
 }
 
+function classifyPushFailure(stderr: string): GitPushWorktreeToParentResult {
+  const lowered = stderr.toLowerCase()
+  if (lowered.includes('non-fast-forward') || lowered.includes('(fetch first)')) {
+    return { ok: false, reason: 'non_fast_forward', message: stderr }
+  }
+  if (
+    lowered.includes('protected branch') ||
+    lowered.includes('gh006') ||
+    lowered.includes('gh013')
+  ) {
+    return { ok: false, reason: 'protected', message: stderr }
+  }
+  return { ok: false, reason: 'other', message: stderr }
+}
+
+function buildPushWorktreeToParent(
+  deps: GitCoreInternalDeps
+): GitCoreShape['pushWorktreeToParent'] {
+  return Effect.fn('pushWorktreeToParent')(function* (input) {
+    const remoteName = yield* deps.resolvePushRemoteName(input.cwd, input.sourceBranch)
+    if (!remoteName) {
+      return yield* createGitCommandError(
+        'GitCore.pushWorktreeToParent',
+        input.cwd,
+        ['push'],
+        'Cannot push because no git remote is configured for this repository.'
+      )
+    }
+
+    yield* deps.runGit('GitCore.pushWorktreeToParent.fetchParent', input.cwd, [
+      'fetch',
+      '--quiet',
+      '--no-tags',
+      remoteName,
+      input.parentBranch,
+    ])
+
+    const pushResult = yield* deps.executeGit(
+      'GitCore.pushWorktreeToParent.push',
+      input.cwd,
+      ['push', remoteName, `${input.sourceBranch}:refs/heads/${input.parentBranch}`],
+      { allowNonZeroExit: true, timeoutMs: 30_000 }
+    )
+
+    if (pushResult.code === 0) {
+      return { ok: true } as const
+    }
+    const stderr = pushResult.stderr.trim() || pushResult.stdout.trim() || 'git push failed'
+    return classifyPushFailure(stderr)
+  })
+}
+
 function buildPullCurrentBranch(deps: GitCoreInternalDeps): GitCoreShape['pullCurrentBranch'] {
   return Effect.fn('pullCurrentBranch')(function* (cwd) {
     const details = yield* deps.statusDetails(cwd)
@@ -243,11 +297,13 @@ function buildReadRangeContext(deps: GitCoreInternalDeps): GitCoreShape['readRan
 
 export function makePushMethods(deps: GitCoreInternalDeps): {
   pushCurrentBranch: GitCoreShape['pushCurrentBranch']
+  pushWorktreeToParent: GitCoreShape['pushWorktreeToParent']
   pullCurrentBranch: GitCoreShape['pullCurrentBranch']
   readRangeContext: GitCoreShape['readRangeContext']
 } {
   return {
     pushCurrentBranch: buildPushCurrentBranch(deps),
+    pushWorktreeToParent: buildPushWorktreeToParent(deps),
     pullCurrentBranch: buildPullCurrentBranch(deps),
     readRangeContext: buildReadRangeContext(deps),
   }

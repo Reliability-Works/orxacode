@@ -1,7 +1,15 @@
 import type { ThreadId } from '@orxa-code/contracts'
-import { FolderIcon, GitForkIcon } from 'lucide-react'
+import {
+  FocusIcon,
+  FolderGit2Icon,
+  FolderIcon,
+  MinimizeIcon,
+  TerminalSquareIcon,
+} from 'lucide-react'
 import { useCallback } from 'react'
 
+import { useZenMode } from '../hooks/useZenMode'
+import type { ContextWindowSnapshot } from '~/lib/contextWindow'
 import { newCommandId } from '../lib/utils'
 import { readNativeApi } from '../nativeApi'
 import { useComposerDraftStore, type DraftThreadState } from '../composerDraftStore'
@@ -14,7 +22,11 @@ import {
 } from './BranchToolbar.logic'
 import { BranchToolbarBranchSelector } from './BranchToolbarBranchSelector'
 import { BranchToolbarRepoPicker } from './BranchToolbarRepoPicker'
+import { ContextWindowMeter } from './chat/ContextWindowMeter'
+import { Button } from './ui/button'
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from './ui/select'
+import { Toggle } from './ui/toggle'
+import { Tooltip, TooltipPopup, TooltipTrigger } from './ui/tooltip'
 
 const envModeItems = [
   { value: 'local', label: 'Local' },
@@ -25,6 +37,11 @@ interface BranchToolbarProps {
   threadId: ThreadId
   onEnvModeChange: (mode: EnvMode) => void
   envLocked: boolean
+  contextWindow?: ContextWindowSnapshot | null
+  terminalAvailable: boolean
+  terminalOpen: boolean
+  terminalToggleLabel: string
+  onToggleTerminal: () => void
   onCheckoutPullRequestRequest?: (reference: string) => void
   onComposerFocusRequest?: () => void
 }
@@ -179,6 +196,64 @@ function createSetThreadBranchAction({
   }
 }
 
+function BranchToolbarZenToggle() {
+  const zen = useZenMode()
+  const label = zen.enabled ? 'Exit zen mode' : 'Enter zen mode'
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => zen.toggleZen()}
+            aria-label={label}
+            className="shrink-0 gap-1.5 text-muted-foreground"
+          >
+            {zen.enabled ? (
+              <>
+                <MinimizeIcon className="size-3.5" />
+                Unzen
+              </>
+            ) : (
+              <FocusIcon className="size-3.5" />
+            )}
+          </Button>
+        }
+      />
+      <TooltipPopup side="top">{label} (⇧⌘Z)</TooltipPopup>
+    </Tooltip>
+  )
+}
+
+function BranchToolbarTerminalToggle(props: {
+  terminalAvailable: boolean
+  terminalOpen: boolean
+  terminalToggleLabel: string
+  onToggleTerminal: () => void
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Toggle
+            className="shrink-0 border-transparent text-muted-foreground"
+            pressed={props.terminalOpen}
+            onPressedChange={props.onToggleTerminal}
+            aria-label={props.terminalToggleLabel}
+            size="xs"
+            disabled={!props.terminalAvailable}
+          >
+            <TerminalSquareIcon className="size-3.5" />
+          </Toggle>
+        }
+      />
+      <TooltipPopup side="top">{props.terminalToggleLabel}</TooltipPopup>
+    </Tooltip>
+  )
+}
+
 function BranchToolbarEnvModeControl({
   envLocked,
   activeWorktreePath,
@@ -195,13 +270,13 @@ function BranchToolbarEnvModeControl({
       <span className="inline-flex items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:text-xs">
         {activeWorktreePath ? (
           <>
-            <GitForkIcon className="size-3" />
-            Worktree
+            <FolderGit2Icon className="size-3.5" />
+            <span className="hidden sm:inline">Worktree</span>
           </>
         ) : (
           <>
-            <FolderIcon className="size-3" />
-            Local
+            <FolderIcon className="size-3.5" />
+            <span className="hidden sm:inline">Local</span>
           </>
         )}
       </span>
@@ -216,22 +291,24 @@ function BranchToolbarEnvModeControl({
     >
       <SelectTrigger variant="ghost" size="xs" className="font-medium">
         {effectiveEnvMode === 'worktree' ? (
-          <GitForkIcon className="size-3" />
+          <FolderGit2Icon className="size-3.5" />
         ) : (
-          <FolderIcon className="size-3" />
+          <FolderIcon className="size-3.5" />
         )}
-        <SelectValue />
+        <span className="hidden sm:inline">
+          <SelectValue />
+        </span>
       </SelectTrigger>
       <SelectPopup>
         <SelectItem value="local">
           <span className="inline-flex items-center gap-1.5">
-            <FolderIcon className="size-3" />
+            <FolderIcon className="size-3.5" />
             Local
           </span>
         </SelectItem>
         <SelectItem value="worktree">
           <span className="inline-flex items-center gap-1.5">
-            <GitForkIcon className="size-3" />
+            <FolderGit2Icon className="size-3.5" />
             New worktree
           </span>
         </SelectItem>
@@ -240,80 +317,132 @@ function BranchToolbarEnvModeControl({
   )
 }
 
+function useBranchToolbarSetBranch(input: {
+  threadId: ThreadId
+  activeThreadId: ThreadId | undefined
+  serverThread: ReturnType<typeof useBranchToolbarState>['serverThread']
+  activeWorktreePath: string | null
+  hasServerThread: boolean
+  effectiveEnvMode: EnvMode
+}) {
+  const setThreadBranchAction = useStore(store => store.setThreadBranch)
+  const setDraftThreadContext = useComposerDraftStore(store => store.setDraftThreadContext)
+  return useCallback(
+    (branch: string | null, worktreePath: string | null) =>
+      createSetThreadBranchAction({
+        ...input,
+        setThreadBranchAction,
+        setDraftThreadContext,
+      })(branch, worktreePath),
+    [input, setThreadBranchAction, setDraftThreadContext]
+  )
+}
+
+function BranchToolbarLeftGroup(props: {
+  threadId: ThreadId
+  state: ReturnType<typeof useBranchToolbarState>
+  envLocked: boolean
+  onEnvModeChange: (mode: EnvMode) => void
+  onSetThreadBranch: (branch: string | null, worktreePath: string | null) => void
+  onCheckoutPullRequestRequest?: (reference: string) => void
+  onComposerFocusRequest?: () => void
+}) {
+  const { state } = props
+  if (!state.activeProject) return null
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      <BranchToolbarEnvModeControl
+        envLocked={props.envLocked}
+        activeWorktreePath={state.activeWorktreePath}
+        effectiveEnvMode={state.effectiveEnvMode}
+        onEnvModeChange={props.onEnvModeChange}
+      />
+      <BranchToolbarRepoPicker
+        threadId={props.threadId}
+        activeProjectCwd={state.activeProject.cwd}
+        activeGitRoot={state.serverThread?.gitRoot ?? null}
+        hasServerThread={state.hasServerThread}
+      />
+      <BranchToolbarBranchSelector
+        activeProjectCwd={state.activeProject.cwd}
+        activeThreadBranch={state.activeThreadBranch}
+        activeWorktreePath={state.activeWorktreePath}
+        branchCwd={state.branchCwd}
+        effectiveEnvMode={state.effectiveEnvMode}
+        envLocked={props.envLocked}
+        onSetThreadBranch={props.onSetThreadBranch}
+        {...(props.onCheckoutPullRequestRequest
+          ? { onCheckoutPullRequestRequest: props.onCheckoutPullRequestRequest }
+          : {})}
+        {...(props.onComposerFocusRequest
+          ? { onComposerFocusRequest: props.onComposerFocusRequest }
+          : {})}
+      />
+    </div>
+  )
+}
+
+function BranchToolbarRightGroup(props: {
+  contextWindow: ContextWindowSnapshot | null | undefined
+  terminalAvailable: boolean
+  terminalOpen: boolean
+  terminalToggleLabel: string
+  onToggleTerminal: () => void
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <BranchToolbarZenToggle />
+      <BranchToolbarTerminalToggle
+        terminalAvailable={props.terminalAvailable}
+        terminalOpen={props.terminalOpen}
+        terminalToggleLabel={props.terminalToggleLabel}
+        onToggleTerminal={props.onToggleTerminal}
+      />
+      {props.contextWindow ? <ContextWindowMeter usage={props.contextWindow} /> : null}
+    </div>
+  )
+}
+
 export default function BranchToolbar({
   threadId,
   onEnvModeChange,
   envLocked,
+  contextWindow,
+  terminalAvailable,
+  terminalOpen,
+  terminalToggleLabel,
+  onToggleTerminal,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
 }: BranchToolbarProps) {
-  const setThreadBranchAction = useStore(store => store.setThreadBranch)
-  const setDraftThreadContext = useComposerDraftStore(store => store.setDraftThreadContext)
-  const {
-    serverThread,
-    activeProject,
-    activeThreadId,
-    activeThreadBranch,
-    activeWorktreePath,
-    branchCwd,
-    hasServerThread,
-    effectiveEnvMode,
-  } = useBranchToolbarState(threadId)
-
-  const setThreadBranch = useCallback(
-    (branch: string | null, worktreePath: string | null) =>
-      createSetThreadBranchAction({
-        activeThreadId,
-        serverThread,
-        activeWorktreePath,
-        hasServerThread,
-        setThreadBranchAction,
-        setDraftThreadContext,
-        threadId,
-        effectiveEnvMode,
-      })(branch, worktreePath),
-    [
-      activeThreadId,
-      serverThread,
-      activeWorktreePath,
-      hasServerThread,
-      setThreadBranchAction,
-      setDraftThreadContext,
-      threadId,
-      effectiveEnvMode,
-    ]
-  )
-
-  if (!activeThreadId || !activeProject) return null
-
+  const state = useBranchToolbarState(threadId)
+  const setThreadBranch = useBranchToolbarSetBranch({
+    threadId,
+    activeThreadId: state.activeThreadId,
+    serverThread: state.serverThread,
+    activeWorktreePath: state.activeWorktreePath,
+    hasServerThread: state.hasServerThread,
+    effectiveEnvMode: state.effectiveEnvMode,
+  })
+  if (!state.activeThreadId || !state.activeProject) return null
   return (
-    <div className="mx-auto flex w-full max-w-3xl items-center justify-between px-5 pb-3 pt-1">
-      <BranchToolbarEnvModeControl
+    <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-2 px-5 pb-3 pt-1">
+      <BranchToolbarLeftGroup
+        threadId={threadId}
+        state={state}
         envLocked={envLocked}
-        activeWorktreePath={activeWorktreePath}
-        effectiveEnvMode={effectiveEnvMode}
         onEnvModeChange={onEnvModeChange}
+        onSetThreadBranch={setThreadBranch}
+        {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
+        {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
       />
-
-      <div className="flex items-center gap-1">
-        <BranchToolbarRepoPicker
-          threadId={threadId}
-          activeProjectCwd={activeProject.cwd}
-          activeGitRoot={serverThread?.gitRoot ?? null}
-          hasServerThread={hasServerThread}
-        />
-        <BranchToolbarBranchSelector
-          activeProjectCwd={activeProject.cwd}
-          activeThreadBranch={activeThreadBranch}
-          activeWorktreePath={activeWorktreePath}
-          branchCwd={branchCwd}
-          effectiveEnvMode={effectiveEnvMode}
-          envLocked={envLocked}
-          onSetThreadBranch={setThreadBranch}
-          {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
-          {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
-        />
-      </div>
+      <BranchToolbarRightGroup
+        contextWindow={contextWindow}
+        terminalAvailable={terminalAvailable}
+        terminalOpen={terminalOpen}
+        terminalToggleLabel={terminalToggleLabel}
+        onToggleTerminal={onToggleTerminal}
+      />
     </div>
   )
 }

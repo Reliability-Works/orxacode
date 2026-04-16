@@ -6,13 +6,14 @@ import { Button } from '~/components/ui/button'
 import { CommitDialog, DefaultBranchDialog } from './GitActionsControlDialogs'
 import { useGitActions } from './GitActionsControl.actions'
 import { getMenuActionDisabledReason } from './GitActionsControl.helpers'
-import { type GitQuickAction } from './GitActionsControl.logic'
+import { type GitQuickAction, type WorktreeParentContext } from './GitActionsControl.logic'
 import { useGitActionsState } from './GitActionsControl.state'
 import { GitActionsToolbar, GitActionItemIcon } from './GitActionsControlToolbar'
 
 interface GitActionsControlProps {
   gitCwd: string | null
   activeThreadId: ThreadId | null
+  worktreeParent: WorktreeParentContext | null
 }
 
 // Re-export for backwards compatibility with any tests importing directly
@@ -68,8 +69,12 @@ function GitActionsMainControls({ state: s, actions }: GitActionsMainControlsPro
   )
 }
 
-export default function GitActionsControl({ gitCwd, activeThreadId }: GitActionsControlProps) {
-  const s = useGitActionsState(gitCwd, activeThreadId)
+export default function GitActionsControl({
+  gitCwd,
+  activeThreadId,
+  worktreeParent,
+}: GitActionsControlProps) {
+  const s = useGitActionsState(gitCwd, activeThreadId, worktreeParent)
   const actions = useGitActions(gitCwd, s)
   useActiveGitActionProgressInterval(s)
   if (!gitCwd) return null

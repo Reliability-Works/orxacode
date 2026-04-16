@@ -31,7 +31,7 @@ export const TOPBAR_BUTTONS: ReadonlyArray<{
   {
     id: 'chat.views',
     label: 'Views menu',
-    description: 'Split pane, files, browser, and terminal toggles.',
+    description: 'Split pane, files, and browser toggles.',
   },
   {
     id: 'chat.openIn',

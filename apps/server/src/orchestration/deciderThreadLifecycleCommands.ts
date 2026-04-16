@@ -66,6 +66,7 @@ export function decideThreadCreateCommand({
         branch: command.branch,
         worktreePath: command.worktreePath,
         gitRoot: command.gitRoot,
+        parentBranch: command.parentBranch ?? null,
         handoff: command.handoff ?? null,
         parentLink: command.parentLink ?? null,
         createdAt: command.createdAt,
@@ -156,6 +157,7 @@ export function decideThreadMetaUpdateCommand({
         ...(command.branch !== undefined ? { branch: command.branch } : {}),
         ...(command.worktreePath !== undefined ? { worktreePath: command.worktreePath } : {}),
         ...(command.gitRoot !== undefined ? { gitRoot: command.gitRoot } : {}),
+        ...(command.parentBranch !== undefined ? { parentBranch: command.parentBranch } : {}),
         updatedAt: occurredAt,
       },
     })

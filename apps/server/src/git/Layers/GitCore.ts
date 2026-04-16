@@ -53,6 +53,7 @@ export const makeGitCore = Effect.fn('makeGitCore')(function* (options?: {
     prepareCommitContext: statusGroup.prepareCommitContext,
     commit: statusGroup.commit,
     pushCurrentBranch: pushGroup.pushCurrentBranch,
+    pushWorktreeToParent: pushGroup.pushWorktreeToParent,
     pullCurrentBranch: pushGroup.pullCurrentBranch,
     readRangeContext: pushGroup.readRangeContext,
     readConfigValue: shell.readConfigValue,

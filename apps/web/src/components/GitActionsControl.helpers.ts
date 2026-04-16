@@ -435,6 +435,13 @@ export function getMenuActionDisabledReason({
       isBehind,
       hasOriginRemote,
     })
+  if (item.id === 'push_to_parent') {
+    if (!hasBranch) return 'Detached HEAD: checkout a branch before pushing.'
+    if (hasChanges) return 'Commit local changes before pushing into parent.'
+    if (isBehind) return 'Branch is behind upstream. Pull/rebase before pushing.'
+    if (!isAhead) return 'No local commits to push into parent.'
+    return 'Push into parent is currently unavailable.'
+  }
   return getPullRequestDisabledReason({
     gitStatus,
     hasBranch,

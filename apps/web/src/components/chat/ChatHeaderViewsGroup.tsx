@@ -1,10 +1,10 @@
 /**
- * Grouped "Views" menu — consolidates Split pane / Files / Browser / Terminal
- * into a single header control. Replaces what used to be four separate toggles
- * scattered across the chat header.
+ * Grouped "Views" menu — consolidates Split pane / Files / Browser into a
+ * single header control. Replaces what used to be separate toggles scattered
+ * across the chat header.
  *
  * The trigger icon is a 4-blocks layout grid when nothing is active; when one
- * of the four views is active it morphs into that view's own icon with a small
+ * of the views is active it morphs into that view's own icon with a small
  * scale/fade transition so you can tell at a glance which view you're in.
  */
 import {
@@ -13,7 +13,6 @@ import {
   GlobeIcon,
   LayoutGridIcon,
   Maximize2Icon,
-  TerminalSquareIcon,
   type LucideIcon,
 } from 'lucide-react'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '../ui/menu'
@@ -27,24 +26,18 @@ interface ChatHeaderViewsGroupProps {
   auxSidebarMode: ChatAuxSidebarMode
   filesAvailable: boolean
   browserAvailable: boolean
-  terminalAvailable: boolean
-  terminalOpen: boolean
-  terminalToggleLabel: string
   onToggleFilesSidebar: () => void
   onToggleBrowserSidebar: () => void
-  onToggleTerminal: () => void
 }
 
-type ActiveView = 'files' | 'browser' | 'terminal' | 'split' | null
+type ActiveView = 'files' | 'browser' | 'split' | null
 
 function resolveActiveView(input: {
   auxSidebarMode: ChatAuxSidebarMode
-  terminalOpen: boolean
   splitOpen: boolean
 }): ActiveView {
   if (input.auxSidebarMode === 'files') return 'files'
   if (input.auxSidebarMode === 'browser') return 'browser'
-  if (input.terminalOpen) return 'terminal'
   if (input.splitOpen) return 'split'
   return null
 }
@@ -52,14 +45,12 @@ function resolveActiveView(input: {
 const ACTIVE_ICON: Record<Exclude<ActiveView, null>, LucideIcon> = {
   files: FolderTreeIcon,
   browser: GlobeIcon,
-  terminal: TerminalSquareIcon,
   split: Columns2Icon,
 }
 
 const ACTIVE_LABEL: Record<Exclude<ActiveView, null>, string> = {
   files: 'Files',
   browser: 'Browser',
-  terminal: 'Terminal',
   split: 'Split view',
 }
 
@@ -143,12 +134,10 @@ export function ChatHeaderViewsGroup(props: ChatHeaderViewsGroupProps) {
   const splitOpen = Boolean(split?.splitOpen)
   const activeView = resolveActiveView({
     auxSidebarMode: props.auxSidebarMode,
-    terminalOpen: props.terminalOpen,
     splitOpen,
   })
   const tooltipLabel = activeView ? ACTIVE_LABEL[activeView] : 'Views'
-  const allUnavailable =
-    !props.filesAvailable && !props.browserAvailable && !props.terminalAvailable && !splitAvailable
+  const allUnavailable = !props.filesAvailable && !props.browserAvailable && !splitAvailable
 
   return (
     <Menu>
@@ -174,14 +163,6 @@ export function ChatHeaderViewsGroup(props: ChatHeaderViewsGroupProps) {
         >
           <GlobeIcon className="size-4" />
           Browser
-        </MenuItem>
-        <MenuItem
-          disabled={!props.terminalAvailable}
-          onClick={props.onToggleTerminal}
-          className={cn(props.terminalOpen && 'bg-accent')}
-        >
-          <TerminalSquareIcon className="size-4" />
-          {props.terminalToggleLabel}
         </MenuItem>
       </MenuPopup>
     </Menu>

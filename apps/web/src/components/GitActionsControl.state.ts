@@ -13,7 +13,11 @@ import {
   invalidateGitQueries,
 } from '~/lib/gitReactQuery'
 
-import { buildMenuItems, resolveQuickAction } from './GitActionsControl.logic'
+import {
+  buildMenuItems,
+  resolveQuickAction,
+  type WorktreeParentContext,
+} from './GitActionsControl.logic'
 import {
   type ActiveGitActionProgress,
   resolveProgressDescription,
@@ -68,7 +72,44 @@ function useGitActionsDialogState() {
   }
 }
 
-export function useGitActionsState(gitCwd: string | null, activeThreadId: ThreadId | null) {
+function useGitActionDerivedUi(input: {
+  gitStatusForActions: ReturnType<typeof useGitActionsStatusQueries>['gitStatusForActions']
+  branchList: ReturnType<typeof useGitActionsStatusQueries>['branchList']
+  hasOriginRemote: boolean
+  isGitActionRunning: boolean
+  worktreeParent: WorktreeParentContext | null
+}) {
+  const { gitStatusForActions, branchList, hasOriginRemote, isGitActionRunning, worktreeParent } =
+    input
+  const isDefaultBranch = useMemo(() => {
+    const branchName = gitStatusForActions?.branch
+    if (!branchName) return false
+    const current = branchList?.branches.find(branch => branch.name === branchName)
+    return current?.isDefault ?? (branchName === 'main' || branchName === 'master')
+  }, [branchList?.branches, gitStatusForActions?.branch])
+  const gitActionMenuItems = useMemo(
+    () => buildMenuItems(gitStatusForActions, isGitActionRunning, hasOriginRemote, worktreeParent),
+    [gitStatusForActions, hasOriginRemote, isGitActionRunning, worktreeParent]
+  )
+  const quickAction = useMemo(
+    () =>
+      resolveQuickAction(
+        gitStatusForActions,
+        isGitActionRunning,
+        isDefaultBranch,
+        hasOriginRemote,
+        worktreeParent
+      ),
+    [gitStatusForActions, hasOriginRemote, isDefaultBranch, isGitActionRunning, worktreeParent]
+  )
+  return { isDefaultBranch, gitActionMenuItems, quickAction }
+}
+
+export function useGitActionsState(
+  gitCwd: string | null,
+  activeThreadId: ThreadId | null,
+  worktreeParent: WorktreeParentContext | null = null
+) {
   const threadToastData = useMemo(
     () => (activeThreadId ? { threadId: activeThreadId } : undefined),
     [activeThreadId]
@@ -102,21 +143,13 @@ export function useGitActionsState(gitCwd: string | null, activeThreadId: Thread
     useIsMutating({ mutationKey: gitMutationKeys.runStackedAction(gitCwd) }) > 0
   const isPullRunning = useIsMutating({ mutationKey: gitMutationKeys.pull(gitCwd) }) > 0
   const isGitActionRunning = isRunStackedActionRunning || isPullRunning
-  const isDefaultBranch = useMemo(() => {
-    const branchName = gitStatusForActions?.branch
-    if (!branchName) return false
-    const current = branchList?.branches.find(branch => branch.name === branchName)
-    return current?.isDefault ?? (branchName === 'main' || branchName === 'master')
-  }, [branchList?.branches, gitStatusForActions?.branch])
-  const gitActionMenuItems = useMemo(
-    () => buildMenuItems(gitStatusForActions, isGitActionRunning, hasOriginRemote),
-    [gitStatusForActions, hasOriginRemote, isGitActionRunning]
-  )
-  const quickAction = useMemo(
-    () =>
-      resolveQuickAction(gitStatusForActions, isGitActionRunning, isDefaultBranch, hasOriginRemote),
-    [gitStatusForActions, hasOriginRemote, isDefaultBranch, isGitActionRunning]
-  )
+  const derived = useGitActionDerivedUi({
+    gitStatusForActions,
+    branchList,
+    hasOriginRemote,
+    isGitActionRunning,
+    worktreeParent,
+  })
   return {
     threadToastData,
     ...statusQueries,
@@ -131,8 +164,7 @@ export function useGitActionsState(gitCwd: string | null, activeThreadId: Thread
     runImmediateGitActionMutation,
     pullMutation,
     isGitActionRunning,
-    isDefaultBranch,
-    gitActionMenuItems,
-    quickAction,
+    ...derived,
+    worktreeParent,
   }
 }

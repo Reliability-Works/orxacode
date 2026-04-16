@@ -48,19 +48,42 @@ function ChatViewComposerForm() {
   )
 }
 
+function resolveBranchToolbarTerminalLabel(
+  terminalAvailable: boolean,
+  terminalToggleShortcutLabel: string | null
+) {
+  if (!terminalAvailable) {
+    return 'Terminal is unavailable until this thread has an active project.'
+  }
+  if (terminalToggleShortcutLabel) {
+    return `Toggle terminal drawer (${terminalToggleShortcutLabel})`
+  }
+  return 'Toggle terminal drawer'
+}
+
 function ChatViewBranchToolbarBlock() {
   const c = useChatViewCtx()
-  const { td } = c
+  const { td, ad, store, cd } = c
   const projectCwd = td.activeProject?.cwd ?? null
   const discoverQuery = useQuery(gitDiscoverReposQueryOptions(projectCwd))
   const hasDiscoveredRepos = (discoverQuery.data?.repos.length ?? 0) >= 2
   if (!td.activeThread || (!c.cd.isGitRepo && !hasDiscoveredRepos) || td.isSubagentThread)
     return null
+  const terminalAvailable = td.activeProject !== undefined
+  const terminalToggleLabel = resolveBranchToolbarTerminalLabel(
+    terminalAvailable,
+    cd.terminalToggleShortcutLabel
+  )
   return (
     <BranchToolbar
       threadId={td.activeThread.id}
       onEnvModeChange={c.onEnvModeChange}
       envLocked={false}
+      contextWindow={ad.activeContextWindow ?? null}
+      terminalAvailable={terminalAvailable}
+      terminalOpen={store.terminalState.terminalOpen}
+      terminalToggleLabel={terminalToggleLabel}
+      onToggleTerminal={c.toggleTerminalVisibility}
       onComposerFocusRequest={c.scheduleComposerFocus}
       {...(td.canCheckoutPullRequestIntoThread
         ? { onCheckoutPullRequestRequest: c.openPullRequestDialog }
@@ -118,8 +141,11 @@ function ChatViewAuxSidebarBlock() {
   const isMobile = useIsMobile()
   const zen = useZenMode()
   const { gitCwd, td } = c
-  if (zen.enabled) return null
   if (c.ls.auxSidebarMode === 'none') return null
+  if (zen.enabled) {
+    const requiredButton = c.ls.auxSidebarMode === 'git' ? 'chat.gitSidebarToggle' : 'chat.views'
+    if (!zen.isButtonVisible(requiredButton)) return null
+  }
 
   let content: React.ReactNode = null
 
@@ -170,10 +196,8 @@ function ChatViewAuxSidebarBlock() {
 
 function ChatViewTerminalDrawerBlock() {
   const c = useChatViewCtx()
-  const zen = useZenMode()
   const { store, gitCwd } = c
   const { activeThread, activeProject } = c.td
-  if (zen.enabled) return null
   if (c.td.isSubagentThread || !store.terminalState.terminalOpen || !activeProject || !activeThread)
     return null
   return (

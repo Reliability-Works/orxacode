@@ -72,6 +72,7 @@ it('bootstraps the in-memory read model from persisted projections', async () =>
         branch: null,
         worktreePath: null,
         gitRoot: null,
+        parentBranch: null,
         handoff: null,
         parentLink: null,
         latestTurn: null,

@@ -124,6 +124,7 @@ export function createListThreadRows(sql: SqlClient.SqlClient) {
           branch,
           worktree_path AS "worktreePath",
           git_root AS "gitRoot",
+          parent_branch AS "parentBranch",
           handoff_json AS "handoff",
           parent_link_json AS "parentLink",
           latest_turn_id AS "latestTurnId",

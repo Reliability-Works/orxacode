@@ -9,20 +9,29 @@ export type GitActionIconName = 'commit' | 'push' | 'pr'
 export type GitDialogAction = 'commit' | 'push' | 'create_pr'
 
 export interface GitActionMenuItem {
-  id: 'commit' | 'push' | 'pr'
+  id: 'commit' | 'push' | 'pr' | 'push_to_parent'
   label: string
   disabled: boolean
   icon: GitActionIconName
-  kind: 'open_dialog' | 'open_pr'
+  kind: 'open_dialog' | 'open_pr' | 'push_to_parent'
   dialogAction?: GitDialogAction
+  parentBranch?: string
+  trial?: boolean
+}
+
+export interface WorktreeParentContext {
+  readonly worktreePath: string
+  readonly parentBranch: string
 }
 
 export interface GitQuickAction {
   label: string
   disabled: boolean
-  kind: 'run_action' | 'run_pull' | 'open_pr' | 'show_hint'
+  kind: 'run_action' | 'run_pull' | 'open_pr' | 'show_hint' | 'push_to_parent'
   action?: GitStackedAction
   hint?: string
+  parentBranch?: string
+  trial?: boolean
 }
 
 export interface DefaultBranchActionDialogCopy {
@@ -120,7 +129,19 @@ function resolveDirtyTreeQuickAction(): GitQuickAction {
   return { label: 'Commit', disabled: false, kind: 'run_action', action: 'commit' }
 }
 
-function resolveAheadQuickAction(state: GitActionState): GitQuickAction {
+function resolveAheadQuickAction(
+  state: GitActionState,
+  worktreeParent: WorktreeParentContext | null
+): GitQuickAction {
+  if (worktreeParent) {
+    return {
+      label: `Push into ${worktreeParent.parentBranch}`,
+      disabled: false,
+      kind: 'push_to_parent',
+      parentBranch: worktreeParent.parentBranch,
+      trial: true,
+    }
+  }
   if (state.hasOpenPr || state.isDefaultBranch) {
     return { label: 'Push', disabled: false, kind: 'run_action', action: 'commit_push' }
   }
@@ -132,7 +153,10 @@ function resolveAheadQuickAction(state: GitActionState): GitQuickAction {
   }
 }
 
-function resolveNoUpstreamQuickAction(state: GitActionState): GitQuickAction {
+function resolveNoUpstreamQuickAction(
+  state: GitActionState,
+  worktreeParent: WorktreeParentContext | null
+): GitQuickAction {
   if (!state.canPushWithoutUpstream) {
     if (state.hasOpenPr && !state.isAhead) {
       return { label: 'View PR', disabled: false, kind: 'open_pr' }
@@ -155,7 +179,7 @@ function resolveNoUpstreamQuickAction(state: GitActionState): GitQuickAction {
       hint: 'No local commits to push.',
     }
   }
-  return resolveAheadQuickAction(state)
+  return resolveAheadQuickAction(state, worktreeParent)
 }
 
 function buildPrMenuItem(input: {
@@ -212,37 +236,49 @@ export function summarizeGitResult(result: GitRunStackedActionResult): {
   return { title: 'Done' }
 }
 
+function canPushBranch(state: GitActionState, isBusy: boolean): boolean {
+  if (isBusy) return false
+  if (!state.hasBranch || state.hasChanges || state.isBehind || !state.isAhead) return false
+  return state.hasUpstream || state.canPushWithoutUpstream
+}
+
+function canCreatePrForBranch(state: GitActionState, isBusy: boolean): boolean {
+  if (isBusy || state.hasOpenPr) return false
+  return canPushBranch(state, isBusy)
+}
+
+function buildPushIntoParentItem(
+  worktreeParent: WorktreeParentContext,
+  state: GitActionState,
+  isBusy: boolean
+): GitActionMenuItem {
+  const canPushToParent =
+    !isBusy && state.hasBranch && !state.hasChanges && state.isAhead && !state.isBehind
+  return {
+    id: 'push_to_parent',
+    label: `Push into ${worktreeParent.parentBranch}`,
+    disabled: !canPushToParent,
+    icon: 'push',
+    kind: 'push_to_parent',
+    parentBranch: worktreeParent.parentBranch,
+    trial: true,
+  }
+}
+
 export function buildMenuItems(
   gitStatus: GitStatusResult | null,
   isBusy: boolean,
-  hasOriginRemote = true
+  hasOriginRemote = true,
+  worktreeParent: WorktreeParentContext | null = null
 ): GitActionMenuItem[] {
   if (!gitStatus) return []
 
   const state = deriveGitActionState(gitStatus, hasOriginRemote)
-  const canCommit = !isBusy && state.hasChanges
-  const canPush =
-    !isBusy &&
-    state.hasBranch &&
-    !state.hasChanges &&
-    !state.isBehind &&
-    state.isAhead &&
-    (state.hasUpstream || state.canPushWithoutUpstream)
-  const canCreatePr =
-    !isBusy &&
-    state.hasBranch &&
-    !state.hasChanges &&
-    !state.hasOpenPr &&
-    state.isAhead &&
-    !state.isBehind &&
-    (state.hasUpstream || state.canPushWithoutUpstream)
-  const canOpenPr = !isBusy && state.hasOpenPr
-
-  return [
+  const items: GitActionMenuItem[] = [
     {
       id: 'commit',
       label: 'Commit',
-      disabled: !canCommit,
+      disabled: isBusy || !state.hasChanges,
       icon: 'commit',
       kind: 'open_dialog',
       dialogAction: 'commit',
@@ -250,24 +286,31 @@ export function buildMenuItems(
     {
       id: 'push',
       label: 'Push',
-      disabled: !canPush,
+      disabled: !canPushBranch(state, isBusy),
       icon: 'push',
       kind: 'open_dialog',
       dialogAction: 'push',
     },
     buildPrMenuItem({
       hasOpenPr: state.hasOpenPr,
-      canCreatePr,
-      canOpenPr,
+      canCreatePr: canCreatePrForBranch(state, isBusy),
+      canOpenPr: !isBusy && state.hasOpenPr,
     }),
   ]
+
+  if (worktreeParent) {
+    items.push(buildPushIntoParentItem(worktreeParent, state, isBusy))
+  }
+
+  return items
 }
 
 export function resolveQuickAction(
   gitStatus: GitStatusResult | null,
   isBusy: boolean,
   isDefaultBranch = false,
-  hasOriginRemote = true
+  hasOriginRemote = true,
+  worktreeParent: WorktreeParentContext | null = null
 ): GitQuickAction {
   if (isBusy) {
     return { label: 'Commit', disabled: true, kind: 'show_hint', hint: 'Git action in progress.' }
@@ -298,7 +341,7 @@ export function resolveQuickAction(
   }
 
   if (!state.hasUpstream) {
-    return resolveNoUpstreamQuickAction(state)
+    return resolveNoUpstreamQuickAction(state, worktreeParent)
   }
 
   if (state.isDiverged) {
@@ -319,7 +362,7 @@ export function resolveQuickAction(
   }
 
   if (state.isAhead) {
-    return resolveAheadQuickAction(state)
+    return resolveAheadQuickAction(state, worktreeParent)
   }
 
   if (state.hasOpenPr && state.hasUpstream) {

@@ -106,6 +106,7 @@ export function createWsNativeApiForRpcClient(rpcClient: WsRpcClient): NativeApi
       listBranches: rpcClient.git.listBranches,
       createWorktree: rpcClient.git.createWorktree,
       removeWorktree: rpcClient.git.removeWorktree,
+      pushWorktreeToParent: rpcClient.git.pushWorktreeToParent,
       createBranch: rpcClient.git.createBranch,
       checkout: rpcClient.git.checkout,
       init: rpcClient.git.init,

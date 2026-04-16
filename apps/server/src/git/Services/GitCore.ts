@@ -21,6 +21,8 @@ import type {
   GitListBranchesInput,
   GitListBranchesResult,
   GitPullResult,
+  GitPushWorktreeToParentInput,
+  GitPushWorktreeToParentResult,
   GitRemoveWorktreeInput,
   GitRestoreAllUnstagedInput,
   GitRestorePathInput,
@@ -187,6 +189,15 @@ export interface GitCoreShape {
     cwd: string,
     fallbackBranch: string | null
   ) => Effect.Effect<GitPushResult, GitCommandError>
+
+  /**
+   * Fast-forward push a worktree branch into its parent branch on origin.
+   * Returns a discriminated-union result classifying non-fast-forward and
+   * protected-branch failures so the UI can suggest opening a PR instead.
+   */
+  readonly pushWorktreeToParent: (
+    input: GitPushWorktreeToParentInput
+  ) => Effect.Effect<GitPushWorktreeToParentResult, GitCommandError>
 
   /**
    * Collect commit/diff context between base branch and current HEAD.

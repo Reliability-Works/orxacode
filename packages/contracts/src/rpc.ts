@@ -40,6 +40,8 @@ import {
   GitPullInput,
   GitPullRequestRefInput,
   GitPullResult,
+  GitPushWorktreeToParentInput,
+  GitPushWorktreeToParentResult,
   GitRemoveWorktreeInput,
   GitRestoreAllUnstagedInput,
   GitResolvePullRequestResult,
@@ -142,6 +144,7 @@ export const WS_METHODS = {
   gitListBranches: 'git.listBranches',
   gitCreateWorktree: 'git.createWorktree',
   gitRemoveWorktree: 'git.removeWorktree',
+  gitPushWorktreeToParent: 'git.pushWorktreeToParent',
   gitCreateBranch: 'git.createBranch',
   gitCheckout: 'git.checkout',
   gitInit: 'git.init',
@@ -303,6 +306,8 @@ export const WsGitCreateWorktreeRpc = Rpc.make(WS_METHODS.gitCreateWorktree, { p
 // prettier-ignore
 export const WsGitRemoveWorktreeRpc = Rpc.make(WS_METHODS.gitRemoveWorktree, { payload: GitRemoveWorktreeInput, error: GitCommandError })
 // prettier-ignore
+export const WsGitPushWorktreeToParentRpc = Rpc.make(WS_METHODS.gitPushWorktreeToParent, { payload: GitPushWorktreeToParentInput, success: GitPushWorktreeToParentResult, error: GitCommandError })
+// prettier-ignore
 export const WsGitCreateBranchRpc = Rpc.make(WS_METHODS.gitCreateBranch, { payload: GitCreateBranchInput, error: GitCommandError })
 // prettier-ignore
 export const WsGitCheckoutRpc = Rpc.make(WS_METHODS.gitCheckout, { payload: GitCheckoutInput, error: GitCommandError })
@@ -449,6 +454,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsGitListBranchesRpc,
   WsGitCreateWorktreeRpc,
   WsGitRemoveWorktreeRpc,
+  WsGitPushWorktreeToParentRpc,
   WsGitCreateBranchRpc,
   WsGitCheckoutRpc,
   WsGitInitRpc,
