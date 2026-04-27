@@ -381,18 +381,7 @@ export function useAttachmentPreviewCallbacks(ls: L) {
       })
       const existing = attachmentPreviewHandoffTimeoutByMessageIdRef.current[messageId]
       if (typeof existing === 'number') window.clearTimeout(existing)
-      attachmentPreviewHandoffTimeoutByMessageIdRef.current[messageId] = window.setTimeout(() => {
-        const cur = attachmentPreviewHandoffByMessageIdRef.current[messageId]
-        if (cur) for (const u of cur) revokeBlobPreviewUrl(u)
-        setAttachmentPreviewHandoffByMessageId(ex => {
-          if (!(messageId in ex)) return ex
-          const next = { ...ex }
-          delete next[messageId]
-          attachmentPreviewHandoffByMessageIdRef.current = next
-          return next
-        })
-        delete attachmentPreviewHandoffTimeoutByMessageIdRef.current[messageId]
-      }, 5000)
+      delete attachmentPreviewHandoffTimeoutByMessageIdRef.current[messageId]
     },
     [
       attachmentPreviewHandoffByMessageIdRef,

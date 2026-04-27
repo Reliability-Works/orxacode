@@ -1,12 +1,14 @@
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  MessageId,
   ProjectId,
   ThreadId,
   type OrchestrationReadModel,
 } from '@orxa-code/contracts'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 
 import { syncServerReadModel, type AppState } from './store'
+import { setActiveEnvironmentHttpOrigin } from './environmentRuntimeState'
 import {
   makeReadModel,
   makeReadModelProject,
@@ -14,6 +16,11 @@ import {
   makeState,
   makeThread,
 } from './store.test.helpers'
+
+afterEach(() => {
+  setActiveEnvironmentHttpOrigin(null)
+  vi.unstubAllGlobals()
+})
 
 it('marks bootstrap complete after snapshot sync', () => {
   const initialState: AppState = {
@@ -180,4 +187,42 @@ it('replaces projects using snapshot order during recovery', () => {
   const next = syncServerReadModel(initialState, readModel)
 
   expect(next.projects.map(project => project.id)).toEqual([project1, project2, project3])
+})
+
+it('maps image attachment previews to the active environment HTTP origin', () => {
+  vi.stubGlobal('window', { location: { origin: 'http://renderer.invalid' } })
+  setActiveEnvironmentHttpOrigin('http://127.0.0.1:43210')
+
+  const initialState = makeState(makeThread())
+  const next = syncServerReadModel(
+    initialState,
+    makeReadModel(
+      makeReadModelThread({
+        messages: [
+          {
+            id: MessageId.makeUnsafe('message-image-1'),
+            role: 'user',
+            text: 'see attached',
+            attachments: [
+              {
+                type: 'image',
+                id: 'thread-1-attachment-1',
+                name: 'screenshot.png',
+                mimeType: 'image/png',
+                sizeBytes: 123,
+              },
+            ],
+            turnId: null,
+            streaming: false,
+            createdAt: '2026-02-27T00:00:00.000Z',
+            updatedAt: '2026-02-27T00:00:00.000Z',
+          },
+        ],
+      })
+    )
+  )
+
+  expect(next.threads[0]?.messages[0]?.attachments?.[0]?.previewUrl).toBe(
+    'http://127.0.0.1:43210/attachments/thread-1-attachment-1'
+  )
 })

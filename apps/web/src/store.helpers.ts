@@ -125,10 +125,14 @@ export function toLegacyProvider(providerName: string | null): ProviderKind {
 
 function resolveWsHttpOrigin(): string {
   if (typeof window === 'undefined') return ''
+  const activeEnvironmentHttpOrigin = getActiveEnvironmentHttpOrigin()
+  if (activeEnvironmentHttpOrigin) {
+    return activeEnvironmentHttpOrigin
+  }
   const envWsUrl = import.meta.env.VITE_WS_URL as string | undefined
   const wsCandidate = typeof envWsUrl === 'string' && envWsUrl.length > 0 ? envWsUrl : null
   if (!wsCandidate) {
-    return getActiveEnvironmentHttpOrigin() ?? window.location.origin
+    return window.location.origin
   }
   try {
     const wsUrl = new URL(wsCandidate)
@@ -136,7 +140,7 @@ function resolveWsHttpOrigin(): string {
       wsUrl.protocol === 'wss:' ? 'https:' : wsUrl.protocol === 'ws:' ? 'http:' : wsUrl.protocol
     return `${protocol}//${wsUrl.host}`
   } catch {
-    return getActiveEnvironmentHttpOrigin() ?? window.location.origin
+    return window.location.origin
   }
 }
 
