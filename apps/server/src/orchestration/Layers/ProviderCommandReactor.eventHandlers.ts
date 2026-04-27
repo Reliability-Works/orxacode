@@ -2,7 +2,6 @@ import type {
   ChatAttachment,
   ModelSelection,
   OrchestrationEvent,
-  OrchestrationReadModel,
   ThreadId,
 } from '@orxa-code/contracts'
 import { Cause, Effect } from 'effect'
@@ -14,10 +13,14 @@ import type { ProviderCommandReactorSessionRuntime } from './ProviderCommandReac
 import {
   buildSessionStateSnapshot,
   listInterruptibleSubagentRoutes,
+  propagateSubagentSessionState,
   type ProviderControlRoute,
   resolveProviderControlRoute,
-  propagateSubagentSessionState,
 } from './ProviderCommandReactor.subagentRouting.ts'
+import {
+  createProcessSessionStopForThread,
+  setRootThreadSessionAndPropagate,
+} from './ProviderCommandReactor.sessionStop.ts'
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -29,10 +32,12 @@ type ProviderIntentEvent = Extract<
       | 'thread.approval-response-requested'
       | 'thread.user-input-response-requested'
       | 'thread.session-stop-requested'
+      | 'thread.archived'
+      | 'thread.deleted'
   }
 >
 
-interface ProviderCommandReactorEventHandlerDeps extends ProviderCommandReactorSessionRuntime {
+export interface ProviderCommandReactorEventHandlerDeps extends ProviderCommandReactorSessionRuntime {
   readonly orchestrationEngine: OrchestrationEngineShape
   readonly providerService: ProviderServiceShape
   readonly threadModelSelections: Map<string, ModelSelection>
@@ -361,59 +366,6 @@ function createProcessUserInputResponseRequested(deps: ProviderCommandReactorEve
   })
 }
 
-function createProcessSessionStopRequested(deps: ProviderCommandReactorEventHandlerDeps) {
-  return Effect.fnUntraced(function* (
-    event: Extract<ProviderIntentEvent, { type: 'thread.session-stop-requested' }>
-  ) {
-    const controlRoute = yield* resolveProviderControlRoute(deps, event.payload.threadId)
-    if (!controlRoute) {
-      return
-    }
-    const thread = controlRoute.thread
-    if (thread.session && thread.session.status !== 'stopped') {
-      yield* deps.providerService.stopSession({ threadId: controlRoute.sessionThreadId })
-    }
-    const rootThread = controlRoute.parentThread ?? thread
-    yield* setRootThreadSessionAndPropagate(deps, {
-      thread: rootThread,
-      status: 'stopped',
-      createdAt: event.payload.createdAt,
-    })
-  })
-}
-
-function setRootThreadSessionAndPropagate(
-  deps: ProviderCommandReactorEventHandlerDeps,
-  input: {
-    readonly thread: OrchestrationReadModel['threads'][number]
-    readonly status: 'interrupted' | 'stopped'
-    readonly createdAt: string
-  }
-) {
-  return deps
-    .setThreadSession({
-      threadId: input.thread.id,
-      session: buildSessionStateSnapshot({
-        thread: input.thread,
-        status: input.status,
-        createdAt: input.createdAt,
-      }),
-      createdAt: input.createdAt,
-    })
-    .pipe(
-      Effect.flatMap(() => deps.orchestrationEngine.getReadModel()),
-      Effect.flatMap(readModel =>
-        propagateSubagentSessionState({
-          threads: readModel.threads,
-          parentThreadId: input.thread.id,
-          status: input.status,
-          createdAt: input.createdAt,
-          setThreadSession: deps.setThreadSession,
-        })
-      )
-    )
-}
-
 function respondToPendingProviderRequest(
   deps: ProviderCommandReactorEventHandlerDeps,
   input: {
@@ -472,7 +424,7 @@ function createProcessDomainEvent(deps: ProviderCommandReactorEventHandlerDeps) 
   const processTurnInterruptRequested = createProcessTurnInterruptRequested(deps)
   const processApprovalResponseRequested = createProcessApprovalResponseRequested(deps)
   const processUserInputResponseRequested = createProcessUserInputResponseRequested(deps)
-  const processSessionStopRequested = createProcessSessionStopRequested(deps)
+  const processSessionStopForThread = createProcessSessionStopForThread(deps)
 
   return Effect.fn('processDomainEvent')(function* (event: ProviderIntentEvent) {
     switch (event.type) {
@@ -498,7 +450,20 @@ function createProcessDomainEvent(deps: ProviderCommandReactorEventHandlerDeps) 
       case 'thread.user-input-response-requested':
         return yield* processUserInputResponseRequested(event)
       case 'thread.session-stop-requested':
-        return yield* processSessionStopRequested(event)
+        return yield* processSessionStopForThread({
+          threadId: event.payload.threadId,
+          occurredAt: event.payload.createdAt,
+        })
+      case 'thread.archived':
+        return yield* processSessionStopForThread({
+          threadId: event.payload.threadId,
+          occurredAt: event.payload.archivedAt,
+        })
+      case 'thread.deleted':
+        return yield* processSessionStopForThread({
+          threadId: event.payload.threadId,
+          occurredAt: event.payload.deletedAt,
+        })
     }
   })
 }

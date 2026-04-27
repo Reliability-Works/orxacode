@@ -31,6 +31,8 @@ type ProviderIntentEvent = Extract<
       | 'thread.approval-response-requested'
       | 'thread.user-input-response-requested'
       | 'thread.session-stop-requested'
+      | 'thread.archived'
+      | 'thread.deleted'
   }
 >
 
@@ -198,7 +200,9 @@ const make = Effect.gen(function* () {
         event.type === 'thread.turn-interrupt-requested' ||
         event.type === 'thread.approval-response-requested' ||
         event.type === 'thread.user-input-response-requested' ||
-        event.type === 'thread.session-stop-requested'
+        event.type === 'thread.session-stop-requested' ||
+        event.type === 'thread.archived' ||
+        event.type === 'thread.deleted'
       ) {
         return yield* worker.enqueue(event)
       }
