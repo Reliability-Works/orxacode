@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ComposerQueuedMessagesRailCard } from './ComposerQueuedMessagesTray'
 import { ComposerSubagentRailCard } from './ComposerSubagentRailCard'
 import { ComposerTaskListRailCard } from './ComposerTaskListRailCard'
+import type { QueuedComposerMessage } from './queuedComposerMessages'
+import { shouldQueueComposerSendForPhase } from './useChatViewController.plansend'
 
 const useChatViewCtxMock = vi.fn()
 const useStoreMock = vi.fn()
@@ -92,5 +95,59 @@ describe('composer rail cards', () => {
     render(<ComposerSubagentRailCard />)
 
     expect(screen.queryByText(/Inspect provider routing/)).toBeNull()
+  })
+})
+
+describe('composer queued message rail card', () => {
+  beforeEach(() => {
+    useChatViewCtxMock.mockReset()
+  })
+
+  it('sends a queued composer message directly from the tray instead of interrupting', () => {
+    const queuedMessage: QueuedComposerMessage = {
+      id: 'queued:one',
+      createdAt: '2026-04-27T10:00:00.000Z',
+      prompt: 'restore pls',
+      trimmed: 'restore pls',
+      images: [],
+      terminalContexts: [],
+      selectedProvider: 'claudeAgent',
+      selectedModel: 'claude-sonnet-4-6',
+      selectedModelSelection: {
+        provider: 'claudeAgent',
+        model: 'claude-sonnet-4-6',
+      },
+      selectedPromptEffort: null,
+      runtimeMode: 'full-access',
+      interactionMode: 'default',
+    }
+    const sendQueuedComposerMessageNow = vi.fn()
+    const onInterrupt = vi.fn()
+
+    useChatViewCtxMock.mockReturnValue({
+      ls: {
+        queuedComposerMessages: [queuedMessage],
+      },
+      restoreQueuedComposerMessage: vi.fn(),
+      removeQueuedComposerMessage: vi.fn(),
+      sendQueuedComposerMessageNow,
+      onInterrupt,
+    })
+
+    render(<ComposerQueuedMessagesRailCard />)
+    fireEvent.click(screen.getByTestId('composer-queued-message-send-now'))
+
+    expect(sendQueuedComposerMessageNow).toHaveBeenCalledWith(queuedMessage)
+    expect(onInterrupt).not.toHaveBeenCalled()
+  })
+})
+
+describe('composer send gating', () => {
+  it('does not queue a ready session even if latest turn metadata is stale', () => {
+    expect(shouldQueueComposerSendForPhase('ready')).toBe(false)
+  })
+
+  it('queues only while the live turn phase is running', () => {
+    expect(shouldQueueComposerSendForPhase('running')).toBe(true)
   })
 })

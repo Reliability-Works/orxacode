@@ -35,7 +35,11 @@ import {
   prepareMapperContext,
   readPartHintFromEvent,
 } from './OpencodeAdapter.runtime.eventBase.ts'
-import type { OpencodeEvent, OpencodeSessionContext } from './OpencodeAdapter.types.ts'
+import type {
+  OpencodeEvent,
+  OpencodeSessionContext,
+  ProviderRuntimeEvent,
+} from './OpencodeAdapter.types.ts'
 
 function rememberPendingPromptRequests(
   context: OpencodeSessionContext,
@@ -200,6 +204,28 @@ const markStartupMilestones = Effect.fn('opencode.markStartupMilestones')(functi
   }
 })
 
+function reconcileTerminalTurnState(
+  context: OpencodeSessionContext,
+  produced: ReadonlyArray<ProviderRuntimeEvent>
+): void {
+  const turnState = context.turnState
+  if (!turnState) return
+
+  const terminalEvent = produced.find(
+    event => event.type === 'turn.completed' && String(event.turnId) === String(turnState.turnId)
+  )
+  if (!terminalEvent || terminalEvent.type !== 'turn.completed') return
+
+  turnState.inFlightToolParts.clear()
+  context.turnState = undefined
+  context.session = {
+    ...context.session,
+    status: terminalEvent.payload.state === 'failed' ? 'error' : 'ready',
+    activeTurnId: undefined,
+    updatedAt: terminalEvent.createdAt,
+  }
+}
+
 /**
  * Resolve any value to a best-effort string error message.
  *
@@ -243,6 +269,7 @@ export const handleIncomingEvent = (
     const produced = mapOpencodeEvent(event, mapperContext, hint)
     if (produced.length > 0) {
       yield* emitMappedEvents(deps, produced)
+      reconcileTerminalTurnState(context, produced)
     }
   })
 

@@ -34,6 +34,10 @@ type T = ReturnType<typeof useChatViewDerivedThread>
 type A = ReturnType<typeof useChatViewDerivedActivities>
 type P = ReturnType<typeof useChatViewDerivedPlan>
 
+export function shouldQueueComposerSendForPhase(phase: string): boolean {
+  return phase === 'running'
+}
+
 function usePlanActions(args: {
   store: S
   ls: L
@@ -153,7 +157,7 @@ function useSendActionWiring(
     runtimeMode: td.runtimeMode,
     interactionMode: td.interactionMode,
     isSendBusy: ld.isSendBusy,
-    isTurnRunning: td.phase === 'running' || !ad.latestTurnSettled,
+    isTurnRunning: shouldQueueComposerSendForPhase(td.phase),
     isConnecting: false,
     queuedMessageCount: ls.queuedComposerMessages.length,
     queueFollowUp: message => ls.setQueuedComposerMessages(existing => [...existing, message]),
@@ -227,23 +231,25 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
   })
   const onSend = useSendActionWiring(args, sendInFlightRef, planActions.onSubmitPlanFollowUp)
   const sendQueuedMessage = useQueuedMessageSender(args, sendInFlightRef)
+  const sendQueuedComposerMessageNow = useCallback(
+    (message: QueuedComposerMessage) => {
+      args.ls.setQueuedComposerMessages(messages =>
+        messages.filter(entry => entry.id !== message.id)
+      )
+      void sendQueuedMessage(message)
+    },
+    [args.ls, sendQueuedMessage]
+  )
   useEffect(() => {
     if (!queuedComposerMessage) {
       return
     }
-    if (args.ld.isSendBusy || args.td.phase === 'running' || !args.ad.latestTurnSettled) {
+    if (args.ld.isSendBusy || shouldQueueComposerSendForPhase(args.td.phase)) {
       return
     }
     args.ls.setQueuedComposerMessages(messages => messages.slice(1))
     void sendQueuedMessage(queuedComposerMessage)
-  }, [
-    args.ad.latestTurnSettled,
-    args.ld.isSendBusy,
-    args.ls,
-    args.td.phase,
-    queuedComposerMessage,
-    sendQueuedMessage,
-  ])
+  }, [args.ld.isSendBusy, args.ls, args.td.phase, queuedComposerMessage, sendQueuedMessage])
   // Codex-only: after a short grace window, inject the head queued message
   // into the still-running turn via `turn/steer` (our manager's `sendTurn`
   // picks the steer path automatically when the session has an active turn).
@@ -268,7 +274,7 @@ export function useChatViewPlanAndSendActions(args: PlanAndSendActionsInput) {
       window.clearTimeout(timer)
     }
   }, [args.ld.isSendBusy, args.ls, args.td.phase, queuedComposerMessage, sendQueuedMessage])
-  return { sendInFlightRef, ...planActions, onSend }
+  return { sendInFlightRef, ...planActions, onSend, sendQueuedComposerMessageNow }
 }
 
 export function useChatViewRemainingCallbacks(args: {

@@ -166,94 +166,102 @@ function expectChildSessionEvents(events: ReadonlyArray<ProviderRuntimeEvent>): 
   ).toBe(true)
 }
 
+function expectStreamingProgressMilestones(events: ReadonlyArray<ProviderRuntimeEvent>): void {
+  const taskProgressSummaries = events
+    .filter(
+      (event): event is Extract<(typeof events)[number], { type: 'task.progress' }> =>
+        event.type === 'task.progress'
+    )
+    .map(event => event.payload.summary ?? event.payload.description)
+  expect(taskProgressSummaries).toContain('Dispatching prompt to Opencode.')
+  expect(
+    taskProgressSummaries.some(summary => summary.includes('Prompt accepted by Opencode after '))
+  ).toBe(true)
+  expect(
+    taskProgressSummaries.some(summary => summary.includes('First runtime event received after '))
+  ).toBe(true)
+  expect(
+    taskProgressSummaries.some(summary => summary.includes('First response token received after '))
+  ).toBe(true)
+}
+
 describe('OpencodeAdapter streaming integration - happy path', () => {
   it(
     'drives the fixture sequence through the pump end-to-end',
-    async () => {
-      const fakeRuntime = createFakeOpencodeRuntime({
-        sessionId: FIXTURE_PROVIDER_SESSION_ID,
-      })
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const harness = yield* makeTestDeps({
-            createRuntime: makeFakeCreateRuntime(fakeRuntime),
-          })
-
-          yield* startSession(harness.deps)({
-            threadId: TEST_THREAD_ID,
-            runtimeMode: 'full-access',
-          })
-          // Drain the synchronous session.started so subsequent collectEvents
-          // calls only see streaming-pump output.
-          yield* collectEvents(harness.runtimeEventQueue, 1)
-
-          // Open a turn so the mapper has an active turnId for the in-progress
-          // assistant message events. sendTurn issues an additional SDK call
-          // and emits its own turn.started which we drain immediately.
-          yield* sendTurn(harness.deps)({
-            threadId: TEST_THREAD_ID,
-            input: 'hello',
-          })
-          yield* collectEvents(harness.runtimeEventQueue, 1)
-
-          fakeRuntime.pushEvent(fixtureMessageUpdatedInProgress)
-          fakeRuntime.pushEvent(fixtureTextPartUpdatedInProgress)
-          fakeRuntime.pushEvent(fixtureTextPartDelta)
-          fakeRuntime.pushEvent(fixtureTextPartUpdatedCompleted)
-          fakeRuntime.pushEvent(fixtureMessageUpdatedCompleted)
-          fakeRuntime.pushEvent(fixtureSessionIdle)
-
-          // Yield repeatedly so the forked pump fiber can drain the buffered
-          // events and offer them onto the runtime queue before we sample it.
-          for (let i = 0; i < 8; i += 1) {
-            yield* Effect.yieldNow
-          }
-
-          const events = yield* drainEvents(harness.runtimeEventQueue)
-          const types = events.map(event => event.type)
-
-          expect(types).toContain('task.progress')
-          expect(types).toContain('item.started')
-          expect(types).toContain('content.delta')
-          expect(types).toContain('item.completed')
-          expect(types).toContain('thread.token-usage.updated')
-          expect(types).toContain('turn.completed')
-
-          const delta = events.find(event => event.type === 'content.delta')
-          expect(delta?.type).toBe('content.delta')
-          if (delta?.type === 'content.delta') {
-            expect(delta.payload.streamKind).toBe('assistant_text')
-            expect(delta.payload.delta).toBe('world')
-          }
-
-          const taskProgressSummaries = events
-            .filter(
-              (event): event is Extract<(typeof events)[number], { type: 'task.progress' }> =>
-                event.type === 'task.progress'
-            )
-            .map(event => event.payload.summary ?? event.payload.description)
-          expect(taskProgressSummaries).toContain('Dispatching prompt to Opencode.')
-          expect(
-            taskProgressSummaries.some(summary =>
-              summary.includes('Prompt accepted by Opencode after ')
-            )
-          ).toBe(true)
-          expect(
-            taskProgressSummaries.some(summary =>
-              summary.includes('First runtime event received after ')
-            )
-          ).toBe(true)
-          expect(
-            taskProgressSummaries.some(summary =>
-              summary.includes('First response token received after ')
-            )
-          ).toBe(true)
-        })
-      )
-    },
+    runFixtureStreamingHappyPathTest,
     STREAMING_TIMEOUT_MS
   )
 })
+
+async function runFixtureStreamingHappyPathTest(): Promise<void> {
+  const fakeRuntime = createFakeOpencodeRuntime({
+    sessionId: FIXTURE_PROVIDER_SESSION_ID,
+  })
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const harness = yield* makeTestDeps({
+        createRuntime: makeFakeCreateRuntime(fakeRuntime),
+      })
+
+      yield* startSession(harness.deps)({
+        threadId: TEST_THREAD_ID,
+        runtimeMode: 'full-access',
+      })
+      yield* collectEvents(harness.runtimeEventQueue, 1)
+
+      yield* sendTurn(harness.deps)({
+        threadId: TEST_THREAD_ID,
+        input: 'hello',
+      })
+      yield* collectEvents(harness.runtimeEventQueue, 1)
+
+      fakeRuntime.pushEvent(fixtureMessageUpdatedInProgress)
+      fakeRuntime.pushEvent(fixtureTextPartUpdatedInProgress)
+      fakeRuntime.pushEvent(fixtureTextPartDelta)
+      fakeRuntime.pushEvent(fixtureTextPartUpdatedCompleted)
+      fakeRuntime.pushEvent(fixtureMessageUpdatedCompleted)
+      fakeRuntime.pushEvent(fixtureSessionIdle)
+      for (let i = 0; i < 8; i += 1) {
+        yield* Effect.yieldNow
+      }
+
+      const events = yield* drainEvents(harness.runtimeEventQueue)
+      const types = events.map(event => event.type)
+      expect(types).toContain('task.progress')
+      expect(types).toContain('item.started')
+      expect(types).toContain('content.delta')
+      expect(types).toContain('item.completed')
+      expect(types).toContain('thread.token-usage.updated')
+      expect(types).toContain('turn.completed')
+
+      const delta = events.find(event => event.type === 'content.delta')
+      expect(delta?.type).toBe('content.delta')
+      if (delta?.type === 'content.delta') {
+        expect(delta.payload.streamKind).toBe('assistant_text')
+        expect(delta.payload.delta).toBe('world')
+      }
+
+      expectStreamingProgressMilestones(events)
+
+      const context = harness.sessions.get(TEST_THREAD_ID)
+      expect(context?.turnState).toBeUndefined()
+      expect(context?.session.status).toBe('ready')
+      expect(context?.session.activeTurnId).toBeUndefined()
+      expect(fakeRuntime.sessionAbortCalls).toHaveLength(0)
+
+      yield* sendTurn(harness.deps)({
+        threadId: TEST_THREAD_ID,
+        input: 'follow up prompt',
+      })
+
+      expect(fakeRuntime.sessionPromptCalls.map(call => call.text)).toEqual([
+        'hello',
+        'follow up prompt',
+      ])
+      expect(fakeRuntime.sessionAbortCalls).toHaveLength(0)
+    })
+  )
+}
 
 describe('OpencodeAdapter streaming integration - child delegation metadata', () => {
   it(

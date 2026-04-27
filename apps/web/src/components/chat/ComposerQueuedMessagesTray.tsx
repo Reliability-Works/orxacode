@@ -92,7 +92,7 @@ function ComposerQueuedMessageRow(props: { queueIndex: number; message: QueuedCo
           <QueuedMessageActionButton
             label="Send now and interrupt"
             icon={<ArrowUpIcon className="size-3.5" />}
-            onClick={() => void c.onInterrupt()}
+            onClick={() => c.sendQueuedComposerMessageNow(props.message)}
             testId="composer-queued-message-send-now"
           />
         ) : null}
