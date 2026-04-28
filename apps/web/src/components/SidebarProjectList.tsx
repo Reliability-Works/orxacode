@@ -20,10 +20,7 @@ import type {
   RenderedPinnedThreadData,
   RenderedProjectData,
 } from './sidebar/ProjectItem'
-import { ThreadRow } from './sidebar/ThreadRow'
-import { resolveThreadRowClassName } from './Sidebar.logic'
-import { prStatusIndicator, terminalStatusFromRunningIds } from './sidebar/threadRowUtils'
-import { selectThreadTerminalState } from '../terminalStateStore'
+import { SharedThreadRow } from './sidebar/SharedThreadRow'
 import type { ThreadTerminalState } from '../terminalStateStore.logic'
 
 // ---------------------------------------------------------------------------
@@ -151,36 +148,23 @@ function SidebarPinnedThreadList(
         </span>
       </div>
       <SidebarMenuSub className="mx-1 my-0 w-full translate-x-0 gap-0.5 overflow-hidden px-1.5 py-0">
-        {props.renderedPinnedThreads.map(({ thread, orderedProjectThreadIds, threadStatus }) => {
-          const isActive = props.routeThreadId === thread.id
-          const isSelected = props.selectedThreadIds.has(thread.id)
-          const jumpLabel = props.threadJumpLabelById.get(thread.id) ?? null
-          const isThreadRunning =
-            thread.session?.status === 'running' && thread.session.activeTurnId != null
-          const prStatus = prStatusIndicator(props.prByThreadId.get(thread.id) ?? null)
-          const terminalStatus = terminalStatusFromRunningIds(
-            selectThreadTerminalState(props.terminalStateByThreadId, thread.id).runningTerminalIds
-          )
-          const isConfirmingDelete =
-            props.confirmingDeleteThreadId === thread.id && !isThreadRunning
-          return (
-            <ThreadRow
-              key={thread.id}
-              thread={thread}
-              isActive={isActive}
-              isSelected={isSelected}
-              jumpLabel={jumpLabel}
-              isThreadRunning={isThreadRunning}
-              threadStatus={threadStatus}
-              prStatus={prStatus}
-              terminalStatus={terminalStatus}
-              isConfirmingDelete={isConfirmingDelete}
-              orderedProjectThreadIds={orderedProjectThreadIds}
-              rowClassName={resolveThreadRowClassName({ isActive, isSelected })}
-              {...props.getThreadRowProps(thread)}
-            />
-          )
-        })}
+        {props.renderedPinnedThreads.map(({ thread, orderedProjectThreadIds, threadStatus }) => (
+          <SharedThreadRow
+            key={thread.id}
+            thread={thread}
+            threadStatus={threadStatus}
+            orderedProjectThreadIds={orderedProjectThreadIds}
+            ctx={{
+              routeThreadId: props.routeThreadId,
+              selectedThreadIds: props.selectedThreadIds,
+              threadJumpLabelById: props.threadJumpLabelById,
+              terminalStateByThreadId: props.terminalStateByThreadId,
+              prByThreadId: props.prByThreadId,
+              confirmingDeleteThreadId: props.confirmingDeleteThreadId,
+              getThreadRowProps: props.getThreadRowProps,
+            }}
+          />
+        ))}
       </SidebarMenuSub>
     </div>
   )

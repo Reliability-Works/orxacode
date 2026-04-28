@@ -22,6 +22,8 @@ import { useThreadById } from '../../storeSelectors'
 import { formatSubagentLabel } from '@orxa-code/shared/subagent'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useZenMode } from '../../hooks/useZenMode'
+import { useChatsBaseDir } from '../../hooks/useChatsBaseDir'
+import { isChatProject } from '../../lib/chatProject'
 
 function HandoffMenuAction() {
   const c = useChatViewCtx()
@@ -113,6 +115,8 @@ export function ChatViewHeaderPanel() {
   const zen = useZenMode()
   const collapsed = state === 'collapsed' || zen.enabled
   const diffStats = useHeaderDiffStats(c.panelDiffQuery.data, c.ls.gitDiffScope)
+  const chatBaseDir = useChatsBaseDir()
+  const isChatThread = Boolean(activeProject && isChatProject(activeProject, chatBaseDir))
   if (!activeThread) return null
   const worktreeParent =
     activeThread.worktreePath && activeThread.parentBranch
@@ -159,7 +163,8 @@ export function ChatViewHeaderPanel() {
           onToggleBrowserSidebar={c.toggleBrowserSidebar}
           onSelectChatView={c.closeAuxSidebar}
           browserAvailable={Boolean(activeProject) && isElectron}
-          handoffAction={<HandoffMenuAction />}
+          isChatThread={isChatThread}
+          {...(isChatThread ? {} : { handoffAction: <HandoffMenuAction /> })}
           threadActionsMenu={
             <ZenGate id="chat.threadActions">
               <ThreadActionsMenu thread={activeThread} project={activeProject ?? null} />

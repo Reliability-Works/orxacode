@@ -55,17 +55,31 @@ interface ChatHeaderProps extends ProjectActionProps {
   onSelectChatView: () => void
   handoffAction?: ReactNode
   threadActionsMenu?: ReactNode
+  /**
+   * When true, the active thread is a Chats-feature thread (project lives under
+   * the chat base dir). Hides the No-Git pill and the entire action cluster
+   * (open-in, git actions, handoff, files/browser/git toggles) — chat threads
+   * don't expose project-oriented affordances.
+   */
+  isChatThread?: boolean
 }
 
 function ChatHeaderTitle(props: {
   activeThreadTitle: string
   activeProjectName: string | undefined
   isGitRepo: boolean
+  isChatThread: boolean
   threadActionsMenu?: ReactNode
   leadingControl?: ReactNode
 }) {
-  const { activeThreadTitle, activeProjectName, isGitRepo, threadActionsMenu, leadingControl } =
-    props
+  const {
+    activeThreadTitle,
+    activeProjectName,
+    isGitRepo,
+    isChatThread,
+    threadActionsMenu,
+    leadingControl,
+  } = props
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden sm:gap-3">
       {leadingControl}
@@ -76,7 +90,7 @@ function ChatHeaderTitle(props: {
         {activeThreadTitle}
       </h2>
       {threadActionsMenu}
-      {activeProjectName && !isGitRepo ? (
+      {!isChatThread && activeProjectName && !isGitRepo ? (
         <span className="shrink-0 rounded-full border border-amber-500/30 px-2 py-0.5 text-mini text-amber-700">
           No Git
         </span>
@@ -241,6 +255,7 @@ function ChatHeaderActions(props: ChatHeaderActionsProps) {
 
 function useMobileHeaderNavigationControl(params: {
   isMobile: boolean
+  isChatThread: boolean
   auxSidebarMode: ChatAuxSidebarMode
   openInCwd: string | null
   isGitRepo: boolean
@@ -255,7 +270,7 @@ function useMobileHeaderNavigationControl(params: {
       ? params.auxSidebarMode
       : 'chat'
 
-  if (!params.isMobile) return null
+  if (!params.isMobile || params.isChatThread) return null
 
   return (
     <ChatHeaderMobileViewToggle
@@ -301,6 +316,7 @@ function ChatHeaderBody(props: {
   activeThreadTitle: string
   activeProjectName: string | undefined
   isGitRepo: boolean
+  isChatThread: boolean
   isMobile: boolean
   threadActionsMenu?: ReactNode
   mobileNavigationControl: ReactNode
@@ -312,11 +328,12 @@ function ChatHeaderBody(props: {
         activeThreadTitle={props.activeThreadTitle}
         activeProjectName={props.activeProjectName}
         isGitRepo={props.isGitRepo}
+        isChatThread={props.isChatThread}
         threadActionsMenu={!props.isMobile ? props.threadActionsMenu : undefined}
         leadingControl={props.mobileNavigationControl}
       />
       {props.isMobile ? props.threadActionsMenu : null}
-      {props.actionCluster}
+      {props.isChatThread ? null : props.actionCluster}
     </div>
   )
 }
@@ -325,6 +342,7 @@ export const ChatHeader = memo(function ChatHeader(props: ChatHeaderProps) {
   const isMobile = useIsMobile()
   const mobileNavigationControl = useMobileHeaderNavigationControl({
     isMobile,
+    isChatThread: props.isChatThread ?? false,
     auxSidebarMode: props.auxSidebarMode,
     openInCwd: props.openInCwd,
     isGitRepo: props.isGitRepo,
@@ -340,6 +358,7 @@ export const ChatHeader = memo(function ChatHeader(props: ChatHeaderProps) {
       activeThreadTitle={props.activeThreadTitle}
       activeProjectName={props.activeProjectName}
       isGitRepo={props.isGitRepo}
+      isChatThread={props.isChatThread ?? false}
       isMobile={isMobile}
       threadActionsMenu={props.threadActionsMenu}
       mobileNavigationControl={mobileNavigationControl}

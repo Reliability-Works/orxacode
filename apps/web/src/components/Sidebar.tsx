@@ -21,6 +21,8 @@ import {
 } from '@orxa-code/contracts/settings'
 import { useSidebarStoreBindings } from './sidebar/useSidebarStoreBindings'
 import { useSidebarWiring } from './sidebar/useSidebarWiring'
+import { toSidebarThreadSnapshot } from './sidebar/useSidebarDerivedData'
+import type { SidebarThreadSnapshot } from './sidebar/ThreadRow'
 import { SidebarBody, type SidebarBodyProps } from './SidebarBody'
 import { NewSessionModal } from './session'
 import { useUiStateStore } from '../uiStateStore'
@@ -29,9 +31,15 @@ import { isChatProject } from '../lib/chatProject'
 import type { Project, Thread } from '../types'
 
 interface ChatProjectPartition {
+  /**
+   * Projects to render in the main project list (chat projects removed so they
+   * don't appear as their own entry — chats are rendered in the dedicated
+   * `SidebarChatGroup` instead).
+   */
   nonChatProjects: Project[]
-  nonChatThreads: Thread[]
+  /** Chat-only project subset, used to identify chat threads in the chat group. */
   chatProjects: Project[]
+  /** Chat-only thread subset, in unsorted form. */
   chatThreads: Thread[]
 }
 
@@ -41,7 +49,7 @@ function partitionByChatBaseDir(
   baseDir: string | null
 ): ChatProjectPartition {
   if (!baseDir) {
-    return { nonChatProjects: projects, nonChatThreads: threads, chatProjects: [], chatThreads: [] }
+    return { nonChatProjects: projects, chatProjects: [], chatThreads: [] }
   }
   const chatProjectIds = new Set<ProjectId>()
   const nonChatProjects: Project[] = []
@@ -55,15 +63,31 @@ function partitionByChatBaseDir(
     }
   }
   if (chatProjectIds.size === 0) {
-    return { nonChatProjects: projects, nonChatThreads: threads, chatProjects: [], chatThreads: [] }
+    return { nonChatProjects: projects, chatProjects: [], chatThreads: [] }
   }
-  const nonChatThreads: Thread[] = []
   const chatThreads: Thread[] = []
   for (const thread of threads) {
     if (chatProjectIds.has(thread.projectId)) chatThreads.push(thread)
-    else nonChatThreads.push(thread)
   }
-  return { nonChatProjects, nonChatThreads, chatProjects, chatThreads }
+  return { nonChatProjects, chatProjects, chatThreads }
+}
+
+function useChatThreadSnapshots(
+  chatThreads: Thread[],
+  threadLastVisitedAtById: Record<ThreadId, string>
+): SidebarThreadSnapshot[] {
+  return useMemo(
+    () =>
+      chatThreads
+        .filter(thread => thread.archivedAt === null)
+        .map(thread => toSidebarThreadSnapshot(thread, threadLastVisitedAtById[thread.id]))
+        .sort((a, b) => {
+          const aKey = a.updatedAt ?? a.createdAt
+          const bKey = b.updatedAt ?? b.createdAt
+          return aKey < bKey ? 1 : aKey > bKey ? -1 : 0
+        }),
+    [chatThreads, threadLastVisitedAtById]
+  )
 }
 
 function usePendingNewSessionModalEffect(opts: {
@@ -104,7 +128,7 @@ function buildSidebarBodyProps(
   w: ReturnType<typeof useSidebarWiring>,
   chatGroup: {
     chatProjects: Project[]
-    chatThreads: Thread[]
+    chatThreadSnapshots: SidebarThreadSnapshot[]
     chatBaseDir: string | null
   }
 ): SidebarBodyProps {
@@ -112,7 +136,7 @@ function buildSidebarBodyProps(
     isOnSettings: s.pathname.startsWith('/settings'),
     pathname: s.pathname,
     chatProjects: chatGroup.chatProjects,
-    chatThreads: chatGroup.chatThreads,
+    chatThreadSnapshots: chatGroup.chatThreadSnapshots,
     chatBaseDir: chatGroup.chatBaseDir,
     shouldShowProjectPathEntry:
       w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately,
@@ -186,10 +210,14 @@ export default function Sidebar() {
     () => partitionByChatBaseDir(s.projects, s.serverThreads, chatBaseDir),
     [s.projects, s.serverThreads, chatBaseDir]
   )
+  // NOTE: only `projects` is filtered. `serverThreads` retains the full set so
+  // wiring (delete handlers, jump labels, terminal/PR status, selection model)
+  // applies uniformly to chat threads. Chat threads naturally drop out of the
+  // project rendering paths because no matching project exists in
+  // `partition.nonChatProjects`.
   const sWithModal: typeof s = {
     ...s,
     projects: partition.nonChatProjects,
-    serverThreads: partition.nonChatThreads,
     handleNewThread: projectId => {
       setModalProjectId(projectId)
       setModalOpen(true)
@@ -207,9 +235,13 @@ export default function Sidebar() {
     setModalPrimaryThreadId,
     setModalOpen,
   })
+  const chatThreadSnapshots = useChatThreadSnapshots(
+    partition.chatThreads,
+    s.threadLastVisitedAtById
+  )
   const bodyProps = buildSidebarBodyProps(sWithModal, w, {
     chatProjects: partition.chatProjects,
-    chatThreads: partition.chatThreads,
+    chatThreadSnapshots,
     chatBaseDir,
   })
 

@@ -12,7 +12,8 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
 
 import { isElectron } from '../env'
-import type { Project, Thread } from '../types'
+import type { Project } from '../types'
+import type { SidebarThreadSnapshot } from './sidebar/ThreadRow'
 import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
 import type { RenderedPinnedThreadData, RenderedProjectData } from './sidebar/ProjectItem'
 import { SidebarMobileThreadsView } from './SidebarMobileThreadsView'
@@ -53,7 +54,7 @@ export interface SidebarBodyProps {
   isOnSettings: boolean
   pathname: string
   chatProjects: Project[]
-  chatThreads: Thread[]
+  chatThreadSnapshots: SidebarThreadSnapshot[]
   chatBaseDir: string | null
   shouldShowProjectPathEntry: boolean
   showArm64IntelBuildWarning: boolean
@@ -272,9 +273,15 @@ function SidebarMainView(props: SidebarMainViewProps) {
         <SidebarProjectSection {...props} />
         <SidebarChatGroup
           projects={props.chatProjects}
-          threads={props.chatThreads}
+          threadSnapshots={props.chatThreadSnapshots}
           baseDir={props.chatBaseDir}
           routeThreadId={props.routeThreadId}
+          getThreadRowProps={props.getThreadRowProps}
+          selectedThreadIds={props.selectedThreadIds}
+          threadJumpLabelById={props.threadJumpLabelById}
+          terminalStateByThreadId={props.terminalStateByThreadId}
+          prByThreadId={props.prByThreadId}
+          confirmingDeleteThreadId={props.confirmingDeleteThreadId}
         />
       </SidebarContent>
       {!isMobile ? <SidebarSeparator /> : null}
