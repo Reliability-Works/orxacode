@@ -14,7 +14,7 @@ import { HttpRouter, HttpServer } from 'effect/unstable/http'
 import { RpcClient, RpcSerialization } from 'effect/unstable/rpc'
 
 import type { ServerConfigShape } from './config.ts'
-import { deriveServerPaths, ServerConfig } from './config.ts'
+import { deriveServerPaths, observabilityDefaults, ServerConfig } from './config.ts'
 import { makeRoutesLayer } from './server.ts'
 import {
   CheckpointDiffQuery,
@@ -169,6 +169,9 @@ const makeServerConfig = (
       remoteAccessEnvironmentId: undefined,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
+      ...observabilityDefaults,
+      otlpTracesUrl: undefined,
+      otlpMetricsUrl: undefined,
       ...config,
     } satisfies ServerConfigShape
   })

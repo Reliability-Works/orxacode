@@ -259,10 +259,20 @@ function makeFakeServerConfig(): ServerConfigShape {
     attachmentsDir: '/tmp/opencode-adapter-test/state/attachments',
     logsDir: '/tmp/opencode-adapter-test/state/logs',
     serverLogPath: '/tmp/opencode-adapter-test/state/logs/server.log',
+    serverTracePath: '/tmp/opencode-adapter-test/state/logs/server.trace.ndjson',
     providerLogsDir: '/tmp/opencode-adapter-test/state/logs/provider',
     providerEventLogPath: '/tmp/opencode-adapter-test/state/logs/provider/events.log',
     terminalLogsDir: '/tmp/opencode-adapter-test/state/logs/terminals',
     anonymousIdPath: '/tmp/opencode-adapter-test/state/anonymous-id',
+    traceMinLevel: 'Info',
+    traceTimingEnabled: true,
+    traceMaxBytes: 5 * 1024 * 1024,
+    traceMaxFiles: 5,
+    traceBatchWindowMs: 250,
+    otlpTracesUrl: undefined,
+    otlpMetricsUrl: undefined,
+    otlpExportIntervalMs: 5000,
+    otlpServiceName: 'orxacode-server',
   }
 }
 

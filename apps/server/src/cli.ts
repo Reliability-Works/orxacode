@@ -6,6 +6,7 @@ import {
   DEFAULT_PORT,
   deriveServerPaths,
   ensureServerDirectories,
+  observabilityDefaults,
   resolveStaticDir,
   ServerConfig,
   type ServerDerivedPaths,
@@ -395,6 +396,9 @@ const buildServerConfig = (input: {
   remoteAccessEnvironmentId: input.remoteAccessEnvironmentId,
   autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
   logWebSocketEvents: input.logWebSocketEvents,
+  ...observabilityDefaults,
+  otlpTracesUrl: undefined,
+  otlpMetricsUrl: undefined,
 })
 
 const runCliCommand = (flags: CliServerFlags) =>

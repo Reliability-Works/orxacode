@@ -5,8 +5,19 @@ import { ConfigProvider, Effect, FileSystem, Layer, Option, Path } from 'effect'
 
 import { NetService } from '@orxa-code/shared/Net'
 import * as NodeServices from '@effect/platform-node/NodeServices'
-import { deriveServerPaths } from './config'
+import { deriveServerPaths, observabilityDefaults } from './config'
 import { resolveServerConfig } from './cli'
+
+const observabilityExpectations = {
+  ...observabilityDefaults,
+  otlpTracesUrl: undefined,
+  otlpMetricsUrl: undefined,
+} as const
+
+const remoteAccessExpectations = {
+  remoteAccessBootstrapToken: undefined,
+  remoteAccessEnvironmentId: undefined,
+} as const
 
 const openBootstrapFd = Effect.fn(function* (payload: Record<string, unknown>) {
   const fs = yield* FileSystem.FileSystem
@@ -74,6 +85,8 @@ it.layer(NodeServices.layer)('cli config resolution env fallback', it => {
         authToken: 'env-token',
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
+        ...remoteAccessExpectations,
+        ...observabilityExpectations,
       })
     })
   )
@@ -137,6 +150,8 @@ it.layer(NodeServices.layer)('cli config resolution flags', it => {
         authToken: 'flag-token',
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
+        ...remoteAccessExpectations,
+        ...observabilityExpectations,
       })
     })
   )
@@ -203,6 +218,8 @@ it.layer(NodeServices.layer)('cli config resolution bootstrap envelope', it => {
         authToken: 'bootstrap-token',
         autoBootstrapProjectFromCwd: false,
         logWebSocketEvents: true,
+        ...remoteAccessExpectations,
+        ...observabilityExpectations,
       })
       assert.equal(join(baseDir, 'dev'), resolved.stateDir)
     })
@@ -320,6 +337,8 @@ it.layer(NodeServices.layer)('cli config resolution precedence', it => {
         authToken: 'flag-token',
         autoBootstrapProjectFromCwd: true,
         logWebSocketEvents: true,
+        ...remoteAccessExpectations,
+        ...observabilityExpectations,
       })
     })
   )

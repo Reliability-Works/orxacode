@@ -13,6 +13,22 @@ export const DEFAULT_PORT = 3773
 export const RuntimeMode = Schema.Literals(['web', 'desktop'])
 export type RuntimeMode = typeof RuntimeMode.Type
 
+const DEFAULT_TRACE_MAX_BYTES = 5 * 1024 * 1024
+const DEFAULT_TRACE_MAX_FILES = 5
+const DEFAULT_TRACE_BATCH_WINDOW_MS = 250
+const DEFAULT_OTLP_EXPORT_INTERVAL_MS = 5000
+const DEFAULT_OTLP_SERVICE_NAME = 'orxacode-server'
+
+export const observabilityDefaults = {
+  traceMaxBytes: DEFAULT_TRACE_MAX_BYTES,
+  traceMaxFiles: DEFAULT_TRACE_MAX_FILES,
+  traceBatchWindowMs: DEFAULT_TRACE_BATCH_WINDOW_MS,
+  traceMinLevel: 'Info' as LogLevel.LogLevel,
+  traceTimingEnabled: true,
+  otlpExportIntervalMs: DEFAULT_OTLP_EXPORT_INTERVAL_MS,
+  otlpServiceName: DEFAULT_OTLP_SERVICE_NAME,
+} as const
+
 /**
  * ServerDerivedPaths - Derived paths from the base directory.
  */
@@ -25,6 +41,7 @@ export interface ServerDerivedPaths {
   readonly attachmentsDir: string
   readonly logsDir: string
   readonly serverLogPath: string
+  readonly serverTracePath: string
   readonly providerLogsDir: string
   readonly providerEventLogPath: string
   readonly terminalLogsDir: string
@@ -49,6 +66,15 @@ export interface ServerConfigShape extends ServerDerivedPaths {
   readonly remoteAccessEnvironmentId: string | undefined
   readonly autoBootstrapProjectFromCwd: boolean
   readonly logWebSocketEvents: boolean
+  readonly traceMinLevel: LogLevel.LogLevel
+  readonly traceTimingEnabled: boolean
+  readonly traceMaxBytes: number
+  readonly traceMaxFiles: number
+  readonly traceBatchWindowMs: number
+  readonly otlpTracesUrl: string | undefined
+  readonly otlpMetricsUrl: string | undefined
+  readonly otlpExportIntervalMs: number
+  readonly otlpServiceName: string
 }
 
 export const deriveServerPaths = Effect.fn(function* (
@@ -70,6 +96,7 @@ export const deriveServerPaths = Effect.fn(function* (
     attachmentsDir,
     logsDir,
     serverLogPath: join(logsDir, 'server.log'),
+    serverTracePath: join(logsDir, 'server.trace.ndjson'),
     providerLogsDir,
     providerEventLogPath: join(providerLogsDir, 'events.log'),
     terminalLogsDir: join(logsDir, 'terminals'),
@@ -133,6 +160,9 @@ export class ServerConfig extends ServiceMap.Service<ServerConfig, ServerConfigS
           staticDir: undefined,
           devUrl,
           noBrowser: false,
+          ...observabilityDefaults,
+          otlpTracesUrl: undefined,
+          otlpMetricsUrl: undefined,
         } satisfies ServerConfigShape
       })
     )
