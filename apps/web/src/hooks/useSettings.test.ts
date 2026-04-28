@@ -2,15 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { buildLegacyClientSettingsMigrationPatch } from './useSettings'
 
 describe('buildLegacyClientSettingsMigrationPatch', () => {
-  it('migrates archive confirmation from legacy local settings', () => {
+  it('migrates delete confirmation from legacy local settings', () => {
     expect(
       buildLegacyClientSettingsMigrationPatch({
-        confirmThreadArchive: true,
-        confirmThreadDelete: false,
+        confirmThreadDelete: true,
       })
     ).toEqual({
-      confirmThreadArchive: true,
-      confirmThreadDelete: false,
+      confirmThreadDelete: true,
     })
   })
 })

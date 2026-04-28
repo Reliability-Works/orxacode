@@ -19,7 +19,6 @@ import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsZenRouteImport } from './routes/settings.zen'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
 import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
-import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as SettingsAdvancedRouteImport } from './routes/settings.advanced'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
@@ -74,11 +73,6 @@ const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
-  id: '/archived',
-  path: '/archived',
-  getParentRoute: () => SettingsRoute,
-} as any)
 const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   id: '/appearance',
   path: '/appearance',
@@ -111,7 +105,6 @@ export interface FileRoutesByFullPath {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
-  '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/zen': typeof SettingsZenRoute
@@ -126,7 +119,6 @@ export interface FileRoutesByTo {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
-  '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/zen': typeof SettingsZenRoute
@@ -144,7 +136,6 @@ export interface FileRoutesById {
   '/settings/about': typeof SettingsAboutRoute
   '/settings/advanced': typeof SettingsAdvancedRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
-  '/settings/archived': typeof SettingsArchivedRoute
   '/settings/general': typeof SettingsGeneralRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/zen': typeof SettingsZenRoute
@@ -163,7 +154,6 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/advanced'
     | '/settings/appearance'
-    | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
     | '/settings/zen'
@@ -178,7 +168,6 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/advanced'
     | '/settings/appearance'
-    | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
     | '/settings/zen'
@@ -195,7 +184,6 @@ export interface FileRouteTypes {
     | '/settings/about'
     | '/settings/advanced'
     | '/settings/appearance'
-    | '/settings/archived'
     | '/settings/general'
     | '/settings/providers'
     | '/settings/zen'
@@ -283,13 +271,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsGeneralRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/archived': {
-      id: '/settings/archived'
-      path: '/archived'
-      fullPath: '/settings/archived'
-      preLoaderRoute: typeof SettingsArchivedRouteImport
-      parentRoute: typeof SettingsRoute
-    }
     '/settings/appearance': {
       id: '/settings/appearance'
       path: '/appearance'
@@ -337,7 +318,6 @@ interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
   SettingsAdvancedRoute: typeof SettingsAdvancedRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
-  SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
   SettingsProvidersRoute: typeof SettingsProvidersRoute
   SettingsZenRoute: typeof SettingsZenRoute
@@ -347,7 +327,6 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
   SettingsAdvancedRoute: SettingsAdvancedRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
-  SettingsArchivedRoute: SettingsArchivedRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
   SettingsProvidersRoute: SettingsProvidersRoute,
   SettingsZenRoute: SettingsZenRoute,

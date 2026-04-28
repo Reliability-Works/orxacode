@@ -35,7 +35,6 @@ export const ZenMode = Schema.Struct({
 export type ZenMode = typeof ZenMode.Type
 
 export const ClientSettingsSchema = Schema.Struct({
-  confirmThreadArchive: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   confirmThreadDelete: Schema.Boolean.pipe(Schema.withDecodingDefault(() => true)),
   diffWordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
   sidebarProjectSortOrder: SidebarProjectSortOrder.pipe(

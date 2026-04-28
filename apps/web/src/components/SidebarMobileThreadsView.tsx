@@ -1,4 +1,4 @@
-import { ArchiveIcon, ChevronRightIcon, PlusIcon, SquarePenIcon } from 'lucide-react'
+import { ChevronRightIcon, PlusIcon, SquarePenIcon, Trash2Icon } from 'lucide-react'
 import { PROVIDER_DISPLAY_NAMES, type ProviderKind } from '@orxa-code/contracts'
 import type { ThreadId } from '@orxa-code/contracts'
 import { useEffect } from 'react'
@@ -131,7 +131,7 @@ function MobileThreadRow(props: {
   threadStatus: RenderedPinnedThreadData['threadStatus']
   isActive: boolean
   onOpen: (threadId: ThreadId) => void
-  onArchive?: (threadId: ThreadId) => Promise<void> | void
+  onDelete?: (threadId: ThreadId) => Promise<void> | void
 }) {
   const provider = resolveMobileThreadProvider(props.thread)
   const isRunning =
@@ -161,24 +161,24 @@ function MobileThreadRow(props: {
         <div className="text-right text-xs text-muted-foreground/65">
           {formatRelativeTimeLabel(props.thread.updatedAt ?? props.thread.createdAt)}
         </div>
-        {!isRunning && props.onArchive ? (
+        {!isRunning && props.onDelete ? (
           <button
             type="button"
             className="mt-1 inline-flex h-7 w-7 items-center justify-center self-end rounded-lg text-muted-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            aria-label={`Archive ${props.thread.title}`}
+            aria-label={`Delete ${props.thread.title}`}
             onClick={event => {
               event.preventDefault()
               event.stopPropagation()
-              void Promise.resolve(props.onArchive?.(props.thread.id)).catch(error => {
+              void Promise.resolve(props.onDelete?.(props.thread.id)).catch(error => {
                 toastManager.add({
                   type: 'error',
-                  title: 'Failed to archive session',
+                  title: 'Failed to delete session',
                   description: error instanceof Error ? error.message : 'An error occurred.',
                 })
               })
             }}
           >
-            <ArchiveIcon className="size-3.5" />
+            <Trash2Icon className="size-3.5" />
           </button>
         ) : null}
       </div>
@@ -207,7 +207,7 @@ function MobilePinnedThreadsSection(props: {
               threadStatus={threadStatus}
               isActive={props.routeThreadId === thread.id}
               onOpen={rowProps.onThreadNavigate}
-              onArchive={rowProps.archive.onAttempt}
+              onDelete={rowProps.deleteAction.onAttempt}
             />
           )
         })}
@@ -321,7 +321,7 @@ function MobileProjectRows(props: {
             threadStatus={threadStatus}
             isActive={props.routeThreadId === thread.id}
             onOpen={rowProps.onThreadNavigate}
-            onArchive={rowProps.archive.onAttempt}
+            onDelete={rowProps.deleteAction.onAttempt}
           />
         )
       })}

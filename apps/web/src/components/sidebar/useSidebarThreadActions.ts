@@ -1,5 +1,5 @@
 /**
- * useSidebarThreadActions — thread click / navigate / context-menu / rename / archive.
+ * useSidebarThreadActions — thread click / navigate / context-menu / rename / delete.
  */
 
 import { useCallback, useRef, useState } from 'react'
@@ -25,7 +25,7 @@ export interface SidebarThreadActionsReturn {
   navigateToThread: (threadId: ThreadId) => void
   handleThreadContextMenu: (threadId: ThreadId, position: { x: number; y: number }) => Promise<void>
   handleMultiSelectContextMenu: (position: { x: number; y: number }) => Promise<void>
-  attemptArchiveThread: (threadId: ThreadId) => Promise<void>
+  attemptDeleteThread: (threadId: ThreadId) => Promise<void>
   renamingThreadId: ThreadId | null
   renamingTitle: string
   setRenamingThreadId: React.Dispatch<React.SetStateAction<ThreadId | null>>
@@ -238,8 +238,7 @@ export interface SidebarThreadActionsParams {
   navigate: ReturnType<typeof import('@tanstack/react-router').useNavigate>
   threads: SidebarThreadSnapshot[]
   projectCwdById: Map<string, string | null>
-  appSettings: { confirmThreadDelete: boolean; confirmThreadArchive?: boolean }
-  archiveThread: (threadId: ThreadId) => Promise<void>
+  appSettings: { confirmThreadDelete: boolean }
   deleteThread: (
     threadId: ThreadId,
     opts?: { deletedThreadIds?: ReadonlySet<ThreadId> }
@@ -397,24 +396,24 @@ function useThreadContextMenus(params: ContextMenuHookParams) {
 export function useSidebarThreadActions(
   params: SidebarThreadActionsParams
 ): SidebarThreadActionsReturn {
-  const { archiveThread } = params
+  const { deleteThread } = params
   const { copyThreadIdToClipboard, copyPathToClipboard } = useThreadClipboard()
   const rename = useThreadRename()
   const nav = useSidebarThreadNavigation(params)
 
-  const attemptArchiveThread = useCallback(
+  const attemptDeleteThread = useCallback(
     async (threadId: ThreadId) => {
       try {
-        await archiveThread(threadId)
+        await deleteThread(threadId)
       } catch (error) {
         toastManager.add({
           type: 'error',
-          title: 'Failed to archive thread',
+          title: 'Failed to delete thread',
           description: error instanceof Error ? error.message : 'An error occurred.',
         })
       }
     },
-    [archiveThread]
+    [deleteThread]
   )
 
   const contextMenus = useThreadContextMenus({
@@ -438,7 +437,7 @@ export function useSidebarThreadActions(
     navigateToThread: nav.navigateToThread,
     handleThreadContextMenu: contextMenus.handleThreadContextMenu,
     handleMultiSelectContextMenu: contextMenus.handleMultiSelectContextMenu,
-    attemptArchiveThread,
+    attemptDeleteThread,
     renamingThreadId: rename.renamingThreadId,
     renamingTitle: rename.renamingTitle,
     setRenamingThreadId: rename.setRenamingThreadId,

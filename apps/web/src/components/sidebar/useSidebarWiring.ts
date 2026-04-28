@@ -43,9 +43,7 @@ function useSidebarCoreActions(s: StoreBindings) {
     projectCwdById: derived.projectCwdById,
     appSettings: {
       confirmThreadDelete: s.appSettings.confirmThreadDelete ?? false,
-      confirmThreadArchive: s.appSettings.confirmThreadArchive,
     },
-    archiveThread: s.archiveThread,
     deleteThread: s.deleteThread,
     markThreadUnread: s.markThreadUnread,
     selectedThreadIds: s.selectedThreadIds,
@@ -125,7 +123,7 @@ export function useSidebarWiring(s: StoreBindings) {
   const newThreadShortcutLabel =
     shortcutLabelForCommand(s.keybindings, 'chat.newLocal', derived.sidebarShortcutLabelOptions) ??
     shortcutLabelForCommand(s.keybindings, 'chat.new', derived.sidebarShortcutLabelOptions)
-  const { getProjectItemProps, getThreadRowProps, confirmingArchiveThreadId } =
+  const { getProjectItemProps, getThreadRowProps, confirmingDeleteThreadId } =
     useSidebarCallbackFactories({
       threadActions,
       projectActions,
@@ -141,7 +139,7 @@ export function useSidebarWiring(s: StoreBindings) {
       newThreadShortcutLabel,
       handleNewThread: s.handleNewThread,
       defaultThreadEnvMode: s.appSettings.defaultThreadEnvMode,
-      confirmThreadArchive: s.appSettings.confirmThreadArchive,
+      confirmThreadDelete: s.appSettings.confirmThreadDelete ?? false,
       showThreadJumpHints,
       setParentThreadExpanded: s.setParentThreadExpanded,
     })
@@ -154,7 +152,7 @@ export function useSidebarWiring(s: StoreBindings) {
     desktopUpdate,
     threadJumpLabelById: keyboardNav.threadJumpLabelById,
     prByThreadId: derived.prByThreadId,
-    confirmingArchiveThreadId,
+    confirmingDeleteThreadId,
     getThreadRowProps,
     getProjectItemProps,
   }

@@ -1,4 +1,4 @@
-import { ArchiveIcon, TerminalIcon } from 'lucide-react'
+import { TerminalIcon, Trash2Icon } from 'lucide-react'
 import type { DragEvent, MouseEvent } from 'react'
 import { ThreadId } from '@orxa-code/contracts'
 import type { Thread } from '../../types'
@@ -49,12 +49,12 @@ export interface ThreadRowRenameState {
   committedRef: React.MutableRefObject<boolean>
 }
 
-export interface ThreadRowArchiveState {
+export interface ThreadRowDeleteState {
   isConfirming: boolean
   onConfirmingChange: React.Dispatch<React.SetStateAction<ThreadId | null>>
   buttonRefs: React.MutableRefObject<Map<ThreadId, HTMLButtonElement>>
   onAttempt: (threadId: ThreadId) => void
-  confirmThreadArchive: boolean
+  confirmThreadDelete: boolean
 }
 
 export interface ThreadRowProps {
@@ -69,7 +69,7 @@ export interface ThreadRowProps {
   threadStatus: ThreadStatusPill | null
   prStatus: PrStatusIndicator | null
   terminalStatus: TerminalStatusIndicator | null
-  isConfirmingArchive: boolean
+  isConfirmingDelete: boolean
   orderedProjectThreadIds: readonly ThreadId[]
   rowClassName: string
   onThreadClick: (
@@ -83,7 +83,7 @@ export interface ThreadRowProps {
   onMultiSelectContextMenu: (position: { x: number; y: number }) => void
   onOpenPrLink: (event: MouseEvent<HTMLElement>, prUrl: string) => void
   rename: ThreadRowRenameState
-  archive: ThreadRowArchiveState
+  deleteAction: ThreadRowDeleteState
   showThreadJumpHints: boolean
   selectedThreadIds: ReadonlySet<ThreadId>
   clearSelection: () => void
@@ -94,25 +94,25 @@ function ThreadRowActionArea({
   isActive,
   isSelected,
   isThreadRunning,
-  isConfirmingArchive,
+  isConfirmingDelete,
   terminalStatus,
   jumpLabel,
   showThreadJumpHints,
-  archive,
+  deleteAction,
 }: {
   thread: SidebarThreadSnapshot
   isActive: boolean
   isSelected: boolean
   isThreadRunning: boolean
-  isConfirmingArchive: boolean
+  isConfirmingDelete: boolean
   terminalStatus: TerminalStatusIndicator | null
   jumpLabel: string | null
   showThreadJumpHints: boolean
-  archive: ThreadRowArchiveState
+  deleteAction: ThreadRowDeleteState
 }) {
   const isMobile = useIsMobile()
   const isHighlighted = isActive || isSelected
-  const threadMetaClassName = isConfirmingArchive
+  const threadMetaClassName = isConfirmingDelete
     ? 'pointer-events-none opacity-0'
     : !isThreadRunning
       ? 'pointer-events-none transition-opacity duration-150 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0'
@@ -133,11 +133,11 @@ function ThreadRowActionArea({
         </span>
       )}
       <div className="flex min-w-14 justify-end md:min-w-12">
-        <ThreadRowArchiveArea
+        <ThreadRowDeleteArea
           thread={thread}
           isThreadRunning={isThreadRunning}
-          isConfirmingArchive={isConfirmingArchive}
-          archive={archive}
+          isConfirmingDelete={isConfirmingDelete}
+          deleteAction={deleteAction}
         />
         <span className={threadMetaClassName}>
           {showThreadJumpHints && jumpLabel ? (
@@ -160,23 +160,23 @@ function ThreadRowActionArea({
   )
 }
 
-function ThreadRowArchiveConfirmButton({
+function ThreadRowDeleteConfirmButton({
   thread,
-  archive,
+  deleteAction,
 }: {
   thread: SidebarThreadSnapshot
-  archive: ThreadRowArchiveState
+  deleteAction: ThreadRowDeleteState
 }) {
   return (
     <button
       ref={el => {
-        if (el) archive.buttonRefs.current.set(thread.id, el)
-        else archive.buttonRefs.current.delete(thread.id)
+        if (el) deleteAction.buttonRefs.current.set(thread.id, el)
+        else deleteAction.buttonRefs.current.delete(thread.id)
       }}
       type="button"
       data-thread-selection-safe
-      data-testid={`thread-archive-confirm-${thread.id}`}
-      aria-label={`Confirm archive ${thread.title}`}
+      data-testid={`thread-delete-confirm-${thread.id}`}
+      aria-label={`Confirm delete ${thread.title}`}
       className="absolute top-1/2 right-1 inline-flex h-5 -translate-y-1/2 cursor-pointer items-center rounded-full bg-destructive/12 px-2 text-mini font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-destructive/40"
       onPointerDown={e => {
         e.stopPropagation()
@@ -184,8 +184,8 @@ function ThreadRowArchiveConfirmButton({
       onClick={e => {
         e.preventDefault()
         e.stopPropagation()
-        archive.onConfirmingChange(c => (c === thread.id ? null : c))
-        void archive.onAttempt(thread.id)
+        deleteAction.onConfirmingChange(c => (c === thread.id ? null : c))
+        void deleteAction.onAttempt(thread.id)
       }}
     >
       Confirm
@@ -193,28 +193,28 @@ function ThreadRowArchiveConfirmButton({
   )
 }
 
-function ThreadRowArchiveArea({
+function ThreadRowDeleteArea({
   thread,
   isThreadRunning,
-  isConfirmingArchive,
-  archive,
+  isConfirmingDelete,
+  deleteAction,
 }: {
   thread: SidebarThreadSnapshot
   isThreadRunning: boolean
-  isConfirmingArchive: boolean
-  archive: ThreadRowArchiveState
+  isConfirmingDelete: boolean
+  deleteAction: ThreadRowDeleteState
 }) {
-  if (isConfirmingArchive) {
-    return <ThreadRowArchiveConfirmButton thread={thread} archive={archive} />
+  if (isConfirmingDelete) {
+    return <ThreadRowDeleteConfirmButton thread={thread} deleteAction={deleteAction} />
   }
   if (isThreadRunning) return null
 
-  const archiveButtonEl = (
+  const deleteButtonEl = (
     <button
       type="button"
       data-thread-selection-safe
-      data-testid={`thread-archive-${thread.id}`}
-      aria-label={`Archive ${thread.title}`}
+      data-testid={`thread-delete-${thread.id}`}
+      aria-label={`Delete ${thread.title}`}
       className="inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
       onPointerDown={e => {
         e.stopPropagation()
@@ -222,30 +222,30 @@ function ThreadRowArchiveArea({
       onClick={e => {
         e.preventDefault()
         e.stopPropagation()
-        if (archive.confirmThreadArchive) {
-          archive.onConfirmingChange(thread.id)
+        if (deleteAction.confirmThreadDelete) {
+          deleteAction.onConfirmingChange(thread.id)
           requestAnimationFrame(() => {
-            archive.buttonRefs.current.get(thread.id)?.focus()
+            deleteAction.buttonRefs.current.get(thread.id)?.focus()
           })
         } else {
-          void archive.onAttempt(thread.id)
+          void deleteAction.onAttempt(thread.id)
         }
       }}
     >
-      <ArchiveIcon className="size-3.5" />
+      <Trash2Icon className="size-3.5" />
     </button>
   )
 
   const wrapperClass =
     'pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100'
 
-  if (archive.confirmThreadArchive) {
-    return <div className={wrapperClass}>{archiveButtonEl}</div>
+  if (deleteAction.confirmThreadDelete) {
+    return <div className={wrapperClass}>{deleteButtonEl}</div>
   }
   return (
     <Tooltip>
-      <TooltipTrigger render={<div className={wrapperClass}>{archiveButtonEl}</div>} />
-      <TooltipPopup side="top">Archive</TooltipPopup>
+      <TooltipTrigger render={<div className={wrapperClass}>{deleteButtonEl}</div>} />
+      <TooltipPopup side="top">Delete</TooltipPopup>
     </Tooltip>
   )
 }
@@ -300,7 +300,7 @@ function ThreadRowButton(
     threadStatus,
     prStatus,
     terminalStatus,
-    isConfirmingArchive,
+    isConfirmingDelete,
     orderedProjectThreadIds,
     nestingLevel = 0,
     hasChildren = false,
@@ -311,7 +311,7 @@ function ThreadRowButton(
     onThreadNavigate,
     onOpenPrLink,
     rename,
-    archive,
+    deleteAction,
     showThreadJumpHints,
     handleContextMenu,
   } = props
@@ -349,11 +349,11 @@ function ThreadRowButton(
         isActive={isActive}
         isSelected={isSelected}
         isThreadRunning={isThreadRunning}
-        isConfirmingArchive={isConfirmingArchive}
+        isConfirmingDelete={isConfirmingDelete}
         terminalStatus={terminalStatus}
         jumpLabel={jumpLabel}
         showThreadJumpHints={showThreadJumpHints}
-        archive={archive}
+        deleteAction={deleteAction}
       />
     </SidebarMenuSubButton>
   )
@@ -362,14 +362,14 @@ function ThreadRowButton(
 export function ThreadRow(props: ThreadRowProps) {
   const {
     thread,
-    archive,
+    deleteAction,
     selectedThreadIds,
     clearSelection,
     onMultiSelectContextMenu,
     onThreadContextMenu,
   } = props
-  const dismissArchiveConfirm = () => {
-    archive.onConfirmingChange(c => (c === thread.id ? null : c))
+  const dismissDeleteConfirm = () => {
+    deleteAction.onConfirmingChange(c => (c === thread.id ? null : c))
   }
   const handleContextMenu = createContextMenuHandler({
     threadId: thread.id,
@@ -383,11 +383,11 @@ export function ThreadRow(props: ThreadRowProps) {
       key={thread.id}
       className="w-full"
       data-thread-item
-      onMouseLeave={dismissArchiveConfirm}
+      onMouseLeave={dismissDeleteConfirm}
       onBlurCapture={event => {
         const currentTarget = event.currentTarget
         requestAnimationFrame(() => {
-          if (!currentTarget.contains(document.activeElement)) dismissArchiveConfirm()
+          if (!currentTarget.contains(document.activeElement)) dismissDeleteConfirm()
         })
       }}
     >

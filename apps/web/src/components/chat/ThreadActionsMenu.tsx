@@ -119,7 +119,7 @@ function ThreadActionsMenuItems(props: {
   isPinned: boolean
   workingDirectory: string | null
   onPinToggle: () => void
-  onArchive: () => void
+  onDelete: () => void
   copyWorkingDirectory: (value: string, ctx: { value: string }) => void
   pendingProvider: Thread['modelSelection']['provider'] | null
   targetProviders: ReadonlyArray<Thread['modelSelection']['provider']>
@@ -130,7 +130,7 @@ function ThreadActionsMenuItems(props: {
     isPinned,
     workingDirectory,
     onPinToggle,
-    onArchive,
+    onDelete,
     copyWorkingDirectory,
     pendingProvider,
     targetProviders,
@@ -148,7 +148,7 @@ function ThreadActionsMenuItems(props: {
       >
         Rename thread
       </MenuItem>
-      <MenuItem onClick={onArchive}>Archive thread</MenuItem>
+      <MenuItem onClick={onDelete}>Delete thread</MenuItem>
       <MenuSeparator />
       <MenuItem
         disabled={!workingDirectory}
@@ -179,7 +179,7 @@ function ThreadActionsMenuItems(props: {
 export function ThreadActionsMenu(props: { thread: Thread; project: Project | null }) {
   const isMobile = useIsMobile()
   const c = useChatViewCtx()
-  const { archiveThread } = useThreadActions()
+  const { confirmAndDeleteThread } = useThreadActions()
   const pinnedThreadIds = useUiStateStore(store => store.pinnedThreadIds)
   const pinThread = useUiStateStore(store => store.pinThread)
   const unpinThread = useUiStateStore(store => store.unpinThread)
@@ -219,9 +219,9 @@ export function ThreadActionsMenu(props: { thread: Thread; project: Project | nu
             onPinToggle={() =>
               isPinned ? unpinThread(props.thread.id) : pinThread(props.thread.id)
             }
-            onArchive={() => {
-              void archiveThread(props.thread.id).catch(error =>
-                showActionError('Failed to archive thread', error)
+            onDelete={() => {
+              void confirmAndDeleteThread(props.thread.id).catch(error =>
+                showActionError('Failed to delete thread', error)
               )
             }}
             copyWorkingDirectory={copyWorkingDirectory}

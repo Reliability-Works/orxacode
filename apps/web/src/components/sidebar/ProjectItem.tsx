@@ -89,8 +89,8 @@ export interface ProjectItemProps {
   // -- PR status (raw data, converted per-row) --
   prByThreadId: Map<ThreadId, ThreadPr | null>
 
-  // -- Archive confirmation --
-  confirmingArchiveThreadId: ThreadId | null
+  // -- Delete confirmation --
+  confirmingDeleteThreadId: ThreadId | null
 
   // -- App settings --
   defaultThreadEnvMode: import('../Sidebar.logic').SidebarNewThreadEnvMode
@@ -120,7 +120,7 @@ export interface ProjectItemProps {
     | 'threadStatus'
     | 'prStatus'
     | 'terminalStatus'
-    | 'isConfirmingArchive'
+    | 'isConfirmingDelete'
     | 'orderedProjectThreadIds'
     | 'rowClassName'
   >
@@ -264,7 +264,7 @@ interface ProjectThreadListProps {
   threadJumpLabelById: Map<ThreadId, string>
   terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>
   prByThreadId: Map<ThreadId, ThreadPr | null>
-  confirmingArchiveThreadId: ThreadId | null
+  confirmingDeleteThreadId: ThreadId | null
   attachThreadListAutoAnimateRef: (node: HTMLElement | null) => void
   getThreadRowProps: ProjectItemProps['getThreadRowProps']
   onExpandThreadList: (projectId: ProjectId) => void
@@ -280,7 +280,7 @@ function renderThreadRowItem(
     | 'threadJumpLabelById'
     | 'terminalStateByThreadId'
     | 'prByThreadId'
-    | 'confirmingArchiveThreadId'
+    | 'confirmingDeleteThreadId'
     | 'getThreadRowProps'
   > & {
     threadStatuses: Map<ThreadId, ThreadStatusPill | null>
@@ -300,7 +300,7 @@ function renderThreadRowItem(
   const termStatus = terminalStatusFromRunningIds(
     selectThreadTerminalState(opts.terminalStateByThreadId, thread.id).runningTerminalIds
   )
-  const isConfirmingArchive = opts.confirmingArchiveThreadId === thread.id && !isThreadRunning
+  const isConfirmingDelete = opts.confirmingDeleteThreadId === thread.id && !isThreadRunning
   return (
     <ThreadRow
       key={thread.id}
@@ -312,7 +312,7 @@ function renderThreadRowItem(
       threadStatus={status}
       prStatus={pr}
       terminalStatus={termStatus}
-      isConfirmingArchive={isConfirmingArchive}
+      isConfirmingDelete={isConfirmingDelete}
       orderedProjectThreadIds={opts.orderedProjectThreadIds}
       nestingLevel={opts.nestingLevel}
       hasChildren={opts.hasChildren}
@@ -371,7 +371,7 @@ function ProjectThreadList({
   threadJumpLabelById,
   terminalStateByThreadId,
   prByThreadId,
-  confirmingArchiveThreadId,
+  confirmingDeleteThreadId,
   attachThreadListAutoAnimateRef,
   getThreadRowProps,
   onExpandThreadList,
@@ -394,7 +394,7 @@ function ProjectThreadList({
     threadJumpLabelById,
     terminalStateByThreadId,
     prByThreadId,
-    confirmingArchiveThreadId,
+    confirmingDeleteThreadId,
     getThreadRowProps,
     threadStatuses,
     orderedProjectThreadIds,
@@ -452,7 +452,7 @@ export function ProjectItem({
   threadJumpLabelById,
   terminalStateByThreadId,
   prByThreadId,
-  confirmingArchiveThreadId,
+  confirmingDeleteThreadId,
   defaultThreadEnvMode,
   onNewThread,
   onProjectTitleClick,
@@ -487,7 +487,7 @@ export function ProjectItem({
         threadJumpLabelById={threadJumpLabelById}
         terminalStateByThreadId={terminalStateByThreadId}
         prByThreadId={prByThreadId}
-        confirmingArchiveThreadId={confirmingArchiveThreadId}
+        confirmingDeleteThreadId={confirmingDeleteThreadId}
         attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
         getThreadRowProps={getThreadRowProps}
         onExpandThreadList={onExpandThreadList}

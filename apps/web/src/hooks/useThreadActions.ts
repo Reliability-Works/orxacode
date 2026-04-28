@@ -13,8 +13,6 @@ import { useTerminalStateStore } from '../terminalStateStore'
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from '../worktreeCleanup'
 import { toastManager } from '../components/ui/toastState'
 import { useSettings } from './useSettings'
-import { useUiStateStore } from '../uiStateStore'
-import { getFallbackThreadIdAfterArchive } from './useThreadActions.logic'
 
 type NativeApi = NonNullable<ReturnType<typeof readNativeApi>>
 type ThreadStoreState = ReturnType<typeof useStore.getState>
@@ -35,12 +33,6 @@ type ThreadDeleteContext = {
 
 function getThreadEntry(threadId: ThreadId) {
   return useStore.getState().threads.find(entry => entry.id === threadId)
-}
-
-function ensureThreadCanArchive(thread: ThreadEntry) {
-  if (thread.session?.status === 'running' && thread.session.activeTurnId != null) {
-    throw new Error('Cannot archive a running thread.')
-  }
 }
 
 function buildThreadDeleteContext(
@@ -168,57 +160,6 @@ async function removeOrphanedWorktreeIfNeeded(
   }
 }
 
-async function archiveThreadAction(
-  {
-    navigate,
-    routeThreadId,
-    sortOrder,
-  }: {
-    navigate: ReturnType<typeof useNavigate>
-    routeThreadId: ThreadId | null
-    sortOrder: ReturnType<typeof useSettings>['sidebarThreadSortOrder']
-  },
-  threadId: ThreadId
-) {
-  const api = readNativeApi()
-  if (!api) return
-  const thread = getThreadEntry(threadId)
-  if (!thread) return
-  ensureThreadCanArchive(thread)
-  await api.orchestration.dispatchCommand({
-    type: 'thread.archive',
-    commandId: newCommandId(),
-    threadId,
-  })
-  if (routeThreadId === threadId) {
-    const fallbackThreadId = getFallbackThreadIdAfterArchive({
-      threads: useStore.getState().threads,
-      archivedThreadId: threadId,
-      sortOrder,
-    })
-    if (fallbackThreadId) {
-      await navigate({
-        to: '/$threadId',
-        params: { threadId: fallbackThreadId },
-        replace: true,
-      })
-      return
-    }
-    useUiStateStore.getState().clearPendingNewSessionModal()
-    await navigate({ to: '/', replace: true })
-  }
-}
-
-async function unarchiveThreadAction(threadId: ThreadId) {
-  const api = readNativeApi()
-  if (!api) return
-  await api.orchestration.dispatchCommand({
-    type: 'thread.unarchive',
-    commandId: newCommandId(),
-    threadId,
-  })
-}
-
 async function deleteThreadAction(
   {
     sortOrder,
@@ -304,22 +245,6 @@ export function useThreadActions() {
   const queryClient = useQueryClient()
   const removeWorktreeMutation = useMutation(gitRemoveWorktreeMutationOptions({ queryClient }))
 
-  const archiveThread = useCallback(
-    async (threadId: ThreadId) =>
-      archiveThreadAction(
-        {
-          navigate,
-          routeThreadId,
-          sortOrder: appSettings.sidebarThreadSortOrder,
-        },
-        threadId
-      ),
-    [appSettings.sidebarThreadSortOrder, navigate, routeThreadId]
-  )
-  const unarchiveThread = useCallback(
-    async (threadId: ThreadId) => unarchiveThreadAction(threadId),
-    []
-  )
   const deleteThread = useCallback(
     async (threadId: ThreadId, opts: DeleteThreadOptions = {}) =>
       deleteThreadAction(
@@ -358,8 +283,6 @@ export function useThreadActions() {
   )
 
   return {
-    archiveThread,
-    unarchiveThread,
     deleteThread,
     confirmAndDeleteThread,
   }

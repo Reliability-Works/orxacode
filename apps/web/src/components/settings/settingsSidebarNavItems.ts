@@ -1,6 +1,5 @@
 import type { ComponentType } from 'react'
 import {
-  ArchiveIcon,
   FocusIcon,
   InfoIcon,
   PaletteIcon,
@@ -16,7 +15,6 @@ export type SettingsSectionPath =
   | '/settings/advanced'
   | '/settings/zen'
   | '/settings/about'
-  | '/settings/archived'
 
 export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   label: string
@@ -29,5 +27,4 @@ export const SETTINGS_NAV_ITEMS: ReadonlyArray<{
   { label: 'Advanced', to: '/settings/advanced', icon: Settings2Icon },
   { label: 'Zen mode', to: '/settings/zen', icon: FocusIcon },
   { label: 'About', to: '/settings/about', icon: InfoIcon },
-  { label: 'Archive', to: '/settings/archived', icon: ArchiveIcon },
 ]

@@ -90,7 +90,7 @@ function buildSidebarBodyProps(
     threadJumpLabelById: w.threadJumpLabelById,
     terminalStateByThreadId: s.terminalStateByThreadId,
     prByThreadId: w.prByThreadId,
-    confirmingArchiveThreadId: w.confirmingArchiveThreadId,
+    confirmingDeleteThreadId: w.confirmingDeleteThreadId,
     getProjectItemProps: w.getProjectItemProps,
     projectDnDSensors: w.projectActions.projectDnDSensors,
     projectCollisionDetection: w.projectActions.projectCollisionDetection,

@@ -150,29 +150,6 @@ function ThreadConfirmationRows({
   return (
     <>
       <SettingsRow
-        title="Archive confirmation"
-        description="Require a second click on the inline archive action before a thread is archived."
-        resetAction={
-          settings.confirmThreadArchive !== DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive ? (
-            <SettingResetButton
-              label="archive confirmation"
-              onClick={() =>
-                updateSettings({
-                  confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
-                })
-              }
-            />
-          ) : null
-        }
-        control={
-          <Switch
-            checked={settings.confirmThreadArchive}
-            onCheckedChange={checked => updateSettings({ confirmThreadArchive: Boolean(checked) })}
-            aria-label="Confirm thread archiving"
-          />
-        }
-      />
-      <SettingsRow
         title="Delete confirmation"
         description="Ask before deleting a thread and its chat history."
         resetAction={

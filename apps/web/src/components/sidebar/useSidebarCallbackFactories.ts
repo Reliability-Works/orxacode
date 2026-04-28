@@ -42,7 +42,7 @@ export interface CallbackFactoriesParams {
   newThreadShortcutLabel: string | null
   handleNewThread: (projectId: ProjectId, options?: { envMode?: DraftThreadEnvMode }) => void
   defaultThreadEnvMode: import('../Sidebar.logic').SidebarNewThreadEnvMode
-  confirmThreadArchive: boolean | undefined
+  confirmThreadDelete: boolean | undefined
   showThreadJumpHints: boolean
   setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
 }
@@ -53,16 +53,16 @@ export interface CallbackFactoriesParams {
 
 interface ThreadRowPropsHookParams {
   threadActions: SidebarThreadActionsReturn
-  confirmingArchiveThreadId: ThreadId | null
-  setConfirmingArchiveThreadId: ReturnType<
+  confirmingDeleteThreadId: ThreadId | null
+  setConfirmingDeleteThreadId: ReturnType<
     typeof useSidebarInteractionState
-  >['setConfirmingArchiveThreadId']
-  confirmArchiveButtonRefs: ReturnType<
+  >['setConfirmingDeleteThreadId']
+  confirmDeleteButtonRefs: ReturnType<
     typeof useSidebarInteractionState
-  >['confirmArchiveButtonRefs']
+  >['confirmDeleteButtonRefs']
   selectedThreadIds: ReadonlySet<ThreadId>
   clearSelection: () => void
-  confirmThreadArchive: boolean | undefined
+  confirmThreadDelete: boolean | undefined
   openPrLink: ReturnType<typeof useSidebarInteractionState>['openPrLink']
   showThreadJumpHints: boolean
   setParentThreadExpanded: (threadId: ThreadId, expanded: boolean) => void
@@ -71,12 +71,12 @@ interface ThreadRowPropsHookParams {
 function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
   const {
     threadActions,
-    confirmingArchiveThreadId,
-    setConfirmingArchiveThreadId,
-    confirmArchiveButtonRefs,
+    confirmingDeleteThreadId,
+    setConfirmingDeleteThreadId,
+    confirmDeleteButtonRefs,
     selectedThreadIds,
     clearSelection,
-    confirmThreadArchive,
+    confirmThreadDelete,
     openPrLink,
     showThreadJumpHints,
     setParentThreadExpanded,
@@ -98,14 +98,14 @@ function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
         inputRef: threadActions.renamingInputRef,
         committedRef: threadActions.renamingCommittedRef,
       },
-      archive: {
+      deleteAction: {
         isConfirming:
-          confirmingArchiveThreadId === thread.id &&
+          confirmingDeleteThreadId === thread.id &&
           !(thread.session?.status === 'running' && thread.session.activeTurnId != null),
-        onConfirmingChange: setConfirmingArchiveThreadId,
-        buttonRefs: confirmArchiveButtonRefs,
-        onAttempt: threadActions.attemptArchiveThread,
-        confirmThreadArchive: confirmThreadArchive ?? false,
+        onConfirmingChange: setConfirmingDeleteThreadId,
+        buttonRefs: confirmDeleteButtonRefs,
+        onAttempt: threadActions.attemptDeleteThread,
+        confirmThreadDelete: confirmThreadDelete ?? false,
       },
       showThreadJumpHints,
       selectedThreadIds,
@@ -113,12 +113,12 @@ function useGetThreadRowProps(params: ThreadRowPropsHookParams) {
     }),
     [
       threadActions,
-      confirmingArchiveThreadId,
-      setConfirmingArchiveThreadId,
-      confirmArchiveButtonRefs,
+      confirmingDeleteThreadId,
+      setConfirmingDeleteThreadId,
+      confirmDeleteButtonRefs,
       selectedThreadIds,
       clearSelection,
-      confirmThreadArchive,
+      confirmThreadDelete,
       openPrLink,
       showThreadJumpHints,
       setParentThreadExpanded,
@@ -141,7 +141,7 @@ interface ProjectItemPropsHookParams extends Pick<
   | 'handleNewThread'
   | 'defaultThreadEnvMode'
 > {
-  confirmingArchiveThreadId: ThreadId | null
+  confirmingDeleteThreadId: ThreadId | null
   getThreadRowProps: ReturnType<typeof useGetThreadRowProps>
 }
 
@@ -159,7 +159,7 @@ function useGetProjectItemProps(params: ProjectItemPropsHookParams) {
     newThreadShortcutLabel,
     handleNewThread,
     defaultThreadEnvMode,
-    confirmingArchiveThreadId,
+    confirmingDeleteThreadId,
     getThreadRowProps,
   } = params
   return useCallback(
@@ -171,7 +171,7 @@ function useGetProjectItemProps(params: ProjectItemPropsHookParams) {
         threadJumpLabelById: keyboardNavThreadJumpLabelById,
         terminalStateByThreadId,
         prByThreadId,
-        confirmingArchiveThreadId,
+        confirmingDeleteThreadId,
         defaultThreadEnvMode,
         onNewThread: handleNewThread,
         onProjectTitleClick: projectActions.handleProjectTitleClick,
@@ -191,7 +191,7 @@ function useGetProjectItemProps(params: ProjectItemPropsHookParams) {
       keyboardNavThreadJumpLabelById,
       terminalStateByThreadId,
       prByThreadId,
-      confirmingArchiveThreadId,
+      confirmingDeleteThreadId,
       defaultThreadEnvMode,
       handleNewThread,
       projectActions,
@@ -212,9 +212,9 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
   const { selectedThreadIds, clearSelection } = params
   const { isMobile, setOpenMobile } = useSidebar()
   const {
-    confirmingArchiveThreadId,
-    setConfirmingArchiveThreadId,
-    confirmArchiveButtonRefs,
+    confirmingDeleteThreadId,
+    setConfirmingDeleteThreadId,
+    confirmDeleteButtonRefs,
     openPrLink,
   } = useSidebarInteractionState({ selectedThreadIds, clearSelection })
 
@@ -237,12 +237,12 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
         params.threadActions.navigateToThread(threadId)
       },
     },
-    confirmingArchiveThreadId,
-    setConfirmingArchiveThreadId,
-    confirmArchiveButtonRefs,
+    confirmingDeleteThreadId,
+    setConfirmingDeleteThreadId,
+    confirmDeleteButtonRefs,
     selectedThreadIds,
     clearSelection,
-    confirmThreadArchive: params.confirmThreadArchive,
+    confirmThreadDelete: params.confirmThreadDelete,
     openPrLink,
     showThreadJumpHints: params.showThreadJumpHints,
     setParentThreadExpanded: params.setParentThreadExpanded,
@@ -261,9 +261,9 @@ export function useSidebarCallbackFactories(params: CallbackFactoriesParams) {
     newThreadShortcutLabel: params.newThreadShortcutLabel,
     handleNewThread: params.handleNewThread,
     defaultThreadEnvMode: params.defaultThreadEnvMode,
-    confirmingArchiveThreadId,
+    confirmingDeleteThreadId,
     getThreadRowProps,
   })
 
-  return { getThreadRowProps, getProjectItemProps, confirmingArchiveThreadId }
+  return { getThreadRowProps, getProjectItemProps, confirmingDeleteThreadId }
 }

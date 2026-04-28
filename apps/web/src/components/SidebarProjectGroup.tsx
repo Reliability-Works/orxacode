@@ -33,7 +33,7 @@ export interface SidebarProjectGroupSharedProps {
   threadJumpLabelById: Map<ThreadId, string>
   terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>
   prByThreadId: Map<ThreadId, ThreadPr | null>
-  confirmingArchiveThreadId: ThreadId | null
+  confirmingDeleteThreadId: ThreadId | null
   getProjectItemProps: () => {
     dragHandleProps: SortableProjectHandleProps | null
     projectItemProps: Omit<Parameters<typeof ProjectItem>[0], 'renderedProject' | 'dragHandleProps'>
@@ -167,7 +167,7 @@ function SidebarProjectGroupList(
     threadJumpLabelById: props.threadJumpLabelById,
     terminalStateByThreadId: props.terminalStateByThreadId,
     prByThreadId: props.prByThreadId,
-    confirmingArchiveThreadId: props.confirmingArchiveThreadId,
+    confirmingDeleteThreadId: props.confirmingDeleteThreadId,
   }
 
   return props.isManualProjectSorting ? (

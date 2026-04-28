@@ -1,5 +1,5 @@
 /**
- * useSidebarInteractionState — archive confirmation state, selection clear effect,
+ * useSidebarInteractionState — delete confirmation state, selection clear effect,
  * and PR link opener. Extracted from useSidebarCallbackFactories to reduce line count.
  */
 
@@ -15,8 +15,8 @@ export function useSidebarInteractionState(params: {
 }) {
   const { selectedThreadIds, clearSelection } = params
 
-  const [confirmingArchiveThreadId, setConfirmingArchiveThreadId] = useState<ThreadId | null>(null)
-  const confirmArchiveButtonRefs = useRef(new Map<ThreadId, HTMLButtonElement>())
+  const [confirmingDeleteThreadId, setConfirmingDeleteThreadId] = useState<ThreadId | null>(null)
+  const confirmDeleteButtonRefs = useRef(new Map<ThreadId, HTMLButtonElement>())
 
   useEffect(() => {
     const onMouseDown = (event: globalThis.MouseEvent) => {
@@ -49,9 +49,9 @@ export function useSidebarInteractionState(params: {
   }, [])
 
   return {
-    confirmingArchiveThreadId,
-    setConfirmingArchiveThreadId,
-    confirmArchiveButtonRefs,
+    confirmingDeleteThreadId,
+    setConfirmingDeleteThreadId,
+    confirmDeleteButtonRefs,
     openPrLink,
   }
 }

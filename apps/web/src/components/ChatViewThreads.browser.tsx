@@ -43,39 +43,38 @@ import {
 // Sidebar and thread management
 // ---------------------------------------------------------------------------
 
-async function runArchiveHoverTest(): Promise<void> {
+async function runDeleteHoverTest(): Promise<void> {
   const mounted = await mountChatView({
     viewport: DEFAULT_VIEWPORT,
     snapshot: createSnapshotForTargetUser({
-      targetMessageId: 'msg-user-archive-hover-test' as MessageId,
-      targetText: 'archive hover target',
+      targetMessageId: 'msg-user-delete-hover-test' as MessageId,
+      targetText: 'delete hover target',
     }),
   })
   try {
     const threadRow = page.getByTestId(`thread-row-${THREAD_ID}`)
     await expect.element(threadRow).toBeInTheDocument()
-    const archiveButton = await waitForElement(
-      () =>
-        document.querySelector<HTMLButtonElement>(`[data-testid="thread-archive-${THREAD_ID}"]`),
-      'Unable to find archive button.'
+    const deleteButton = await waitForElement(
+      () => document.querySelector<HTMLButtonElement>(`[data-testid="thread-delete-${THREAD_ID}"]`),
+      'Unable to find delete button.'
     )
-    const archiveAction = archiveButton.parentElement
+    const deleteAction = deleteButton.parentElement
     expect(
-      archiveAction,
-      'Archive button should render inside a visibility wrapper.'
+      deleteAction,
+      'Delete button should render inside a visibility wrapper.'
     ).not.toBeNull()
-    expect(getComputedStyle(archiveAction!).opacity).toBe('0')
+    expect(getComputedStyle(deleteAction!).opacity).toBe('0')
     await threadRow.hover()
     await vi.waitFor(
       () => {
-        expect(getComputedStyle(archiveAction!).opacity).toBe('1')
+        expect(getComputedStyle(deleteAction!).opacity).toBe('1')
       },
       { timeout: 4_000, interval: 16 }
     )
     await page.getByTestId('composer-editor').hover()
     await vi.waitFor(
       () => {
-        expect(getComputedStyle(archiveAction!).opacity).toBe('0')
+        expect(getComputedStyle(deleteAction!).opacity).toBe('0')
       },
       { timeout: 4_000, interval: 16 }
     )
@@ -84,26 +83,26 @@ async function runArchiveHoverTest(): Promise<void> {
   }
 }
 
-async function runArchiveConfirmTest(): Promise<void> {
+async function runDeleteConfirmTest(): Promise<void> {
   localStorage.setItem(
     'orxa:client-settings:v1',
-    JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, confirmThreadArchive: true })
+    JSON.stringify({ ...DEFAULT_CLIENT_SETTINGS, confirmThreadDelete: true })
   )
   const mounted = await mountChatView({
     viewport: DEFAULT_VIEWPORT,
     snapshot: createSnapshotForTargetUser({
-      targetMessageId: 'msg-user-archive-confirm-test' as MessageId,
-      targetText: 'archive confirm target',
+      targetMessageId: 'msg-user-delete-confirm-test' as MessageId,
+      targetText: 'delete confirm target',
     }),
   })
   try {
     const threadRow = page.getByTestId(`thread-row-${THREAD_ID}`)
     await expect.element(threadRow).toBeInTheDocument()
     await threadRow.hover()
-    const archiveButton = page.getByTestId(`thread-archive-${THREAD_ID}`)
-    await expect.element(archiveButton).toBeInTheDocument()
-    await archiveButton.click()
-    const confirmButton = page.getByTestId(`thread-archive-confirm-${THREAD_ID}`)
+    const deleteButton = page.getByTestId(`thread-delete-${THREAD_ID}`)
+    await expect.element(deleteButton).toBeInTheDocument()
+    await deleteButton.click()
+    const confirmButton = page.getByTestId(`thread-delete-confirm-${THREAD_ID}`)
     await expect.element(confirmButton).toBeInTheDocument()
     await expect.element(confirmButton).toBeVisible()
   } finally {
@@ -140,8 +139,8 @@ async function runNewThreadSelectionTest(): Promise<void> {
 
 describe('ChatView sidebar and thread management', () => {
   suiteHooks()
-  it('hides the archive action when the pointer leaves a thread row', runArchiveHoverTest)
-  it('shows the confirm archive action after clicking the archive button', runArchiveConfirmTest)
+  it('hides the delete action when the pointer leaves a thread row', runDeleteHoverTest)
+  it('shows the confirm delete action after clicking the delete button', runDeleteConfirmTest)
   it(
     'keeps the new thread selected after clicking the new-thread button',
     runNewThreadSelectionTest

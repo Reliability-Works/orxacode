@@ -64,7 +64,7 @@ export function useSidebarStoreBindings() {
   const appSettings = useSettings()
   const { updateSettings } = useUpdateSettings()
   const { handleNewThread } = useHandleNewThread()
-  const { archiveThread, deleteThread } = useThreadActions()
+  const { deleteThread } = useThreadActions()
 
   const routeThreadId = useParams({
     strict: false,
@@ -91,7 +91,6 @@ export function useSidebarStoreBindings() {
     appSettings,
     updateSettings,
     handleNewThread,
-    archiveThread,
     deleteThread,
     routeThreadId,
     keybindings,

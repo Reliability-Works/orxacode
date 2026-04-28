@@ -87,7 +87,7 @@ export interface SidebarBodyProps {
   threadJumpLabelById: SidebarProjectGroupSharedProps['threadJumpLabelById']
   terminalStateByThreadId: SidebarProjectGroupSharedProps['terminalStateByThreadId']
   prByThreadId: SidebarProjectGroupSharedProps['prByThreadId']
-  confirmingArchiveThreadId: SidebarProjectGroupSharedProps['confirmingArchiveThreadId']
+  confirmingDeleteThreadId: SidebarProjectGroupSharedProps['confirmingDeleteThreadId']
   getProjectItemProps: SidebarProjectGroupSharedProps['getProjectItemProps']
   projectDnDSensors: SidebarProjectGroupSharedProps['projectDnDSensors']
   projectCollisionDetection: SidebarProjectGroupSharedProps['projectCollisionDetection']
@@ -245,7 +245,7 @@ function SidebarProjectSection(props: SidebarMainViewProps) {
       threadJumpLabelById={props.threadJumpLabelById}
       terminalStateByThreadId={props.terminalStateByThreadId}
       prByThreadId={props.prByThreadId}
-      confirmingArchiveThreadId={props.confirmingArchiveThreadId}
+      confirmingDeleteThreadId={props.confirmingDeleteThreadId}
       getProjectItemProps={props.getProjectItemProps}
       projectDnDSensors={props.projectDnDSensors}
       projectCollisionDetection={props.projectCollisionDetection}

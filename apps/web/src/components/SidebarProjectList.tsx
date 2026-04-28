@@ -115,7 +115,7 @@ export interface SidebarProjectListProps {
   threadJumpLabelById: Map<ThreadId, string>
   terminalStateByThreadId: Record<ThreadId, ThreadTerminalState>
   prByThreadId: Map<ThreadId, import('./sidebar/ProjectItem').ThreadPr | null>
-  confirmingArchiveThreadId: ThreadId | null
+  confirmingDeleteThreadId: ThreadId | null
   projectDnDSensors: ReturnType<typeof import('@dnd-kit/core').useSensors>
   projectCollisionDetection: CollisionDetection
   onProjectDragStart: () => void
@@ -135,7 +135,7 @@ function SidebarPinnedThreadList(
     | 'threadJumpLabelById'
     | 'terminalStateByThreadId'
     | 'prByThreadId'
-    | 'confirmingArchiveThreadId'
+    | 'confirmingDeleteThreadId'
   >
 ) {
   if (props.renderedPinnedThreads.length === 0) {
@@ -161,8 +161,8 @@ function SidebarPinnedThreadList(
           const terminalStatus = terminalStatusFromRunningIds(
             selectThreadTerminalState(props.terminalStateByThreadId, thread.id).runningTerminalIds
           )
-          const isConfirmingArchive =
-            props.confirmingArchiveThreadId === thread.id && !isThreadRunning
+          const isConfirmingDelete =
+            props.confirmingDeleteThreadId === thread.id && !isThreadRunning
           return (
             <ThreadRow
               key={thread.id}
@@ -174,7 +174,7 @@ function SidebarPinnedThreadList(
               threadStatus={threadStatus}
               prStatus={prStatus}
               terminalStatus={terminalStatus}
-              isConfirmingArchive={isConfirmingArchive}
+              isConfirmingDelete={isConfirmingDelete}
               orderedProjectThreadIds={orderedProjectThreadIds}
               rowClassName={resolveThreadRowClassName({ isActive, isSelected })}
               {...props.getThreadRowProps(thread)}
@@ -196,7 +196,7 @@ export function SidebarDndProjectList({
   threadJumpLabelById,
   terminalStateByThreadId,
   prByThreadId,
-  confirmingArchiveThreadId,
+  confirmingDeleteThreadId,
   projectDnDSensors,
   projectCollisionDetection,
   onProjectDragStart,
@@ -220,7 +220,7 @@ export function SidebarDndProjectList({
         threadJumpLabelById={threadJumpLabelById}
         terminalStateByThreadId={terminalStateByThreadId}
         prByThreadId={prByThreadId}
-        confirmingArchiveThreadId={confirmingArchiveThreadId}
+        confirmingDeleteThreadId={confirmingDeleteThreadId}
       />
       <SidebarMenu>
         <SortableContext
@@ -260,7 +260,7 @@ export function SidebarStaticProjectList({
   threadJumpLabelById,
   terminalStateByThreadId,
   prByThreadId,
-  confirmingArchiveThreadId,
+  confirmingDeleteThreadId,
   attachProjectListAutoAnimateRef,
 }: Pick<
   SidebarProjectListProps,
@@ -273,7 +273,7 @@ export function SidebarStaticProjectList({
   | 'threadJumpLabelById'
   | 'terminalStateByThreadId'
   | 'prByThreadId'
-  | 'confirmingArchiveThreadId'
+  | 'confirmingDeleteThreadId'
   | 'attachProjectListAutoAnimateRef'
 >) {
   return (
@@ -286,7 +286,7 @@ export function SidebarStaticProjectList({
         threadJumpLabelById={threadJumpLabelById}
         terminalStateByThreadId={terminalStateByThreadId}
         prByThreadId={prByThreadId}
-        confirmingArchiveThreadId={confirmingArchiveThreadId}
+        confirmingDeleteThreadId={confirmingDeleteThreadId}
       />
       <SidebarMenu>
         {renderedProjects.map(renderedProject => {
