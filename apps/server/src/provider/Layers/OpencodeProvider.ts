@@ -32,6 +32,11 @@ const PROVIDER = 'opencode' as const
 
 const OPENCODE_AUTH_PROBE_CACHE_TTL = Duration.minutes(5)
 const OPENCODE_AUTH_PROBE_TIMEOUT_MS = 20_000
+// `checkProvider` here boots a short-lived `opencode serve` for discovery, so
+// we deliberately probe on the slower side. Settings changes still trigger
+// an immediate refresh via `streamSettings`, and explicit `refresh()` calls
+// from the UI bypass this interval entirely.
+const OPENCODE_REFRESH_INTERVAL = Duration.minutes(30)
 
 const OPENCODE_UNAUTHENTICATED_MESSAGE =
   'Opencode has no LLM providers configured. Run `opencode auth login` to add one.'
@@ -296,6 +301,7 @@ export const OpencodeProviderLive = Layer.effect(
       ),
       haveSettingsChanged: (previous, next) => !Equal.equals(previous, next),
       checkProvider,
+      refreshInterval: OPENCODE_REFRESH_INTERVAL,
     })
   })
 )

@@ -27,6 +27,7 @@ import { killChildProcessTree, type KillableChildProcess } from '../processTreeK
 const READINESS_TIMEOUT_MS = 15_000
 const READINESS_POLL_INTERVAL_MS = 100
 const SHUTDOWN_GRACE_MS = 2_000
+const SHUTDOWN_HARD_KILL_MS = 1_000
 
 /**
  * Hard allow-list of environment variables propagated into the
@@ -226,22 +227,39 @@ function createShutdown(child: SpawnedOpencodeProcess): () => Promise<void> {
     if (shuttingDown) return shuttingDown
     shuttingDown = (async () => {
       if (child.pid === undefined) return
+
+      // Resolves when the child actually exits.
+      let exited = false
       const exitPromise = new Promise<void>(resolve => {
-        let resolved = false
-        const done = () => {
-          if (resolved) return
-          resolved = true
+        child.once('exit', () => {
+          exited = true
           resolve()
-        }
-        child.once('exit', done)
-        setTimeout(done, SHUTDOWN_GRACE_MS).unref?.()
+        })
       })
+
+      const waitFor = (ms: number): Promise<void> =>
+        new Promise(resolve => {
+          const timer = setTimeout(resolve, ms)
+          timer.unref?.()
+        })
+
+      // Step 1: graceful SIGTERM.
       try {
-        killChildProcessTree(child)
+        killChildProcessTree(child, 'SIGTERM')
       } catch {
-        // Process may already be gone; nothing to do.
+        // Process may already be gone.
       }
-      await exitPromise
+      await Promise.race([exitPromise, waitFor(SHUTDOWN_GRACE_MS)])
+      if (exited) return
+
+      // Step 2: SIGKILL — opencode serve has been observed to ignore
+      // SIGTERM, leaving orphaned subprocesses across long-running parents.
+      try {
+        killChildProcessTree(child, 'SIGKILL')
+      } catch {
+        // Process may already be gone.
+      }
+      await Promise.race([exitPromise, waitFor(SHUTDOWN_HARD_KILL_MS)])
     })()
     return shuttingDown
   }

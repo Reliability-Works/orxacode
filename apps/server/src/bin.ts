@@ -6,10 +6,12 @@ import { Command } from 'effect/unstable/cli'
 
 import { NetService } from '@orxa-code/shared/Net'
 import { cli } from './cli'
+import { reapOpencodeOrphans } from './provider/opencodeOrphanReaper'
 import { installOpencodeServerPoolShutdownHandlers } from './provider/opencodeServerPool'
 import { version } from '../package.json' with { type: 'json' }
 
 installOpencodeServerPoolShutdownHandlers()
+void reapOpencodeOrphans()
 
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer)
 
