@@ -12,6 +12,8 @@ import { useStore } from '../store'
 import { useTerminalStateStore } from '../terminalStateStore'
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from '../worktreeCleanup'
 import { toastManager } from '../components/ui/toastState'
+import { isChatProjectCwd } from '../lib/chatProject'
+import { readCachedChatsBaseDir } from './useChatsBaseDir'
 import { useSettings } from './useSettings'
 
 type NativeApi = NonNullable<ReturnType<typeof readNativeApi>>
@@ -29,6 +31,7 @@ type ThreadDeleteContext = {
   displayWorktreePath: string | null
   shouldNavigateToFallback: boolean
   fallbackThreadId: ThreadId | null
+  isOrphanedChatProject: boolean
 }
 
 function getThreadEntry(threadId: ThreadId) {
@@ -50,6 +53,14 @@ function buildThreadDeleteContext(
       ? threads.filter(entry => entry.id === threadId || !deletedThreadIds.has(entry.id))
       : threads
   const orphanedWorktreePath = getOrphanedWorktreePathForThread(survivingThreads, threadId)
+  const remainingThreadsForProject = survivingThreads.filter(
+    entry => entry.id !== threadId && entry.projectId === thread.projectId
+  )
+  const chatBaseDir = readCachedChatsBaseDir()
+  const isOrphanedChatProject =
+    threadProject !== undefined &&
+    remainingThreadsForProject.length === 0 &&
+    isChatProjectCwd(threadProject.cwd, chatBaseDir)
   return {
     thread,
     threadProject,
@@ -64,6 +75,7 @@ function buildThreadDeleteContext(
       deletedThreadIds,
       sortOrder,
     }),
+    isOrphanedChatProject,
   }
 }
 
@@ -127,6 +139,31 @@ async function navigateAfterThreadDelete(
     return
   }
   await navigate({ to: '/', replace: true })
+}
+
+async function removeOrphanedChatProjectIfNeeded(api: NativeApi, context: ThreadDeleteContext) {
+  if (!context.isOrphanedChatProject || !context.threadProject) return
+  try {
+    await api.orchestration.dispatchCommand({
+      type: 'project.delete',
+      commandId: newCommandId(),
+      projectId: context.threadProject.id,
+    })
+  } catch (error) {
+    console.error('Failed to delete orphaned chat project record', {
+      projectId: context.threadProject.id,
+      error,
+    })
+    return
+  }
+  try {
+    await api.chats.removeDir({ cwd: context.threadProject.cwd })
+  } catch (error) {
+    console.error('Failed to remove chat project directory', {
+      cwd: context.threadProject.cwd,
+      error,
+    })
+  }
 }
 
 async function removeOrphanedWorktreeIfNeeded(
@@ -202,6 +239,7 @@ async function deleteThreadAction(
   )
   await navigateAfterThreadDelete(navigate, context)
   await removeOrphanedWorktreeIfNeeded(threadId, context, shouldDeleteWorktree, removeWorktree)
+  await removeOrphanedChatProjectIfNeeded(api, context)
 }
 
 async function confirmAndDeleteThreadAction(

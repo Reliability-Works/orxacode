@@ -12,7 +12,7 @@ import type { DesktopUpdateState } from '@orxa-code/contracts'
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from '@orxa-code/contracts/settings'
 
 import { isElectron } from '../env'
-import type { Project } from '../types'
+import type { Project, Thread } from '../types'
 import { SidebarMainFooter } from './sidebar/SidebarFooterActions'
 import type { RenderedPinnedThreadData, RenderedProjectData } from './sidebar/ProjectItem'
 import { SidebarMobileThreadsView } from './SidebarMobileThreadsView'
@@ -21,6 +21,7 @@ import {
   type SidebarProjectGroupProps,
   type SidebarProjectGroupSharedProps,
 } from './SidebarProjectGroup'
+import { SidebarChatGroup } from './SidebarChatGroup'
 import { SettingsSidebarNav } from './settings/SettingsSidebarNav'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from './ui/alert'
 import { Button } from './ui/button'
@@ -51,6 +52,9 @@ export function AppBrandMark() {
 export interface SidebarBodyProps {
   isOnSettings: boolean
   pathname: string
+  chatProjects: Project[]
+  chatThreads: Thread[]
+  chatBaseDir: string | null
   shouldShowProjectPathEntry: boolean
   showArm64IntelBuildWarning: boolean
   arm64IntelBuildWarningDescription: string | null
@@ -266,6 +270,12 @@ function SidebarMainView(props: SidebarMainViewProps) {
         {!isMobile ? <SidebarTopNav pathname={props.pathname} /> : null}
         {!isMobile ? <SidebarSeparator /> : null}
         <SidebarProjectSection {...props} />
+        <SidebarChatGroup
+          projects={props.chatProjects}
+          threads={props.chatThreads}
+          baseDir={props.chatBaseDir}
+          routeThreadId={props.routeThreadId}
+        />
       </SidebarContent>
       {!isMobile ? <SidebarSeparator /> : null}
       {!isMobile ? (

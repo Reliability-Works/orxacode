@@ -80,6 +80,25 @@ function createOrchestrationApi(rpcClient: WsRpcClient): NativeApi['orchestratio
   }
 }
 
+function createChatsApi(): NativeApi['chats'] {
+  return {
+    getBaseDir: async () => {
+      if (!window.desktopBridge) return null
+      return window.desktopBridge.chatsGetBaseDir()
+    },
+    materializeDir: async input => {
+      if (!window.desktopBridge) {
+        throw new Error('Chats are only available in the desktop app.')
+      }
+      return window.desktopBridge.chatsMaterializeDir(input)
+    },
+    removeDir: async input => {
+      if (!window.desktopBridge) return { removed: false }
+      return window.desktopBridge.chatsRemoveDir(input)
+    },
+  }
+}
+
 export function createWsNativeApiForRpcClient(rpcClient: WsRpcClient): NativeApi {
   const api: NativeApi = {
     dialogs: createDialogsApi(),
@@ -117,6 +136,7 @@ export function createWsNativeApiForRpcClient(rpcClient: WsRpcClient): NativeApi
     contextMenu: createContextMenuApi(),
     server: createServerApi(rpcClient),
     orchestration: createOrchestrationApi(rpcClient),
+    chats: createChatsApi(),
   }
 
   return api

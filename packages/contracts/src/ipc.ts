@@ -255,6 +255,24 @@ export interface DesktopUpdateCheckResult {
   state: DesktopUpdateState
 }
 
+export interface ChatsMaterializeDirInput {
+  slug?: string
+  dateFolder?: string
+}
+
+export interface ChatsMaterializeDirResult {
+  cwd: string
+  baseDir: string
+}
+
+export interface ChatsRemoveDirInput {
+  cwd: string
+}
+
+export interface ChatsRemoveDirResult {
+  removed: boolean
+}
+
 export interface DesktopBridge {
   getLocalEnvironmentBootstrap: () => Promise<DesktopPrimaryEnvironmentBootstrap>
   setRemoteAccessPreferences: (
@@ -279,6 +297,9 @@ export interface DesktopBridge {
     input: Partial<DesktopUpdatePreferences>
   ) => Promise<DesktopUpdatePreferences>
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void
+  chatsGetBaseDir: () => Promise<string>
+  chatsMaterializeDir: (input: ChatsMaterializeDirInput) => Promise<ChatsMaterializeDirResult>
+  chatsRemoveDir: (input: ChatsRemoveDirInput) => Promise<ChatsRemoveDirResult>
   browser?: DesktopBrowserBridge
 }
 
@@ -350,5 +371,10 @@ export interface NativeApi {
     ) => Promise<OrchestrationGetFullThreadDiffResult>
     replayEvents: (fromSequenceExclusive: number) => Promise<OrchestrationEvent[]>
     onDomainEvent: (callback: (event: OrchestrationEvent) => void) => () => void
+  }
+  chats: {
+    getBaseDir: () => Promise<string | null>
+    materializeDir: (input: ChatsMaterializeDirInput) => Promise<ChatsMaterializeDirResult>
+    removeDir: (input: ChatsRemoveDirInput) => Promise<ChatsRemoveDirResult>
   }
 }

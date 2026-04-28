@@ -33,6 +33,9 @@ const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
 const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = 'desktop:get-local-environment-bootstrap'
 const SET_REMOTE_ACCESS_PREFERENCES_CHANNEL = 'desktop:set-remote-access-preferences'
 const GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL = 'desktop:get-remote-access-snapshot'
+const CHATS_GET_BASE_DIR_CHANNEL = 'desktop:chats-get-base-dir'
+const CHATS_MATERIALIZE_DIR_CHANNEL = 'desktop:chats-materialize-dir'
+const CHATS_REMOVE_DIR_CHANNEL = 'desktop:chats-remove-dir'
 
 const browserApi = {
   getState: () => ipcRenderer.invoke(BROWSER_GET_STATE_CHANNEL),
@@ -79,6 +82,9 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   downloadUpdate: () => ipcRenderer.invoke(UPDATE_DOWNLOAD_CHANNEL),
   installUpdate: () => ipcRenderer.invoke(UPDATE_INSTALL_CHANNEL),
   setUpdatePreferences: input => ipcRenderer.invoke(UPDATE_SET_PREFERENCES_CHANNEL, input),
+  chatsGetBaseDir: () => ipcRenderer.invoke(CHATS_GET_BASE_DIR_CHANNEL),
+  chatsMaterializeDir: input => ipcRenderer.invoke(CHATS_MATERIALIZE_DIR_CHANNEL, input),
+  chatsRemoveDir: input => ipcRenderer.invoke(CHATS_REMOVE_DIR_CHANNEL, input),
   onUpdateState: listener => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, state: unknown) => {
       if (typeof state !== 'object' || state === null) return

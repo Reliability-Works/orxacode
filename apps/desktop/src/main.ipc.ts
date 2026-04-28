@@ -1,6 +1,13 @@
+import { mkdir, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join, resolve as resolvePath, sep } from 'node:path'
 import { BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import type {
+  ChatsMaterializeDirInput,
+  ChatsMaterializeDirResult,
+  ChatsRemoveDirInput,
+  ChatsRemoveDirResult,
   DesktopBrowserInspectPoint,
   DesktopBrowserBounds,
   ContextMenuItem,
@@ -48,6 +55,9 @@ export interface IpcChannels {
   readonly updateInstall: string
   readonly updateCheck: string
   readonly updateSetPreferences: string
+  readonly chatsGetBaseDir: string
+  readonly chatsMaterializeDir: string
+  readonly chatsRemoveDir: string
 }
 
 export interface IpcUpdaterAdapter {
@@ -72,6 +82,101 @@ export interface IpcHost {
   readonly setUpdatePreferences: (
     input: Partial<DesktopUpdatePreferences>
   ) => DesktopUpdatePreferences
+}
+
+function chatsBaseDir(): string {
+  return join(homedir(), 'Documents', 'Orxacode')
+}
+
+const SAFE_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/
+
+function sanitizeChatSlug(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const trimmed = raw.trim().toLowerCase()
+  return SAFE_SLUG_RE.test(trimmed) ? trimmed : null
+}
+
+const SAFE_DATE_FOLDER_RE = /^\d{4}-\d{2}-\d{2}$/
+
+function sanitizeDateFolder(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  return SAFE_DATE_FOLDER_RE.test(raw) ? raw : null
+}
+
+function todayDateFolder(): string {
+  const now = new Date()
+  const y = now.getFullYear().toString().padStart(4, '0')
+  const m = (now.getMonth() + 1).toString().padStart(2, '0')
+  const d = now.getDate().toString().padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function fallbackChatSlug(): string {
+  const now = new Date()
+  const hh = now.getHours().toString().padStart(2, '0')
+  const mm = now.getMinutes().toString().padStart(2, '0')
+  return `untitled-${hh}${mm}`
+}
+
+function randomDirSuffix(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let out = ''
+  for (let i = 0; i < 6; i += 1) {
+    out += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return out
+}
+
+function isPathInsideBaseDir(target: string, baseDir: string): boolean {
+  const resolvedTarget = resolvePath(target)
+  const resolvedBase = resolvePath(baseDir)
+  if (resolvedTarget === resolvedBase) return false
+  const baseWithSep = resolvedBase.endsWith(sep) ? resolvedBase : `${resolvedBase}${sep}`
+  return resolvedTarget.startsWith(baseWithSep)
+}
+
+async function removeChatDirImpl(rawInput: unknown): Promise<ChatsRemoveDirResult> {
+  const input = (
+    rawInput && typeof rawInput === 'object' ? rawInput : {}
+  ) as Partial<ChatsRemoveDirInput>
+  if (typeof input.cwd !== 'string' || input.cwd.length === 0) {
+    return { removed: false }
+  }
+  const baseDir = chatsBaseDir()
+  if (!isPathInsideBaseDir(input.cwd, baseDir)) {
+    return { removed: false }
+  }
+  await rm(resolvePath(input.cwd), { recursive: true, force: true })
+  return { removed: true }
+}
+
+async function materializeChatDirImpl(rawInput: unknown): Promise<ChatsMaterializeDirResult> {
+  const input = (
+    rawInput && typeof rawInput === 'object' ? rawInput : {}
+  ) as Partial<ChatsMaterializeDirInput>
+  const slug = sanitizeChatSlug(input.slug) ?? fallbackChatSlug()
+  const dateFolder = sanitizeDateFolder(input.dateFolder) ?? todayDateFolder()
+  const baseDir = chatsBaseDir()
+  const dateBase = join(baseDir, dateFolder)
+  await mkdir(dateBase, { recursive: true })
+  let candidate = join(dateBase, slug)
+  // Ensure uniqueness by appending a random suffix if the directory already exists.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await mkdir(candidate, { recursive: false })
+      return { cwd: candidate, baseDir }
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EEXIST') {
+        candidate = join(dateBase, `${slug}-${randomDirSuffix()}`)
+        continue
+      }
+      throw err
+    }
+  }
+  // Final fallback: use mkdir recursive so we still succeed.
+  await mkdir(candidate, { recursive: true })
+  return { cwd: candidate, baseDir }
 }
 
 export async function pickFolderForDesktop(host: IpcHost): Promise<string | null> {
@@ -406,10 +511,27 @@ function registerBrowserRuntimeHandlers(host: IpcHost): void {
   })
 }
 
+function registerChatsIpcHandlers(host: IpcHost): void {
+  const { channels } = host
+  ipcMain.removeHandler(channels.chatsGetBaseDir)
+  ipcMain.handle(channels.chatsGetBaseDir, async () => chatsBaseDir())
+
+  ipcMain.removeHandler(channels.chatsMaterializeDir)
+  ipcMain.handle(channels.chatsMaterializeDir, async (_event, rawInput: unknown) =>
+    materializeChatDirImpl(rawInput)
+  )
+
+  ipcMain.removeHandler(channels.chatsRemoveDir)
+  ipcMain.handle(channels.chatsRemoveDir, async (_event, rawInput: unknown) =>
+    removeChatDirImpl(rawInput)
+  )
+}
+
 export function registerIpcHandlers(host: IpcHost): void {
   registerCoreIpcHandlers(host)
   registerContextMenuHandler(host)
   registerOpenExternalHandler(host)
   registerBrowserRuntimeHandlers(host)
   registerDesktopUpdateIpcHandlers(host)
+  registerChatsIpcHandlers(host)
 }

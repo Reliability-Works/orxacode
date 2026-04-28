@@ -164,6 +164,12 @@ function makeDesktopBridge(overrides: Partial<DesktopBridge> = {}): DesktopBridg
     },
     setUpdatePreferences: async () => ({ releaseChannel: 'stable' }),
     onUpdateState: () => () => undefined,
+    chatsGetBaseDir: async () => '/tmp/test-chats-base',
+    chatsMaterializeDir: async () => ({
+      cwd: '/tmp/test-chats-base/2026-04-28/test',
+      baseDir: '/tmp/test-chats-base',
+    }),
+    chatsRemoveDir: async () => ({ removed: true }),
     ...overrides,
   }
 }

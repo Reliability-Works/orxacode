@@ -16,6 +16,9 @@ export const UPDATE_SET_PREFERENCES_CHANNEL = 'desktop:update-set-preferences'
 export const GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL = 'desktop:get-local-environment-bootstrap'
 export const SET_REMOTE_ACCESS_PREFERENCES_CHANNEL = 'desktop:set-remote-access-preferences'
 export const GET_REMOTE_ACCESS_SNAPSHOT_CHANNEL = 'desktop:get-remote-access-snapshot'
+export const CHATS_GET_BASE_DIR_CHANNEL = 'desktop:chats-get-base-dir'
+export const CHATS_MATERIALIZE_DIR_CHANNEL = 'desktop:chats-materialize-dir'
+export const CHATS_REMOVE_DIR_CHANNEL = 'desktop:chats-remove-dir'
 
 export const IPC_CHANNELS: IpcChannels = {
   getLocalEnvironmentBootstrap: GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL,
@@ -32,4 +35,7 @@ export const IPC_CHANNELS: IpcChannels = {
   updateInstall: UPDATE_INSTALL_CHANNEL,
   updateCheck: UPDATE_CHECK_CHANNEL,
   updateSetPreferences: UPDATE_SET_PREFERENCES_CHANNEL,
+  chatsGetBaseDir: CHATS_GET_BASE_DIR_CHANNEL,
+  chatsMaterializeDir: CHATS_MATERIALIZE_DIR_CHANNEL,
+  chatsRemoveDir: CHATS_REMOVE_DIR_CHANNEL,
 }

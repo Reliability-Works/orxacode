@@ -1,17 +1,16 @@
 import { useCallback } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  type ModelSelection,
-  type ProviderKind,
-  type ThreadId,
-  DEFAULT_RUNTIME_MODE,
-} from '@orxa-code/contracts'
+import { type ProviderKind, type ThreadId, DEFAULT_RUNTIME_MODE } from '@orxa-code/contracts'
 import { gitDiscoverReposQueryOptions } from '~/lib/gitReactQuery'
 import { newCommandId, newThreadId } from '~/lib/utils'
 import { ensureNativeApi } from '~/nativeApi'
 import { useStore } from '~/store'
-import { useComposerDraftStore } from '~/composerDraftStore'
+import {
+  buildSessionModelSelection,
+  clearDraftThreadAfterCreationFailure,
+  seedDraftThreadForCreation,
+} from '~/lib/sessionCreate'
 
 interface CreateSessionInput {
   readonly provider: ProviderKind
@@ -23,26 +22,6 @@ interface CreateSessionInput {
 
 interface UseNewSessionCreateReturn {
   readonly create: (input: CreateSessionInput) => Promise<ThreadId>
-}
-
-function buildModelSelection(input: CreateSessionInput): ModelSelection {
-  const kind: ProviderKind = input.provider
-  switch (kind) {
-    case 'opencode':
-      return {
-        provider: 'opencode',
-        model: input.model,
-        ...(input.agentId !== undefined ? { agentId: input.agentId } : {}),
-      }
-    case 'claudeAgent':
-      return { provider: 'claudeAgent', model: input.model }
-    case 'codex':
-      return { provider: 'codex', model: input.model }
-    default: {
-      const _exhaustive: never = kind
-      return _exhaustive
-    }
-  }
 }
 
 function getDefaultProjectId(): ReturnType<typeof useStore.getState>['projects'][0]['id'] | null {
@@ -74,21 +53,9 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
       const gitRoot = project ? resolveDefaultGitRoot(queryClient, project.cwd) : null
 
       const threadId = newThreadId()
-      const modelSelection = buildModelSelection(input)
+      const modelSelection = buildSessionModelSelection(input)
       const createdAt = new Date().toISOString()
-      const draftStore = useComposerDraftStore.getState()
-
-      draftStore.setProjectDraftThreadId(projectId, threadId, {
-        branch: null,
-        worktreePath: null,
-        createdAt,
-        envMode: 'local',
-        runtimeMode: DEFAULT_RUNTIME_MODE,
-        interactionMode: 'default',
-      })
-      draftStore.applyStickyState(threadId)
-      draftStore.setStickyModelSelection(modelSelection)
-      draftStore.setModelSelection(threadId, modelSelection)
+      seedDraftThreadForCreation({ projectId, threadId, createdAt, modelSelection })
 
       try {
         await api.orchestration.dispatchCommand({
@@ -106,8 +73,7 @@ export function useNewSessionCreate(): UseNewSessionCreateReturn {
           createdAt,
         })
       } catch (error) {
-        draftStore.clearDraftThread(threadId)
-        draftStore.clearProjectDraftThreadById(projectId, threadId)
+        clearDraftThreadAfterCreationFailure(projectId, threadId)
         throw error
       }
 

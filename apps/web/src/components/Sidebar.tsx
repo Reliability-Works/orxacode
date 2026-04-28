@@ -13,7 +13,7 @@
  * - `SidebarBody.tsx`                        — presentational return surface
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ProjectId, ThreadId } from '@orxa-code/contracts'
 import {
   type SidebarProjectSortOrder,
@@ -24,6 +24,69 @@ import { useSidebarWiring } from './sidebar/useSidebarWiring'
 import { SidebarBody, type SidebarBodyProps } from './SidebarBody'
 import { NewSessionModal } from './session'
 import { useUiStateStore } from '../uiStateStore'
+import { useChatsBaseDir } from '../hooks/useChatsBaseDir'
+import { isChatProject } from '../lib/chatProject'
+import type { Project, Thread } from '../types'
+
+interface ChatProjectPartition {
+  nonChatProjects: Project[]
+  nonChatThreads: Thread[]
+  chatProjects: Project[]
+  chatThreads: Thread[]
+}
+
+function partitionByChatBaseDir(
+  projects: Project[],
+  threads: Thread[],
+  baseDir: string | null
+): ChatProjectPartition {
+  if (!baseDir) {
+    return { nonChatProjects: projects, nonChatThreads: threads, chatProjects: [], chatThreads: [] }
+  }
+  const chatProjectIds = new Set<ProjectId>()
+  const nonChatProjects: Project[] = []
+  const chatProjects: Project[] = []
+  for (const project of projects) {
+    if (isChatProject(project, baseDir)) {
+      chatProjectIds.add(project.id)
+      chatProjects.push(project)
+    } else {
+      nonChatProjects.push(project)
+    }
+  }
+  if (chatProjectIds.size === 0) {
+    return { nonChatProjects: projects, nonChatThreads: threads, chatProjects: [], chatThreads: [] }
+  }
+  const nonChatThreads: Thread[] = []
+  const chatThreads: Thread[] = []
+  for (const thread of threads) {
+    if (chatProjectIds.has(thread.projectId)) chatThreads.push(thread)
+    else nonChatThreads.push(thread)
+  }
+  return { nonChatProjects, nonChatThreads, chatProjects, chatThreads }
+}
+
+function usePendingNewSessionModalEffect(opts: {
+  setModalProjectId: (value: ProjectId | null) => void
+  setModalPrimaryThreadId: (value: ThreadId | null) => void
+  setModalOpen: (value: boolean) => void
+}) {
+  const pendingNewSessionModalRequest = useUiStateStore(
+    store => store.pendingNewSessionModalRequest
+  )
+  const clearPendingNewSessionModal = useUiStateStore(store => store.clearPendingNewSessionModal)
+  useEffect(() => {
+    if (!pendingNewSessionModalRequest) return
+    opts.setModalProjectId(pendingNewSessionModalRequest.projectId)
+    opts.setModalPrimaryThreadId(
+      pendingNewSessionModalRequest.mode === 'split-secondary'
+        ? (pendingNewSessionModalRequest.primaryThreadId ?? null)
+        : null
+    )
+    opts.setModalOpen(true)
+    clearPendingNewSessionModal()
+  }, [clearPendingNewSessionModal, pendingNewSessionModalRequest, opts])
+}
 
 // -- Re-exports for external consumers --
 
@@ -38,11 +101,19 @@ export type FullSidebarProjectSnapshot = import('../types').Project & {
 
 function buildSidebarBodyProps(
   s: ReturnType<typeof useSidebarStoreBindings>,
-  w: ReturnType<typeof useSidebarWiring>
+  w: ReturnType<typeof useSidebarWiring>,
+  chatGroup: {
+    chatProjects: Project[]
+    chatThreads: Thread[]
+    chatBaseDir: string | null
+  }
 ): SidebarBodyProps {
   return {
     isOnSettings: s.pathname.startsWith('/settings'),
     pathname: s.pathname,
+    chatProjects: chatGroup.chatProjects,
+    chatThreads: chatGroup.chatThreads,
+    chatBaseDir: chatGroup.chatBaseDir,
     shouldShowProjectPathEntry:
       w.projectActions.addingProject && !s.shouldBrowseForProjectImmediately,
     showArm64IntelBuildWarning: w.desktopUpdate.showArm64IntelBuildWarning,
@@ -109,13 +180,16 @@ export default function Sidebar() {
   const [modalOpen, setModalOpen] = useState(false)
   const [modalProjectId, setModalProjectId] = useState<ProjectId | null>(null)
   const [modalPrimaryThreadId, setModalPrimaryThreadId] = useState<ThreadId | null>(null)
-  const pendingNewSessionModalRequest = useUiStateStore(
-    store => store.pendingNewSessionModalRequest
-  )
-  const clearPendingNewSessionModal = useUiStateStore(store => store.clearPendingNewSessionModal)
   const s = useSidebarStoreBindings()
+  const chatBaseDir = useChatsBaseDir()
+  const partition = useMemo(
+    () => partitionByChatBaseDir(s.projects, s.serverThreads, chatBaseDir),
+    [s.projects, s.serverThreads, chatBaseDir]
+  )
   const sWithModal: typeof s = {
     ...s,
+    projects: partition.nonChatProjects,
+    serverThreads: partition.nonChatThreads,
     handleNewThread: projectId => {
       setModalProjectId(projectId)
       setModalOpen(true)
@@ -123,28 +197,21 @@ export default function Sidebar() {
     },
   }
   const w = useSidebarWiring(sWithModal)
-
-  function handleCloseModal() {
+  const handleCloseModal = () => {
     setModalOpen(false)
     setModalProjectId(null)
     setModalPrimaryThreadId(null)
   }
-
-  useEffect(() => {
-    if (!pendingNewSessionModalRequest) {
-      return
-    }
-    setModalProjectId(pendingNewSessionModalRequest.projectId)
-    setModalPrimaryThreadId(
-      pendingNewSessionModalRequest.mode === 'split-secondary'
-        ? (pendingNewSessionModalRequest.primaryThreadId ?? null)
-        : null
-    )
-    setModalOpen(true)
-    clearPendingNewSessionModal()
-  }, [clearPendingNewSessionModal, pendingNewSessionModalRequest])
-
-  const bodyProps = buildSidebarBodyProps(s, w)
+  usePendingNewSessionModalEffect({
+    setModalProjectId,
+    setModalPrimaryThreadId,
+    setModalOpen,
+  })
+  const bodyProps = buildSidebarBodyProps(sWithModal, w, {
+    chatProjects: partition.chatProjects,
+    chatThreads: partition.chatThreads,
+    chatBaseDir,
+  })
 
   return (
     <>

@@ -270,7 +270,7 @@ function AvailableProviderSubmenu(props: {
   )
 }
 
-function ProviderOptionsMenu(props: {
+export function ProviderOptionsMenu(props: {
   provider: ProviderKind
   model: string
   providers: ReadonlyArray<ServerProvider> | undefined
