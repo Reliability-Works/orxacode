@@ -15,6 +15,7 @@ import {
   discoverOpencodeProviders,
   type DiscoverOpencodeProvidersResult,
 } from '../opencodeDiscovery'
+import { acquireSharedOpencodeServer } from '../opencodeServerPool'
 import { ServerSettingsService } from '../../serverSettings'
 import { OpencodeProvider } from '../Services/OpencodeProvider'
 import {
@@ -161,8 +162,17 @@ export type ResolveOpencodeDiscovery = (input: {
 function defaultResolveOpencodeDiscovery(input: {
   readonly binaryPath: string
 }): Effect.Effect<DiscoverOpencodeProvidersResult, Cause.UnknownError> {
+  // Route discovery through the shared `opencode serve` pool instead of
+  // spawning a transient subprocess. When a session is already using the
+  // pooled server, `acquireSharedOpencodeServer` returns the same handle
+  // and discovery's `shutdown()` just decrements the refcount — no
+  // duplicate spawn, no orphaned grandchildren when discovery completes.
   return Effect.tryPromise(signal =>
-    discoverOpencodeProviders({ binaryPath: input.binaryPath, signal })
+    discoverOpencodeProviders({
+      binaryPath: input.binaryPath,
+      signal,
+      startServer: acquireSharedOpencodeServer,
+    })
   )
 }
 

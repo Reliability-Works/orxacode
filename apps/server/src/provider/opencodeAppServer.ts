@@ -243,9 +243,12 @@ function createShutdown(child: SpawnedOpencodeProcess): () => Promise<void> {
           timer.unref?.()
         })
 
-      // Step 1: graceful SIGTERM.
+      // Step 1: graceful SIGTERM to the entire process group. The child is
+      // spawned with `detached: true` (Unix) so its PGID equals its PID;
+      // signalling the group reaches every descendant opencode forked
+      // (workers, plugins, watchers) instead of just the immediate parent.
       try {
-        killChildProcessTree(child, 'SIGTERM')
+        killChildProcessTree(child, 'SIGTERM', { viaProcessGroup: true })
       } catch {
         // Process may already be gone.
       }
@@ -255,7 +258,7 @@ function createShutdown(child: SpawnedOpencodeProcess): () => Promise<void> {
       // Step 2: SIGKILL — opencode serve has been observed to ignore
       // SIGTERM, leaving orphaned subprocesses across long-running parents.
       try {
-        killChildProcessTree(child, 'SIGKILL')
+        killChildProcessTree(child, 'SIGKILL', { viaProcessGroup: true })
       } catch {
         // Process may already be gone.
       }
@@ -281,6 +284,10 @@ function spawnOpencodeServe(input: {
     env: buildSanitizedOpencodeEnv(input.env),
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
+    // Unix only: make the child a process group leader (PGID === PID) so
+    // we can signal every descendant opencode forks. Windows already gets
+    // tree-kill via `taskkill /T` and `detached: true` would pop a console.
+    detached: process.platform !== 'win32',
   })
   const alive = { value: true }
   const stderr = { value: '' }

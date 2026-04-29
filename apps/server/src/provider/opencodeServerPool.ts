@@ -164,18 +164,27 @@ export const drainOpencodeServerPoolForTests = shutdownAllPooledOpencodeServers
 
 /**
  * Best-effort synchronous SIGTERM to every tracked pooled child. Used from
- * `process.on('exit', ...)` where we can't await. Children that ignore
- * SIGTERM will still be reaped by the OS when this process dies, but only if
- * they weren't detached — which they aren't (default `detached: false`).
+ * `process.on('exit', ...)` where we can't await. The pooled children are
+ * spawned with `detached: true` on Unix (see `opencodeAppServer.ts`) so we
+ * signal the entire process group (`-pid`) to reach every descendant
+ * opencode forked. Falls back to single-pid kill on signal failure or on
+ * Windows.
  */
 export function killAllPooledOpencodeServersSync(): void {
   for (const entry of pool.values()) {
-    if (entry.pid !== undefined) {
+    if (entry.pid === undefined) continue
+    if (process.platform !== 'win32') {
       try {
-        process.kill(entry.pid, 'SIGTERM')
+        process.kill(-entry.pid, 'SIGTERM')
+        continue
       } catch {
-        // Process may already be gone.
+        // ESRCH/EPERM — fall through to single-pid kill.
       }
+    }
+    try {
+      process.kill(entry.pid, 'SIGTERM')
+    } catch {
+      // Process may already be gone.
     }
   }
 }
