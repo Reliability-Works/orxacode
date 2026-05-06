@@ -222,6 +222,11 @@ export const abortOpencodeSessionIgnoring = (
       abortOpencodeSession({
         client: context.runtime.client,
         sessionId: sessionIdOverride ?? context.providerSessionId,
+        // The shared `opencode serve` pool hosts sessions from multiple
+        // project directories behind a single HTTP server. `session.abort`
+        // needs `directory` to resolve the session in the right project,
+        // matching how `session.create` / `session.promptAsync` are dispatched.
+        ...(context.session.cwd ? { directory: context.session.cwd } : {}),
       }),
     catch: cause =>
       new ProviderAdapterProcessError({
